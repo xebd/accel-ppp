@@ -32,6 +32,7 @@ kernel_headers:
 	    echo "using \"$(KDIR)\" kernel headers"; \
 	fi
 
+default: all
 
 clean:
 	-rm -f *.o *.ko .*.cmd .*.flags *.mod.c

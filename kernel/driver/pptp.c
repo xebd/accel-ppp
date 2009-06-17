@@ -89,6 +89,86 @@ static inline void *kzalloc(size_t size,int gfp)
 	memset(p,0,size);
 	return p;
 }
+
+/**
+ * __ffs - find first bit in word.
+ * @word: The word to search
+ *
+ * Undefined if no bit exists, so code should check against 0 first.
+ */
+static inline unsigned long __ffs(unsigned long word)
+{
+	int num = 0;
+
+#if BITS_PER_LONG == 64
+	if ((word & 0xffffffff) == 0) {
+		num += 32;
+		word >>= 32;
+	}
+#endif
+	if ((word & 0xffff) == 0) {
+		num += 16;
+		word >>= 16;
+	}
+	if ((word & 0xff) == 0) {
+		num += 8;
+		word >>= 8;
+	}
+	if ((word & 0xf) == 0) {
+		num += 4;
+		word >>= 4;
+	}
+	if ((word & 0x3) == 0) {
+		num += 2;
+		word >>= 2;
+	}
+	if ((word & 0x1) == 0)
+		num += 1;
+	return num;
+}
+
+#define BITOP_WORD(nr)		((nr) / BITS_PER_LONG)
+/*
+ * Find the next set bit in a memory region.
+ */
+static unsigned long find_next_bit(const unsigned long *addr, unsigned long size,
+			    unsigned long offset)
+{
+	const unsigned long *p = addr + BITOP_WORD(offset);
+	unsigned long result = offset & ~(BITS_PER_LONG-1);
+	unsigned long tmp;
+
+	if (offset >= size)
+		return size;
+	size -= result;
+	offset %= BITS_PER_LONG;
+	if (offset) {
+		tmp = *(p++);
+		tmp &= (~0UL << offset);
+		if (size < BITS_PER_LONG)
+			goto found_first;
+		if (tmp)
+			goto found_middle;
+		size -= BITS_PER_LONG;
+		result += BITS_PER_LONG;
+	}
+	while (size & ~(BITS_PER_LONG-1)) {
+		if ((tmp = *(p++)))
+			goto found_middle;
+		result += BITS_PER_LONG;
+		size -= BITS_PER_LONG;
+	}
+	if (!size)
+		return result;
+	tmp = *p;
+
+found_first:
+	tmp &= (~0UL >> (BITS_PER_LONG - size));
+	if (tmp == 0UL)		/* Are any bits set? */
+		return result + size;	/* Nope. */
+found_middle:
+	return result + __ffs(tmp);
+}
 #endif
 
 
@@ -489,7 +569,9 @@ static int pptp_rcv_core(struct sock *sk,struct sk_buff *skb)
 		}
 
 		skb->ip_summed=CHECKSUM_NONE;
+		#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,19)
 		skb_set_network_header(skb,skb->head-skb->data);
+		#endif
 		ppp_input(&po->chan,skb);
 
 		return NET_RX_SUCCESS;
@@ -567,7 +649,7 @@ static int pptp_rcv(struct sk_buff *skb)
 		
 		#else /* LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,0) */
 		
-		#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,18)
+		#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,19)
 		return sk_receive_skb(sk_pppox(po), skb);
 		#else
 		return sk_receive_skb(sk_pppox(po), skb, 0);
