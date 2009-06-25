@@ -661,7 +661,6 @@ static int pptp_rcv(struct sk_buff *skb)
 		if (log_level>=1)
 			printk(KERN_INFO"PPTP: Discarding packet from unknown call_id %i\n",htons(header->call_id));
 		#endif
-		icmp_send(skb, ICMP_DEST_UNREACH, ICMP_PORT_UNREACH, 0);
 	}
 
 drop:
