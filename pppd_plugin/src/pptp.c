@@ -121,14 +121,14 @@ static int pptp_start_server(void)
 }
 static int pptp_start_client(void)
 {
-	int len;
+	socklen_t len;
 	struct sockaddr_pppox src_addr,dst_addr;
 	struct hostent *hostinfo;
 
 	hostinfo=gethostbyname(pptp_server);
   if (!hostinfo)
 	{
-		fatal("PPTP: Unknown host %s\n", pptp_server);
+		error("PPTP: Unknown host %s\n", pptp_server);
 		return -1;
 	}
 	dst_addr.sa_addr.pptp.sin_addr=*(struct in_addr*)hostinfo->h_addr;
@@ -142,7 +142,8 @@ static int pptp_start_client(void)
 		sock=socket(AF_INET,SOCK_DGRAM,0);
 		if (connect(sock,(struct sockaddr*)&addr,sizeof(addr)))
 		{
-			fatal("PPTP: connect failed (%s)\n",strerror(errno));
+			close(sock);
+			error("PPTP: connect failed (%s)\n",strerror(errno));
 			return -1;
 		}
 		getsockname(sock,(struct sockaddr*)&addr,&len);
@@ -165,14 +166,15 @@ static int pptp_start_client(void)
 	pptp_fd=socket(AF_PPPOX,SOCK_STREAM,PX_PROTO_PPTP);
 	if (pptp_fd<0)
 	{
-		fatal("PPTP: failed to create PPTP socket (%s)\n",strerror(errno));
+		error("PPTP: failed to create PPTP socket (%s)\n",strerror(errno));
 		return -1;
 	}
 	if (setsockopt(pptp_fd,0,PPTP_SO_TIMEOUT,&pptp_timeout,sizeof(pptp_timeout)))
 		warn("PPTP: failed to setsockopt PPTP_SO_TIMEOUT (%s)\n",strerror(errno));
 	if (bind(pptp_fd,(struct sockaddr*)&src_addr,sizeof(src_addr)))
 	{
-		fatal("PPTP: failed to bind PPTP socket (%s)\n",strerror(errno));
+		close(pptp_fd);
+		error("PPTP: failed to bind PPTP socket (%s)\n",strerror(errno));
 		return -1;
 	}
 	len=sizeof(src_addr);
@@ -184,12 +186,19 @@ static int pptp_start_client(void)
          * Open connection to call manager (Launch call manager if necessary.)
          */
         callmgr_sock = open_callmgr(src_addr.sa_addr.pptp.call_id,dst_addr.sa_addr.pptp.sin_addr, pptp_phone,50);
+	if (callmgr_sock<0)
+	{
+		close(pptp_fd);
+		return -1;
+        }
         /* Exchange PIDs, get call ID */
     } while (get_call_id(callmgr_sock, getpid(), getpid(), &dst_addr.sa_addr.pptp.call_id) < 0);
 
 	if (connect(pptp_fd,(struct sockaddr*)&dst_addr,sizeof(dst_addr)))
 	{
-		fatal("PPTP: failed to connect PPTP socket (%s)\n",strerror(errno));
+		close(callmgr_sock);
+		close(pptp_fd);
+		error("PPTP: failed to connect PPTP socket (%s)\n",strerror(errno));
 		return -1;
 	}
 
@@ -211,6 +220,7 @@ static int pptp_connect(void)
 
 static void pptp_disconnect(void)
 {
+	if (pptp_server) close(callmgr_sock);
 	close(pptp_fd);
 }
 
@@ -245,7 +255,7 @@ static int open_callmgr(int call_id,struct in_addr inetaddr, char *phonenr,int w
                 case 0: /* child */
                 {
                     close (fd);
-                    //close(pptp_fd);
+                    close(pptp_fd);
                     /* close the pty and gre in the call manager */
                    // close(pty_fd);
                     //close(gre_fd);
@@ -254,7 +264,11 @@ static int open_callmgr(int call_id,struct in_addr inetaddr, char *phonenr,int w
                 default: /* parent */
                     waitpid(pid, &status, 0);
                     if (status!= 0)
-                       fatal("Call manager exited with error %d", status);
+		    {
+			close(fd);
+			error("Call manager exited with error %d", status);
+			return -1;
+		    }
                     break;
             }
             sleep(1);
@@ -262,7 +276,7 @@ static int open_callmgr(int call_id,struct in_addr inetaddr, char *phonenr,int w
         else return fd;
     }
     close(fd);
-    fatal("Could not launch call manager after %d tries.", i);
+    error("Could not launch call manager after %d tries.", i);
     return -1;   /* make gcc happy */
 }
 

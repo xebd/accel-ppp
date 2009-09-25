@@ -2236,7 +2236,7 @@ fi
 
 # Define the identity of the package.
  PACKAGE=pptp
- VERSION=0.8.3
+ VERSION=0.8.4
 
 
 cat >>confdefs.h <<_ACEOF

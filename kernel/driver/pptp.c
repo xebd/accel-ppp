@@ -50,7 +50,7 @@
 
 #define DEBUG
 
-#define PPTP_DRIVER_VERSION "0.8.3"
+#define PPTP_DRIVER_VERSION "0.8.4"
 
 MODULE_DESCRIPTION("Point-to-Point Tunneling Protocol for Linux");
 MODULE_AUTHOR("Kozlov D. (xeb@mail.ru)");
@@ -430,7 +430,11 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 	 *	Push down and install the IP header.
 	 */
 
-	#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,22)
+	#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31)
+	skb_reset_transport_header(skb);
+	skb_push(skb, sizeof(*iph));
+	skb_reset_network_header(skb);
+	#elif LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,22)
 	skb->transport_header = skb->network_header;
 	skb_push(skb, sizeof(*iph));
 	skb_reset_network_header(skb);
@@ -463,8 +467,13 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 	#endif
 	iph->tot_len = htons(skb->len);
 
+	#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31)
+	skb_dst_drop(skb);
+	skb_dst_set(skb,&rt->u.dst);
+	#else
 	dst_release(skb->dst);
 	skb->dst = &rt->u.dst;
+	#endif
 
 	nf_reset(skb);
 
@@ -630,8 +639,13 @@ static int pptp_rcv(struct sk_buff *skb)
 
 
 	if ((po=lookup_chan(htons(header->call_id),iph->saddr))) {
+		#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31)
+		skb_dst_drop(skb);
+		skb_dst_set(skb,NULL);
+		#else
 		dst_release(skb->dst);
 		skb->dst = NULL;
+		#endif
 		nf_reset(skb);
 		#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,0)
 		sk=sk_pppox(po);
