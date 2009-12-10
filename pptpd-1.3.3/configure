@@ -2043,7 +2043,7 @@ fi
 
 # Define the identity of the package.
  PACKAGE=pptpd
- VERSION=0.8.5-rc1
+ VERSION=0.8.4
 
 
 cat >>confdefs.h <<_ACEOF
