@@ -90,6 +90,20 @@ static inline void *kzalloc(size_t size,int gfp)
 	return p;
 }
 
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,4,20)
+static inline void nf_reset(struct sk_buff *skb)
+{
+#ifdef CONFIG_NETFILTER
+	nf_conntrack_put(skb->nfct);
+	skb->nfct=NULL;
+#ifdef CONFIG_NETFILTER_DEBUG
+	skb->nf_debug=0;
+#endif
+#endif
+}
+#define __user
+#endif
+
 /**
  * __ffs - find first bit in word.
  * @word: The word to search
