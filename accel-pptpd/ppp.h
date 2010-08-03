@@ -54,18 +54,11 @@ struct ppp_t
 
 	char *chan_name;
 
+	//options
 	int mtu,mru;
-	int require_mppe:1;
-	int require_pap:1;
-	int require_chap:1;
-	int require_mschap:1;
-	int require_mschap_v2:1;
-
-	int allow_mppe:1;
-	int allow_pap:1;
-	int allow_chap:1;
-	int allow_mschap:1;
-	int allow_mschap_v2:1;
+	int accomp; // 0 - disabled, 1 - enable, 2 - allow, disabled, 3 - allow,enabled
+	int pcomp; // 0 - disabled, 1 - enable, 2 - allow, disabled, 3 - allow,enabled
+	// 
 	
 	int log:1;
 

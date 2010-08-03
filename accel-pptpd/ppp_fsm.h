@@ -21,11 +21,17 @@ struct ppp_hdr_t;
 
 struct lcp_options_t
 {
+	int mtu;
 	int mru;
-	int auth;
-	int magic;
-	int accomp;
-	int pcomp;
+	int accomp; // 0 - disabled, 1 - enable, 2 - allow, disabled, 3 - allow,enabled
+	int pcomp;  // 0 - disabled, 1 - enable, 2 - allow, disabled, 3 - allow,enabled
+	int auth[3]; // 0 - none, 1 - pap, 2 - eap, 3 - mschap
+	// negotiated options;
+	int neg_mru;
+	int neg_mtu;
+	int neg_accomp; // -1 - rejected
+	int neg_pcomp;
+	int neg_auth;
 };
 
 struct ppp_layer_t
