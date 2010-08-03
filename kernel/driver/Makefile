@@ -3,7 +3,7 @@ MDIR = extra
 KDIR ?= $(shell sh find_kernel_headers)
 
 obj-m      += pptp.o
-#obj-m      += ppp_generic_smp.o
+#obj-m      += gre.o
 
 CURRENT = $(shell uname -r)
 

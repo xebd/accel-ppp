@@ -88,8 +88,6 @@ static option_t Options[] =
       "PPTP socket" },
     { "pptp_phone", o_string, &pptp_phone,
       "PPTP Phone number" },
-    { "pptp_timeout", o_int, &pptp_timeout,
-      "timeout for waiting reordered packets and acks"},
     { NULL }
 };
 
@@ -169,8 +167,6 @@ static int pptp_start_client(void)
 		error("PPTP: failed to create PPTP socket (%s)\n",strerror(errno));
 		return -1;
 	}
-	if (setsockopt(pptp_fd,0,PPTP_SO_TIMEOUT,&pptp_timeout,sizeof(pptp_timeout)))
-		warn("PPTP: failed to setsockopt PPTP_SO_TIMEOUT (%s)\n",strerror(errno));
 	if (bind(pptp_fd,(struct sockaddr*)&src_addr,sizeof(src_addr)))
 	{
 		close(pptp_fd);

@@ -49,6 +49,11 @@
 #include <asm/uaccess.h>
 
 #define DEBUG
+//#define USE_GRE_MOD
+
+#ifdef USE_GRE_MOD
+#include "gre.h"
+#endif
 
 #define PPTP_DRIVER_VERSION "0.8.4"
 
@@ -60,6 +65,8 @@ static int log_level=0;
 static int log_packets=10;
 
 #define MAX_CALLID 65535
+#define PPP_LCP_ECHOREQ 0x09
+#define PPP_LCP_ECHOREP 0x0A
 
 static unsigned long *callid_bitmap=NULL;
 static struct pppox_sock **callid_sock=NULL;
@@ -184,7 +191,6 @@ found_middle:
 	return result + __ffs(tmp);
 }
 #endif
-
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 static rwlock_t chan_lock=RW_LOCK_UNLOCKED;
@@ -399,8 +405,8 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 		*/
 	if ((opt->ppp_flags & SC_COMP_AC) == 0 || islcp) {
 		data=skb_push(skb,2);
-		data[0]=0xff;
-		data[1]=0x03;
+		data[0]=PPP_ALLSTATIONS;
+		data[1]=PPP_UI;
 	}
 	
 	len=skb->len;
@@ -469,13 +475,16 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 	#endif
 	iph->version		=	4;
 	iph->ihl		=	sizeof(struct iphdr) >> 2;
-	iph->frag_off		=	0;//df;
+	if (ip_dont_fragment(sk, &rt->u.dst))
+		iph->frag_off	=	htons(IP_DF);
+	else
+		iph->frag_off	=	0;
 	iph->protocol		=	IPPROTO_GRE;
 	iph->tos		=	0;
 	iph->daddr		=	rt->rt_dst;
 	iph->saddr		=	rt->rt_src;
 	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-	iph->ttl = sysctl_ip_default_ttl;
+	iph->ttl = sk->protinfo.af_inet.ttl;
 	#else
 	iph->ttl = dst_metric(&rt->u.dst, RTAX_HOPLIMIT);
 	#endif
@@ -559,12 +568,24 @@ static int pptp_rcv_core(struct sock *sk,struct sk_buff *skb)
 	payload=skb->data+headersize;
 	/* check for expected sequence number */
 	if ( seq < opt->seq_recv + 1 || WRAPPED(opt->seq_recv, seq) ){
+		if ( (payload[0] == PPP_ALLSTATIONS) && (payload[1] == PPP_UI) &&
+		     (PPP_PROTOCOL(payload) == PPP_LCP) &&
+		     ((payload[4] == PPP_LCP_ECHOREQ) || (payload[4] == PPP_LCP_ECHOREP)) ){
+			#ifdef DEBUG
+			if ( log_level >= 1)
+				printk(KERN_INFO"PPTP[%i]: allowing old LCP Echo packet %d (expecting %d)\n", opt->src_addr.call_id,
+							seq, opt->seq_recv + 1);
+			#endif
+			goto allow_packet;
+		}
 		#ifdef DEBUG
 		if ( log_level >= 1)
 			printk(KERN_INFO"PPTP[%i]: discarding duplicate or old packet %d (expecting %d)\n",opt->src_addr.call_id,
 							seq, opt->seq_recv + 1);
 		#endif
 	}else{
+		opt->seq_recv = seq;
+allow_packet:
 		#ifdef DEBUG
 		if ( log_level >= 3 && opt->seq_sent<=log_packets)
 			printk(KERN_INFO"PPTP[%i]: accepting packet %d size=%i (%02x %02x %02x %02x %02x %02x)\n",opt->src_addr.call_id, seq,payload_len,
@@ -575,7 +596,6 @@ static int pptp_rcv_core(struct sock *sk,struct sk_buff *skb)
 				*(payload +4),
 				*(payload +5));
 		#endif
-		opt->seq_recv = seq;
 
 		skb_pull(skb,headersize);
 
@@ -592,7 +612,7 @@ static int pptp_rcv_core(struct sock *sk,struct sk_buff *skb)
 		}
 
 		skb->ip_summed=CHECKSUM_NONE;
-		#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,19)
+		#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,21)
 		skb_set_network_header(skb,skb->head-skb->data);
 		#endif
 		ppp_input(&po->chan,skb);
@@ -617,8 +637,8 @@ static int pptp_rcv(struct sk_buff *skb)
 	if (skb->pkt_type != PACKET_HOST)
 		goto drop;
 
-	if (!pskb_may_pull(skb, 12))
-		goto drop;
+	/*if (!pskb_may_pull(skb, 12))
+		goto drop;*/
 
 	#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,22)
 	iph = ip_hdr(skb);
@@ -1082,7 +1102,11 @@ static struct inet_protocol net_pptp_protocol = {
 	.name     = "PPTP",
 };
 #else
+#ifdef USE_GRE_MOD
+static struct gre_protocol gre_pptp_protocol = {
+#else
 static struct net_protocol net_pptp_protocol = {
+#endif
 	.handler	= pptp_rcv,
 	//.err_handler	=	pptp_err,
 };
@@ -1096,7 +1120,11 @@ static int pptp_init_module(void)
 	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	inet_add_protocol(&net_pptp_protocol);
 	#else
+	#ifdef USE_GRE_MOD
+	if (gre_add_protocol(&gre_pptp_protocol, GREPROTO_PPTP) < 0) {
+	#else
 	if (inet_add_protocol(&net_pptp_protocol, IPPROTO_GRE) < 0) {
+	#endif
 		printk(KERN_INFO "PPTP: can't add protocol\n");
 		goto out;
 	}
@@ -1145,7 +1173,11 @@ out_inet_del_protocol:
 	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	inet_del_protocol(&net_pptp_protocol);
 	#else
+	#ifdef USE_GRE_MOD
+	gre_del_protocol(&gre_pptp_protocol, GREPROTO_PPTP);
+	#else
 	inet_del_protocol(&net_pptp_protocol, IPPROTO_GRE);
+	#endif
 	#endif
 	goto out;
 }
@@ -1163,7 +1195,11 @@ static void pptp_exit_module(void)
 	inet_del_protocol(&net_pptp_protocol);
 	#else
 	proto_unregister(&pptp_sk_proto);
+	#ifdef USE_GRE_MOD
+	gre_del_protocol(&gre_pptp_protocol, GREPROTO_PPTP);
+	#else
 	inet_del_protocol(&net_pptp_protocol, IPPROTO_GRE);
+	#endif
 	#endif
 	if (callid_bitmap) free_pages((unsigned long)callid_bitmap,1);
 	if (callid_sock) {
