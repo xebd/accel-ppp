@@ -157,6 +157,7 @@ static void send_conf_req(struct ppp_layer_t*l)
 	log_msg(" <mru %i>",l->options.lcp.mtu);
 
 	//auth
+	ptr+=auth_get_conf_req(l,ptr);
 	
 	//magic
 	opt32=(struct lcp_opt32_t*)ptr; ptr+=sizeof(*opt32);
@@ -201,7 +202,7 @@ static int lcp_recv_conf_req(struct ppp_layer_t*l,uint8_t *data,int size)
 	struct lcp_opt8_t *opt8;
 	struct lcp_opt16_t *opt16;
 	struct lcp_opt32_t *opt32;
-	int ret=0;
+	int res=0;
 
 	log_debug("recv [LCP ConfReq id=%x",l->recv_id);
 
@@ -218,41 +219,23 @@ static int lcp_recv_conf_req(struct ppp_layer_t*l,uint8_t *data,int size)
 			case CI_ASYNCMAP:
 				log_debug(" <asyncmap ...>");
 				break;
-			/*case CI_AUTHTYPE:
-				if (l->ppp->log) log_msg("<auth ");
-				switch(*(u_int16_t*)data)
-				{
-					case PPP_PAP:
-						if (l->ppp->log) log_msg("pap");
-						break;
-					case PPP_EAP:
-						if (l->ppp->log) log_msg("eap");
-						break;
-					case PPP_CHAP:
-						if (l->ppp->log) log_msg("chap");
-						break;
-						switch(data[4])
-						{
-							case 
-						}
-					default:
-						if (l->ppp->log) log_msg("unknown");
-						return -1;
-				}
-				if (l->ppp->log) log_msg(" auth>");
+			case CI_AUTHTYPE:
+				if (auth_proc_conf_req(l,opt))
+					res=-1;
+				break;
 			case CI_MAGICNUMBER:
 				if (*(u_int32_t*)data==l->magic_num)
 				{
 					log_error("loop detected\n");
-					return -1;
+					res=-1;
 				}
-				break;*/
+				break;
 			case CI_PCOMP:
 				log_debug(" <pcomp>");
 				if (l->options.lcp.pcomp>=1) l->options.lcp.neg_pcomp=1;
 				else {
 					l->options.lcp.neg_pcomp=-2;
-					ret=-1;
+					res=-1;
 				}
 				break;
 			case CI_ACCOMP:
@@ -260,7 +243,7 @@ static int lcp_recv_conf_req(struct ppp_layer_t*l,uint8_t *data,int size)
 				if (l->options.lcp.accomp>=1) l->options.lcp.neg_accomp=1;
 				else {
 					l->options.lcp.neg_accomp=-2;
-					ret=-1;
+					res=-1;
 				}
 				break;
 		}
@@ -268,7 +251,7 @@ static int lcp_recv_conf_req(struct ppp_layer_t*l,uint8_t *data,int size)
 		size-=opt->len;
 	}
 	log_debug("\n");
-	return ret;
+	return res;
 }
 
 static void lcp_recv(struct ppp_layer_t*l)
