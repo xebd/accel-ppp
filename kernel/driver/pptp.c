@@ -30,14 +30,12 @@
 #include <linux/netfilter.h>
 #include <linux/netfilter_ipv4.h>
 #include <linux/version.h>
-#include <linux/spinlock.h>
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
+#include <linux/semaphore.h>
+#endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-#include <linux/tqueue.h>
-#include <linux/timer.h>
 #include <asm/bitops.h>
-#else
-#include <linux/workqueue.h>
 #endif
 
 #include <net/sock.h>
@@ -55,11 +53,7 @@
 #include "gre.h"
 #endif
 
-#define PPTP_DRIVER_VERSION "0.8.4"
-
-MODULE_DESCRIPTION("Point-to-Point Tunneling Protocol for Linux");
-MODULE_AUTHOR("Kozlov D. (xeb@mail.ru)");
-MODULE_LICENSE("GPL");
+#define PPTP_DRIVER_VERSION "0.8.5"
 
 static int log_level=0;
 static int log_packets=10;
@@ -70,15 +64,6 @@ static int log_packets=10;
 
 static unsigned long *callid_bitmap=NULL;
 static struct pppox_sock **callid_sock=NULL;
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-MODULE_PARM(log_level,"i");
-MODULE_PARM(log_packets,"i");
-#else
-module_param(log_level,int,0);
-module_param(log_packets,int,0);
-#endif
-MODULE_PARM_DESC(log_level,"Logging level (default=0)");
 
 #define SC_RCV_BITS	(SC_RCV_B7_1|SC_RCV_B7_0|SC_RCV_ODDP|SC_RCV_EVNP)
 
@@ -196,7 +181,7 @@ found_middle:
 static rwlock_t chan_lock=RW_LOCK_UNLOCKED;
 #define SK_STATE(sk) (sk)->state
 #else
-static DEFINE_RWLOCK(chan_lock);
+static DECLARE_MUTEX(chan_lock);
 #define SK_STATE(sk) (sk)->sk_state
 #endif
 
@@ -234,55 +219,71 @@ static struct ppp_channel_ops pptp_chan_ops= {
 #define PPTP_GRE_IS_A(f) ((f)&PPTP_GRE_FLAG_A)
 
 struct pptp_gre_header {
-  u_int8_t flags;		/* bitfield */
-  u_int8_t ver;			/* should be PPTP_GRE_VER (enhanced GRE) */
-  u_int16_t protocol;		/* should be PPTP_GRE_PROTO (ppp-encaps) */
-  u_int16_t payload_len;	/* size of ppp payload, not inc. gre header */
-  u_int16_t call_id;		/* peer's call_id for this session */
-  u_int32_t seq;		/* sequence number.  Present if S==1 */
-  u_int32_t ack;		/* seq number of highest packet recieved by */
+  u8 flags;		/* bitfield */
+  u8 ver;			/* should be PPTP_GRE_VER (enhanced GRE) */
+  u16 protocol;		/* should be PPTP_GRE_PROTO (ppp-encaps) */
+  u16 payload_len;	/* size of ppp payload, not inc. gre header */
+  u16 call_id;		/* peer's call_id for this session */
+  u32 seq;		/* sequence number.  Present if S==1 */
+  u32 ack;		/* seq number of highest packet recieved by */
   				/*  sender in this session */
 };
 #define PPTP_HEADER_OVERHEAD (2+sizeof(struct pptp_gre_header))
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-static struct pppox_sock * lookup_chan(__u16 call_id, __u32 s_addr)
+static struct pppox_sock * lookup_chan(u16 call_id, u32 s_addr)
 #else
-static struct pppox_sock * lookup_chan(__u16 call_id, __be32 s_addr)
+static struct pppox_sock * lookup_chan(u16 call_id, __be32 s_addr)
 #endif
 {
 	struct pppox_sock *sock;
 	struct pptp_opt *opt;
 	
+	#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
+	rcu_read_lock();
+	#else
 	read_lock(&chan_lock);
+	#endif
 	sock=callid_sock[call_id];
 	if (sock) {
 		opt=&sock->proto.pptp;
 		if (opt->dst_addr.sin_addr.s_addr!=s_addr) sock=NULL;
 		else sock_hold(sk_pppox(sock));
 	}
+	#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
+	rcu_read_unlock();
+	#else
 	read_unlock(&chan_lock);
+	#endif
 	
 	return sock;
 }
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-static int lookup_chan_dst(__u16 call_id, __u32 d_addr)
+static int lookup_chan_dst(u16 call_id, u32 d_addr)
 #else
-static int lookup_chan_dst(__u16 call_id, __be32 d_addr)
+static int lookup_chan_dst(u16 call_id, __be32 d_addr)
 #endif
 {
 	struct pppox_sock *sock;
 	struct pptp_opt *opt;
 	int i;
 	
+	#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
+	down(&chan_lock);
+	#else
 	read_lock(&chan_lock);
+	#endif
 	for(i=find_next_bit(callid_bitmap,MAX_CALLID,1); i<MAX_CALLID; i=find_next_bit(callid_bitmap,MAX_CALLID,i+1)){
 	    sock=callid_sock[i];
 	    opt=&sock->proto.pptp;
 	    if (opt->dst_addr.call_id==call_id && opt->dst_addr.sin_addr.s_addr==d_addr) break;
 	}
+	#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
+	up(&chan_lock);
+	#else
 	read_unlock(&chan_lock);
+	#endif
 	
 	return i<MAX_CALLID;
 }
@@ -292,7 +293,12 @@ static int add_chan(struct pppox_sock *sock)
 	static int call_id=0;
 	int res=-1;
 
+	#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
+	synchronize_rcu();
+	down(&chan_lock);
+	#else
 	write_lock_bh(&chan_lock);
+	#endif
 	
 	if (!sock->proto.pptp.src_addr.call_id)
 	{
@@ -305,21 +311,39 @@ static int add_chan(struct pppox_sock *sock)
 		goto exit;
 	
 	set_bit(sock->proto.pptp.src_addr.call_id,callid_bitmap);
+	#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
+	rcu_assign_pointer(callid_sock[sock->proto.pptp.src_addr.call_id],sock);
+	#else
 	callid_sock[sock->proto.pptp.src_addr.call_id]=sock;
+	#endif
 	res=0;
 
 exit:	
+	#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
+	up(&chan_lock);
+	#else
 	write_unlock_bh(&chan_lock);
-	
+	#endif
+
 	return res;
 }
 
 static void del_chan(struct pppox_sock *sock)
 {
+	#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
+	synchronize_rcu();
+	down(&chan_lock);
+	#else
 	write_lock_bh(&chan_lock);
+	#endif
 	clear_bit(sock->proto.pptp.src_addr.call_id,callid_bitmap);
+	#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
+	rcu_assign_pointer(callid_sock[sock->proto.pptp.src_addr.call_id],NULL);
+	up(&chan_lock);
+	#else
 	callid_sock[sock->proto.pptp.src_addr.call_id]=NULL;
 	write_unlock_bh(&chan_lock);
+	#endif
 }
 
 static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
@@ -333,7 +357,7 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 	int islcp;
 	int len;
 	unsigned char *data;
-	__u32 seq_recv;
+	u32 seq_recv;
 	
 	
 	struct rtable *rt;     			/* Route to the other host */
@@ -521,7 +545,7 @@ static int pptp_rcv_core(struct sock *sk,struct sk_buff *skb)
 	struct pppox_sock *po = pppox_sk(sk);
 	struct pptp_opt *opt=&po->proto.pptp;
 	int headersize,payload_len,seq;
-	__u8 *payload;
+	u8 *payload;
 	struct pptp_gre_header *header;
 
 	if (!(SK_STATE(sk) & PPPOX_CONNECTED)) {
@@ -534,7 +558,7 @@ static int pptp_rcv_core(struct sock *sk,struct sk_buff *skb)
 
 	/* test if acknowledgement present */
 	if (PPTP_GRE_IS_A(header->ver)){
-			__u32 ack = (PPTP_GRE_IS_S(header->flags))?
+			u32 ack = (PPTP_GRE_IS_S(header->flags))?
 					header->ack:header->seq; /* ack in different place if S = 0 */
 
 			ack = ntohl( ack);
@@ -1112,7 +1136,7 @@ static struct net_protocol net_pptp_protocol = {
 };
 #endif
 
-static int pptp_init_module(void)
+static int __init pptp_init_module(void)
 {
 	int err=0;
 	printk(KERN_INFO "PPTP driver version " PPTP_DRIVER_VERSION "\n");
@@ -1182,7 +1206,7 @@ out_inet_del_protocol:
 	goto out;
 }
 
-static void pptp_exit_module(void)
+static void __exit pptp_exit_module(void)
 {
 	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	flush_scheduled_tasks();
@@ -1213,3 +1237,18 @@ static void pptp_exit_module(void)
 
 module_init(pptp_init_module);
 module_exit(pptp_exit_module);
+
+MODULE_DESCRIPTION("Point-to-Point Tunneling Protocol for Linux");
+MODULE_AUTHOR("Kozlov D. (xeb@mail.ru)");
+MODULE_LICENSE("GPL");
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
+MODULE_PARM(log_level,"i");
+MODULE_PARM(log_packets,"i");
+#else
+module_param(log_level,int,0);
+module_param(log_packets,int,0);
+#endif
+MODULE_PARM_DESC(log_level,"Logging level (default=0)");
+
+
