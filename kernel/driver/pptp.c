@@ -244,7 +244,7 @@ static struct pppox_sock * lookup_chan(u16 call_id, __be32 s_addr)
 	#else
 	read_lock(&chan_lock);
 	#endif
-	sock=callid_sock[call_id];
+	sock = rcu_dereference(callid_sock[call_id]);
 	if (sock) {
 		opt=&sock->proto.pptp;
 		if (opt->dst_addr.sin_addr.s_addr!=s_addr) sock=NULL;

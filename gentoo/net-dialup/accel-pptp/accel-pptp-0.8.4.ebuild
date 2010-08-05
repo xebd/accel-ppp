@@ -13,7 +13,7 @@ LICENSE="GPL"
 KEYWORDS="~amd64 ~x86"
 IUSE="tcpd server"
 
-DEPEND="server? (!net-dialup/pptpd) 
+DEPEND="server? ( !net-dialup/pptpd ) 
         >=net-dialup/ppp-2.4.2
         >=virtual/linux-sources-2.6.15
 	tcpd? ( sys-apps/tcp-wrappers )"
