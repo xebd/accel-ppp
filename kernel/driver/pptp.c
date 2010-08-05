@@ -1251,4 +1251,3 @@ module_param(log_packets,int,0);
 #endif
 MODULE_PARM_DESC(log_level,"Logging level (default=0)");
 
-
