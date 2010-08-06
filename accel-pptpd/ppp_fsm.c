@@ -13,6 +13,7 @@
 #include "triton/triton.h"
 #include "ppp.h"
 #include "ppp_fsm.h"
+#include "ppp_lcp.h"
 
 void send_term_req(struct ppp_layer_t *layer);
 void send_term_ack(struct ppp_layer_t *layer);
@@ -33,7 +34,7 @@ void ppp_fsm_init(struct ppp_layer_t *layer)
 	layer->max_terminate=2;
 	layer->max_configure=10;
 	layer->max_failure=5;
-	layer->seq=0;
+	layer->id=0;
 }
 
 void ppp_fsm_lower_up(struct ppp_layer_t *layer)
@@ -405,17 +406,12 @@ void ppp_fsm_recv_code_rej_bad(struct ppp_layer_t *layer)
 	}
 }
 
-void ppp_fsm_recv_echo(struct ppp_layer_t *layer)
-{
-	if (layer->fsm_state==FSM_Opened)
-		send_echo_reply(layer);
-}
-
 void send_term_req(struct ppp_layer_t *layer)
 {
-	struct ppp_hdr_t hdr={
+	struct lcp_hdr_t hdr={
+		.proto=PPP_LCP,
 		.code=TERMREQ,
-		.id=++layer->seq,
+		.id=++layer->id,
 		.len=4,
 	};
 
@@ -423,7 +419,8 @@ void send_term_req(struct ppp_layer_t *layer)
 }
 void send_term_ack(struct ppp_layer_t *layer)
 {
-	struct ppp_hdr_t hdr={
+	struct lcp_hdr_t hdr={
+		.proto=PPP_LCP,
 		.code=TERMACK,
 		.id=layer->recv_id,
 		.len=4,
@@ -431,19 +428,6 @@ void send_term_ack(struct ppp_layer_t *layer)
 
 	ppp_send(layer->ppp,&hdr,hdr.len);
 }
-void send_echo_reply(struct ppp_layer_t *layer)
-{
-	struct ppp_hdr_t hdr={
-		.code=ECHOREP,
-		.id=layer->recv_id,
-		.len=8,
-	};
-
-	*(int*)hdr.data=layer->magic_num;
-
-	ppp_send(layer->ppp,&hdr,hdr.len);
-}
-
 void ppp_fsm_recv(struct ppp_layer_t *layer)
 {
 }

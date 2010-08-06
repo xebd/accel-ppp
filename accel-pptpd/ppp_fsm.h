@@ -1,6 +1,7 @@
 #ifndef PPP_FSM_H
 #define PPP_FSM_H
 
+#include "triton/triton.h"
 #include "list.h"
 
 typedef enum {FSM_Initial=0,FSM_Starting,FSM_Closed,FSM_Stopped,FSM_Closing,FSM_Stopping,FSM_Req_Sent,FSM_Ack_Rcvd,FSM_Ack_Sent,FSM_Opened} FSM_STATE;
@@ -19,19 +20,20 @@ typedef enum {FSM_Initial=0,FSM_Starting,FSM_Closed,FSM_Stopped,FSM_Closing,FSM_
 
 struct ppp_hdr_t;
 
+#define AUTH_MAX	3
 struct lcp_options_t
 {
+	int magic;
 	int mtu;
 	int mru;
 	int accomp; // 0 - disabled, 1 - enable, 2 - allow, disabled, 3 - allow,enabled
 	int pcomp;  // 0 - disabled, 1 - enable, 2 - allow, disabled, 3 - allow,enabled
-	int auth[3]; // 0 - none, 1 - pap, 2 - eap, 3 - mschap
 	// negotiated options;
 	int neg_mru;
 	int neg_mtu;
 	int neg_accomp; // -1 - rejected
 	int neg_pcomp;
-	int neg_auth;
+	int neg_auth[AUTH_MAX];
 };
 
 struct ppp_layer_t
@@ -55,13 +57,14 @@ struct ppp_layer_t
 	int max_configure;
 	int max_failure;
 
-	int seq;
+	int id;
 	int recv_id;
-	int magic_num;
+	int auth[AUTH_MAX];
 
 	int opt_restart:1;
 	int opt_passive:1;
 
+	void *last_conf_req;
 	//fsm handling
 	void (*layer_up)(struct ppp_layer_t*);
 	void (*layer_down)(struct ppp_layer_t*);
@@ -71,8 +74,7 @@ struct ppp_layer_t
 	void (*send_conf_ack)(struct ppp_layer_t*);
 	void (*send_conf_nak)(struct ppp_layer_t*);
 	void (*send_conf_rej)(struct ppp_layer_t*);
-
-	void (*recv)(struct ppp_layer_t*,struct ppp_hdr_t*);
+	void (*recv)(struct ppp_layer_t*);
 };
 
 void ppp_fsm_init(struct ppp_layer_t*);

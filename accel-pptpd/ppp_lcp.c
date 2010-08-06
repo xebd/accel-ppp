@@ -6,10 +6,13 @@
 
 #include "triton/triton.h"
 
-#include "ppp.h"
-#include "ppp_fsm.h"
 #include "events.h"
 #include "log.h"
+
+#include "ppp.h"
+#include "ppp_fsm.h"
+#include "ppp_lcp.h"
+#include "ppp_auth.h"
 
 char* accomp="allow,disabled";
 char* pcomp="allow,disabled";
@@ -17,76 +20,18 @@ char* auth="pap,eap,mschap-v2";
 char* mppe="allow,disabled";
 char* pwdb="radius";
 
-/*
- * Options.
- */
-#define CI_VENDOR	0	/* Vendor Specific */
-#define CI_MRU		1	/* Maximum Receive Unit */
-#define CI_ASYNCMAP	2	/* Async Control Character Map */
-#define CI_AUTHTYPE	3	/* Authentication Type */
-#define CI_QUALITY	4	/* Quality Protocol */
-#define CI_MAGIC	5	/* Magic Number */
-#define CI_PCOMP	7	/* Protocol Field Compression */
-#define CI_ACCOMP 8	/* Address/Control Field Compression */
-#define CI_FCSALTERN	9	/* FCS-Alternatives */
-#define CI_SDP		10	/* Self-Describing-Pad */
-#define CI_NUMBERED	11	/* Numbered-Mode */
-#define CI_CALLBACK	13	/* callback */
-#define CI_MRRU		17	/* max reconstructed receive unit; multilink */
-#define CI_SSNHF	18	/* short sequence numbers for multilink */
-#define CI_EPDISC	19	/* endpoint discriminator */
-#define CI_MPPLUS	22	/* Multi-Link-Plus-Procedure */
-#define CI_LDISC	23	/* Link-Discriminator */
-#define CI_LCPAUTH	24	/* LCP Authentication */
-#define CI_COBS		25	/* Consistent Overhead Byte Stuffing */
-#define CI_PREFELIS	26	/* Prefix Elision */
-#define CI_MPHDRFMT	27	/* MP Header Format */
-#define CI_I18N		28	/* Internationalization */
-#define CI_SDL		29	/* Simple Data Link */
-
-struct lcp_hdr_t
-{
-	uint8_t code;
-	uint8_t id;
-	uint16_t len;
-} __attribute__((packed));
-struct lcp_opt_hdr_t
-{
-	uint8_t type;
-	uint8_t len;
-} __attribute__((packed));
-struct lcp_opt8_t
-{
-	struct lcp_opt_hdr_t hdr;
-	uint8_t val;
-} __attribute__((packed));
-struct lcp_opt16_t
-{
-	struct lcp_opt_hdr_t hdr;
-	uint16_t val;
-} __attribute__((packed));
-struct lcp_opt32_t
-{
-	struct lcp_opt_hdr_t hdr;
-	uint32_t val;
-} __attribute__((packed));
-
-/*static void layer_up(struct ppp_layer_t*);
-static void layer_down(struct ppp_layer_t*);
-static void layer_started(struct ppp_layer_t*);
-static void layer_finished(struct ppp_layer_t*);*/
 static void send_conf_req(struct ppp_layer_t*);
 static void send_conf_ack(struct ppp_layer_t*);
 static void send_conf_nak(struct ppp_layer_t*);
 static void send_conf_rej(struct ppp_layer_t*);
-static void lcp_recv(struct ppp_layer_t*`);
+static void lcp_recv(struct ppp_layer_t*);
 
 struct ppp_layer_t* ppp_lcp_init(struct ppp_t *ppp)
 {
 	struct ppp_layer_t *layer=malloc(sizeof(*layer));
 	memset(layer,0,sizeof(*layer));
 
-	layer->proto=PPP_PROTO_LCP;
+	layer->proto=PPP_LCP;
 	layer->ppp=ppp;
 	ppp_fsm_init(layer);
 
@@ -101,69 +46,38 @@ struct ppp_layer_t* ppp_lcp_init(struct ppp_t *ppp)
 	return layer;
 }
 
-/*void ev_ppp_packet(int proto,struct ppp_t *ppp)
-{
-	struct ppp_hdr_t *hdr;
-
-	if (proto!=PPP_LCP) return;
-	if (ppp->in_buf_size-2<PPP_HEADERLEN)
-	{
-		log_debug("LCP: short packet received\n");
-		return;
-	}
-
-	hdr=(struct ppp_hdr_t *)(ppp->in_buf+2);
-	if (hdr->len<PPP_HEADERLEN)
-	{
-		log_debug("LCP: short packet received\n");
-		return;
-	}
-
-	//ppp_fsm_recv();
-}*/
-
-/*static void layer_up(struct ppp_layer_t*)
-{
-}
-static void layer_down(struct ppp_layer_t*)
-{
-}
-static void layer_started(struct ppp_layer_t*)
-{
-}
-static void layer_finished(struct ppp_layer_t*)
-{
-}*/
 static void send_conf_req(struct ppp_layer_t*l)
 {
-	uint8_t buf[128],*ptr;
+	uint8_t buf[128],*ptr=buf;
 	struct lcp_opt_hdr_t *opt0;
-	struct lcp_opt8_t *opt8;
 	struct lcp_opt16_t *opt16;
-	struct lcp_opt24_t *opt24;
+	struct lcp_opt32_t *opt32;
 	struct lcp_hdr_t *lcp_hdr=(struct lcp_hdr_t*)ptr; ptr+=sizeof(*lcp_hdr);
 
 	log_msg("send [LCP ConfReq");
+	lcp_hdr->proto=PPP_LCP;
 	lcp_hdr->code=CONFREQ;
-	lcp_hdr->id=++l->seq;
+	lcp_hdr->id=++l->id;
 	lcp_hdr->len=0;
 	log_msg(" id=%x",lcp_hdr->id);
 
 	//mru
 	opt16=(struct lcp_opt16_t*)ptr; ptr+=sizeof(*opt16);
-	opt16.hdr.type=CI_MRU;
-	opt16.hdr.len=4;
-	opt16.val=htons(l->options.lcp.mtu);
+	opt16->hdr.type=CI_MRU;
+	opt16->hdr.len=4;
+	opt16->val=htons(l->options.lcp.mtu);
 	log_msg(" <mru %i>",l->options.lcp.mtu);
 
 	//auth
-	ptr+=auth_get_conf_req(l,ptr);
+	opt32=(struct lcp_opt32_t*)ptr;;
+	if (auth_get_conf_req(l,opt32))
+		ptr+=opt32->hdr.len;
 	
 	//magic
 	opt32=(struct lcp_opt32_t*)ptr; ptr+=sizeof(*opt32);
-	opt32.hdr.type=CI_MAGIC;
-	opt32.hdr.len=6;
-	opt32.val=htonl(l->options.lcp.magic);
+	opt32->hdr.type=CI_MAGIC;
+	opt32->hdr.len=6;
+	opt32->val=htonl(l->options.lcp.magic);
 	log_msg(" <magic %x>",l->options.lcp.magic);
 
 
@@ -171,8 +85,8 @@ static void send_conf_req(struct ppp_layer_t*l)
 	if (l->options.lcp.pcomp==1 || (l->options.lcp.pcomp==3 && l->options.lcp.neg_pcomp!=-1))
 	{
 		opt0=(struct lcp_opt_hdr_t*)ptr; ptr+=sizeof(*opt0);
-		opt0.type=CI_PCOMP;
-		opt0.len=2;
+		opt0->type=CI_PCOMP;
+		opt0->len=2;
 		log_msg(" <pcomp>");
 	}
 
@@ -180,28 +94,41 @@ static void send_conf_req(struct ppp_layer_t*l)
 	if (l->options.lcp.accomp==1 || (l->options.lcp.accomp==3 && l->options.lcp.neg_accomp!=-1))
 	{
 		opt0=(struct lcp_opt_hdr_t*)ptr; ptr+=sizeof(*opt0);
-		opt0.type=CI_ACCOMP;
-		opt0.len=2;
+		opt0->type=CI_ACCOMP;
+		opt0->len=2;
 		log_msg(" <accomp>");
 	}
-	log_msg("\n");
+	log_msg("]\n");
+
+	lcp_hdr->len=ptr-buf;
+	ppp_send(l->ppp,lcp_hdr,lcp_hdr->len+2);
 }
 static void send_conf_ack(struct ppp_layer_t*l)
 {
+	struct lcp_hdr_t *hdr=(struct lcp_hdr_t*)l->ppp->in_buf;
+
+	hdr->code=CONFACK;
+	log_msg("send [LCP ConfAck id=%x\n",l->recv_id);
+
+	ppp_send(l->ppp,hdr,hdr->len+2);
 }
 static void send_conf_nak(struct ppp_layer_t*l)
 {
 }
 static void send_conf_rej(struct ppp_layer_t*l)
 {
+	struct lcp_hdr_t *hdr=(struct lcp_hdr_t*)l->ppp->in_buf;
+
+	hdr->code=CONFREJ;
+	log_msg("send [LCP ConfRej id=%x\n",l->recv_id);
+
+	ppp_send(l->ppp,hdr,hdr->len+2);
 }
 
 static int lcp_recv_conf_req(struct ppp_layer_t*l,uint8_t *data,int size)
 {
 	struct lcp_opt_hdr_t *opt;
-	struct lcp_opt8_t *opt8;
 	struct lcp_opt16_t *opt16;
-	struct lcp_opt32_t *opt32;
 	int res=0;
 
 	log_debug("recv [LCP ConfReq id=%x",l->recv_id);
@@ -213,18 +140,18 @@ static int lcp_recv_conf_req(struct ppp_layer_t*l,uint8_t *data,int size)
 		{
 			case CI_MRU:
 				opt16=(struct lcp_opt16_t*)data;
-				l->options.lcp.neg_mru=ntohs(opt16.val);
+				l->options.lcp.neg_mru=ntohs(opt16->val);
 				log_debug(" <mru %i>",l->options.lcp.neg_mru);
 				break;
 			case CI_ASYNCMAP:
 				log_debug(" <asyncmap ...>");
 				break;
 			case CI_AUTHTYPE:
-				if (auth_proc_conf_req(l,opt))
+				if (auth_recv_conf_req(l,opt))
 					res=-1;
 				break;
-			case CI_MAGICNUMBER:
-				if (*(u_int32_t*)data==l->magic_num)
+			case CI_MAGIC:
+				if (*(uint32_t*)data==l->options.lcp.magic)
 				{
 					log_error("loop detected\n");
 					res=-1;
@@ -254,20 +181,163 @@ static int lcp_recv_conf_req(struct ppp_layer_t*l,uint8_t *data,int size)
 	return res;
 }
 
+static int lcp_recv_conf_rej(struct ppp_layer_t*l,uint8_t *data,int size)
+{
+	struct lcp_opt_hdr_t *opt;
+	struct lcp_opt16_t *opt16;
+	int res=0;
+
+	log_debug("recv [LCP ConfRej id=%x",l->recv_id);
+
+	if (l->recv_id!=l->id)
+	{
+		log_debug(": id mismatch\n");
+		return 0;
+	}
+
+	while(size)
+	{
+		opt=(struct lcp_opt_hdr_t *)data;
+		switch(opt->type)
+		{
+			case CI_MRU:
+				opt16=(struct lcp_opt16_t*)data;
+				log_debug(" <mru %i>",l->options.lcp.neg_mru);
+				break;
+			case CI_ASYNCMAP:
+				log_debug(" <asyncmap ...>");
+				break;
+			case CI_AUTHTYPE:
+				if (auth_recv_conf_rej(l,opt))
+					res=-1;
+				break;
+			case CI_MAGIC:
+				if (*(uint32_t*)data==l->options.lcp.magic)
+				{
+					log_error("loop detected\n");
+					res=-1;
+				}
+				break;
+			case CI_PCOMP:
+				log_debug(" <pcomp>");
+				if (l->options.lcp.pcomp>=1) l->options.lcp.neg_pcomp=-1;
+				else {
+					l->options.lcp.neg_pcomp=-2;
+					res=-1;
+				}
+				break;
+			case CI_ACCOMP:
+				log_debug(" <accomp>");
+				if (l->options.lcp.accomp>=1) l->options.lcp.neg_accomp=-1;
+				else {
+					l->options.lcp.neg_accomp=-2;
+					res=-1;
+				}
+				break;
+		}
+		data+=opt->len;
+		size-=opt->len;
+	}
+	log_debug("\n");
+	return res;
+}
+static int lcp_recv_conf_nak(struct ppp_layer_t*l,uint8_t *data,int size)
+{
+	struct lcp_opt_hdr_t *opt;
+	struct lcp_opt16_t *opt16;
+	int res=0;
+
+	log_debug("recv [LCP ConfNak id=%x",l->recv_id);
+
+	if (l->recv_id!=l->id)
+	{
+		log_debug(": id mismatch\n");
+		return 0;
+	}
+
+	while(size)
+	{
+		opt=(struct lcp_opt_hdr_t *)data;
+		switch(opt->type)
+		{
+			case CI_MRU:
+				opt16=(struct lcp_opt16_t*)data;
+				log_debug(" <mru %i>",l->options.lcp.neg_mru);
+				break;
+			case CI_ASYNCMAP:
+				log_debug(" <asyncmap ...>");
+				break;
+			case CI_AUTHTYPE:
+				if (auth_recv_conf_nak(l,opt))
+					res=-1;
+				break;
+			case CI_MAGIC:
+				if (*(uint32_t*)data==l->options.lcp.magic)
+				{
+					log_error("loop detected\n");
+					res=-1;
+				}
+				break;
+			case CI_PCOMP:
+				log_debug(" <pcomp>");
+				if (l->options.lcp.pcomp>=1) l->options.lcp.neg_pcomp=-1;
+				else {
+					l->options.lcp.neg_pcomp=-2;
+					res=-1;
+				}
+				break;
+			case CI_ACCOMP:
+				log_debug(" <accomp>");
+				if (l->options.lcp.accomp>=1) l->options.lcp.neg_accomp=-1;
+				else {
+					l->options.lcp.neg_accomp=-2;
+					res=-1;
+				}
+				break;
+		}
+		data+=opt->len;
+		size-=opt->len;
+	}
+	log_debug("\n");
+	return res;
+}
+static void lcp_recv_echo_repl(struct ppp_layer_t*l,uint8_t *data,int size)
+{
+
+}
+
+void send_echo_reply(struct ppp_layer_t *layer)
+{
+	struct lcp_echo_reply_t
+	{
+		struct lcp_hdr_t hdr;
+		struct lcp_opt32_t magic;
+	} __attribute__((packed)) msg = 
+	{
+		.hdr.proto=PPP_LCP,
+		.hdr.code=ECHOREP,
+		.hdr.id=layer->recv_id,
+		.hdr.len=8,
+		.magic.val=layer->options.lcp.magic,
+	};
+
+	ppp_send(layer->ppp,&msg,msg.hdr.len+2);
+}
+
 static void lcp_recv(struct ppp_layer_t*l)
 {
 	struct lcp_hdr_t *hdr;
 	
-	if (l->ppp->in_buf_size-2<PPP_HEADERLEN)
+	if (l->ppp->in_buf_size<PPP_HEADERLEN+2)
 	{
-		log_debug("LCP: short packet received\n");
+		log_warn("LCP: short packet received\n");
 		return;
 	}
 
-	hdr=(struct lcp_hdr_t *)(l->ppp->in_buf+2);
+	hdr=(struct lcp_hdr_t *)l->ppp->in_buf;
 	if (ntohs(hdr->len)<PPP_HEADERLEN)
 	{
-		log_debug("LCP: short packet received\n");
+		log_warn("LCP: short packet received\n");
 		return;
 	}
 
@@ -275,21 +345,21 @@ static void lcp_recv(struct ppp_layer_t*l)
 	switch(hdr->code)
 	{
 		case CONFREQ:
-			if (lcp_recv_conf_req(l,hdr->data,ntohs(hdr->len)-PPP_HDRLEN))
+			if (lcp_recv_conf_req(l,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN))
 				ppp_fsm_recv_conf_req_bad(l);
 			else
 				ppp_fsm_recv_conf_req_good(l);
 			break;
 		case CONFACK:
-			lcp_recv_conf_ack(l,hdr->data,ntohs(hdr->len)-PPP_HDRLEN);
+			//lcp_recv_conf_ack(l,hdr+1,ntohs(hdr->len)-PPP_HDRLEN);
 			ppp_fsm_recv_conf_ack(l);
 			break;
 		case CONFNAK:
-			lcp_recv_conf_nak(l,hdr->data,ntohs(hdr->len)-PPP_HDRLEN);
-			ppp_fsm_recv_conf_nak(l);
+			lcp_recv_conf_nak(l,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN);
+			ppp_fsm_recv_conf_rej(l);
 			break;
 		case CONFREJ:
-			lcp_recv_conf_rej(l,hdr->data,ntohs(hdr->len)-PPP_HDRLEN);
+			lcp_recv_conf_rej(l,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN);
 			ppp_fsm_recv_conf_rej(l);
 			break;
 		case TERMREQ:
@@ -302,13 +372,14 @@ static void lcp_recv(struct ppp_layer_t*l)
 			ppp_fsm_recv_code_rej_bad(l);
 			break;
 		case ECHOREQ:
-			ppp_fsm_recv_echo_req(l);
+			send_echo_reply(l);
 			break;
 		case ECHOREP:
-			lcp_recv_echo_rep(l);
+			lcp_recv_echo_repl(l,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN);
 			break;
 		default:
 			ppp_fsm_recv_unk(l);
 			break;
 	}
 }
+

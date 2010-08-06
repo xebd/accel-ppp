@@ -41,7 +41,6 @@
 #define PPP_CBCP	0xc029	/* Callback Control Protocol */
 #define PPP_EAP		0xc227	/* Extensible Authentication Protocol */
 
-
 struct ppp_t
 {
 	struct triton_md_handler_t *h;

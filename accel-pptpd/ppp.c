@@ -3,8 +3,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <arpa/inet.h>
 #include <linux/ppp_defs.h>
 #include <linux/if_ppp.h>
 
@@ -87,6 +89,7 @@ int establish_ppp(struct ppp_t *ppp)
 	INIT_LIST_HEAD(&ppp->layers);
 
 	ppp->lcp_layer=ppp_lcp_init(ppp);
+	list_add_tail(&ppp->lcp_layer->entry,&ppp->layers);
 	ppp_fsm_open(ppp->lcp_layer);
 	ppp_fsm_lower_up(ppp->lcp_layer);
 
@@ -121,36 +124,22 @@ int ppp_send(struct ppp_t *ppp, void *data, int size)
 static void ppp_read(struct triton_md_handler_t*h)
 {
 	struct ppp_t *ppp=(struct ppp_t *)h->pd;
-	struct ppp_hdr_t *hdr=(struct ppp_hdr_t *)(ppp->in_buf+2);
-	u_int16_t proto;
+	struct ppp_layer_t *l=NULL;
+	uint16_t proto;
 
 	ppp->in_buf_size=read(h->fd,ppp->in_buf,PPP_MRU+PPP_HDRLEN);
-	//if (ppp->in_buf_size==0)
-	if (ppp->in_buf_size<PPP_HDRLEN+2 || ppp->in_buf_size<ntohs(hdr->len)+2)
-	{
-		log_warn("discarding short packet\n");
-		return;
-	}
 
-	proto=ntohs(*(u_int16_t*)ppp->in_buf);
-	if (proto==PPP_LCP) ppp->lcp_layer->recv(ppp->lcp_layer,hdr);
-	else if (ppp->lcp_layer->fsm_state!=FSM_Opened)
+	proto=ntohs(*(uint16_t*)ppp->in_buf);
+	list_for_each_entry(l,&ppp->layers,entry)
 	{
-		log_warn("discarding non-LCP packet when LCP is not opened\n");
-		return;
-	}else
-	{
-		struct ppp_layer_t *l=NULL;
-		list_for_each_entry(l,&ppp->layers,entry)
+		if (l->proto==proto)
 		{
-			if (l->proto==proto) l->recv(l,hdr);
-		}
-
-		if (!l)
-		{
-			log_warn("discarding unknown packet %x\n",proto);
+			l->recv(l);
+			return;
 		}
 	}
+
+	log_warn("discarding unknown packet %x\n",proto);
 }
 static void ppp_write(struct triton_md_handler_t*h)
 {
@@ -172,3 +161,4 @@ static void ppp_timeout(struct triton_md_handler_t*h)
 {
 
 }
+
