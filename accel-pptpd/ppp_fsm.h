@@ -38,18 +38,14 @@ struct lcp_options_t
 
 struct ppp_layer_t
 {
-	struct list_head entry;
-	struct ppp_layer_t *lower;
-	struct ppp_layer_t *upper;
-
-	int proto;
+	struct ppp_handler_t h;
 	struct ppp_t *ppp;
 	FSM_STATE fsm_state;
 	
 	union
 	{
 		struct lcp_options_t lcp;
-	}options;
+	} options;
 
 	struct triton_timer_t restart_timer;
 	int restart_counter;
@@ -74,7 +70,6 @@ struct ppp_layer_t
 	void (*send_conf_ack)(struct ppp_layer_t*);
 	void (*send_conf_nak)(struct ppp_layer_t*);
 	void (*send_conf_rej)(struct ppp_layer_t*);
-	void (*recv)(struct ppp_layer_t*);
 };
 
 void ppp_fsm_init(struct ppp_layer_t*);

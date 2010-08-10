@@ -31,17 +31,20 @@ struct ppp_layer_t* ppp_lcp_init(struct ppp_t *ppp)
 	struct ppp_layer_t *layer=malloc(sizeof(*layer));
 	memset(layer,0,sizeof(*layer));
 
-	layer->proto=PPP_LCP;
+	layer->h.proto=PPP_LCP;
+	layer->h.recv=lcp_recv;
+	
 	layer->ppp=ppp;
 	ppp_fsm_init(layer);
 
-	layer->recv=lcp_recv;
 	layer->send_conf_req=send_conf_req;
 	layer->send_conf_ack=send_conf_ack;
 	layer->send_conf_nak=send_conf_nak;
 	layer->send_conf_rej=send_conf_rej;
 
 	ppp_fsm_init(layer);
+
+	ppp_register_handler(&layer->h);
 
 	return layer;
 }
@@ -324,9 +327,10 @@ void send_echo_reply(struct ppp_layer_t *layer)
 	ppp_send(layer->ppp,&msg,msg.hdr.len+2);
 }
 
-static void lcp_recv(struct ppp_layer_t*l)
+static void lcp_recv(struct ppp_handler_t*h)
 {
 	struct lcp_hdr_t *hdr;
+	struct ppp_layer_t *l=container_of(h,typeof(*l),h);
 	
 	if (l->ppp->in_buf_size<PPP_HEADERLEN+2)
 	{

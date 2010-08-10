@@ -72,39 +72,12 @@ struct ppp_t
 	struct list_head layers;
 };
 
-struct ppp_fsm_handler_t
+struct ppp_handler_t
 {
-	void (*reset_conf)(struct ppp_t *ppp);		/* Reset our Configuration Information */
-	int  (*conf_length)(struct ppp_t *ppp);		/* Length of our Configuration Information */
-	void (*add_conf)(struct ppp_t *ppp, unsigned char *, int *); 		/* Add our Configuration Information */
-	int  (*ack_conf)(struct ppp_t *ppp, unsigned char *,int);		/* ACK our Configuration Information */
-	int  (*nak_conf)(struct ppp_t *ppp, unsigned char *,int,int);		/* NAK our Configuration Information */
-	int  (*rej_conf)(struct ppp_t *ppp, unsigned char *,int);		/* Reject our Configuration Information */
-	int  (*req_conf)(struct ppp_t *ppp, unsigned char *,int *,int);		/* Request peer's Configuration Information */
-	void (*opened)(struct ppp_t *ppp);			/* Called when fsm reaches OPENED state */
-	void (*down)(struct ppp_t *ppp);		/* Called when fsm leaves OPENED state */
-	void (*starting)(struct ppp_t *ppp);		/* Called when we want the lower layer */
-	void (*finished)(struct ppp_t *ppp);		/* Called when we don't want the lower layer */
-	void (*protreject)(struct ppp_t *ppp,int);		/* Called when Protocol-Reject received */
-	void (*retransmit)(struct ppp_t *ppp);		/* Retransmission is necessary */
-	int  (*extcode)(struct ppp_t *ppp, int, int, unsigned char *, int);		/* Called when unknown code received */
-	char *proto_name;		/* String name for protocol (for messages) */
+	struct list_head entry;
+	int proto;
+	void (*recv)(struct ppp_handler_t*);
 };
-
-struct ppp_hdr_t
-{
-	u_int8_t code;
-	u_int8_t id;
-	u_int16_t len;
-	u_int8_t data[100];
-}__attribute__((packed));
-
-struct ppp_opt_t
-{
-	u_int8_t type;
-	u_int16_t len;
-	u_int8_t data[100];
-}__attribute__((packed));
 
 struct ppp_t *alloc_ppp(void);
 int establish_ppp(struct ppp_t *ppp);
@@ -113,5 +86,18 @@ int ppp_send(struct ppp_t *ppp, void *data, int size);
 void ppp_init(void);
 
 struct ppp_layer_t* ppp_lcp_init(struct ppp_t *ppp);
+
+
+#undef offsetof
+#ifdef __compiler_offsetof
+#define offsetof(TYPE,MEMBER) __compiler_offsetof(TYPE,MEMBER)
+#else
+#define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
+#endif
+#endif /* __KERNEL__ */
+
+#define container_of(ptr, type, member) ({			\
+	const typeof( ((type *)0)->member ) *__mptr = (ptr);	\
+	(type *)( (char *)__mptr - offsetof(type,member) );})
 
 #endif
