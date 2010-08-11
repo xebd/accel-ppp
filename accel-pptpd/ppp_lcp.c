@@ -20,13 +20,15 @@ char* auth="pap,eap,mschap-v2";
 char* mppe="allow,disabled";
 char* pwdb="radius";
 
+static void lcp_layer_up(struct ppp_layer_t*);
+static void lcp_layer_down(struct ppp_layer_t*);
 static void send_conf_req(struct ppp_layer_t*);
 static void send_conf_ack(struct ppp_layer_t*);
 static void send_conf_nak(struct ppp_layer_t*);
 static void send_conf_rej(struct ppp_layer_t*);
 static void lcp_recv(struct ppp_layer_t*);
 
-struct ppp_layer_t* ppp_lcp_init(struct ppp_t *ppp)
+void lcp_start(struct ppp_t *ppp)
 {
 	struct ppp_layer_t *layer=malloc(sizeof(*layer));
 	memset(layer,0,sizeof(*layer));
@@ -37,16 +39,26 @@ struct ppp_layer_t* ppp_lcp_init(struct ppp_t *ppp)
 	layer->ppp=ppp;
 	ppp_fsm_init(layer);
 
+	layer->layer_started=lcp_layer_started;
 	layer->send_conf_req=send_conf_req;
 	layer->send_conf_ack=send_conf_ack;
 	layer->send_conf_nak=send_conf_nak;
 	layer->send_conf_rej=send_conf_rej;
 
 	ppp_fsm_init(layer);
+	ppp_fsm_lower_up(layer);
+	ppp_fsm_open(layer);
 
 	ppp_register_handler(&layer->h);
+}
 
-	return layer;
+static void lcp_layer_up(struct ppp_layer_t *l)
+{
+	ppp_layer_started(l->ppp);
+}
+static void lcp_layer_down(struct ppp_layer_t *l)
+{
+	ppp_terminate(l->ppp);
 }
 
 static void send_conf_req(struct ppp_layer_t*l)

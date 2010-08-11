@@ -11,8 +11,10 @@ struct auth_driver_t
 {
 	struct list_head entry;
 	int type;
-	int (*get_conf_req)(struct auth_driver_t*, struct ppp_layer_t*, struct lcp_opt32_t*);
-	int (*recv_conf_req)(struct auth_driver_t*, struct ppp_layer_t*, struct lcp_opt32_t*);
+	int (*get_conf_req)(struct auth_driver_t*, struct ppp_t*, struct lcp_opt32_t*);
+	int (*recv_conf_req)(struct auth_driver_t*, struct ppp_t*, struct lcp_opt32_t*);
+	int (*begin)(struct auth_driver_t*, struct ppp_t*);
+	int (*terminate)(struct auth_driver_t*, struct ppp_t*);
 };
 
 int auth_get_conf_req(struct ppp_layer_t *l, struct lcp_opt32_t *);

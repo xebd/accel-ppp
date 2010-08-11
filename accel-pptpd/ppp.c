@@ -89,9 +89,11 @@ int establish_ppp(struct ppp_t *ppp)
 	INIT_LIST_HEAD(&ppp->layers);
 
 	ppp->lcp_layer=ppp_lcp_init(ppp);
-	list_add_tail(&ppp->lcp_layer->entry,&ppp->layers);
+	/*list_add_tail(&ppp->lcp_layer->entry,&ppp->layers);
 	ppp_fsm_open(ppp->lcp_layer);
-	ppp_fsm_lower_up(ppp->lcp_layer);
+	ppp_fsm_lower_up(ppp->lcp_layer);*/
+	ppp->cur_layer=PPP_LAYER_LCP;
+	lcp_start(ppp);
 
 	return 0;
 
@@ -160,5 +162,45 @@ static void ppp_write(struct triton_md_handler_t*h)
 static void ppp_timeout(struct triton_md_handler_t*h)
 {
 
+}
+
+void ppp_layer_started(struct ppp_t *ppp)
+{
+	int i;
+	switch(ppp->cur_layer)
+	{
+		case PPP_LAYER_LCP:
+			ppp->cur_layer++;
+			if (auth_start(ppp))
+				break;
+		case PPP_LAYER_AUTH:
+			ppp->cur_layer++;
+			if (ccp_start(ppp))
+				break;
+		case PPP_LAYER_CCP:
+			ppp->cur_layer++;
+			if (ipcp_start(ppp))
+				break;
+		case PPP_LAYER_IPCP:
+				break;
+	}
+}
+void ppp_terminate(struct ppp_t *ppp)
+{
+	switch(ppp->cur_layer)
+	{
+		case PPP_LAYER_IPCP:
+			ppp->cur_layer--;
+			ipcp_finish(ppp);
+		case PPP_LAYER_CCP:
+			ppp->cur_layer--;
+			ccp_finish(ppp);
+		case PPP_LAYER_AUTH:
+			ppp->cur_layer--;
+			auth_finish(ppp);
+		case PPP_LAYER_LCP:
+			ppp->cur_layer--;
+			lcp_finish(ppp);
+	}
 }
 

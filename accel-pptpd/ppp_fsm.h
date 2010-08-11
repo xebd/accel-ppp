@@ -55,7 +55,6 @@ struct ppp_layer_t
 
 	int id;
 	int recv_id;
-	int auth[AUTH_MAX];
 
 	int opt_restart:1;
 	int opt_passive:1;

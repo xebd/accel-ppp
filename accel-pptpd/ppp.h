@@ -41,6 +41,11 @@
 #define PPP_CBCP	0xc029	/* Callback Control Protocol */
 #define PPP_EAP		0xc227	/* Extensible Authentication Protocol */
 
+#define PPP_LAYER_LCP  1
+#define PPP_LAYER_AUTH 2
+#define PPP_LAYER_CCP  3
+#define PPP_LAYER_IPCP 4
+
 struct ppp_t
 {
 	struct triton_md_handler_t *h;
@@ -57,6 +62,7 @@ struct ppp_t
 	int mtu,mru;
 	int accomp; // 0 - disabled, 1 - enable, 2 - allow, disabled, 3 - allow,enabled
 	int pcomp; // 0 - disabled, 1 - enable, 2 - allow, disabled, 3 - allow,enabled
+	int auth[AUTH_MAX];
 	// 
 	
 	int log:1;
@@ -68,8 +74,11 @@ struct ppp_t
 	void *in_buf;
 	int in_buf_size;
 
+	struct list_head handlers;
+	
+	int cur_layer;
 	struct ppp_layer_t *lcp_layer;
-	struct list_head layers;
+	void *auth_pd;
 };
 
 struct ppp_handler_t
@@ -86,7 +95,8 @@ int ppp_send(struct ppp_t *ppp, void *data, int size);
 void ppp_init(void);
 
 struct ppp_layer_t* ppp_lcp_init(struct ppp_t *ppp);
-
+void ppp_layer_started(struct ppp_t *ppp);
+void ppp_terminate(struct ppp_t *ppp);
 
 #undef offsetof
 #ifdef __compiler_offsetof
