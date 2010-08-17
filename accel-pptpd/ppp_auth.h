@@ -3,24 +3,32 @@
 
 #include "list.h"
 
-struct ppp_layer_t;
-struct lcp_opt_hdr_t;
-struct lcp_opt32_t;
+struct ppp_auth_handler_t;
 
-struct auth_driver_t
+struct auth_data_t
 {
 	struct list_head entry;
-	int type;
-	int (*get_conf_req)(struct auth_driver_t*, struct ppp_t*, struct lcp_opt32_t*);
-	int (*recv_conf_req)(struct auth_driver_t*, struct ppp_t*, struct lcp_opt32_t*);
-	int (*begin)(struct auth_driver_t*, struct ppp_t*);
-	int (*terminate)(struct auth_driver_t*, struct ppp_t*);
+	int proto;
+	int state; 
+	struct ppp_auth_handler_t *h;
 };
 
-int auth_get_conf_req(struct ppp_layer_t *l, struct lcp_opt32_t *);
-int auth_recv_conf_req(struct ppp_layer_t *l, struct lcp_opt_hdr_t *);
-int auth_recv_conf_rej(struct ppp_layer_t *l, struct lcp_opt_hdr_t *);
-int auth_recv_conf_nak(struct ppp_layer_t *l, struct lcp_opt_hdr_t *);
+struct ppp_auth_handler_t
+{
+	struct list_head entry;
+	const char *name;
+	struct auth_data_t* (*init)(struct ppp_t*);
+	int (*send_conf_req)(struct ppp_t*, struct auth_data_t*, uint8_t*);
+	int (*recv_conf_req)(struct ppp_t*, struct auth_data_t*, uint8_t*);
+	int (*start)(struct ppp_t*, struct auth_data_t*);
+	int (*finish)(struct ppp_t*, struct auth_data_t*);
+	void (*free)(struct ppp_t*,struct auth_data_t*);
+};
+
+int ppp_auth_register_handler(struct ppp_auth_handler_t*);
+
+void auth_successed(struct ppp_t *ppp);
+void auth_failed(struct ppp_t *ppp);
 
 #endif
 

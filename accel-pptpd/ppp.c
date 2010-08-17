@@ -86,13 +86,10 @@ int establish_ppp(struct ppp_t *ppp)
 	ppp->h->twait=-1;
 	triton_md_register_handler(ppp->h);
 	triton_md_enable_handler(ppp->h,MD_MODE_READ);
-	INIT_LIST_HEAD(&ppp->layers);
+	INIT_LIST_HEAD(&ppp->handlers);
 
-	ppp->lcp_layer=ppp_lcp_init(ppp);
-	/*list_add_tail(&ppp->lcp_layer->entry,&ppp->layers);
-	ppp_fsm_open(ppp->lcp_layer);
-	ppp_fsm_lower_up(ppp->lcp_layer);*/
 	ppp->cur_layer=PPP_LAYER_LCP;
+	
 	lcp_start(ppp);
 
 	return 0;
@@ -104,6 +101,14 @@ exit_close_chan:
 	return -1;
 }
 
+void print_buf(uint8_t *buf,int size)
+{
+	int i;
+	for(i=0;i<size;i++)
+		printf("%x ",buf[i]);
+	printf("\n");
+}
+
 int ppp_send(struct ppp_t *ppp, void *data, int size)
 {
 	int n;
@@ -111,32 +116,38 @@ int ppp_send(struct ppp_t *ppp, void *data, int size)
 	if (ppp->out_buf_size) return -1;
 	if (size>PPP_MTU+PPP_HDRLEN) return -1;
 
+	printf("ppp: send: ");
+	print_buf((uint8_t*)data,size);
+	
 	n=write(ppp->unit_fd,data,size);
-	if (n>=0)
+	/*if (n>=0)
 	{
 		if (n!=ppp->out_buf_size-ppp->out_buf_pos)
 		{
 			ppp->out_buf_pos+=n;
 			triton_md_enable_handler(ppp->h,MD_MODE_WRITE);
 		}
-	}
+	}*/
 	return n;
 }
 
 static void ppp_read(struct triton_md_handler_t*h)
 {
 	struct ppp_t *ppp=(struct ppp_t *)h->pd;
-	struct ppp_layer_t *l=NULL;
+	struct ppp_handler_t *ppp_h=NULL;
 	uint16_t proto;
 
 	ppp->in_buf_size=read(h->fd,ppp->in_buf,PPP_MRU+PPP_HDRLEN);
 
+	printf("ppp: recv: ");
+	print_buf(ppp->in_buf,ppp->in_buf_size);
+
 	proto=ntohs(*(uint16_t*)ppp->in_buf);
-	list_for_each_entry(l,&ppp->layers,entry)
+	list_for_each_entry(ppp_h,&ppp->handlers,entry)
 	{
-		if (l->proto==proto)
+		if (ppp_h->proto==proto)
 		{
-			l->recv(l);
+			ppp_h->recv(ppp_h);
 			return;
 		}
 	}
@@ -166,7 +177,6 @@ static void ppp_timeout(struct triton_md_handler_t*h)
 
 void ppp_layer_started(struct ppp_t *ppp)
 {
-	int i;
 	switch(ppp->cur_layer)
 	{
 		case PPP_LAYER_LCP:
@@ -202,5 +212,15 @@ void ppp_terminate(struct ppp_t *ppp)
 			ppp->cur_layer--;
 			lcp_finish(ppp);
 	}
+}
+
+
+void ppp_register_handler(struct ppp_t *ppp,struct ppp_handler_t *h)
+{
+	list_add_tail(&h->entry,&ppp->handlers);
+}
+void ppp_unregister_handler(struct ppp_t *ppp,struct ppp_handler_t *h)
+{
+	list_del(&h->entry);
 }
 

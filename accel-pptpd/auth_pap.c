@@ -1,3 +1,8 @@
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <arpa/inet.h>
+
 #include "log.h"
 #include "ppp.h"
 #include "ppp_auth.h"
@@ -7,14 +12,23 @@
 
 #define HDR_LEN (sizeof(struct pap_hdr_t)-2)
 
-static int lcp_get_conf_req(struct auth_driver_t*, struct ppp_t*, struct lcp_opt32_t*);
-static int lcp_recv_conf_req(struct auth_driver_t*, struct ppp_t*, struct lcp_opt32_t*);
-static int begin(struct auth_driver_t*, struct ppp_t*);
-static int terminate(struct auth_driver_t*, struct ppp_t*);
+#define PAP_REQ 1
+#define PAP_ACK 2
+#define PAP_NAK 3
+
+char *strndup(const char *s, size_t n);
+
+static struct auth_data_t* auth_data_init(struct ppp_t *ppp);
+static void auth_data_free(struct ppp_t*, struct auth_data_t*);
+static int lcp_send_conf_req(struct ppp_t*, struct auth_data_t*, uint8_t*);
+static int lcp_recv_conf_req(struct ppp_t*, struct auth_data_t*, uint8_t*);
+static int pap_start(struct ppp_t*, struct auth_data_t*);
+static int pap_finish(struct ppp_t*, struct auth_data_t*);
 static void pap_recv(struct ppp_handler_t*h);
 
-struct pap_proto_t
+struct pap_auth_data_t
 {
+	struct auth_data_t auth;
 	struct ppp_handler_t h;
 	struct ppp_t *ppp;
 };
@@ -34,91 +48,98 @@ struct pap_ack_t
 	char msg[0];
 } __attribute__((packed));
 
-static struct auth_driver_t pap=
+static struct ppp_auth_handler_t pap=
 {
-	.type=PPP_PAP,
-	.get_conf_req=lcp_get_conf_req,
+	.name="PAP",
+	.init=auth_data_init,
+	.free=auth_data_free,
+	.send_conf_req=lcp_send_conf_req,
 	.recv_conf_req=lcp_recv_conf_req,
 	.start=pap_start,
 	.finish=pap_finish,
 };
 
-
-int plugin_init(void)
+static struct auth_data_t* auth_data_init(struct ppp_t *ppp)
 {
-	if (auth_register(&pap))
-	{
-		log_error("pap: failed to register driver\n");
-		return -1;
-	}
+	struct pap_auth_data_t *d=malloc(sizeof(*d));
+
+	memset(d,0,sizeof(*d));
+	d->auth.proto=PPP_PAP;
+	d->ppp=ppp;
+
+	return &d->auth;
+}
+
+static void auth_data_free(struct ppp_t *ppp,struct auth_data_t *auth)
+{
+	struct pap_auth_data_t *d=container_of(auth,typeof(*d),auth);
+
+	free(d);
+}
+
+static int pap_start(struct ppp_t *ppp, struct auth_data_t *auth)
+{
+	struct pap_auth_data_t *d=container_of(auth,typeof(*d),auth);
+
+	d->h.proto=PPP_PAP;
+	d->h.recv=pap_recv;
+
+	ppp_register_handler(ppp,&d->h);
+
+	return 0;
+}
+static int pap_finish(struct ppp_t *ppp, struct auth_data_t *auth)
+{
+	struct pap_auth_data_t *d=container_of(auth,typeof(*d),auth);
+
+	ppp_unregister_handler(ppp,&d->h);
 
 	return 0;
 }
 
-static int pap_start(struct auth_driver_t *d, struct ppp_t *ppp)
-{
-	struct pap_proto_t *p=malloc(sizeof(*p));
-
-	memset(&p,0,sizeof(*p));
-	p->h.proto=PPP_PAP;
-	p->h.recv=pap_recv;
-	p->ppp=ppp;
-	ppp->auth_pd=p;
-
-	ppp_register_handler(p->ppp,p->h);
-
-	return 0;
-}
-static int pap_finish(struct auth_driver_t *d, struct ppp_t *ppp)
-{
-	struct pap_proto_t *p=(struct pap_proto_t*)ppp->auth_pd;
-
-	ppp_unregister_handler(p->ppp,p->h);
-
-	free(p);
-
-	return 0;
-}
-
-static int lcp_get_conf_req(struct auth_driver_t *d, struct ppp_t *ppp, struct lcp_opt32_t *opt)
+static int lcp_send_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *ptr)
 {
 	return 0;
 }
 
-static int lcp_recv_conf_req(struct auth_driver_t *d, struct ppp_t *ppp, struct lcp_opt32_t *opt)
+static int lcp_recv_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *ptr)
 {
 	return 0;
 }
 
-static void pap_send_ack(struct pap_proto_t *p, int id)
+static void pap_send_ack(struct pap_auth_data_t *p, int id)
 {
 	uint8_t buf[128];
 	struct pap_ack_t *msg=(struct pap_ack_t*)buf;
-	msg->hdr.proto=PPP_PAP;
+	msg->hdr.proto=htons(PPP_PAP);
 	msg->hdr.code=PAP_ACK;
 	msg->hdr.id=id;
-	msg->hdr.len=HDR_LEN+1+sizeof(MSG_SUCCESSED);
-	msg->len=sizeof(MSG_SUCCESSED);
+	msg->hdr.len=htons(HDR_LEN+1+sizeof(MSG_SUCCESSED));
+	msg->msg_len=sizeof(MSG_SUCCESSED)-1;
 	memcpy(msg->msg,MSG_SUCCESSED,sizeof(MSG_SUCCESSED));
 	
-	ppp_send(p->ppp,msg,msg->hdr.len+2);
+	log_debug("send [PAP AuthAck id=%x \"%s\"]\n",id,MSG_SUCCESSED);
+	
+	ppp_send(p->ppp,msg,ntohs(msg->hdr.len)+2);
 }
 
-static void pap_send_nack(struct pap_proto_t *p,int id)
+static void pap_send_nak(struct pap_auth_data_t *p,int id)
 {
 	uint8_t buf[128];
 	struct pap_ack_t *msg=(struct pap_ack_t*)buf;
-	msg->hdr.proto=PPP_PAP;
-	msg->hdr.code=PAP_NACK;
+	msg->hdr.proto=htons(PPP_PAP);
+	msg->hdr.code=PAP_NAK;
 	msg->hdr.id=id;
-	msg->hdr.len=HDR_LEN+1+sizeof(MSG_FAILED);
-	msg->len=sizeof(MSG_FAILED);
+	msg->hdr.len=htons(HDR_LEN+1+sizeof(MSG_FAILED));
+	msg->msg_len=sizeof(MSG_FAILED)-1;
 	memcpy(msg->msg,MSG_FAILED,sizeof(MSG_FAILED));
 	
-	ppp_send(p->ppp,msg,msg->hdr.len+2);
+	log_debug("send [PAP AuthNak id=%x \"%s\"]\n",id,MSG_FAILED);
+	
+	ppp_send(p->ppp,msg,ntohs(msg->hdr.len)+2);
 }
 
-static int pap_recv_req(struct pap_proto_t *p,struct pap_hdr_t *hdr)
+static int pap_recv_req(struct pap_auth_data_t *p,struct pap_hdr_t *hdr)
 {
 	int ret;
 	char *peer_id;
@@ -126,29 +147,31 @@ static int pap_recv_req(struct pap_proto_t *p,struct pap_hdr_t *hdr)
 	int peer_id_len;
 	int passwd_len;
 	uint8_t *ptr=(uint8_t*)(hdr+1);
-	
+
+	log_debug("recv [PAP AuthReq id=%x]\n",hdr->id);
+
 	peer_id_len=*(uint8_t*)ptr; ptr++;
-	if (peer_id_len>htons(hdr->len)-sizeof(*hdr)-1)
+	if (peer_id_len>ntohs(hdr->len)-sizeof(*hdr)+2-1)
 	{
 		log_warn("PAP: short packet received\n");
 		return -1;
 	}
-	peer_id=ptr; ptr+=peer_id_len;
+	peer_id=(char*)ptr; ptr+=peer_id_len;
 
 	passwd_len=*(uint8_t*)ptr; ptr++;
-	if (passwd_len>htons(hdr->len)-sizeof(*hdr)-2-peer_id_len)
+	if (passwd_len>ntohs(hdr->len)-sizeof(*hdr)+2-2-peer_id_len)
 	{
 		log_warn("PAP: short packet received\n");
 		return -1;
 	}
 
-	peer_id=stdndup(peer_id,peer_id_len);
-	passwd=stdndup(ptr,passwd_len);
+	peer_id=strndup((const char*)peer_id,peer_id_len);
+	passwd=strndup((const char*)ptr,passwd_len);
 
 	if (pwdb_check(peer_id,passwd))
 	{
 		log_warn("PAP: authentication error\n");
-		pap_send_nack(p,hdr->id);
+		pap_send_nak(p,hdr->id);
 		auth_failed(p->ppp);
 		ret=-1;
 	}else
@@ -166,19 +189,24 @@ static int pap_recv_req(struct pap_proto_t *p,struct pap_hdr_t *hdr)
 
 static void pap_recv(struct ppp_handler_t *h)
 {
-	struct pap_proto_t *p=container_of(h,typeof(*p),h);
-	struct pap_hdr_t *hdr=(struct pap_hdr_t *)p->ppp->in_buf;
+	struct pap_auth_data_t *d=container_of(h,typeof(*d),h);
+	struct pap_hdr_t *hdr=(struct pap_hdr_t *)d->ppp->in_buf;
 
-	if (p->ppp->in_buf_size<sizeof(*hdr) || htons(hdr->len)<HDR_LEN || htons(hdr->len)<p->ppp->in_buf_size-2)
+	if (d->ppp->in_buf_size<sizeof(*hdr) || ntohs(hdr->len)<HDR_LEN || ntohs(hdr->len)<d->ppp->in_buf_size-2)
 	{
 		log_warn("PAP: short packet received\n");
 		return;
 	}
 
-	if (hdr->code==PAP_REQ) pap_recv_req(p,hdr);
+	if (hdr->code==PAP_REQ) pap_recv_req(d,hdr);
 	else
 	{
 		log_warn("PAP: unknown code received %x\n",hdr->code);
 	}
+}
+
+static void __init auth_pap_init()
+{
+	ppp_auth_register_handler(&pap);
 }
 

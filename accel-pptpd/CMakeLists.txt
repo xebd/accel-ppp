@@ -12,6 +12,14 @@ ADD_EXECUTABLE(pptpd
 	ppp.c
 	ppp_fsm.c
 	ppp_lcp.c
+	lcp_opt_mru.c
+	lcp_opt_magic.c
+	lcp_opt_pcomp.c
+	lcp_opt_accomp.c
 	ppp_auth.c
+	ppp_ccp.c
+	ppp_ipcp.c
+	auth_pap.c
+	pwdb.c
 )
 TARGET_LINK_LIBRARIES(pptpd pthread triton)

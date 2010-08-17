@@ -27,6 +27,11 @@ void triton_timer_add(struct triton_timer_t*tt)
 {
 	struct timer_t *t=(struct timer_t *)malloc(sizeof(struct timer_t));
 
+	if (!tt->expire_tv.tv_sec)
+	{
+		gettimeofday(&tt->expire_tv,NULL);
+		tv_add(&tt->expire_tv,tt->period);
+	}
 	t->del=0;
 	t->timer=tt;
 	tt->active=1;

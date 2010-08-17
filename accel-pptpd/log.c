@@ -34,7 +34,7 @@
 #define LOG_DEBUG 3
 
 static FILE *log_file=NULL;
-static int log_level=1;
+static int log_level=10;
 static int log_color=1;
 static const char* level_name[]={"error","warning","info","debug"};
 static const char* level_color[]={RED_COLOR,YELLOW_COLOR,GREEN_COLOR,BLUE_COLOR};
@@ -46,15 +46,18 @@ static void do_log(int level,const char *fmt,va_list ap)
 {
 	struct timeval tv;
 
-	pthread_mutex_lock(&lock);
-	gettimeofday(&tv,NULL);
-	if (log_color) fprintf(log_file,"[%s%li.%03li] [%s]%s ",level_color[level],tv.tv_sec,tv.tv_usec/1000,NORMAL_COLOR,level_name[level]);
-	else fprintf(log_file,"[%li.%03li] [%s] ",tv.tv_sec,tv.tv_usec/1000,level_name[level]);
+	//pthread_mutex_lock(&lock);
+	if (msg_completed)
+	{
+		gettimeofday(&tv,NULL);
+		if (log_color) fprintf(log_file,"[%s%li.%03li] [%s]%s ",level_color[level],tv.tv_sec,tv.tv_usec/1000,NORMAL_COLOR,level_name[level]);
+		else fprintf(log_file,"[%li.%03li] [%s] ",tv.tv_sec,tv.tv_usec/1000,level_name[level]);
+	}
 
 	vfprintf(log_file,fmt,ap);
 
 	msg_completed=fmt[strlen(fmt)-1]=='\n';
-	if (msg_completed) pthread_mutex_unlock(&lock);
+	//if (msg_completed) pthread_mutex_unlock(&lock);
 }
 void log_error(const char *fmt,...)
 {

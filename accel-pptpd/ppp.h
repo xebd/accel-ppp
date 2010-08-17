@@ -2,7 +2,7 @@
 #define PPP_H
 
 #include <sys/types.h>
-#include "ppp_fsm.h"
+#include "list.h"
 
 /*
  * Packet header = Code, id, length.
@@ -46,6 +46,10 @@
 #define PPP_LAYER_CCP  3
 #define PPP_LAYER_IPCP 4
 
+#define AUTH_MAX	3
+
+struct ppp_lcp_t;
+
 struct ppp_t
 {
 	struct triton_md_handler_t *h;
@@ -77,8 +81,7 @@ struct ppp_t
 	struct list_head handlers;
 	
 	int cur_layer;
-	struct ppp_layer_t *lcp_layer;
-	void *auth_pd;
+	struct ppp_lcp_t *lcp;
 };
 
 struct ppp_handler_t
@@ -94,9 +97,23 @@ int ppp_send(struct ppp_t *ppp, void *data, int size);
 
 void ppp_init(void);
 
-struct ppp_layer_t* ppp_lcp_init(struct ppp_t *ppp);
+struct ppp_fsm_t* ppp_lcp_init(struct ppp_t *ppp);
 void ppp_layer_started(struct ppp_t *ppp);
 void ppp_terminate(struct ppp_t *ppp);
+
+void ppp_register_handler(struct ppp_t*,struct ppp_handler_t*);
+void ppp_unregister_handler(struct ppp_t*,struct ppp_handler_t*);
+
+void lcp_start(struct ppp_t*);
+void lcp_finish(struct ppp_t*);
+int auth_start(struct ppp_t*);
+void auth_finish(struct ppp_t*);
+int ccp_start(struct ppp_t*);
+void ccp_finish(struct ppp_t*);
+int ipcp_start(struct ppp_t*);
+void ipcp_finish(struct ppp_t*);
+
+#define __init __attribute__((constructor))
 
 #undef offsetof
 #ifdef __compiler_offsetof
@@ -104,7 +121,6 @@ void ppp_terminate(struct ppp_t *ppp);
 #else
 #define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
 #endif
-#endif /* __KERNEL__ */
 
 #define container_of(ptr, type, member) ({			\
 	const typeof( ((type *)0)->member ) *__mptr = (ptr);	\
