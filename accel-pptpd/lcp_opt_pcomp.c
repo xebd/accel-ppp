@@ -33,7 +33,7 @@ static struct lcp_option_t *pcomp_init(struct ppp_lcp_t *lcp)
 {
 	struct pcomp_option_t *pcomp_opt=malloc(sizeof(*pcomp_opt));
 	memset(pcomp_opt,0,sizeof(*pcomp_opt));
-	pcomp_opt->pcomp=2;
+	pcomp_opt->pcomp=0;
 	pcomp_opt->opt.id=CI_PCOMP;
 	pcomp_opt->opt.len=2;
 
@@ -77,7 +77,7 @@ static int pcomp_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, 
 	{
 		pcomp_opt->pcomp=1;
 		return LCP_OPT_ACK;
-	}else return LCP_OPT_NAK;
+	}else return LCP_OPT_REJ;
 }
 
 static void pcomp_print(void (*print)(const char *fmt,...),struct lcp_option_t *opt, uint8_t *ptr)

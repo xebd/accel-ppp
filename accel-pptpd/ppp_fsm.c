@@ -100,7 +100,6 @@ void ppp_fsm_open(struct ppp_fsm_t *layer)
 			break;
 		case FSM_Closing:
 		case FSM_Stopping:
-			layer->fsm_state=FSM_Stopping;
 		case FSM_Stopped:
 		case FSM_Opened:
 			ppp_fsm_lower_down(layer);
@@ -347,6 +346,7 @@ void ppp_fsm_recv_term_req(struct ppp_fsm_t *layer)
 		case FSM_Opened:
 			if (layer->layer_down) layer->layer_down(layer);
 			send_term_req(layer);
+			send_term_ack(layer);
 			//if (layer->zero_req_cnt) layer->zero_req_cnt(layer);
 			zero_req_counter(layer);
 			layer->fsm_state=FSM_Stopping;
