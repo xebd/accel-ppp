@@ -21,12 +21,24 @@ static int auth_recv_conf_rej(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, u
 static int auth_recv_conf_ack(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr);
 static void auth_print(void (*print)(const char *fmt,...),struct lcp_option_t*, uint8_t *ptr);
 
+static struct ppp_layer_data_t *auth_layer_init(struct ppp_t*);
+static void auth_layer_start(struct ppp_layer_data_t *);
+static void auth_layer_finish(struct ppp_layer_data_t *);
+static void auth_layer_free(struct ppp_layer_data_t *);
+
 struct auth_option_t
 {
 	struct lcp_option_t opt;
 	struct list_head auth_list;
 	struct auth_data_t *auth;
 	struct auth_data_t *peer_auth;
+};
+
+struct auth_layer_data_t
+{
+	struct ppp_layer_data_t ld;
+	struct auth_option_t auth_opt;
+	struct ppp_t *ppp;
 };
 
 static struct lcp_option_handler_t auth_opt_hnd=
@@ -42,25 +54,35 @@ static struct lcp_option_handler_t auth_opt_hnd=
 	.print=auth_print,
 };
 
+static struct ppp_layer_t auth_layer=
+{
+	.init=auth_layer_init,
+	.start=auth_layer_start,
+	.finish=auth_layer_finish,
+	.free=auth_layer_free,
+};
+
 static struct lcp_option_t *auth_init(struct ppp_lcp_t *lcp)
 {
 	struct ppp_auth_handler_t *h;
 	struct auth_data_t *d;
-	struct auth_option_t *auth_opt=malloc(sizeof(*auth_opt));
-	memset(auth_opt,0,sizeof(*auth_opt));
-	auth_opt->opt.id=CI_AUTH;
-	auth_opt->opt.len=4+extra_opt_len;
+	struct auth_layer_data_t *ad;
 
-	INIT_LIST_HEAD(&auth_opt->auth_list);
+	ad=container_of(ppp_find_layer_data(lcp->ppp,&auth_layer),typeof(*ad),ld);
+
+	ad->auth_opt.opt.id=CI_AUTH;
+	ad->auth_opt.opt.len=4+extra_opt_len;
+
+	INIT_LIST_HEAD(&ad->auth_opt.auth_list);
 
 	list_for_each_entry(h,&auth_handlers,entry)
 	{
 		d=h->init(lcp->ppp);
 		d->h=h;
-		list_add_tail(&d->entry,&auth_opt->auth_list);
+		list_add_tail(&d->entry,&ad->auth_opt.auth_list);
 	}
 
-	return &auth_opt->opt;
+	return &ad->auth_opt.opt;
 }
 
 static void auth_free(struct ppp_lcp_t *lcp, struct lcp_option_t *opt)
@@ -74,8 +96,6 @@ static void auth_free(struct ppp_lcp_t *lcp, struct lcp_option_t *opt)
 		list_del(&d->entry);
 		d->h->free(lcp->ppp,d);
 	}
-
-	free(auth_opt);
 }
 
 static int auth_send_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)
@@ -206,70 +226,77 @@ print_d:
 	print("<auth %s>",d->h->name);
 }
 
+static struct ppp_layer_data_t *auth_layer_init(struct ppp_t *ppp)
+{
+	struct auth_layer_data_t *ad=(struct auth_layer_data_t*)malloc(sizeof(*ad));
+
+	log_debug("auth_layer_init\n");
+	
+	memset(ad,0,sizeof(*ad));
+
+	ad->ppp=ppp;
+
+	return &ad->ld;
+}
+
+static void auth_layer_start(struct ppp_layer_data_t *ld)
+{
+	struct auth_layer_data_t *ad=container_of(ld,typeof(*ad),ld);
+	
+	log_debug("auth_layer_start\n");
+	
+	if (ad->auth_opt.auth)
+		ad->auth_opt.auth->h->start(ad->ppp,ad->auth_opt.auth);
+	else
+	{
+		log_debug("auth_layer_started\n");
+		ppp_layer_started(ad->ppp,ld);
+	}
+}
+
+static void auth_layer_finish(struct ppp_layer_data_t *ld)
+{
+	struct auth_layer_data_t *ad=container_of(ld,typeof(*ad),ld);
+	
+	log_debug("auth_layer_finish\n");
+	
+	if (ad->auth_opt.auth)
+		ad->auth_opt.auth->h->finish(ad->ppp,ad->auth_opt.auth);
+	
+	log_debug("auth_layer_finished\n");
+	ppp_layer_finished(ad->ppp,ld);
+}
+
+static void auth_layer_free(struct ppp_layer_data_t *ld)
+{
+	struct auth_layer_data_t *ad=container_of(ld,typeof(*ad),ld);
+
+	log_debug("auth_layer_free\n");
+	
+	free(ad);
+}
+
+void auth_successed(struct ppp_t *ppp)
+{
+	struct auth_layer_data_t *ad=container_of(ppp_find_layer_data(ppp,&auth_layer),typeof(*ad),ld);
+	log_debug("auth_layer_started\n");
+	ppp_layer_started(ppp,&ad->ld);
+}
+
+void auth_failed(struct ppp_t *ppp)
+{
+	ppp_terminate(ppp);
+}
+
 int ppp_auth_register_handler(struct ppp_auth_handler_t *h)
 {
 	list_add_tail(&h->entry,&auth_handlers);
 	return 0;
 }
 
-static void __init auth_opt_init()
+static void __init ppp_auth_init()
 {
+	ppp_register_layer("auth",&auth_layer);
 	lcp_option_register(&auth_opt_hnd);
-}
-
-
-
-
-
-
-
-
-int auth_start(struct ppp_t *ppp)
-{
-	struct lcp_option_t *opt;
-	struct auth_option_t *auth_opt;
-
-	list_for_each_entry(opt,&ppp->lcp->options,entry)
-	{
-		if (opt->id==CI_AUTH)
-		{
-			auth_opt=container_of(opt,typeof(*auth_opt),opt);
-			if (auth_opt->auth)
-			{
-				auth_opt->auth->h->start(ppp,auth_opt->auth);
-				return 1;
-			}
-			break;
-		}
-	}
-
-	return 0;
-}
-
-void auth_finish(struct ppp_t *ppp)
-{
-	struct lcp_option_t *opt;
-	struct auth_option_t *auth_opt;
-
-	list_for_each_entry(opt,&ppp->lcp->options,entry)
-	{
-		if (opt->id==CI_AUTH)
-		{
-			auth_opt=container_of(opt,typeof(*auth_opt),opt);
-			if (auth_opt->auth)
-				auth_opt->auth->h->finish(ppp,auth_opt->auth);
-			break;
-		}
-	}
-}
-
-void auth_successed(struct ppp_t *ppp)
-{
-	ppp_layer_started(ppp);
-}
-
-void auth_failed(struct ppp_t *ppp)
-{
-	ppp_terminate(ppp);
 }
 

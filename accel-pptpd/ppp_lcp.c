@@ -62,10 +62,12 @@ static void lcp_options_free(struct ppp_lcp_t *lcp)
 	}
 }
 
-void lcp_start(struct ppp_t *ppp)
+static struct ppp_layer_data_t *lcp_layer_init(struct ppp_t *ppp)
 {
 	struct ppp_lcp_t *lcp=malloc(sizeof(*lcp));
 	memset(lcp,0,sizeof(*lcp));
+	
+	log_debug("lcp_layer_init\n");
 
 	lcp->ppp=ppp;
 	lcp->fsm.ppp=ppp;
@@ -73,46 +75,65 @@ void lcp_start(struct ppp_t *ppp)
 	lcp->hnd.proto=PPP_LCP;
 	lcp->hnd.recv=lcp_recv;
 	
-	ppp_register_handler(ppp,&lcp->hnd);
+	ppp_register_chan_handler(ppp,&lcp->hnd);
 	
 	ppp_fsm_init(&lcp->fsm);
 
 	lcp->fsm.layer_up=lcp_layer_up;
-	lcp->fsm.layer_down=lcp_layer_down;
+	lcp->fsm.layer_finished=lcp_layer_down;
 	lcp->fsm.send_conf_req=send_conf_req;
 	lcp->fsm.send_conf_ack=send_conf_ack;
 	lcp->fsm.send_conf_nak=send_conf_nak;
 	lcp->fsm.send_conf_rej=send_conf_rej;
 
-	lcp_options_init(lcp);
 	INIT_LIST_HEAD(&lcp->ropt_list);
 
-	ppp_fsm_lower_up(&lcp->fsm);
-	ppp_fsm_open(&lcp->fsm);
-
-	ppp->lcp=lcp;
+	return &lcp->ld;
 }
 
-void lcp_finish(struct ppp_t *ppp)
+void lcp_layer_start(struct ppp_layer_data_t *ld)
 {
-	struct ppp_lcp_t *lcp=ppp->lcp;
+	struct ppp_lcp_t *lcp=container_of(ld,typeof(*lcp),ld);
+	
+	log_debug("lcp_layer_start\n");
 
-	ppp_unregister_handler(ppp,&lcp->hnd);
+	lcp_options_init(lcp);
+	ppp_fsm_lower_up(&lcp->fsm);
+	ppp_fsm_open(&lcp->fsm);
+}
+
+void lcp_layer_finish(struct ppp_layer_data_t *ld)
+{
+	struct ppp_lcp_t *lcp=container_of(ld,typeof(*lcp),ld);
+	
+	log_debug("lcp_layer_finish\n");
+
+	ppp_unregister_handler(lcp->ppp,&lcp->hnd);
 	lcp_options_free(lcp);
 
+}
+
+void lcp_layer_free(struct ppp_layer_data_t *ld)
+{
+	struct ppp_lcp_t *lcp=container_of(ld,typeof(*lcp),ld);
+	
+	log_debug("lcp_layer_free\n");
+	
 	free(lcp);
 }
 
 static void lcp_layer_up(struct ppp_fsm_t *fsm)
 {
 	struct ppp_lcp_t *lcp=container_of(fsm,typeof(*lcp),fsm);
-	ppp_layer_started(lcp->ppp);
+	log_debug("lcp_layer_started\n");
+	ppp_layer_started(lcp->ppp,&lcp->ld);
 }
 
 static void lcp_layer_down(struct ppp_fsm_t *fsm)
 {
 	struct ppp_lcp_t *lcp=container_of(fsm,typeof(*lcp),fsm);
-	ppp_terminate(lcp->ppp);
+	log_debug("lcp_layer_finished\n");
+	ppp_layer_finished(lcp->ppp,&lcp->ld);
 }
 
 static void print_ropt(struct recv_opt_t *ropt)
@@ -159,18 +180,18 @@ static void send_conf_req(struct ppp_fsm_t *fsm)
 	log_debug("]\n");
 
 	lcp_hdr->len=htons((ptr-buf)-2);
-	ppp_send(lcp->ppp,lcp_hdr,ptr-buf);
+	ppp_chan_send(lcp->ppp,lcp_hdr,ptr-buf);
 }
 
 static void send_conf_ack(struct ppp_fsm_t *fsm)
 {
 	struct ppp_lcp_t *lcp=container_of(fsm,typeof(*lcp),fsm);
-	struct lcp_hdr_t *hdr=(struct lcp_hdr_t*)lcp->ppp->in_buf;
+	struct lcp_hdr_t *hdr=(struct lcp_hdr_t*)lcp->ppp->chan_buf;
 
 	hdr->code=CONFACK;
 	log_debug("send [LCP ConfAck id=%x ]\n",lcp->fsm.recv_id);
 
-	ppp_send(lcp->ppp,hdr,ntohs(hdr->len)+2);
+	ppp_chan_send(lcp->ppp,hdr,ntohs(hdr->len)+2);
 }
 
 static void send_conf_nak(struct ppp_fsm_t *fsm)
@@ -202,7 +223,7 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 	log_debug("]\n");
 
 	lcp_hdr->len=htons((ptr-buf)-2);
-	ppp_send(lcp->ppp,lcp_hdr,ptr-buf);
+	ppp_chan_send(lcp->ppp,lcp_hdr,ptr-buf);
 }
 
 static void send_conf_rej(struct ppp_fsm_t *fsm)
@@ -236,7 +257,7 @@ static void send_conf_rej(struct ppp_fsm_t *fsm)
 	log_debug("]\n");
 
 	lcp_hdr->len=htons((ptr-buf)-2);
-	ppp_send(lcp->ppp,lcp_hdr,ptr-buf);
+	ppp_chan_send(lcp->ppp,lcp_hdr,ptr-buf);
 }
 
 static int lcp_recv_conf_req(struct ppp_lcp_t *lcp,uint8_t *data,int size)
@@ -438,7 +459,7 @@ void send_echo_reply(struct ppp_lcp_t *lcp)
 		.magic.val=0,
 	};
 
-	ppp_send(lcp->ppp,&msg,ntohs(msg.hdr.len)+2);
+	ppp_chan_send(lcp->ppp,&msg,ntohs(msg.hdr.len)+2);
 }
 
 static void lcp_recv(struct ppp_handler_t*h)
@@ -448,13 +469,13 @@ static void lcp_recv(struct ppp_handler_t*h)
 	int r;
 	char *term_msg;
 	
-	if (lcp->ppp->in_buf_size<PPP_HEADERLEN+2)
+	if (lcp->ppp->chan_buf_size<PPP_HEADERLEN+2)
 	{
 		log_warn("LCP: short packet received\n");
 		return;
 	}
 
-	hdr=(struct lcp_hdr_t *)lcp->ppp->in_buf;
+	hdr=(struct lcp_hdr_t *)lcp->ppp->chan_buf;
 	if (ntohs(hdr->len)<PPP_HEADERLEN)
 	{
 		log_warn("LCP: short packet received\n");
@@ -535,3 +556,15 @@ int lcp_option_register(struct lcp_option_handler_t *h)
 	return 0;
 }
 
+static struct ppp_layer_t lcp_layer=
+{
+	.init=lcp_layer_init,
+	.start=lcp_layer_start,
+	.finish=lcp_layer_finish,
+	.free=lcp_layer_free,
+};
+
+static void __init lcp_init(void)
+{
+	ppp_register_layer("lcp",&lcp_layer);
+}

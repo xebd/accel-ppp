@@ -7,7 +7,7 @@ ADD_SUBDIRECTORY(triton)
 
 ADD_EXECUTABLE(pptpd
 	pptpd.c
-	ctrl.c
+	pptp.c
 	log.c
 	ppp.c
 	ppp_fsm.c

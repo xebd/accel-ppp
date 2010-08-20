@@ -84,7 +84,7 @@ static int pap_start(struct ppp_t *ppp, struct auth_data_t *auth)
 	d->h.proto=PPP_PAP;
 	d->h.recv=pap_recv;
 
-	ppp_register_handler(ppp,&d->h);
+	ppp_register_chan_handler(ppp,&d->h);
 
 	return 0;
 }
@@ -120,7 +120,7 @@ static void pap_send_ack(struct pap_auth_data_t *p, int id)
 	
 	log_debug("send [PAP AuthAck id=%x \"%s\"]\n",id,MSG_SUCCESSED);
 	
-	ppp_send(p->ppp,msg,ntohs(msg->hdr.len)+2);
+	ppp_chan_send(p->ppp,msg,ntohs(msg->hdr.len)+2);
 }
 
 static void pap_send_nak(struct pap_auth_data_t *p,int id)
@@ -136,7 +136,7 @@ static void pap_send_nak(struct pap_auth_data_t *p,int id)
 	
 	log_debug("send [PAP AuthNak id=%x \"%s\"]\n",id,MSG_FAILED);
 	
-	ppp_send(p->ppp,msg,ntohs(msg->hdr.len)+2);
+	ppp_chan_send(p->ppp,msg,ntohs(msg->hdr.len)+2);
 }
 
 static int pap_recv_req(struct pap_auth_data_t *p,struct pap_hdr_t *hdr)
@@ -190,9 +190,9 @@ static int pap_recv_req(struct pap_auth_data_t *p,struct pap_hdr_t *hdr)
 static void pap_recv(struct ppp_handler_t *h)
 {
 	struct pap_auth_data_t *d=container_of(h,typeof(*d),h);
-	struct pap_hdr_t *hdr=(struct pap_hdr_t *)d->ppp->in_buf;
+	struct pap_hdr_t *hdr=(struct pap_hdr_t *)d->ppp->chan_buf;
 
-	if (d->ppp->in_buf_size<sizeof(*hdr) || ntohs(hdr->len)<HDR_LEN || ntohs(hdr->len)<d->ppp->in_buf_size-2)
+	if (d->ppp->chan_buf_size<sizeof(*hdr) || ntohs(hdr->len)<HDR_LEN || ntohs(hdr->len)<d->ppp->chan_buf_size-2)
 	{
 		log_warn("PAP: short packet received\n");
 		return;

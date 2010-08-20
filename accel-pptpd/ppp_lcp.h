@@ -110,6 +110,7 @@ struct lcp_option_handler_t
 
 struct ppp_lcp_t
 {
+	struct ppp_layer_data_t ld;
 	struct ppp_handler_t hnd;
 	struct ppp_fsm_t fsm;
 	struct ppp_t *ppp;

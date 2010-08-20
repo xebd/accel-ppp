@@ -2,6 +2,8 @@
 #define PPP_H
 
 #include <sys/types.h>
+
+#include "triton/triton.h"
 #include "list.h"
 
 /*
@@ -48,11 +50,18 @@
 
 #define AUTH_MAX	3
 
-struct ppp_lcp_t;
+struct ppp_t;
+
+struct ppp_events_t
+{
+	void (*started)(struct ppp_t*);
+	void (*finished)(struct ppp_t*);
+};
 
 struct ppp_t
 {
-	struct triton_md_handler_t *h;
+	struct triton_md_handler_t chan_hnd;
+	struct triton_md_handler_t unit_hnd;
 	int fd;
 	int chan_fd;
 	int unit_fd;
@@ -62,26 +71,40 @@ struct ppp_t
 
 	char *chan_name;
 
-	//options
-	int mtu,mru;
-	int accomp; // 0 - disabled, 1 - enable, 2 - allow, disabled, 3 - allow,enabled
-	int pcomp; // 0 - disabled, 1 - enable, 2 - allow, disabled, 3 - allow,enabled
-	int auth[AUTH_MAX];
-	// 
-	
+	struct ppp_events_t events;
+
 	int log:1;
 
-	void *out_buf;
-	int out_buf_size;
-	int out_buf_pos;
+	void *chan_buf;
+	int chan_buf_size;
+	void *unit_buf;
+	int unit_buf_size;
 
-	void *in_buf;
-	int in_buf_size;
+	struct list_head chan_handlers;
+	struct list_head unit_handlers;
 
-	struct list_head handlers;
+	struct list_head layers;
 	
-	int cur_layer;
 	struct ppp_lcp_t *lcp;
+};
+
+struct ppp_layer_t;
+struct layer_node_t;
+struct ppp_layer_data_t
+{
+	struct list_head entry;
+	struct ppp_layer_t *layer;
+	struct layer_node_t *node;
+	int started:1;
+};
+
+struct ppp_layer_t
+{
+	struct list_head entry;
+	struct ppp_layer_data_t *(*init)(struct ppp_t *);
+	void (*start)(struct ppp_layer_data_t*);
+	void (*finish)(struct ppp_layer_data_t*);
+	void (*free)(struct ppp_layer_data_t *);
 };
 
 struct ppp_handler_t
@@ -93,25 +116,23 @@ struct ppp_handler_t
 
 struct ppp_t *alloc_ppp(void);
 int establish_ppp(struct ppp_t *ppp);
-int ppp_send(struct ppp_t *ppp, void *data, int size);
+int ppp_chan_send(struct ppp_t *ppp, void *data, int size);
+int ppp_unit_send(struct ppp_t *ppp, void *data, int size);
 
 void ppp_init(void);
 
 struct ppp_fsm_t* ppp_lcp_init(struct ppp_t *ppp);
-void ppp_layer_started(struct ppp_t *ppp);
+void ppp_layer_started(struct ppp_t *ppp,struct ppp_layer_data_t*);
+void ppp_layer_finished(struct ppp_t *ppp,struct ppp_layer_data_t*);
 void ppp_terminate(struct ppp_t *ppp);
 
-void ppp_register_handler(struct ppp_t*,struct ppp_handler_t*);
-void ppp_unregister_handler(struct ppp_t*,struct ppp_handler_t*);
+void ppp_register_chan_handler(struct ppp_t *, struct ppp_handler_t *);
+void ppp_register_unit_handler(struct ppp_t * ,struct ppp_handler_t *);
+void ppp_unregister_handler(struct ppp_t *, struct ppp_handler_t *);
 
-void lcp_start(struct ppp_t*);
-void lcp_finish(struct ppp_t*);
-int auth_start(struct ppp_t*);
-void auth_finish(struct ppp_t*);
-int ccp_start(struct ppp_t*);
-void ccp_finish(struct ppp_t*);
-int ipcp_start(struct ppp_t*);
-void ipcp_finish(struct ppp_t*);
+int ppp_register_layer(const char *name, struct ppp_layer_t *);
+void ppp_unregister_layer(struct ppp_layer_t *);
+struct ppp_layer_data_t *ppp_find_layer_data(struct ppp_t *, struct ppp_layer_t *);
 
 #define __init __attribute__((constructor))
 

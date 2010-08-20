@@ -10,6 +10,8 @@
 *
 */
 
+#include <arpa/inet.h>
+
 #include "triton/triton.h"
 #include "ppp.h"
 #include "ppp_fsm.h"
@@ -441,7 +443,7 @@ void send_term_req(struct ppp_fsm_t *layer)
 
 	log_debug("send [LCP TermReq id=%i \"\"]\n",hdr.id);
 
-	ppp_send(layer->ppp,&hdr,6);
+	ppp_chan_send(layer->ppp,&hdr,6);
 }
 void send_term_ack(struct ppp_fsm_t *layer)
 {
@@ -454,7 +456,7 @@ void send_term_ack(struct ppp_fsm_t *layer)
 
 	log_debug("send [LCP TermAck id=%i \"\"]\n",hdr.id);
 	
-	ppp_send(layer->ppp,&hdr,6);
+	ppp_chan_send(layer->ppp,&hdr,6);
 }
 
 static void init_req_counter(struct ppp_fsm_t *layer,int timeout)
