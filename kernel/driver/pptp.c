@@ -30,9 +30,6 @@
 #include <linux/netfilter.h>
 #include <linux/netfilter_ipv4.h>
 #include <linux/version.h>
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
-#include <linux/semaphore.h>
-#endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 #include <asm/bitops.h>
@@ -53,7 +50,7 @@
 #include "gre.h"
 #endif
 
-#define PPTP_DRIVER_VERSION "0.8.5"
+#define PPTP_DRIVER_VERSION "0.8.5-rc1"
 
 static int log_level=0;
 static int log_packets=10;
@@ -62,8 +59,8 @@ static int log_packets=10;
 #define PPP_LCP_ECHOREQ 0x09
 #define PPP_LCP_ECHOREP 0x0A
 
-static unsigned long *callid_bitmap=NULL;
-static struct pppox_sock **callid_sock=NULL;
+static DECLARE_BITMAP(callid_bitmap, MAX_CALLID + 1);
+static struct pppox_sock **callid_sock;
 
 #define SC_RCV_BITS	(SC_RCV_B7_1|SC_RCV_B7_0|SC_RCV_ODDP|SC_RCV_EVNP)
 
@@ -181,7 +178,7 @@ found_middle:
 static rwlock_t chan_lock=RW_LOCK_UNLOCKED;
 #define SK_STATE(sk) (sk)->state
 #else
-static DECLARE_MUTEX(chan_lock);
+static DEFINE_SPINLOCK(chan_lock);
 #define SK_STATE(sk) (sk)->sk_state
 #endif
 
@@ -227,7 +224,7 @@ struct pptp_gre_header {
   u32 seq;		/* sequence number.  Present if S==1 */
   u32 ack;		/* seq number of highest packet recieved by */
   				/*  sender in this session */
-};
+} __packed;
 #define PPTP_HEADER_OVERHEAD (2+sizeof(struct pptp_gre_header))
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
@@ -270,19 +267,20 @@ static int lookup_chan_dst(u16 call_id, __be32 d_addr)
 	int i;
 	
 	#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
-	down(&chan_lock);
+	rcu_read_lock();
 	#else
-	read_lock(&chan_lock);
+	down(&chan_lock);
 	#endif
-	for(i=find_next_bit(callid_bitmap,MAX_CALLID,1); i<MAX_CALLID; i=find_next_bit(callid_bitmap,MAX_CALLID,i+1)){
-	    sock=callid_sock[i];
-	    opt=&sock->proto.pptp;
-	    if (opt->dst_addr.call_id==call_id && opt->dst_addr.sin_addr.s_addr==d_addr) break;
+	for(i = find_next_bit(callid_bitmap,MAX_CALLID,1); i < MAX_CALLID; 
+	                i = find_next_bit(callid_bitmap, MAX_CALLID, i + 1)){
+	    sock = callid_sock[i];
+	    opt = &sock->proto.pptp;
+	    if (opt->dst_addr.call_id == call_id && opt->dst_addr.sin_addr.s_addr == d_addr) break;
 	}
 	#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
-	up(&chan_lock);
+	rcu_read_unlock();
 	#else
-	read_unlock(&chan_lock);
+	up(&chan_lock);
 	#endif
 	
 	return i<MAX_CALLID;
@@ -294,8 +292,7 @@ static int add_chan(struct pppox_sock *sock)
 	int res=-1;
 
 	#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
-	synchronize_rcu();
-	down(&chan_lock);
+	spin_lock(&chan_lock);
 	#else
 	write_lock_bh(&chan_lock);
 	#endif
@@ -314,13 +311,13 @@ static int add_chan(struct pppox_sock *sock)
 	#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 	rcu_assign_pointer(callid_sock[sock->proto.pptp.src_addr.call_id],sock);
 	#else
-	callid_sock[sock->proto.pptp.src_addr.call_id]=sock;
+	callid_sock[sock->proto.pptp.src_addr.call_id] = sock;
 	#endif
 	res=0;
 
 exit:	
 	#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
-	up(&chan_lock);
+	spin_unlock(&chan_lock);
 	#else
 	write_unlock_bh(&chan_lock);
 	#endif
@@ -331,17 +328,17 @@ exit:
 static void del_chan(struct pppox_sock *sock)
 {
 	#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
-	synchronize_rcu();
-	down(&chan_lock);
+	spin_lock(&chan_lock);
 	#else
 	write_lock_bh(&chan_lock);
 	#endif
 	clear_bit(sock->proto.pptp.src_addr.call_id,callid_bitmap);
 	#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 	rcu_assign_pointer(callid_sock[sock->proto.pptp.src_addr.call_id],NULL);
-	up(&chan_lock);
+	spin_unlock(&chan_lock);
+	synchronize_rcu();
 	#else
-	callid_sock[sock->proto.pptp.src_addr.call_id]=NULL;
+	callid_sock[sock->proto.pptp.src_addr.call_id] = NULL;
 	write_unlock_bh(&chan_lock);
 	#endif
 }
@@ -405,10 +402,11 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 	#endif
 
 
-	if (skb_headroom(skb) < max_headroom || skb_cloned(skb) || skb_shared(skb)) {
-		struct sk_buff *new_skb = skb_realloc_headroom(skb, max_headroom);
+	if (skb_headroom(skb) < max_headroom || skb_cloned(skb) || skb_shared(skb) ||
+		  (skb_cloned(skb) && !skb_clone_writable(skb,0))) {
+ 		struct sk_buff *new_skb = skb_realloc_headroom(skb, max_headroom);
 		if (!new_skb) {
-			ip_rt_put(rt);
+ 			ip_rt_put(rt);
 			goto tx_error;
 		}
 		if (skb->sk)
@@ -699,7 +697,6 @@ static int pptp_rcv(struct sk_buff *skb)
 	if ((po=lookup_chan(htons(header->call_id),iph->saddr))) {
 		#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31)
 		skb_dst_drop(skb);
-		skb_dst_set(skb,NULL);
 		#else
 		dst_release(skb->dst);
 		skb->dst = NULL;
@@ -1141,6 +1138,13 @@ static int __init pptp_init_module(void)
 	int err=0;
 	printk(KERN_INFO "PPTP driver version " PPTP_DRIVER_VERSION "\n");
 
+	callid_sock = __vmalloc((MAX_CALLID + 1) * sizeof(void *),
+	                        GFP_KERNEL | __GFP_ZERO, PAGE_KERNEL);
+	if (!callid_sock) {
+		printk(KERN_ERR "PPTP: cann't allocate memory\n");
+		return -ENOMEM;
+	}
+
 	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	inet_add_protocol(&net_pptp_protocol);
 	#else
@@ -1150,7 +1154,7 @@ static int __init pptp_init_module(void)
 	if (inet_add_protocol(&net_pptp_protocol, IPPROTO_GRE) < 0) {
 	#endif
 		printk(KERN_INFO "PPTP: can't add protocol\n");
-		goto out;
+		goto out_free_mem;
 	}
 	#endif
 
@@ -1168,23 +1172,7 @@ static int __init pptp_init_module(void)
 		goto out_unregister_sk_proto;
 	}
 	
-	
-	//assuming PAGESIZE is 4096 bytes
-	callid_bitmap=(unsigned long*)__get_free_pages(GFP_KERNEL,1);
-	memset(callid_bitmap,0,PAGE_SIZE<<1);
-
-	#if (BITS_PER_LONG == 32)
-	callid_sock=(struct pppox_sock **)__get_free_pages(GFP_KERNEL,6);
-	memset(callid_sock,0,PAGE_SIZE<<6);
-	#elif (BITS_PER_LONG == 64)
-        callid_sock=(struct pppox_sock **)__get_free_pages(GFP_KERNEL,7);
-        memset(callid_sock,0,PAGE_SIZE<<7);
-        #else
-        #error unknown size of LONG
-        #endif
-
-out:
-	return err;
+	return 0;
 out_unregister_sk_proto:
 	#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 	proto_unregister(&pptp_sk_proto);
@@ -1203,17 +1191,14 @@ out_inet_del_protocol:
 	inet_del_protocol(&net_pptp_protocol, IPPROTO_GRE);
 	#endif
 	#endif
-	goto out;
+out_free_mem:
+	vfree(callid_sock);
+	
+	return err;
 }
 
 static void __exit pptp_exit_module(void)
 {
-	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
-	flush_scheduled_tasks();
-	#else
-	flush_scheduled_work();
-	#endif
-
 	unregister_pppox_proto(PX_PROTO_PPTP);
 	#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	inet_del_protocol(&net_pptp_protocol);
@@ -1225,14 +1210,7 @@ static void __exit pptp_exit_module(void)
 	inet_del_protocol(&net_pptp_protocol, IPPROTO_GRE);
 	#endif
 	#endif
-	if (callid_bitmap) free_pages((unsigned long)callid_bitmap,1);
-	if (callid_sock) {
-	    #if (BITS_PER_LONG == 32)
-	    free_pages((unsigned long)callid_sock,6);
-	    #elif (BITS_PER_LONG == 64)
-	    free_pages((unsigned long)callid_sock,7);
-	    #endif
-	}
+	vfree(callid_sock);
 }
 
 module_init(pptp_init_module);
