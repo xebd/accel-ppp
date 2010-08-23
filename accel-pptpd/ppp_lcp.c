@@ -300,6 +300,7 @@ static int lcp_recv_conf_req(struct ppp_lcp_t *lcp,uint8_t *data,int size)
 				ropt->state=r;
 				ropt->lopt=lopt;
 				if (r<ret) ret=r;
+				break;
 			}
 		}
 		if (!ropt->lopt)

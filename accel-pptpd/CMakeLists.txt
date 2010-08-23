@@ -21,10 +21,11 @@ ADD_EXECUTABLE(pptpd
 	ppp_auth.c
 	auth_pap.c
 	
-	ppp_ccp.c
 	ppp_ipcp.c
 	ipcp_opt_ipaddr.c
 	ipcp_opt_dns.c
+	
+	ppp_ccp.c
 	
 	pwdb.c
 	ipdb.c

@@ -304,6 +304,7 @@ static int ipcp_recv_conf_req(struct ppp_ipcp_t *ipcp,uint8_t *data,int size)
 				ropt->state=r;
 				ropt->lopt=lopt;
 				if (r<ret) ret=r;
+				break;
 			}	
 		}
 		if (!ropt->lopt)
