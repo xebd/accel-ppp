@@ -107,10 +107,15 @@ static int auth_send_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, u
 
 	if (list_empty(&auth_opt->auth_list)) return 0;
 
-	if (!auth_opt->auth)
+	if (!auth_opt->auth || auth_opt->auth->state==LCP_OPT_NAK)
 	{
-		d=list_entry(auth_opt->auth_list.next,typeof(*d),entry);
-		auth_opt->auth=d;
+		list_for_each_entry(d,&auth_opt->auth_list,entry)
+		{
+			if (d->state==LCP_OPT_NAK || d->state==LCP_OPT_REJ)
+				continue;
+			auth_opt->auth=d;
+			break;
+		}
 	}
 
 	opt16->hdr.id=CI_AUTH;
@@ -126,6 +131,7 @@ static int auth_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, u
 	struct auth_option_t *auth_opt=container_of(opt,typeof(*auth_opt),opt);
 	struct lcp_opt16_t *opt16=(struct lcp_opt16_t*)ptr;
 	struct auth_data_t *d;
+	int r;
 
 	if (list_empty(&auth_opt->auth_list))
 		return LCP_OPT_REJ;
@@ -134,10 +140,13 @@ static int auth_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, u
 	{
 		if (d->proto==ntohs(opt16->val))
 		{
-			if (d->h->recv_conf_req(lcp->ppp,d,(uint8_t*)(opt16+1)))
+			r=d->h->recv_conf_req(lcp->ppp,d,(uint8_t*)(opt16+1));
+			if (r==LCP_OPT_FAIL)
+				return LCP_OPT_FAIL;
+			if (r==LCP_OPT_REJ)
 				break;
 			auth_opt->peer_auth=d;
-			return LCP_OPT_ACK;
+			return r;
 		}
 	}
 		
@@ -166,20 +175,16 @@ static int auth_recv_conf_ack(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, u
 static int auth_recv_conf_nak(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)
 {
 	struct auth_option_t *auth_opt=container_of(opt,typeof(*auth_opt),opt);
-	struct lcp_opt16_t *opt16=(struct lcp_opt16_t*)ptr;
 	struct auth_data_t *d;
 
-	list_for_each_entry(d,&auth_opt->auth_list,entry)
+	if (!auth_opt->auth)
 	{
-		if (d->proto==ntohs(opt16->val))
-		{
-			d->state=LCP_OPT_NAK;
-			if (d->h->recv_conf_req(lcp->ppp,d,(uint8_t*)(opt16+1)))
-				break;
-			auth_opt->auth=d;
-			return 0;
-		}
+		log_error("auth: unexcepcted configure-nak\n");
+		return -1;
 	}
+	auth_opt->auth->state=LCP_OPT_NAK;
+	if (auth_opt->peer_auth)
+		auth_opt->auth=auth_opt->peer_auth;
 	
 	list_for_each_entry(d,&auth_opt->auth_list,entry)
 	{
@@ -194,9 +199,22 @@ static int auth_recv_conf_nak(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, u
 static int auth_recv_conf_rej(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)
 {
 	struct auth_option_t *auth_opt=container_of(opt,typeof(*auth_opt),opt);
+	struct auth_data_t *d;
 
-	if (list_empty(&auth_opt->auth_list))
-		return 0;
+	if (!auth_opt->auth)
+	{
+		log_error("auth: unexcepcted configure-reject\n");
+		return -1;
+	}
+	auth_opt->auth->state=LCP_OPT_NAK;
+	if (auth_opt->peer_auth)
+		auth_opt->auth=auth_opt->peer_auth;
+	
+	list_for_each_entry(d,&auth_opt->auth_list,entry)
+	{
+		if (d->state!=LCP_OPT_NAK)
+			return 0;
+	}
 
 	log_msg("cann't negotiate authentication type\n");
 	return -1;

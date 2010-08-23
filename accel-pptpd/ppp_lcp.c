@@ -436,8 +436,10 @@ static int lcp_recv_conf_ack(struct ppp_lcp_t *lcp,uint8_t *data,int size)
 			{
 				log_debug(" ");
 				lopt->h->print(log_debug,lopt,data);
-				if (lopt->h->recv_conf_ack)
-					lopt->h->recv_conf_ack(lcp,lopt,data);
+				if (!lopt->h->recv_conf_ack)
+					break;
+				if (lopt->h->recv_conf_ack(lcp,lopt,data))
+					res=-1;
 				break;
 			}
 		}
@@ -514,8 +516,10 @@ static void lcp_recv(struct ppp_handler_t*h)
 				ppp_terminate(lcp->ppp);
 			break;
 		case CONFACK:
-			lcp_recv_conf_ack(lcp,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN);
-			ppp_fsm_recv_conf_ack(&lcp->fsm);
+			if (lcp_recv_conf_ack(lcp,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN))
+				ppp_terminate(lcp->ppp);
+			else
+				ppp_fsm_recv_conf_ack(&lcp->fsm);
 			break;
 		case CONFNAK:
 			lcp_recv_conf_nak(lcp,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN);

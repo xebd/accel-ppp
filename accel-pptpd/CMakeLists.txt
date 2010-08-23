@@ -20,6 +20,7 @@ ADD_EXECUTABLE(pptpd
 	
 	ppp_auth.c
 	auth_pap.c
+	auth_chap.c
 	
 	ppp_ipcp.c
 	ipcp_opt_ipaddr.c
@@ -30,4 +31,4 @@ ADD_EXECUTABLE(pptpd
 	pwdb.c
 	ipdb.c
 )
-TARGET_LINK_LIBRARIES(pptpd pthread triton)
+TARGET_LINK_LIBRARIES(pptpd pthread triton ssl)

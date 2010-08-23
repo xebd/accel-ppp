@@ -33,7 +33,7 @@
 #define LOG_INFO  2
 #define LOG_DEBUG 3
 
-static FILE *log_file=NULL;
+static FILE *log_file;
 static int log_level=10;
 static int log_color=1;
 static const char* level_name[]={"error","warning","info","debug"};
@@ -47,6 +47,8 @@ static void do_log(int level,const char *fmt,va_list ap)
 	struct timeval tv;
 
 	//pthread_mutex_lock(&lock);
+	if (!log_file)
+		log_file=stdout;
 	if (msg_completed)
 	{
 		gettimeofday(&tv,NULL);
