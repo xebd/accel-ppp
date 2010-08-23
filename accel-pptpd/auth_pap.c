@@ -114,7 +114,7 @@ static void pap_send_ack(struct pap_auth_data_t *p, int id)
 	msg->hdr.proto=htons(PPP_PAP);
 	msg->hdr.code=PAP_ACK;
 	msg->hdr.id=id;
-	msg->hdr.len=htons(HDR_LEN+1+sizeof(MSG_SUCCESSED));
+	msg->hdr.len=htons(HDR_LEN+1+sizeof(MSG_SUCCESSED)-1);
 	msg->msg_len=sizeof(MSG_SUCCESSED)-1;
 	memcpy(msg->msg,MSG_SUCCESSED,sizeof(MSG_SUCCESSED));
 	
@@ -130,7 +130,7 @@ static void pap_send_nak(struct pap_auth_data_t *p,int id)
 	msg->hdr.proto=htons(PPP_PAP);
 	msg->hdr.code=PAP_NAK;
 	msg->hdr.id=id;
-	msg->hdr.len=htons(HDR_LEN+1+sizeof(MSG_FAILED));
+	msg->hdr.len=htons(HDR_LEN+1+sizeof(MSG_FAILED)-1);
 	msg->msg_len=sizeof(MSG_FAILED)-1;
 	memcpy(msg->msg,MSG_FAILED,sizeof(MSG_FAILED));
 	
