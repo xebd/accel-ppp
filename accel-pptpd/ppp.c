@@ -15,7 +15,6 @@
 #include "ppp.h"
 #include "ppp_fsm.h"
 #include "log.h"
-#include "events.h"
 
 static LIST_HEAD(layers);
 
@@ -158,8 +157,8 @@ int ppp_chan_send(struct ppp_t *ppp, void *data, int size)
 {
 	int n;
 
-	printf("ppp_chan_send: ");
-	print_buf((uint8_t*)data,size);
+	//printf("ppp_chan_send: ");
+	//print_buf((uint8_t*)data,size);
 	
 	n=write(ppp->chan_fd,data,size);
 	if (n<size)
@@ -171,8 +170,8 @@ int ppp_unit_send(struct ppp_t *ppp, void *data, int size)
 {
 	int n;
 
-	printf("ppp_unit_send: ");
-	print_buf((uint8_t*)data,size);
+	//printf("ppp_unit_send: ");
+	//print_buf((uint8_t*)data,size);
 	
 	n=write(ppp->unit_fd,data,size);
 	if (n<size)
@@ -188,8 +187,8 @@ static void ppp_chan_read(struct triton_md_handler_t*h)
 
 	ppp->chan_buf_size=read(h->fd,ppp->chan_buf,PPP_MRU);
 
-	printf("ppp_chan_read: ");
-	print_buf(ppp->chan_buf,ppp->chan_buf_size);
+	//printf("ppp_chan_read: ");
+	//print_buf(ppp->chan_buf,ppp->chan_buf_size);
 
 	if (ppp->chan_buf_size<2)
 	{
@@ -266,28 +265,26 @@ void ppp_layer_finished(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 	
 	d->started=0;
 
-	list_for_each_entry(d,&n->items,entry)
-		if (d->started) return;
-
-	if (n->entry.prev==&ppp->layers) destablish_ppp(ppp);
-	else
+	list_for_each_entry(n,&ppp->layers,entry)
 	{
-		n=list_entry(n->entry.prev,typeof(*n),entry);
 		list_for_each_entry(d,&n->items,entry)
-			if (d->started)	d->layer->finish(d);
+		{
+			if (d->started)
+				return;
+		}
 	}
+	destablish_ppp(ppp);
 }
 
 void ppp_terminate(struct ppp_t *ppp)
 {
 	struct layer_node_t *n;
-	struct list_head *p;
 	struct ppp_layer_data_t *d;
 	int s=0;
 
 	log_debug("ppp_terminate\n");
 
-	list_for_each_prev(p,&ppp->layers)
+	list_for_each_entry(n,&ppp->layers,entry)
 	{
 		list_for_each_entry(d,&n->items,entry)
 		{
@@ -297,8 +294,8 @@ void ppp_terminate(struct ppp_t *ppp)
 				d->layer->finish(d);
 			}
 		}
-		if (s) return;
 	}
+	if (s) return;
 	destablish_ppp(ppp);
 }
 

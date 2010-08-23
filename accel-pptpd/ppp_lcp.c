@@ -6,7 +6,6 @@
 
 #include "triton/triton.h"
 
-#include "events.h"
 #include "log.h"
 
 #include "ppp.h"
@@ -110,7 +109,6 @@ void lcp_layer_finish(struct ppp_layer_data_t *ld)
 
 	ppp_unregister_handler(lcp->ppp,&lcp->hnd);
 	lcp_options_free(lcp);
-
 }
 
 void lcp_layer_free(struct ppp_layer_data_t *ld)
@@ -299,8 +297,16 @@ static int lcp_recv_conf_req(struct ppp_lcp_t *lcp,uint8_t *data,int size)
 				r=lopt->h->recv_conf_req(lcp,lopt,(uint8_t*)ropt->hdr);
 				lopt->state=r;
 				ropt->state=r;
+				ropt->lopt=lopt;
 				if (r<ret) ret=r;
 			}
+		}
+		if (!ropt->lopt)
+		{
+			log_debug(" ");
+			print_ropt(ropt);
+			ropt->state=LCP_OPT_REJ;
+			ret=LCP_OPT_REJ;
 		}
 	}
 	log_debug("]\n");
@@ -520,6 +526,7 @@ static void lcp_recv(struct ppp_handler_t*h)
 			log_debug("recv [LCP TermReq id=%x \"%s\"]\n",hdr->id,term_msg);
 			free(term_msg);
 			ppp_fsm_recv_term_req(&lcp->fsm);
+			ppp_terminate(lcp->ppp);
 			break;
 		case TERMACK:
 			term_msg=strndup((uint8_t*)(hdr+1),ntohs(hdr->len));
