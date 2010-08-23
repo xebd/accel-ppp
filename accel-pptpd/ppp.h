@@ -95,6 +95,7 @@ struct ppp_layer_data_t
 	struct list_head entry;
 	struct ppp_layer_t *layer;
 	struct layer_node_t *node;
+	int starting:1;
 	int started:1;
 };
 
