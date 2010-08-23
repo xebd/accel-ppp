@@ -255,7 +255,10 @@ void ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 	{
 		n=list_entry(n->entry.next,typeof(*n),entry);
 		list_for_each_entry(d,&n->items,entry)
+		{
+			d->starting=1;
 			d->layer->start(d);
+		}
 	}
 }
 
@@ -263,13 +266,14 @@ void ppp_layer_finished(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 {
 	struct layer_node_t *n=d->node;
 	
+	d->starting=0;
 	d->started=0;
 
 	list_for_each_entry(n,&ppp->layers,entry)
 	{
 		list_for_each_entry(d,&n->items,entry)
 		{
-			if (d->started)
+			if (d->starting)
 				return;
 		}
 	}
@@ -288,7 +292,7 @@ void ppp_terminate(struct ppp_t *ppp)
 	{
 		list_for_each_entry(d,&n->items,entry)
 		{
-			if (d->started)
+			if (d->starting)
 			{
 				s=1;
 				d->layer->finish(d);
@@ -394,7 +398,10 @@ static void start_first_layer(struct ppp_t *ppp)
 
 	n=list_entry(ppp->layers.next,typeof(*n),entry);
 	list_for_each_entry(d,&n->items,entry)
+	{
+		d->starting=1;
 		d->layer->start(d);
+	}
 }
 
 struct ppp_layer_data_t *ppp_find_layer_data(struct ppp_t *ppp, struct ppp_layer_t *layer)

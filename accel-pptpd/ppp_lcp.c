@@ -106,9 +106,7 @@ void lcp_layer_finish(struct ppp_layer_data_t *ld)
 	struct ppp_lcp_t *lcp=container_of(ld,typeof(*lcp),ld);
 	
 	log_debug("lcp_layer_finish\n");
-
-	ppp_unregister_handler(lcp->ppp,&lcp->hnd);
-	lcp_options_free(lcp);
+	ppp_fsm_close(&lcp->fsm);
 }
 
 void lcp_layer_free(struct ppp_layer_data_t *ld)
@@ -116,6 +114,9 @@ void lcp_layer_free(struct ppp_layer_data_t *ld)
 	struct ppp_lcp_t *lcp=container_of(ld,typeof(*lcp),ld);
 	
 	log_debug("lcp_layer_free\n");
+	
+	ppp_unregister_handler(lcp->ppp,&lcp->hnd);
+	lcp_options_free(lcp);
 	
 	free(lcp);
 }
@@ -144,7 +145,7 @@ static void print_ropt(struct recv_opt_t *ropt)
 	{
 		log_debug(" %x",ptr[i]);
 	}
-	log_debug(">");
+	log_debug(" >");
 }
 
 static void send_conf_req(struct ppp_fsm_t *fsm)
@@ -197,7 +198,7 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 	struct ppp_lcp_t *lcp=container_of(fsm,typeof(*lcp),fsm);
 	uint8_t *buf=malloc(lcp->conf_req_len), *ptr=buf;
 	struct lcp_hdr_t *lcp_hdr=(struct lcp_hdr_t*)ptr;
-	struct lcp_option_t *lopt;
+	struct recv_opt_t *ropt;
 
 	log_debug("send [LCP ConfNak id=%x",lcp->fsm.recv_id);
 
@@ -208,13 +209,13 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 	
 	ptr+=sizeof(*lcp_hdr);
 
-	list_for_each_entry(lopt,&lcp->options,entry)
+	list_for_each_entry(ropt,&lcp->ropt_list,entry)
 	{
-		if (lopt->state==LCP_OPT_NAK)
+		if (ropt->state==LCP_OPT_NAK)
 		{
 			log_debug(" ");
-			lopt->h->print(log_debug,lopt,NULL);
-			ptr+=lopt->h->send_conf_nak(lcp,lopt,ptr);
+			ropt->lopt->h->print(log_debug,ropt->lopt,NULL);
+			ptr+=ropt->lopt->h->send_conf_nak(lcp,ropt->lopt,ptr);
 		}
 	}
 	
@@ -358,7 +359,9 @@ static int lcp_recv_conf_rej(struct ppp_lcp_t *lcp,uint8_t *data,int size)
 		{
 			if (lopt->id==hdr->id)
 			{
-				if (lopt->h->recv_conf_rej(lcp,lopt,data))
+				if (!lopt->h->recv_conf_rej)
+					res=-1;
+				else if (lopt->h->recv_conf_rej(lcp,lopt,data))
 					res=-1;
 				break;
 			}
@@ -518,8 +521,10 @@ static void lcp_recv(struct ppp_handler_t*h)
 			ppp_fsm_recv_conf_rej(&lcp->fsm);
 			break;
 		case CONFREJ:
-			lcp_recv_conf_rej(lcp,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN);
-			ppp_fsm_recv_conf_rej(&lcp->fsm);
+			if (lcp_recv_conf_rej(lcp,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN))
+				ppp_terminate(lcp->ppp);
+			else
+				ppp_fsm_recv_conf_rej(&lcp->fsm);
 			break;
 		case TERMREQ:
 			term_msg=strndup((uint8_t*)(hdr+1),ntohs(hdr->len));

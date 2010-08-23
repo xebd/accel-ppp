@@ -24,6 +24,7 @@ ADD_EXECUTABLE(pptpd
 	ppp_ccp.c
 	ppp_ipcp.c
 	ipcp_opt_ipaddr.c
+	ipcp_opt_dns.c
 	
 	pwdb.c
 	ipdb.c

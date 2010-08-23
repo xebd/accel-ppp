@@ -107,6 +107,8 @@ void ipcp_layer_finish(struct ppp_layer_data_t *ld)
 	
 	log_debug("ipcp_layer_finish\n");
 
+	ppp_fsm_lower_down(&ipcp->fsm);
+	
 	ppp_unregister_handler(ipcp->ppp,&ipcp->hnd);
 	ipcp_options_free(ipcp);
 
@@ -118,7 +120,7 @@ void ipcp_layer_free(struct ppp_layer_data_t *ld)
 	struct ppp_ipcp_t *ipcp=container_of(ld,typeof(*ipcp),ld);
 	
 	log_debug("ipcp_layer_free\n");
-	
+		
 	free(ipcp);
 }
 
@@ -146,7 +148,7 @@ static void print_ropt(struct recv_opt_t *ropt)
 	{
 		log_debug(" %x",ptr[i]);
 	}
-	log_debug(">");
+	log_debug(" >");
 }
 
 static void send_conf_req(struct ppp_fsm_t *fsm)
@@ -199,7 +201,7 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 	struct ppp_ipcp_t *ipcp=container_of(fsm,typeof(*ipcp),fsm);
 	uint8_t *buf=malloc(ipcp->conf_req_len), *ptr=buf;
 	struct ipcp_hdr_t *ipcp_hdr=(struct ipcp_hdr_t*)ptr;
-	struct ipcp_option_t *lopt;
+	struct recv_opt_t *ropt;
 
 	log_debug("send [IPCP ConfNak id=%x",ipcp->fsm.recv_id);
 
@@ -210,13 +212,13 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 	
 	ptr+=sizeof(*ipcp_hdr);
 
-	list_for_each_entry(lopt,&ipcp->options,entry)
+	list_for_each_entry(ropt,&ipcp->ropt_list,entry)
 	{
-		if (lopt->state==IPCP_OPT_NAK)
+		if (ropt->state==IPCP_OPT_NAK)
 		{
 			log_debug(" ");
-			lopt->h->print(log_debug,lopt,NULL);
-			ptr+=lopt->h->send_conf_nak(ipcp,lopt,ptr);
+			ropt->lopt->h->print(log_debug,ropt->lopt,NULL);
+			ptr+=ropt->lopt->h->send_conf_nak(ipcp,ropt->lopt,ptr);
 		}
 	}
 	
@@ -361,7 +363,9 @@ static int ipcp_recv_conf_rej(struct ppp_ipcp_t *ipcp,uint8_t *data,int size)
 		{
 			if (lopt->id==hdr->id)
 			{
-				if (lopt->h->recv_conf_rej(ipcp,lopt,data))
+				if (!lopt->h->recv_conf_rej)
+					res=-1;
+				else if (lopt->h->recv_conf_rej(ipcp,lopt,data))
 					res=-1;
 				break;
 			}
@@ -498,8 +502,10 @@ static void ipcp_recv(struct ppp_handler_t*h)
 			ppp_fsm_recv_conf_rej(&ipcp->fsm);
 			break;
 		case CONFREJ:
-			ipcp_recv_conf_rej(ipcp,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN);
-			ppp_fsm_recv_conf_rej(&ipcp->fsm);
+			if (ipcp_recv_conf_rej(ipcp,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN))
+				ppp_terminate(ipcp->ppp);
+			else
+				ppp_fsm_recv_conf_rej(&ipcp->fsm);
 			break;
 		case TERMREQ:
 			term_msg=strndup((uint8_t*)(hdr+1),ntohs(hdr->len));
