@@ -405,7 +405,7 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22)
 	if (skb_headroom(skb) < max_headroom || skb_cloned(skb) || skb_shared(skb)) {
 #else
-	if (skb_headroom(skb) < max_headroom || skb_cloned(skb) || skb_shared(skb) ||
+	if (skb_headroom(skb) < max_headroom || skb_shared(skb) ||
 		  (skb_cloned(skb) && !skb_clone_writable(skb,0))) {
 #endif
  		struct sk_buff *new_skb = skb_realloc_headroom(skb, max_headroom);
@@ -1139,8 +1139,14 @@ static int __init pptp_init_module(void)
 	int err=0;
 	printk(KERN_INFO "PPTP driver version " PPTP_DRIVER_VERSION "\n");
 
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 	callid_sock = __vmalloc((MAX_CALLID + 1) * sizeof(void *),
 	                        GFP_KERNEL | __GFP_ZERO, PAGE_KERNEL);
+#else
+	callid_sock = __vmalloc((MAX_CALLID + 1) * sizeof(void *),
+	                        GFP_KERNEL, PAGE_KERNEL);
+	memset(callid_sock, 0, (MAX_CALLID + 1) * sizeof(void *));
+#endif
 	if (!callid_sock) {
 		printk(KERN_ERR "PPTP: cann't allocate memory\n");
 		return -ENOMEM;
