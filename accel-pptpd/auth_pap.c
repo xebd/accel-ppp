@@ -6,6 +6,8 @@
 #include "log.h"
 #include "ppp.h"
 #include "ppp_auth.h"
+#include "ppp_lcp.h"
+#include "pwdb.h"
 
 #define MSG_FAILED "Authentication failed"
 #define MSG_SUCCESSED "Authentication successed"
@@ -104,7 +106,7 @@ static int lcp_send_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *
 
 static int lcp_recv_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *ptr)
 {
-	return 0;
+	return LCP_OPT_ACK;
 }
 
 static void pap_send_ack(struct pap_auth_data_t *p, int id)
@@ -168,7 +170,7 @@ static int pap_recv_req(struct pap_auth_data_t *p,struct pap_hdr_t *hdr)
 	peer_id=strndup((const char*)peer_id,peer_id_len);
 	passwd=strndup((const char*)ptr,passwd_len);
 
-	if (pwdb_check(peer_id,passwd))
+	if (pwdb_check(p->ppp,peer_id,passwd))
 	{
 		log_warn("PAP: authentication error\n");
 		pap_send_nak(p,hdr->id);

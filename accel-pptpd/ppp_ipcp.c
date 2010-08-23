@@ -440,8 +440,10 @@ static int ipcp_recv_conf_ack(struct ppp_ipcp_t *ipcp,uint8_t *data,int size)
 			{
 				log_debug(" ");
 				lopt->h->print(log_debug,lopt,data);
-				if (lopt->h->recv_conf_ack)
-					lopt->h->recv_conf_ack(ipcp,lopt,data);
+				if (!lopt->h->recv_conf_ack)
+					break;
+				if (lopt->h->recv_conf_ack(ipcp,lopt,data))
+					res=-1;
 				break;
 			}
 		}
@@ -459,7 +461,13 @@ static void ipcp_recv(struct ppp_handler_t*h)
 	struct ppp_ipcp_t *ipcp=container_of(h,typeof(*ipcp),hnd);
 	int r;
 	char *term_msg;
-	
+
+	if (ipcp->fsm.fsm_state==FSM_Initial || ipcp->fsm.fsm_state==FSM_Closed)
+	{
+		log_error("IPCP: discaring packet\n");
+		return;
+	}
+
 	if (ipcp->ppp->unit_buf_size<PPP_HEADERLEN+2)
 	{
 		log_warn("IPCP: short packet received\n");
@@ -495,8 +503,10 @@ static void ipcp_recv(struct ppp_handler_t*h)
 				ppp_terminate(ipcp->ppp);
 			break;
 		case CONFACK:
-			ipcp_recv_conf_ack(ipcp,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN);
-			ppp_fsm_recv_conf_ack(&ipcp->fsm);
+			if (ipcp_recv_conf_ack(ipcp,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN))
+				ppp_terminate(ipcp->ppp);
+			else
+				ppp_fsm_recv_conf_ack(&ipcp->fsm);
 			break;
 		case CONFNAK:
 			ipcp_recv_conf_nak(ipcp,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN);
