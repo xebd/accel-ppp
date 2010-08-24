@@ -22,6 +22,7 @@ ADD_EXECUTABLE(pptpd
 	auth_pap.c
 	auth_chap_md5.c
 	auth_mschap_v1.c
+	auth_mschap_v2.c
 	
 	ppp_ipcp.c
 	ipcp_opt_ipaddr.c
