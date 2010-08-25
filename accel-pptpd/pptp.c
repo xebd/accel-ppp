@@ -38,6 +38,7 @@
 
 struct pptp_conn_t
 {
+	struct triton_ctx_t ctx;
 	struct triton_md_handler_t hnd;
 	int state;
 
@@ -397,3 +398,91 @@ static void ppp_finished(struct ppp_t *ppp)
 	conn->state=STATE_FIN;
 	conn->hnd.twait=1000;
 }
+
+//==================================
+
+static int pptp_connect(struct triton_md_handler_t *h)
+{
+  struct sockaddr_in addr;
+	socklen_t size=sizeof(addr);
+	int sock;
+	struct pptp_conn_t *conn;
+
+	while(1)
+	{
+		sock=accept(f->fd,(struct sockaddr *)&addr,&size);
+		if (sock<0)
+		{
+			if (errno==EAGAIN)
+				return 0;
+			log_error("pptp: accept failed\n");
+				continue;
+		}
+		conn=malloc(sizeof(*conn));
+		memset(conn,0,sizeof(*conn));
+		conn->hnd.fd=fd;
+		conn->hnd.read=pptp_read;
+		conn->hnd.write=pptp_write;
+		conn->hnd.close=pptp_close;
+		conn->hnd.ctx=&conn->ctx;
+		conn->in_buf=malloc(PPTP_CTRL_SIZE_MAX);
+		conn->out_buf=malloc(PPTP_CTRL_SIZE_MAX);
+
+		triton_register_ctx(&conn->ctx);
+		triton_md_register_handler(&conn->hnd);
+		triton_md_enable_handler(&conn->hnd,MD_MODE_READ);
+	}
+}
+static void pptp_serv_close(struct triton_md_handler_t *h)
+{
+	triton_md_unregister_handler(h);
+	close(h->fd);
+}
+
+struct pptp_serv_t
+{
+	struct triton_context_t ctx;
+	struct triton_md_handler_t hnd;
+};
+
+static struct pptp_serv_t serv=
+{
+	.hnd.read=pptp_connect,
+	.hnd.close=pptp_serv_close,
+	.hnd.ctx=&serv.ctx,
+};
+
+void __constructor pptp_init()
+{
+  struct sockaddr_in addr;
+	socklen_t size;
+	
+	serv.hnd.fd=socket (PF_INET, SOCK_STREAM, 0);
+  if (serv.hnd.fd<0)
+  {
+    log_error("pptp: failed to create server socket\n");
+    return;
+  }
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons (PPTP_PORT);
+  addr.sin_addr.s_addr = htonl (INADDR_ANY);
+  if (bind (serv.hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0)
+  {
+  	perror("pptp: bind");
+    log_error("pptp: failed to bind socket\n");
+		close(serv.hnd.fd);
+    return;
+  }
+
+  if (listen (serv.hnd.fd, 100)<0)
+  {
+    log_error("pptp: failed to listen socket\n");
+		close(serv.hnd.fd);
+    return -1;
+  }
+	
+	triton_register_ctx(&serv.ctx);
+	triton_md_register_handler(&serv.hnd);
+	triton_md_enable_handler(&serv.hnd,MD_MODE_READ);
+}
+
