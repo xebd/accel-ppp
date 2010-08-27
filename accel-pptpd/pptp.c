@@ -40,11 +40,13 @@ struct pptp_conn_t
 {
 	struct triton_ctx_t ctx;
 	struct triton_md_handler_t hnd;
+	struct triton_timer_t timeout_timer;
+	struct triton_timer_t echo_timer;
 	int state;
 
-	u_int8_t *in_buf;
+	uint8_t *in_buf;
 	int in_size;
-	u_int8_t *out_buf;
+	uint8_t *out_buf;
 	int out_size;
 	int out_pos;
 
@@ -56,45 +58,6 @@ static void pptp_write(struct triton_md_handler_t *h);
 static void pptp_timeout(struct triton_md_handler_t *h);
 static void ppp_started(struct ppp_t *);
 static void ppp_finished(struct ppp_t *);
-
-static void ctrl_read(struct triton_md_handler_t *h)
-{
-	struct pptp_conn_t *conn;
-
-	int fd;
-	int n=read(h->fd,&fd,sizeof(fd));
-	if (n!=4)
-	{
-		log_error("too short message from controlling thread\n");
-		return;
-	}
-
-	conn=malloc(sizeof(*conn));
-	memset(conn,0,sizeof(*conn));
-	conn->in_buf=malloc(PPTP_CTRL_SIZE_MAX);
-	conn->out_buf=malloc(PPTP_CTRL_SIZE_MAX);
-	conn->hnd.fd=fd;
-	conn->hnd.twait=TIMEOUT;
-	conn->hnd.read=pptp_read;
-	conn->hnd.write=pptp_write;
-	conn->hnd.timeout=pptp_timeout;
-
-	triton_md_register_handler(&conn->hnd);
-	triton_md_enable_handler(&conn->hnd,MD_MODE_READ);
-}
-
-int ctrl_init(struct ctrl_thread_t*ctrl)
-{
-	struct triton_md_handler_t *h=malloc(sizeof(*h));
-	memset(h,0,sizeof(*h));
-	h->fd=ctrl->pipe_fd[0];
-	h->twait=-1;
-	h->read=ctrl_read;
-	triton_md_register_handler(h);
-	triton_md_enable_handler(h,MD_MODE_READ);
-
-	return 0;
-}
 
 static void disconnect(struct pptp_conn_t *conn)
 {
@@ -432,6 +395,7 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		triton_md_register_handler(&conn->hnd);
 		triton_md_enable_handler(&conn->hnd,MD_MODE_READ);
 	}
+	return 0;
 }
 static void pptp_serv_close(struct triton_md_handler_t *h)
 {
@@ -452,7 +416,7 @@ static struct pptp_serv_t serv=
 	.hnd.ctx=&serv.ctx,
 };
 
-void __constructor pptp_init()
+void __init pptp_init()
 {
   struct sockaddr_in addr;
 	socklen_t size;

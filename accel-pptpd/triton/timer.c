@@ -5,245 +5,94 @@
 
 #include "triton_p.h"
 
-static __thread struct list_head timers;
-static __thread struct list_head timers_ss;
-static __thread int in_timer;
+static pthread_thread_t timer_thr;
 
-asm(".hidden timer_prepare");
-asm(".hidden timer_check");
-asm(".hidden timer_init");
+static pthread_mutex_t timers_lock=PTHREAD_MUTEX_INITIALIZER;
+static LIST_HEAD(timers);
+
+static timespec expire_ts;
+static pthread_cond_t cond=PTHREAD_COND_INITIALIZER;
 
 static void tv_add(struct timeval *tv,int msec);
 
 
 void timer_init(void)
 {
-	INIT_LIST_HEAD(&timers);
-	INIT_LIST_HEAD(&timers_ss);
-	in_timer=0;
 }
 
-void triton_timer_add(struct triton_timer_t*tt)
+void timer_run(void)
 {
-	struct timer_t *t=(struct timer_t *)malloc(sizeof(struct timer_t));
-
-	if (!tt->expire_tv.tv_sec)
-	{
-		gettimeofday(&tt->expire_tv,NULL);
-		tv_add(&tt->expire_tv,tt->period);
-	}
-	t->del=0;
-	t->timer=tt;
-	tt->active=1;
-
-	list_add_tail(&t->entry,&timers);
+	pthread_create(&timer_thr,NULL,timer_thread,NULL);
 }
-void triton_timer_del(struct triton_timer_t*tt)
-{
-	struct timer_t *t;
 
-	list_for_each_entry(t,&timers,entry)
-	{
-		if (t->timer==tt)
-		{
-			tt->active=0;
-			if (in_timer)
-			{
-				t->del=1;
-			}else
-			{
-				list_del(&t->entry);
-				free(t);
-			}
-			return;
-		}
-	}
-}
-void triton_timer_single_shot1(int twait,triton_ss_func func,int arg_cnt,...)
+void timer_terminate(void)
 {
+	pthread_cancel(&timer_thr);
+	pthread_join(&timer_thr);
+}
+
+void *timer_thread(void *arg)
+{
+	struct triton_timer_t *t;
 	struct timeval tv;
-	struct timer_single_shot_t *t=(struct timer_single_shot_t *)malloc(sizeof(struct timer_single_shot_t));
 
-	memset(t,0,sizeof(*t));
-
-	gettimeofday(&tv,NULL);
-
-	tv_add(&tv,twait);
-
-	t->ss_func=func;
-	t->expire_tv=tv;//(struct timeval){tv.tv_sec+twait/1000,tv.tv_usec+(twait%1000)*1000000};
-	if (arg_cnt)
+	pthread_mutex_lock(&timers_lock);
+	while(1)
 	{
-		va_list p;
-		va_start(p,arg_cnt);
-		t->arg_cnt=arg_cnt;
-		t->args=malloc(arg_cnt*sizeof(long));
-		#ifdef BROKEN_GCC
-		for(i=0; i<arg_cnt; i++)
-			*((long*)t->args+i)=va_arg(p,long);
-		#else
-		memcpy(t->args,p,arg_cnt*sizeof(long));
-		#endif
-		va_end(p);
-	}
+		if (expire_ts.tv_sec)
+			pthread_cond_timedwait(&cond,&timers_lock,&expire_ts);
+		else
+			pthread_cond_wait(&cond,&timers_lock);
 
-	list_add_tail(&t->entry,&timers_ss);
-}
-void triton_timer_single_shot2(struct timeval *tv,triton_ss_func func,int arg_cnt,...)
-{
-	struct timer_single_shot_t *t=(struct timer_single_shot_t *)malloc(sizeof(struct timer_single_shot_t));
-
-	memset(t,0,sizeof(*t));
-
-	t->ss_func=func;
-	t->expire_tv=*tv;//(struct timeval){tv.tv_sec+twait/1000,tv.tv_usec+(twait%1000)*1000000};
-	if (arg_cnt)
-	{
-		va_list p;
-		va_start(p,arg_cnt);
-		t->arg_cnt=arg_cnt;
-		t->args=malloc(arg_cnt*sizeof(long));
-		#ifdef BROKEN_GCC
-		for(i=0; i<arg_cnt; i++)
-			*((long*)t->args+i)=va_arg(p,long);
-		#else
-		memcpy(t->args,p,arg_cnt*sizeof(long));
-		#endif
-		va_end(p);
-	}
-
-	list_add_tail(&t->entry,&timers_ss);
-}
-void triton_timer_single_shot3(int tv_sec,int tv_usec,triton_ss_func func,int arg_cnt,...)
-{
-	struct timer_single_shot_t *t=(struct timer_single_shot_t *)malloc(sizeof(struct timer_single_shot_t));
-
-	memset(t,0,sizeof(*t));
-
-	t->ss_func=func;
-	t->expire_tv.tv_sec=tv_sec;
-	t->expire_tv.tv_usec=tv_usec;
-	if (arg_cnt)
-	{
-		va_list p;
-		va_start(p,arg_cnt);
-		t->arg_cnt=arg_cnt;
-		t->args=malloc(arg_cnt*sizeof(long));
-		#ifdef BROKEN_GCC
-		for(i=0; i<arg_cnt; i++)
-			*((int*)t->args+i)=va_arg(p,long);
-		#else
-		memcpy(t->args,p,arg_cnt*sizeof(long));
-		#endif
-		va_end(p);
-	}
-
-	list_add_tail(&t->entry,&timers_ss);
-}
-
-int timer_prepare(struct timeval *tv)
-{
-	struct timer_t *t;
-	struct timer_single_shot_t *ss_t;
-
-	int twait=-1,twait0;
-
-	list_for_each_entry(t,&timers,entry)
-	{
-		twait0=(t->timer->expire_tv.tv_sec-tv->tv_sec)*1000+
-					 (t->timer->expire_tv.tv_usec-tv->tv_usec)/1000;
-		if (twait0<0) twait0=0;
-		if (twait0>=0 && (twait==-1 || twait0<twait))
-			twait=twait0;
-	}
-
-	if (twait)
-	{
-		list_for_each_entry(ss_t,&timers_ss,entry)
+		gettimeofday(&tv,NULL);
+		while(1)
 		{
-			twait0=(ss_t->expire_tv.tv_sec-tv->tv_sec)*1000+
-						(ss_t->expire_tv.tv_usec-tv->tv_usec)/1000;
-			if (twait0<0) twait0=0;
-			if (twait0>=0 && (twait==-1 || twait0<twait))
-				twait=twait0;
-		}
-	}
-
-	return twait;
-}
-
-
-void timer_check(struct timeval *tv)
-{
-	struct timer_t *t;
-	struct timer_single_shot_t *ss_t;
-	struct list_head *p1,*p2;
-	int twait0;
-
-	in_timer=1;
-
-	list_for_each_safe(p1,p2,&timers)
-	{
-		t=list_entry(p1,struct timer_t,entry);
-		if (t->del) continue;
-		twait0=(t->timer->expire_tv.tv_sec-tv->tv_sec)*1000+
-					 (t->timer->expire_tv.tv_usec-tv->tv_usec)/1000;
-		if (twait0<=0)
-		{
-			if (!t->timer->expire(t->timer))
+			if (list_empty(&timers))
 			{
-				t->timer->active=0;
-				list_del(&t->entry);
-				free(t);
-				continue;
+				expire_ts.tv_sec=0;
+				break;
 			}
-			if (t->timer->period)
+			t=list_entry(timers.next,typeof(*t),entry);
+			if (t->expire_tv.tv_sec>tv.tv_sec || (t->expire_tv.tv_sec==tv.tv_sec && t->expire_tv.tv_usec>=tv.tv_usec))
 			{
-				tv_add(&t->timer->expire_tv,t->timer->period);
+				expire_ts.tv_sec=t->expire_tv.tv_sec;
+				expire_ts.tv_nsec=t->expire_tv.tv_usec*1000;
+				break;
 			}
+			list_del(&t->entry3);
+			pthread_mutex_lock(&t->ctx->lock);
+			t->pending=1;
+			list_add_tail(&t->entry2,&t->ctx->pending_timers);
+			triton_queue_ctx(&t->ctx);
+			pthread_mutex_unlock(&t->ctx->lock);
 		}
 	}
-
-	list_for_each_safe(p1,p2,&timers_ss)
-	{
-		ss_t=list_entry(p1,struct timer_single_shot_t,entry);
-		twait0=(ss_t->expire_tv.tv_sec-tv->tv_sec)*1000+
-					 (ss_t->expire_tv.tv_usec-tv->tv_usec)/1000;
-		if (twait0<=0)
-		{
-			list_del(&ss_t->entry);
-			if (ss_t->arg_cnt)
-			{
-				//args_p=&ss_t->args;
-				//memcpy(pp+ARG_OFFSET,ss_t->args,ss_t->arg_cnt*sizeof(int));
-				//__builtin_apply(ss_t->ss_func,pp,ARG_OFFSET+ss_t->arg_cnt*sizeof(int));
-				dyn_call(ss_t->ss_func,ss_t->arg_cnt,ss_t->args);
-				free(ss_t->args);
-			}else ss_t->ss_func();
-			free(ss_t);
-		}
-	}
-
-	list_for_each_safe(p1,p2,&timers)
-	{
-		t=list_entry(p1,struct timer_t,entry);
-		if (t->del)
-		{
-			list_del(&t->entry);
-			t->timer->active=0;
-			free(t);
-		}
-	}
-	in_timer=0;
 }
 
-static void tv_add(struct timeval *tv,int msec)
+void triton_timer_add(struct triton_timer_t *t)
 {
-	tv->tv_sec+=msec/1000;
-	tv->tv_usec+=(msec%1000)*1000;
-	if (tv->tv_usec>=1000000)
+	struct triton_timer_t *t1;
+	pthread_mutex_lock(&timers_lock);
+	list_for_each_entry(t1,&timers,entry3)
 	{
-		tv->tv_sec++;
-		tv->tv_usec-=1000000;
+		if (t->expire_tv.tv_sec<t1.expire_tv.tv_sec || (t->expire_tv.tv_sec==t1->expire_tv.tv_sec && t->expire_tv.tv_usec<t1->expire_tv.tv_usec))
+			break;
 	}
+	list_add_tail(&t->entry3,&t1->entry3);
+	pthread_mutex_unlock(&timers_lock);
+}
+void triton_timer_del(struct triton_timer_t *t)
+{
+	pthread_mutex_lock(&timers_lock);
+	pthread_mutex_lock(&t->ctx->lock);
+	if (t->pending)
+		list_del(&t->entry2);
+	else
+	{
+		list_del(&t->entry3);
+		if (t->expire_tv.tv_sec<expire_ts.tv_sec || (t->expire_tv.tv_sec==expire_ts.tv_sec && t->expire_tv.tv_usec<expire_ts.tv_nsec/1000))
+			pthread_cond_signal(&cond);
+	}
+	pthread_mutex_unlock(&t->ctx->lock);
+	pthread_mutex_unlock(&timers_lock);
 }

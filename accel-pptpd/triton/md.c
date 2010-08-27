@@ -48,6 +48,11 @@ void md_run()
 	pthread_create(&md_thr,md_thread,NULL);
 }
 
+void md_terminate()
+{
+	pthread_join(&md_thr);	
+}
+
 static void* md_thread(void *arg)
 {
 	int max_fd=0,t;
@@ -76,11 +81,6 @@ static void* md_thread(void *arg)
 		triton_queue_ctx(h->ctx);
 		pthread_mutex_unlock(&h->ctx->lock);
 	}
-}
-
-void md_terminate()
-{
-	
 }
 
 void triton_md_register_handler(struct triton_md_handler_t *h)
