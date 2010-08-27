@@ -16,8 +16,6 @@ static void* md_thread(void *arg)
 
 int md_init()
 {
-	signal(SIGPIPE,SIG_IGN);
-
 	epoll_fd=epoll_create(0);
 	if (epoll_fd<0)
 	{
@@ -55,7 +53,7 @@ void md_terminate()
 
 static void* md_thread(void *arg)
 {
-	int max_fd=0,t;
+	int max_fd=0,t,r;
 	struct triton_md_handler_t *h;
 	struct timeval tv1,tv2,twait0;
 	struct list_head *p1,*p2;
@@ -74,12 +72,14 @@ static void* md_thread(void *arg)
 	for(i=0; i<n; i++)
 	{
 		h=(struct triton_md_handler_t*)epoll_events[i].data.ptr;
-		pthread_mutex_lock(&h->ctx->lock);
+		spin_lock(&h->ctx->lock);
 		h->trig_epoll_events=epoll_events[i].events;
 		list_add_tail(&h->entry2,&h->ctx->pending_handlers);
 		h->pending=1;
-		triton_queue_ctx(h->ctx);
-		pthread_mutex_unlock(&h->ctx->lock);
+		r=triton_queue_ctx(h->ctx);
+		spin_unlock(&h->ctx->lock);
+		if (r)
+			triton_thread_wakeup(ctx->thread);
 	}
 }
 

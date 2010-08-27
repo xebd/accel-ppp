@@ -5,15 +5,13 @@
 #include <pthread.h>
 #include <sys/epoll.h>
 
+#include <triton.h>
+
 struct triton_thread_t
 {
 	struct list_head entry;
-	pthread_mutex_t lock;
-	pthread_cond_t cond;
 	pthread_t thread;
 	int terminate:1;
-	int destroing:1;
-	struct timeval tv;
 	struct triton_ctx_t *ctx;
 };
 
@@ -21,7 +19,7 @@ struct triton_ctx_t
 {
 	struct list_head entry;
 	struct list_head entry2;
-	pthread_mutex_t lock;
+	spinlock_t lock;
 	struct list_head handlers;
 	struct list_head timers;
 
