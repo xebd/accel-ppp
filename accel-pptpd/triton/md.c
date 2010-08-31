@@ -6,7 +6,7 @@
 
 #include "triton_p.h"
 
-int max_events=128;
+extern int max_events;
 
 static int epoll_fd;
 static struct epoll_event *epoll_events;
@@ -16,28 +16,19 @@ static void* md_thread(void *arg)
 
 int md_init()
 {
-	epoll_fd=epoll_create(0);
+	epoll_fd=epoll_create(1);
 	if (epoll_fd<0)
 	{
 		perror("epoll_create");
 		return -1;
 	}
 
-	epoll_events=malloc(MAX_EVENTS * sizeof(struct epoll_event));
+	epoll_events=malloc(max_events * sizeof(struct epoll_event));
 	if (!epoll_events)
 	{
 		fprintf(stderr,"cann't allocate memory\n");
 		return -1;
 	}
-
-	default_ctx=malloc(sizeof(*default_ctx));
-	if (!default_ctx)
-	{
-		fprintf(stderr,"cann't allocate memory\n");
-		return -1;
-	}
-
-	triton_register_ctx(default_ctx);	
 
 	return 0;
 }
@@ -53,11 +44,8 @@ void md_terminate()
 
 static void* md_thread(void *arg)
 {
-	int max_fd=0,t,r;
+	int i,n,r;
 	struct triton_md_handler_t *h;
-	struct timeval tv1,tv2,twait0;
-	struct list_head *p1,*p2;
-	int timeout,i,n;
 	
 	n=epoll_wait(epoll_fd,epoll_events,MAX_EVENTS,-1);
 	if (n<0)

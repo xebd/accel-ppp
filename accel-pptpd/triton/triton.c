@@ -45,6 +45,9 @@ cont:
 			list_for_each_entry(h,&thread->ctx->handlers,entry)
 				if (h->close)
 					h->close(h);
+			list_for_each_entry(t,&thread->ctx->timers,entry)
+				if (t->close)
+					t->close(t);
 			thread->ctx->close=0;
 		}
 
@@ -156,10 +159,20 @@ void triton_unregister_ctx(struct triton_ctx_t *ctx)
 	spin_unlock(&ctx_list_lock);
 }
 
-void triton_init()
+int triton_init()
 {
-	md_init();
-	timer_init();
+	default_ctx=malloc(sizeof(*default_ctx));
+	if (!default_ctx)
+	{
+		fprintf(stderr,"cann't allocate memory\n");
+		return -1;
+	}
+	triton_register_ctx(default_ctx);	
+
+	if (md_init())
+		return -1;
+	if (timer_init())
+		return -1;
 }
 
 void triton_run()
