@@ -19,101 +19,88 @@ static char* skip_word(char *str);
 
 static struct conf_sect_t *find_sect(const char *name);
 static struct conf_sect_t *create_sect(const char *name);
-static void sect_add_item(struct conf_sect_t *sect,const char *name,const char *val);
-static struct conf_option_t *find_item(struct conf_sect_t *,const char *name);
+static void sect_add_item(struct conf_sect_t *sect, const char *name, const char *val);
+static struct conf_option_t *find_item(struct conf_sect_t *, const char *name);
 
 int conf_load(const char *fname)
 {
 	char *buf,*str,*str2;
 	char *path0,*path;
-	int cur_line=0;
-	static struct conf_sect_t *cur_sect=NULL;
-	FILE *f=fopen(fname,"r");
-	if (!f)
-	{
-		perror("conf_file: open");
+	int cur_line = 0;
+	static struct conf_sect_t *cur_sect = NULL;
+
+	FILE *f = fopen(fname, "r");
+	if (!f) {
+		perror("conf_file:open");
 		return -1;
 	}
 	
-	buf=(char*)malloc(1024);
-	path0=(char*)malloc(4096);
-	path=(char*)malloc(4096);
+	buf = malloc(1024);
+	path0 = malloc(4096);
+	path = malloc(4096);
 	
-	getcwd(path0,1024);
+	getcwd(path0, 1024);
 	
-	while(!feof(f))
-	{
-		buf=fgets(buf,1024,f);
-		if (!buf) break;
+	while(!feof(f)) {
+		buf = fgets(buf, 1024, f);
+		if (!buf)
+			break;
 		++cur_line;
-		if (buf[strlen(buf)-1]=='\n')
-			buf[strlen(buf)-1]=0;
+		if (buf[strlen(buf) - 1] == '\n')
+			buf[strlen(buf) - 1] = 0;
 		
-		str=skip_space(buf);
-		if (*str=='#' || *str==0) continue;
-		if (strncmp(str,"$include",8)==0)
-		{
-			str=skip_word(str);
-			str=skip_space(str);
-			/*if (*str=='.')
-			{
-				strcpy(path,path0);
-				strcat(path,str+1);
-				str=path;
-			}*/
+		str = skip_space(buf);
+		if (*str == '#' || *str == 0)
+			continue;
+		if (strncmp(str, "$include", 8) == 0)	{
+			str = skip_word(str);
+			str = skip_space(str);
 			conf_load(str);
 			continue;
 		}
-		if (*str=='[')
-		{
-			for (str2=++str; *str2 && *str2!=']'; str2++);
-			if (*str2!=']')
-			{
-//L1:
-				fprintf(stderr,"conf_file:%s:%i: sintax error\n",fname,cur_line);
+		if (*str == '[') {
+			for (str2 = ++str; *str2 && *str2 != ']'; str2++);
+			if (*str2 != ']') {
+				fprintf(stderr, "conf_file:%s:%i: sintax error\n", fname, cur_line);
 				return -1;
 			}
-			*str2=0;
-			cur_sect=find_sect(str);
-			if (!cur_sect) cur_sect=create_sect(str);	
+			*str2 = 0;
+			cur_sect = find_sect(str);
+			if (!cur_sect)
+				cur_sect = create_sect(str);	
 			continue;
 		}
-		if (!cur_sect)
-		{
-			fprintf(stderr,"conf_file:%s:%i: no section opened\n",fname,cur_line);
+		if (!cur_sect) {
+			fprintf(stderr, "conf_file:%s:%i: no section opened\n", fname, cur_line);
 			return -1;
 		}
-		str2=skip_word(str);
-		if (*str2==' ')
-		{
-			*str2=0;
+		str2 = skip_word(str);
+		if (*str2 == ' ') {
+			*str2 = 0;
 			++str2;
 		}
-		str2=skip_space(str2);
-		if (*str2=='=' || *str2==',')
-		{
-			*str2=0;
-			str2=skip_space(str2+1);
-			if (*str2 && *(str2+1) && *str2=='$' && *(str2+1)=='{')
-			{
+		str2 = skip_space(str2);
+		if (*str2 == '=' || *str2 == ',') {
+			*str2 = 0;
+			str2 = skip_space(str2 + 1);
+			if (*str2 && *(str2 + 1) && *str2 == '$' && *(str2 + 1) == '{') {
 				char *s;
 				struct conf_option_t *opt;
-				for (s=str2+2; *s && *s!='}'; s++);
-				if (*s=='}')
-				{
-					*s=0;
-					str2+=2;
+				for (s = str2+2; *s && *s != '}'; s++);
+				if (*s == '}') {
+					*s = 0;
+					str2 += 2;
 				}
-				opt=find_item(cur_sect,str2);
-				if (!opt)
-				{
-					fprintf(stderr,"conf_file:%s:%i: parent option not found\n",fname,cur_line);
+				opt = find_item(cur_sect, str2);
+				if (!opt) {
+					fprintf(stderr, "conf_file:%s:%i: parent option not found\n", fname, cur_line);
 					return -1;
 				}
-				str2=opt->val;
+				str2 = opt->val;
 			}
-		}else str2=NULL;
-		sect_add_item(cur_sect,str,str2);
+		} else
+			str2 = NULL;
+		sect_add_item(cur_sect, str, str2);
 	}
 	
 	free(buf);
@@ -126,54 +113,51 @@ int conf_load(const char *fname)
 
 static char* skip_space(char *str)
 {
-	for (; *str && *str==' '; str++);
+	for (; *str && *str == ' '; str++);
 	return str;
 }
 static char* skip_word(char *str)
 {
-	for (; *str && (*str!=' ' && *str!='='); str++);
+	for (; *str && (*str != ' ' && *str != '='); str++);
 	return str;
 }
 
 static struct conf_sect_t *find_sect(const char *name)
 {
 	struct sect_t *s;
-	list_for_each_entry(s,&sections,entry)
-	{
-		if (strcmp(s->sect->name,name)==0) return s->sect;
-	}
+	list_for_each_entry(s, &sections, entry)
+		if (strcmp(s->sect->name, name) == 0) return s->sect;
 	return NULL;
 }
 
 static struct conf_sect_t *create_sect(const char *name)
 {
-	struct sect_t *s=(struct sect_t *)malloc(sizeof(struct sect_t));
+	struct sect_t *s = malloc(sizeof(struct sect_t));
 	
-	s->sect=(struct conf_sect_t*)malloc(sizeof(struct conf_sect_t));
-	s->sect->name=(char*)strdup(name);
+	s->sect = malloc(sizeof(struct conf_sect_t));
+	s->sect->name = (char*)strdup(name);
 	INIT_LIST_HEAD(&s->sect->items);
 	
-	list_add_tail(&s->entry,&sections);
+	list_add_tail(&s->entry, &sections);
 	
 	return s->sect;
 }
 
-static void sect_add_item(struct conf_sect_t *sect,const char *name,const char *val)
+static void sect_add_item(struct conf_sect_t *sect, const char *name, const char *val)
 {
-	struct conf_option_t *opt=(struct conf_option_t *)malloc(sizeof(struct conf_option_t));
+	struct conf_option_t *opt = malloc(sizeof(struct conf_option_t));
 	
-	opt->name=(char*)strdup(name);
-	opt->val=val?(char*)strdup(val):NULL;
+	opt->name = strdup(name);
+	opt->val = val ? strdup(val) : NULL;
 	
-	list_add_tail(&opt->entry,&sect->items);
+	list_add_tail(&opt->entry, &sect->items);
 }
 
-static struct conf_option_t *find_item(struct conf_sect_t *sect,const char *name)
+static struct conf_option_t *find_item(struct conf_sect_t *sect, const char *name)
 {
 	struct conf_option_t *opt;
-	list_for_each_entry(opt,&sect->items,entry)
-	{
-		if (strcmp(opt->name,name)==0)
+	list_for_each_entry(opt, &sect->items, entry) {
+		if (strcmp(opt->name, name) == 0)
 			return opt;
 	}
 	

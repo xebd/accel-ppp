@@ -9,7 +9,7 @@
 
 #include "triton_p.h"
 
-int max_events=128;
+extern int max_events;
 static int epoll_fd;
 static struct epoll_event *epoll_events;
 
@@ -18,17 +18,15 @@ static void *timer_thread(void *arg);
 
 int timer_init(void)
 {
-	epoll_fd=epoll_create(1);
-	if (epoll_fd<0)
-	{
-		perror("epoll_create");
+	epoll_fd = epoll_create(1);
+	if (epoll_fd < 0) {
+		perror("timer:epoll_create");
 		return -1;
 	}
 
-	epoll_events=malloc(max_events * sizeof(struct epoll_event));
-	if (!epoll_events)
-	{
-		fprintf(stderr,"cann't allocate memory\n");
+	epoll_events = malloc(max_events * sizeof(struct epoll_event));
+	if (!epoll_events) {
+		fprintf(stderr,"timer:cann't allocate memory\n");
 		return -1;
 	}
 
@@ -37,13 +35,16 @@ int timer_init(void)
 
 void timer_run(void)
 {
-	pthread_create(&timer_thr,NULL,timer_thread,NULL);
+	if (pthread_create(&timer_thr, NULL, timer_thread, NULL)) {
+		triton_log_error("timer:pthread_create: %s",strerror(errno));
+		_exit(-1);
+	}
 }
 
 void timer_terminate(void)
 {
 	pthread_cancel(timer_thr);
-	pthread_join(timer_thr,NULL);
+	pthread_join(timer_thr, NULL);
 }
 
 void *timer_thread(void *arg)
@@ -51,56 +52,53 @@ void *timer_thread(void *arg)
 	int i,n,r;
 	struct triton_timer_t *t;
 	
-	while(1)
-	{
-		n=epoll_wait(epoll_fd,epoll_events,max_events,-1);
-		if (n<0)
-		{
-			if (errno!=EINTR)
-			perror("epoll_wait");
-			continue;
+	while(1) {
+		n = epoll_wait(epoll_fd, epoll_events, max_events, -1);
+		if (n < 0) {
+			if (errno == EINTR)
+				continue;
+			triton_log_error("timer:epoll_wait: %s", strerror(errno));
+			_exit(-1);
 		}
 		
-		for(i=0; i<n; i++)
-		{
-			t=(struct triton_timer_t*)epoll_events[i].data.ptr;
+		for(i = 0; i < n; i++) {
+			t = (struct triton_timer_t *)epoll_events[i].data.ptr;
 			spin_lock(&t->ctx->lock);
-			list_add_tail(&t->entry2,&t->ctx->pending_timers);
-			t->pending=1;
+			list_add_tail(&t->entry2, &t->ctx->pending_timers);
+			t->pending = 1;
 			r=triton_queue_ctx(t->ctx);
 			spin_unlock(&t->ctx->lock);
 			if (r)
 				triton_thread_wakeup(t->ctx->thread);
 		}
 	}
+
+	return NULL;
 }
 
 int triton_timer_add(struct triton_timer_t *t, int abs_time)
 {
-	t->epoll_event.data.ptr=t;
-	t->epoll_event.events=EPOLLIN|EPOLLET;
+	t->epoll_event.data.ptr = t;
+	t->epoll_event.events = EPOLLIN | EPOLLET;
 	if (!t->ctx)
-		t->ctx=default_ctx;
-	t->fd=timerfd_create(CLOCK_MONOTONIC,TFD_NONBLOCK);
-	if (t->fd<0)
-	{
-		fprintf(stderr,"timer: timerfd_create failed: %s\n",strerror(errno));
+		t->ctx = default_ctx;
+	t->fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+	if (t->fd < 0) {
+		triton_log_error("timer:timerfd_create: %s" ,strerror(errno));
 		return -1;
 	}
 	
-	if (triton_timer_mod(t,abs_time))
-	{
+	if (triton_timer_mod(t, abs_time)) {
 		close(t->fd);
 		return -1;
 	}
 	
 	spin_lock(&t->ctx->lock);
-	list_add_tail(&t->entry,&t->ctx->timers);
+	list_add_tail(&t->entry, &t->ctx->timers);
 	spin_unlock(&t->ctx->lock);
 	
-	if (epoll_ctl(epoll_fd,EPOLL_CTL_ADD,t->fd,&t->epoll_event))
-	{
-		fprintf(stderr,"timer: epoll_ctl failed: %s\n",strerror(errno));
+	if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, t->fd, &t->epoll_event)) {
+		triton_log_error("timer:epoll_ctl: %s", strerror(errno));
 		spin_lock(&t->ctx->lock);
 		list_del(&t->entry);
 		spin_unlock(&t->ctx->lock);
@@ -112,20 +110,18 @@ int triton_timer_add(struct triton_timer_t *t, int abs_time)
 }
 int triton_timer_mod(struct triton_timer_t *t,int abs_time)
 {
-	struct itimerspec ts=
-	{
-		.it_value.tv_sec=t->expire_tv.tv_sec,
-		.it_value.tv_nsec=t->expire_tv.tv_usec*1000,
-		.it_interval.tv_sec=t->period/1000,
-		.it_interval.tv_nsec=t->period%1000*1000,
+	struct itimerspec ts =	{
+		.it_value.tv_sec = t->expire_tv.tv_sec,
+		.it_value.tv_nsec = t->expire_tv.tv_usec * 1000,
+		.it_interval.tv_sec = t->period / 1000,
+		.it_interval.tv_nsec = t->period % 1000 * 1000,
 	};
 
-	if (t->expire_tv.tv_sec==0 && t->expire_tv.tv_usec==0)
-		ts.it_value=ts.it_interval;
+	if (t->expire_tv.tv_sec == 0 && t->expire_tv.tv_usec == 0)
+		ts.it_value = ts.it_interval;
 
-	if (timerfd_settime(t->fd,abs_time?TFD_TIMER_ABSTIME:0,&ts,NULL))
-	{
-		fprintf(stderr,"timer: timerfd_settime failed: %s\n",strerror(errno));
+	if (timerfd_settime(t->fd, abs_time ? TFD_TIMER_ABSTIME : 0, &ts, NULL)) {
+		triton_log_error("timer:timerfd_settime: %s", strerror(errno));
 		return -1;
 	}
 
@@ -133,7 +129,7 @@ int triton_timer_mod(struct triton_timer_t *t,int abs_time)
 }
 void triton_timer_del(struct triton_timer_t *t)
 {
-	epoll_ctl(epoll_fd,EPOLL_CTL_DEL,t->fd,&t->epoll_event);
+	epoll_ctl(epoll_fd, EPOLL_CTL_DEL, t->fd, &t->epoll_event);
 	close(t->fd);
 	spin_lock(&t->ctx->lock);
 	list_del(&t->entry);

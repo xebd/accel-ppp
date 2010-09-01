@@ -15,5 +15,7 @@ struct triton_ctx_t *default_ctx;
 int triton_queue_ctx(struct triton_ctx_t*);
 void triton_thread_wakeup(struct triton_thread_t*);
 int conf_load(const char *fname);
+void triton_log_error(const char *fmt,...);
+void triton_log_debug(const char *fmt,...);
 
 #endif
