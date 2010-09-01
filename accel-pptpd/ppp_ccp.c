@@ -528,14 +528,14 @@ static void ccp_recv(struct ppp_handler_t*h)
 				ppp_fsm_recv_conf_rej(&ccp->fsm);
 			break;
 		case TERMREQ:
-			term_msg=strndup((uint8_t*)(hdr+1),ntohs(hdr->len));
+			term_msg=strndup((char*)(hdr+1),ntohs(hdr->len));
 			log_debug("recv [CCP TermReq id=%x \"%s\"]\n",hdr->id,term_msg);
 			free(term_msg);
 			ppp_fsm_recv_term_req(&ccp->fsm);
 			ppp_terminate(ccp->ppp);
 			break;
 		case TERMACK:
-			term_msg=strndup((uint8_t*)(hdr+1),ntohs(hdr->len));
+			term_msg=strndup((char*)(hdr+1),ntohs(hdr->len));
 			log_debug("recv [CCP TermAck id=%x \"%s\"]\n",hdr->id,term_msg);
 			free(term_msg);
 			ppp_fsm_recv_term_ack(&ccp->fsm);

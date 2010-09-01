@@ -25,8 +25,8 @@ struct layer_node_t
 	struct list_head items;
 };
 
-static void ppp_chan_read(struct triton_md_handler_t*);
-static void ppp_unit_read(struct triton_md_handler_t*);
+static int ppp_chan_read(struct triton_md_handler_t*);
+static int ppp_unit_read(struct triton_md_handler_t*);
 static void init_layers(struct ppp_t *);
 static void start_first_layer(struct ppp_t *);
 
@@ -103,10 +103,10 @@ int establish_ppp(struct ppp_t *ppp)
 
 	ppp->chan_hnd.fd=ppp->chan_fd;
 	ppp->chan_hnd.read=ppp_chan_read;
-	ppp->chan_hnd.twait=-1;
+	//ppp->chan_hnd.twait=-1;
 	ppp->unit_hnd.fd=ppp->unit_fd;
 	ppp->unit_hnd.read=ppp_unit_read;
-	ppp->unit_hnd.twait=-1;
+	//ppp->unit_hnd.twait=-1;
 	triton_md_register_handler(&ppp->chan_hnd);
 	triton_md_register_handler(&ppp->unit_hnd);
 	
@@ -142,7 +142,7 @@ void destablish_ppp(struct ppp_t *ppp)
 	
 	log_debug("ppp destablished\n");
 
-	if (ppp->events.finished) ppp->events.finished(ppp);
+	ppp->ctrl->finished(ppp);
 }
 
 void print_buf(uint8_t *buf,int size)
@@ -179,7 +179,7 @@ int ppp_unit_send(struct ppp_t *ppp, void *data, int size)
 	return n;
 }
 
-static void ppp_chan_read(struct triton_md_handler_t*h)
+static int ppp_chan_read(struct triton_md_handler_t*h)
 {
 	struct ppp_t *ppp=container_of(h,typeof(*ppp),chan_hnd);
 	struct ppp_handler_t *ppp_h;
@@ -193,7 +193,7 @@ static void ppp_chan_read(struct triton_md_handler_t*h)
 	if (ppp->chan_buf_size<2)
 	{
 		log_error("ppp_chan_read: short read %i\n",ppp->chan_buf_size);
-		return;
+		return 0;
 	}
 
 	proto=ntohs(*(uint16_t*)ppp->chan_buf);
@@ -202,14 +202,15 @@ static void ppp_chan_read(struct triton_md_handler_t*h)
 		if (ppp_h->proto==proto)
 		{
 			ppp_h->recv(ppp_h);
-			return;
+			return 0;
 		}
 	}
 
 	log_warn("ppp_chan_read: discarding unknown packet %x\n",proto);
+	return 0;
 }
 
-static void ppp_unit_read(struct triton_md_handler_t*h)
+static int ppp_unit_read(struct triton_md_handler_t*h)
 {
 	struct ppp_t *ppp=container_of(h,typeof(*ppp),unit_hnd);
 	struct ppp_handler_t *ppp_h;
@@ -223,7 +224,7 @@ static void ppp_unit_read(struct triton_md_handler_t*h)
 	if (ppp->unit_buf_size<2)
 	{
 		log_error("ppp_chan_read: short read %i\n",ppp->unit_buf_size);
-		return;
+		return 0;
 	}
 
 	proto=ntohs(*(uint16_t*)ppp->unit_buf);
@@ -232,11 +233,12 @@ static void ppp_unit_read(struct triton_md_handler_t*h)
 		if (ppp_h->proto==proto)
 		{
 			ppp_h->recv(ppp_h);
-			return;
+			return 0;
 		}
 	}
 
 	log_warn("ppp_chan_read: discarding unknown packet %x\n",proto);
+	return 0;
 }
 
 void ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
@@ -250,7 +252,7 @@ void ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 
 	if (n->entry.next==&ppp->layers)
 	{
-		if (ppp->events.started) ppp->events.started(ppp);
+		ppp->ctrl->started(ppp);
 	}else
 	{
 		n=list_entry(n->entry.next,typeof(*n),entry);

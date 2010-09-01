@@ -50,20 +50,22 @@ struct pptp_conn_t
 	int out_size;
 	int out_pos;
 
+	struct ppp_ctrl_t ctrl;
 	struct ppp_t ppp;
 };
 
-static void pptp_read(struct triton_md_handler_t *h);
-static void pptp_write(struct triton_md_handler_t *h);
+static int pptp_read(struct triton_md_handler_t *h);
+static int pptp_write(struct triton_md_handler_t *h);
 static void pptp_timeout(struct triton_md_handler_t *h);
 static void ppp_started(struct ppp_t *);
 static void ppp_finished(struct ppp_t *);
 
 static void disconnect(struct pptp_conn_t *conn)
 {
-	close(conn->hnd.fd);
 	triton_md_unregister_handler(&conn->hnd);
-	free(conn);
+	close(conn->hnd.fd);
+	conn->hnd.fd=-1;
+	triton_unregister_ctx(&conn->ctx);
 }
 
 static int post_msg(struct pptp_conn_t *conn,void *buf,int size)
@@ -125,7 +127,7 @@ static int pptp_stop_ctrl_conn_rqst(struct pptp_conn_t *conn)
 		ppp_terminate(&conn->ppp);
 
 	conn->state=STATE_FIN;
-	conn->hnd.twait=1000;
+	//conn->hnd.twait=1000;
 
 	return send_pptp_stop_ctrl_conn_rply(conn,PPTP_CONN_STOP_OK,0);
 }
@@ -258,14 +260,16 @@ static int pptp_out_call_rqst(struct pptp_conn_t *conn)
 
 	conn->ppp.fd=pptp_sock;
 	conn->ppp.chan_name=strdup(inet_ntoa(dst_addr.sa_addr.pptp.sin_addr));
-	conn->ppp.events.started=ppp_started;
-	conn->ppp.events.finished=ppp_finished;
+	conn->ppp.ctrl=&conn->ctrl;
+	conn->ctrl.ctx=&conn->ctx;
+	conn->ctrl.started=ppp_started;
+	conn->ctrl.finished=ppp_finished;
 	if (establish_ppp(&conn->ppp))
 	{
 		close(pptp_sock);
 		send_pptp_stop_ctrl_conn_rqst(conn,0,0);
 		conn->state=STATE_FIN;
-		conn->hnd.twait=1000;
+		//conn->hnd.twait=1000;
 	}else conn->state=STATE_PPP;
 
 	return 0;
@@ -286,7 +290,7 @@ static int process_packet(struct pptp_conn_t *conn)
 	return 0;
 }
 
-static void pptp_read(struct triton_md_handler_t *h)
+static int pptp_read(struct triton_md_handler_t *h)
 {
 	struct pptp_conn_t *conn=container_of(h,typeof(*conn),hnd);
 	struct pptp_header *hdr=(struct pptp_header *)conn->in_buf;
@@ -295,9 +299,8 @@ static void pptp_read(struct triton_md_handler_t *h)
 	n=read(h->fd,conn->in_buf,PPTP_CTRL_SIZE_MAX-conn->in_size);
 	if (n<=0)
 	{
-		if (errno==EAGAIN) return;
-		disconnect(conn);
-		return;
+		if (errno==EAGAIN) return 0;
+		goto drop;
 	}
 	conn->in_size+=n;
 	if (conn->in_size>=sizeof(*hdr))
@@ -312,25 +315,25 @@ static void pptp_read(struct triton_md_handler_t *h)
 			conn->in_size=0;
 		}
 	}
-	h->twait=TIMEOUT;
-	return;
+	//h->twait=TIMEOUT;
+	return 0;
 drop:
 	disconnect(conn);
-	return;
+	return 1;
 }
-static void pptp_write(struct triton_md_handler_t *h)
+static int pptp_write(struct triton_md_handler_t *h)
 {
 	struct pptp_conn_t *conn=container_of(h,typeof(*conn),hnd);
 	int n=write(h->fd,conn->out_buf+conn->out_pos,conn->out_size-conn->out_pos);
 
 	if (n<0)
 	{
-		if (errno==EINTR) n=0;
+		if (errno==EAGAIN) n=0;
 		else
 		{
 			log_debug("post_msg: failed to write socket %i\n",errno);
 			disconnect(conn);
-			return;
+			return 1;
 		}
 	}
 
@@ -341,12 +344,27 @@ static void pptp_write(struct triton_md_handler_t *h)
 		conn->out_size=0;
 		triton_md_disable_handler(h,MD_MODE_WRITE);
 	}
-	h->twait=TIMEOUT;
+	return 0;
+	//h->twait=TIMEOUT;
 }
 static void pptp_timeout(struct triton_md_handler_t *h)
 {
 }
-
+static void pptp_close(struct triton_ctx_t *ctx)
+{
+	struct pptp_conn_t *conn=container_of(ctx,typeof(*conn),ctx);
+	if (conn->state==STATE_PPP)
+		ppp_terminate(&conn->ppp);
+	else
+		disconnect(conn);
+}
+static void pptp_free(struct triton_ctx_t *ctx)
+{
+	struct pptp_conn_t *conn=container_of(ctx,typeof(*conn),ctx);
+	free(conn->in_buf);
+	free(conn->out_buf);
+	free(conn);
+}
 static void ppp_started(struct ppp_t *ppp)
 {
 	log_msg("ppp_started\n");
@@ -359,10 +377,16 @@ static void ppp_finished(struct ppp_t *ppp)
 	close(conn->ppp.fd);
 	send_pptp_stop_ctrl_conn_rqst(conn,0,0);
 	conn->state=STATE_FIN;
-	conn->hnd.twait=1000;
+	//conn->hnd.twait=1000;
 }
 
 //==================================
+
+struct pptp_serv_t
+{
+	struct triton_ctx_t ctx;
+	struct triton_md_handler_t hnd;
+};
 
 static int pptp_connect(struct triton_md_handler_t *h)
 {
@@ -373,7 +397,7 @@ static int pptp_connect(struct triton_md_handler_t *h)
 
 	while(1)
 	{
-		sock=accept(f->fd,(struct sockaddr *)&addr,&size);
+		sock=accept(h->fd,(struct sockaddr *)&addr,&size);
 		if (sock<0)
 		{
 			if (errno==EAGAIN)
@@ -383,10 +407,11 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		}
 		conn=malloc(sizeof(*conn));
 		memset(conn,0,sizeof(*conn));
-		conn->hnd.fd=fd;
+		conn->hnd.fd=sock;
 		conn->hnd.read=pptp_read;
 		conn->hnd.write=pptp_write;
-		conn->hnd.close=pptp_close;
+		conn->ctx.close=pptp_close;
+		conn->ctx.free=pptp_free;
 		conn->hnd.ctx=&conn->ctx;
 		conn->in_buf=malloc(PPTP_CTRL_SIZE_MAX);
 		conn->out_buf=malloc(PPTP_CTRL_SIZE_MAX);
@@ -397,29 +422,23 @@ static int pptp_connect(struct triton_md_handler_t *h)
 	}
 	return 0;
 }
-static void pptp_serv_close(struct triton_md_handler_t *h)
+static void pptp_serv_close(struct triton_ctx_t *ctx)
 {
-	triton_md_unregister_handler(h);
-	close(h->fd);
+	struct pptp_serv_t *s=container_of(ctx,typeof(*s),ctx);
+	triton_md_unregister_handler(&s->hnd);
+	close(s->hnd.fd);
 }
-
-struct pptp_serv_t
-{
-	struct triton_context_t ctx;
-	struct triton_md_handler_t hnd;
-};
 
 static struct pptp_serv_t serv=
 {
 	.hnd.read=pptp_connect,
-	.hnd.close=pptp_serv_close,
+	.ctx.close=pptp_serv_close,
 	.hnd.ctx=&serv.ctx,
 };
 
 void __init pptp_init()
 {
   struct sockaddr_in addr;
-	socklen_t size;
 	
 	serv.hnd.fd=socket (PF_INET, SOCK_STREAM, 0);
   if (serv.hnd.fd<0)
@@ -442,7 +461,7 @@ void __init pptp_init()
   {
     log_error("pptp: failed to listen socket\n");
 		close(serv.hnd.fd);
-    return -1;
+    return;
   }
 	
 	triton_register_ctx(&serv.ctx);

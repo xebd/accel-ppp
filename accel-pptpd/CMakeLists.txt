@@ -1,12 +1,12 @@
 PROJECT (pptpd)
 cmake_minimum_required(VERSION 2.6)
 
-SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
+SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fvisibility=hidden -D_GNU_SOURCE")
 
 ADD_SUBDIRECTORY(triton)
 
 ADD_EXECUTABLE(pptpd
-	pptpd.c
+	main.c
 	pptp.c
 	log.c
 	ppp.c

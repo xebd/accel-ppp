@@ -3,14 +3,13 @@
 #include <unistd.h>
 #include <stdlib.h>
 
-#include "conf_file.h"
 #include "triton_p.h"
 
 struct sect_t
 {
 	struct list_head entry;
 	
-	struct conf_file_sect_t *sect;
+	struct conf_sect_t *sect;
 };
 
 static LIST_HEAD(sections);
@@ -18,22 +17,22 @@ static LIST_HEAD(sections);
 static char* skip_space(char *str);
 static char* skip_word(char *str);
 
-static struct conf_file_sect_t *find_sect(const char *name);
-static struct conf_file_sect_t *create_sect(const char *name);
-static void sect_add_item(struct conf_file_sect_t *sect,const char *name,const char *val);
-static struct option_t *find_item(struct conf_file_sect_t *,const char *name);
+static struct conf_sect_t *find_sect(const char *name);
+static struct conf_sect_t *create_sect(const char *name);
+static void sect_add_item(struct conf_sect_t *sect,const char *name,const char *val);
+static struct conf_option_t *find_item(struct conf_sect_t *,const char *name);
 
-void conf_file_load(const char *fname)
+int conf_load(const char *fname)
 {
 	char *buf,*str,*str2;
 	char *path0,*path;
 	int cur_line=0;
-	static struct conf_file_sect_t *cur_sect=NULL;
+	static struct conf_sect_t *cur_sect=NULL;
 	FILE *f=fopen(fname,"r");
 	if (!f)
 	{
-		perror("triton: open conf file");
-		return;
+		perror("conf_file: open");
+		return -1;
 	}
 	
 	buf=(char*)malloc(1024);
@@ -62,7 +61,7 @@ void conf_file_load(const char *fname)
 				strcat(path,str+1);
 				str=path;
 			}*/
-			conf_file_load(str);
+			conf_load(str);
 			continue;
 		}
 		if (*str=='[')
@@ -71,8 +70,8 @@ void conf_file_load(const char *fname)
 			if (*str2!=']')
 			{
 //L1:
-				printf("triton: sintax error in conf file %s line %i\n",fname,cur_line);
-				return;
+				fprintf(stderr,"conf_file:%s:%i: sintax error\n",fname,cur_line);
+				return -1;
 			}
 			*str2=0;
 			cur_sect=find_sect(str);
@@ -81,8 +80,8 @@ void conf_file_load(const char *fname)
 		}
 		if (!cur_sect)
 		{
-			printf("triton: no section opened in conf file %s line %i\n",fname,cur_line);
-			return;
+			fprintf(stderr,"conf_file:%s:%i: no section opened\n",fname,cur_line);
+			return -1;
 		}
 		str2=skip_word(str);
 		if (*str2==' ')
@@ -98,7 +97,7 @@ void conf_file_load(const char *fname)
 			if (*str2 && *(str2+1) && *str2=='$' && *(str2+1)=='{')
 			{
 				char *s;
-				struct option_t *opt;
+				struct conf_option_t *opt;
 				for (s=str2+2; *s && *s!='}'; s++);
 				if (*s=='}')
 				{
@@ -108,8 +107,8 @@ void conf_file_load(const char *fname)
 				opt=find_item(cur_sect,str2);
 				if (!opt)
 				{
-					printf("triton: parent option not found int conf file %s line %i\n",fname,cur_line);
-					return;
+					fprintf(stderr,"conf_file:%s:%i: parent option not found\n",fname,cur_line);
+					return -1;
 				}
 				str2=opt->val;
 			}
@@ -121,6 +120,8 @@ void conf_file_load(const char *fname)
 	free(path);
 	free(path0);
 	fclose(f);
+
+	return 0;
 }
 
 static char* skip_space(char *str)
@@ -134,7 +135,7 @@ static char* skip_word(char *str)
 	return str;
 }
 
-static struct conf_file_sect_t *find_sect(const char *name)
+static struct conf_sect_t *find_sect(const char *name)
 {
 	struct sect_t *s;
 	list_for_each_entry(s,&sections,entry)
@@ -144,11 +145,11 @@ static struct conf_file_sect_t *find_sect(const char *name)
 	return NULL;
 }
 
-static struct conf_file_sect_t *create_sect(const char *name)
+static struct conf_sect_t *create_sect(const char *name)
 {
 	struct sect_t *s=(struct sect_t *)malloc(sizeof(struct sect_t));
 	
-	s->sect=(struct conf_file_sect_t*)malloc(sizeof(struct conf_file_sect_t));
+	s->sect=(struct conf_sect_t*)malloc(sizeof(struct conf_sect_t));
 	s->sect->name=(char*)strdup(name);
 	INIT_LIST_HEAD(&s->sect->items);
 	
@@ -157,9 +158,9 @@ static struct conf_file_sect_t *create_sect(const char *name)
 	return s->sect;
 }
 
-static void sect_add_item(struct conf_file_sect_t *sect,const char *name,const char *val)
+static void sect_add_item(struct conf_sect_t *sect,const char *name,const char *val)
 {
-	struct option_t *opt=(struct option_t *)malloc(sizeof(struct option_t));
+	struct conf_option_t *opt=(struct conf_option_t *)malloc(sizeof(struct conf_option_t));
 	
 	opt->name=(char*)strdup(name);
 	opt->val=val?(char*)strdup(val):NULL;
@@ -167,9 +168,9 @@ static void sect_add_item(struct conf_file_sect_t *sect,const char *name,const c
 	list_add_tail(&opt->entry,&sect->items);
 }
 
-static struct option_t *find_item(struct conf_file_sect_t *sect,const char *name)
+static struct conf_option_t *find_item(struct conf_sect_t *sect,const char *name)
 {
-	struct option_t *opt;
+	struct conf_option_t *opt;
 	list_for_each_entry(opt,&sect->items,entry)
 	{
 		if (strcmp(opt->name,name)==0)
@@ -179,7 +180,8 @@ static struct option_t *find_item(struct conf_file_sect_t *sect,const char *name
 	return NULL;
 }
 
-struct conf_file_sect_t *conf_file_get_section(const char *name)
+struct conf_sect_t *conf_file_get_section(const char *name)
 {
 	return find_sect(name);
 }
+

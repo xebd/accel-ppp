@@ -4,22 +4,19 @@
 #include <sys/epoll.h>
 #include <sys/timerfd.h>
 #include <string.h>
+#include <errno.h>
+#include <unistd.h>
 
 #include "triton_p.h"
 
-static pthread_thread_t timer_thr;
-static void *timer_thread(void *arg);
-
-static spinlock_t timers_lock=SPINLOCK_INITIALIZER;
-static LIST_HEAD(timers);
-
-extern int max_events;
-static epoll_fd;
+int max_events=128;
+static int epoll_fd;
 static struct epoll_event *epoll_events;
 
-static void tv_add(struct timeval *tv,int msec);
+static pthread_t timer_thr;
+static void *timer_thread(void *arg);
 
-void timer_init(void)
+int timer_init(void)
 {
 	epoll_fd=epoll_create(1);
 	if (epoll_fd<0)
@@ -34,6 +31,8 @@ void timer_init(void)
 		fprintf(stderr,"cann't allocate memory\n");
 		return -1;
 	}
+
+	return 0;
 }
 
 void timer_run(void)
@@ -43,8 +42,8 @@ void timer_run(void)
 
 void timer_terminate(void)
 {
-	pthread_cancel(&timer_thr);
-	pthread_join(&timer_thr);
+	pthread_cancel(timer_thr);
+	pthread_join(timer_thr,NULL);
 }
 
 void *timer_thread(void *arg)
@@ -52,43 +51,44 @@ void *timer_thread(void *arg)
 	int i,n,r;
 	struct triton_timer_t *t;
 	
-	n=epoll_wait(epoll_fd,epoll_events,MAX_EVENTS,-1);
-	if (n<0)
+	while(1)
 	{
-		if (errno!=EINTR)
-		perror("epoll_wait");
-		continue;
-	}
-	if (n==0)
-		return;
-	
-	for(i=0; i<n; i++)
-	{
-		t=(struct triton_md_handler_t*)epoll_events[i].data.ptr;
-		spin_lock(&t->ctx->lock);
-		list_add_tail(&t->entry2,&t->ctx->pending_timers);
-		t->pending=1;
-		r=triton_queue_ctx(t->ctx);
-		spin_unlock(&t->ctx->lock);
-		if (r)
-			triton_thread_wakeup(ctx->thread);
+		n=epoll_wait(epoll_fd,epoll_events,max_events,-1);
+		if (n<0)
+		{
+			if (errno!=EINTR)
+			perror("epoll_wait");
+			continue;
+		}
+		
+		for(i=0; i<n; i++)
+		{
+			t=(struct triton_timer_t*)epoll_events[i].data.ptr;
+			spin_lock(&t->ctx->lock);
+			list_add_tail(&t->entry2,&t->ctx->pending_timers);
+			t->pending=1;
+			r=triton_queue_ctx(t->ctx);
+			spin_unlock(&t->ctx->lock);
+			if (r)
+				triton_thread_wakeup(t->ctx->thread);
+		}
 	}
 }
 
-int triton_timer_add(struct triton_timer_t *t)
+int triton_timer_add(struct triton_timer_t *t, int abs_time)
 {
 	t->epoll_event.data.ptr=t;
 	t->epoll_event.events=EPOLLIN|EPOLLET;
 	if (!t->ctx)
 		t->ctx=default_ctx;
-	t->fd=timerfd_create(CLOCK_MONOTONIC,0);
+	t->fd=timerfd_create(CLOCK_MONOTONIC,TFD_NONBLOCK);
 	if (t->fd<0)
 	{
 		fprintf(stderr,"timer: timerfd_create failed: %s\n",strerror(errno));
 		return -1;
 	}
 	
-	if (triton_timer_mod(t))
+	if (triton_timer_mod(t,abs_time))
 	{
 		close(t->fd);
 		return -1;
@@ -110,10 +110,8 @@ int triton_timer_add(struct triton_timer_t *t)
 
 	return 0;
 }
-int triton_timer_mod(struct triton_timer_t *t)
+int triton_timer_mod(struct triton_timer_t *t,int abs_time)
 {
-	int flags;
-
 	struct itimerspec ts=
 	{
 		.it_value.tv_sec=t->expire_tv.tv_sec,
@@ -123,13 +121,9 @@ int triton_timer_mod(struct triton_timer_t *t)
 	};
 
 	if (t->expire_tv.tv_sec==0 && t->expire_tv.tv_usec==0)
-	{
-		ts.it_value=ts.interval;
-		flags=0;
-	}else 
-		flags=TFD_TIMER_ABSTIME;
+		ts.it_value=ts.it_interval;
 
-	if (timerfd_settime(t->fd,flags,&ts,NULL))
+	if (timerfd_settime(t->fd,abs_time?TFD_TIMER_ABSTIME:0,&ts,NULL))
 	{
 		fprintf(stderr,"timer: timerfd_settime failed: %s\n",strerror(errno));
 		return -1;

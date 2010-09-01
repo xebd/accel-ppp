@@ -52,8 +52,9 @@
 
 struct ppp_t;
 
-struct ppp_events_t
+struct ppp_ctrl_t
 {
+	struct triton_ctx_t *ctx;
 	void (*started)(struct ppp_t*);
 	void (*finished)(struct ppp_t*);
 };
@@ -71,7 +72,7 @@ struct ppp_t
 
 	char *chan_name;
 
-	struct ppp_events_t events;
+	struct ppp_ctrl_t *ctrl;
 
 	int log:1;
 

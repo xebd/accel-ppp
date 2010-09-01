@@ -29,10 +29,7 @@ static int restart_timer_func(struct triton_timer_t*t);
 void ppp_fsm_init(struct ppp_fsm_t *layer)
 {
 	layer->fsm_state=FSM_Initial;
-	layer->restart_timer.active=0;
-	layer->restart_timer.pd=layer;
-	layer->restart_timer.expire=restart_timer_func;
-	layer->restart_timer.period=3000;
+	//layer->restart_timer.active=0;
 	layer->restart_counter=0;
 	layer->max_terminate=2;
 	layer->max_configure=10;
@@ -461,20 +458,20 @@ void send_term_ack(struct ppp_fsm_t *layer)
 
 static void init_req_counter(struct ppp_fsm_t *layer,int timeout)
 {
-	triton_timer_del(&layer->restart_timer);
+	//triton_timer_del(&layer->restart_timer);
 	layer->restart_timer.expire_tv.tv_sec=0;
-	triton_timer_add(&layer->restart_timer);
+	//triton_timer_add(&layer->restart_timer);
 	layer->restart_counter=timeout;
 }
 static void zero_req_counter(struct ppp_fsm_t *layer)
 {
-	triton_timer_del(&layer->restart_timer);
+	//triton_timer_del(&layer->restart_timer);
 	layer->restart_timer.expire_tv.tv_sec=0;
-	triton_timer_add(&layer->restart_timer);
+	//triton_timer_add(&layer->restart_timer);
 	layer->restart_counter=0;
 }
 
-static int restart_timer_func(struct triton_timer_t*t)
+/*static int restart_timer_func(struct triton_timer_t*t)
 {
 	struct ppp_fsm_t *layer=(struct ppp_fsm_t *)t->pd;
 
@@ -486,4 +483,5 @@ static int restart_timer_func(struct triton_timer_t*t)
 
 	ppp_fsm_timeout1(layer);
 	return 0;
-}
+}*/
+

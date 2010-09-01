@@ -1,10 +1,11 @@
 SET(target triton)
 SET(sources_c 
 	md.c
-	conf_file.c
 	timer.c
-	options.c
+	triton.c
+	conf_file.c
 	loader.c
+	log.c
 )
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
 
