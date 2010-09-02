@@ -9,8 +9,8 @@ static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
 int log_init(void)
 {
-	char *log_error = conf_get_opt("core","log_error");
-	char *log_debug = conf_get_opt("core","log_debug");
+	char *log_error = conf_get_opt("core","log-error");
+	char *log_debug = conf_get_opt("core","log-debug");
 
 	if (log_error) {
 		f_error = fopen(log_error, "a");
@@ -48,8 +48,10 @@ static void do_log(FILE *f, const char *fmt, va_list ap)
 void triton_log_error(const char *fmt,...)
 {
 	va_list ap;
+
 	if (!f_error)
 		return;
+
 	va_start(ap, fmt);
 	do_log(f_error, fmt, ap);
 }
@@ -57,8 +59,10 @@ void triton_log_error(const char *fmt,...)
 void triton_log_debug(const char *fmt,...)
 {
 	va_list ap;
+	
 	if (!f_debug)
 		return;
+	
 	va_start(ap, fmt);
 	do_log(f_debug, fmt, ap);
 }

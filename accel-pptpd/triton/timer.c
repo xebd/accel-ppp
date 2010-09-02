@@ -76,7 +76,7 @@ void *timer_thread(void *arg)
 	return NULL;
 }
 
-int triton_timer_add(struct triton_timer_t *t, int abs_time)
+int __export triton_timer_add(struct triton_timer_t *t, int abs_time)
 {
 	t->epoll_event.data.ptr = t;
 	t->epoll_event.events = EPOLLIN | EPOLLET;
@@ -108,7 +108,7 @@ int triton_timer_add(struct triton_timer_t *t, int abs_time)
 
 	return 0;
 }
-int triton_timer_mod(struct triton_timer_t *t,int abs_time)
+int __export triton_timer_mod(struct triton_timer_t *t,int abs_time)
 {
 	struct itimerspec ts =	{
 		.it_value.tv_sec = t->expire_tv.tv_sec,
@@ -127,7 +127,7 @@ int triton_timer_mod(struct triton_timer_t *t,int abs_time)
 
 	return 0;
 }
-void triton_timer_del(struct triton_timer_t *t)
+void __export triton_timer_del(struct triton_timer_t *t)
 {
 	epoll_ctl(epoll_fd, EPOLL_CTL_DEL, t->fd, &t->epoll_event);
 	close(t->fd);

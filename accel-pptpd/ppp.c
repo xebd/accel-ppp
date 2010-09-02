@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
+#include <errno.h>
 #include <sys/ioctl.h>
 #include <arpa/inet.h>
 #include <linux/ppp_defs.h>
@@ -101,9 +102,21 @@ int establish_ppp(struct ppp_t *ppp)
 		goto exit_close_unit;
 	}
 
+	if (fcntl(ppp->chan_fd, F_SETFL, O_NONBLOCK)) {
+		log_error("ppp: cann't to set nonblocking mode: %s\n", strerror(errno));
+		goto exit_close_unit;
+	}
+	
+	if (fcntl(ppp->unit_fd, F_SETFL, O_NONBLOCK)) {
+		log_error("ppp: cann't to set nonblocking mode: %s\n", strerror(errno));
+		goto exit_close_unit;
+	}
+
+	ppp->chan_hnd.ctx=ppp->ctrl->ctx;
 	ppp->chan_hnd.fd=ppp->chan_fd;
 	ppp->chan_hnd.read=ppp_chan_read;
 	//ppp->chan_hnd.twait=-1;
+	ppp->unit_hnd.ctx=ppp->ctrl->ctx;
 	ppp->unit_hnd.fd=ppp->unit_fd;
 	ppp->unit_hnd.read=ppp_unit_read;
 	//ppp->unit_hnd.twait=-1;
@@ -179,66 +192,80 @@ int ppp_unit_send(struct ppp_t *ppp, void *data, int size)
 	return n;
 }
 
-static int ppp_chan_read(struct triton_md_handler_t*h)
+static int ppp_chan_read(struct triton_md_handler_t *h)
 {
-	struct ppp_t *ppp=container_of(h,typeof(*ppp),chan_hnd);
+	struct ppp_t *ppp = container_of(h, typeof(*ppp), chan_hnd);
 	struct ppp_handler_t *ppp_h;
 	uint16_t proto;
 
-	ppp->chan_buf_size=read(h->fd,ppp->chan_buf,PPP_MRU);
-
-	//printf("ppp_chan_read: ");
-	//print_buf(ppp->chan_buf,ppp->chan_buf_size);
-
-	if (ppp->chan_buf_size<2)
-	{
-		log_error("ppp_chan_read: short read %i\n",ppp->chan_buf_size);
-		return 0;
-	}
-
-	proto=ntohs(*(uint16_t*)ppp->chan_buf);
-	list_for_each_entry(ppp_h,&ppp->chan_handlers,entry)
-	{
-		if (ppp_h->proto==proto)
-		{
-			ppp_h->recv(ppp_h);
+	while(1) {
+cont:
+		ppp->chan_buf_size = read(h->fd, ppp->chan_buf, PPP_MRU);
+		if (ppp->chan_buf_size < 0) {
+			if (errno == EINTR)
+				continue;
+			if (errno == EAGAIN)
+				return 0;
+			log_error("ppp_chan_read: %s\n",strerror(errno));
 			return 0;
 		}
-	}
 
-	log_warn("ppp_chan_read: discarding unknown packet %x\n",proto);
-	return 0;
+		//printf("ppp_chan_read: ");
+		//print_buf(ppp->chan_buf,ppp->chan_buf_size);
+
+		if (ppp->chan_buf_size < 2) {
+			log_error("ppp_chan_read: short read %i\n", ppp->chan_buf_size);
+			continue;
+		}
+
+		proto = ntohs(*(uint16_t*)ppp->chan_buf);
+		list_for_each_entry(ppp_h, &ppp->chan_handlers, entry) {
+			if (ppp_h->proto == proto) {
+				ppp_h->recv(ppp_h);
+				goto cont;
+			}
+		}
+
+		log_warn("ppp_chan_read: discarding unknown packet %x\n", proto);
+	}
 }
 
-static int ppp_unit_read(struct triton_md_handler_t*h)
+static int ppp_unit_read(struct triton_md_handler_t *h)
 {
-	struct ppp_t *ppp=container_of(h,typeof(*ppp),unit_hnd);
+	struct ppp_t *ppp = container_of(h, typeof(*ppp), unit_hnd);
 	struct ppp_handler_t *ppp_h;
 	uint16_t proto;
 
-	ppp->unit_buf_size=read(h->fd,ppp->unit_buf,PPP_MRU);
-
-	printf("ppp_unit_read: ");
-	print_buf(ppp->unit_buf,ppp->unit_buf_size);
-
-	if (ppp->unit_buf_size<2)
-	{
-		log_error("ppp_chan_read: short read %i\n",ppp->unit_buf_size);
-		return 0;
-	}
-
-	proto=ntohs(*(uint16_t*)ppp->unit_buf);
-	list_for_each_entry(ppp_h,&ppp->unit_handlers,entry)
-	{
-		if (ppp_h->proto==proto)
-		{
-			ppp_h->recv(ppp_h);
+	while (1) {
+cont:
+		ppp->unit_buf_size = read(h->fd, ppp->unit_buf, PPP_MRU);
+		if (ppp->unit_buf_size < 0) {
+			if (errno == EINTR)
+				continue;
+			if (errno == EAGAIN)
+				return 0;
+			log_error("ppp_chan_read: %s\n",strerror(errno));
 			return 0;
 		}
-	}
 
-	log_warn("ppp_chan_read: discarding unknown packet %x\n",proto);
-	return 0;
+		//printf("ppp_unit_read: ");
+		//print_buf(ppp->unit_buf,ppp->unit_buf_size);
+
+		if (ppp->unit_buf_size < 2) {
+			log_error("ppp_chan_read: short read %i\n", ppp->unit_buf_size);
+			continue;
+		}
+
+		proto=ntohs(*(uint16_t*)ppp->unit_buf);
+		list_for_each_entry(ppp_h, &ppp->unit_handlers, entry) {
+			if (ppp_h->proto == proto) {
+				ppp_h->recv(ppp_h);
+				goto cont;
+			}
+		}
+
+		log_warn("ppp_chan_read: discarding unknown packet %x\n",proto);
+	}
 }
 
 void ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)

@@ -63,10 +63,13 @@ static void *md_thread(void *arg)
 		for(i = 0; i < n; i++) {
 			h = (struct triton_md_handler_t *)epoll_events[i].data.ptr;
 			spin_lock(&h->ctx->lock);
-			h->trig_epoll_events = epoll_events[i].events;
-			list_add_tail(&h->entry2, &h->ctx->pending_handlers);
-			h->pending = 1;
-			r=triton_queue_ctx(h->ctx);
+			h->trig_epoll_events |= epoll_events[i].events;
+			if (!h->pending) {
+				list_add_tail(&h->entry2, &h->ctx->pending_handlers);
+				h->pending = 1;
+				r = triton_queue_ctx(h->ctx);
+			} else
+				r = 0;
 			spin_unlock(&h->ctx->lock);
 			if (r)
 				triton_thread_wakeup(h->ctx->thread);
@@ -76,7 +79,7 @@ static void *md_thread(void *arg)
 	return NULL;
 }
 
-void triton_md_register_handler(struct triton_md_handler_t *h)
+void __export triton_md_register_handler(struct triton_md_handler_t *h)
 {
 	h->epoll_event.data.ptr = h;
 	if (!h->ctx)
@@ -85,7 +88,7 @@ void triton_md_register_handler(struct triton_md_handler_t *h)
 	list_add_tail(&h->entry, &h->ctx->handlers);
 	spin_unlock(&h->ctx->lock);
 }
-void triton_md_unregister_handler(struct triton_md_handler_t *h)
+void __export triton_md_unregister_handler(struct triton_md_handler_t *h)
 {
 	spin_lock(&h->ctx->lock);
 	list_del(&h->entry);
@@ -93,7 +96,7 @@ void triton_md_unregister_handler(struct triton_md_handler_t *h)
 		list_del(&h->entry2);
 	spin_unlock(&h->ctx->lock);
 }
-int triton_md_enable_handler(struct triton_md_handler_t *h, int mode)
+int __export triton_md_enable_handler(struct triton_md_handler_t *h, int mode)
 {
 	int r;
 	int events = h->epoll_event.events;
@@ -115,7 +118,7 @@ int triton_md_enable_handler(struct triton_md_handler_t *h, int mode)
 
 	return r;
 }
-int triton_md_disable_handler(struct triton_md_handler_t *h,int mode)
+int __export triton_md_disable_handler(struct triton_md_handler_t *h,int mode)
 {
 	int r=0;
 

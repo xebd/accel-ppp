@@ -1,21 +1,10 @@
-/*
-*  C Implementation: ctrl
-*
-* Description:
-*
-*
-* Author:  <xeb@mail.ru>, (C) 2009
-*
-* Copyright: See COPYING file that comes with this distribution
-*
-*/
-
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <errno.h>
 #include <string.h>
+#include <fcntl.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 
@@ -296,27 +285,34 @@ static int pptp_read(struct triton_md_handler_t *h)
 	struct pptp_header *hdr=(struct pptp_header *)conn->in_buf;
 	int n;
 
-	n=read(h->fd,conn->in_buf,PPTP_CTRL_SIZE_MAX-conn->in_size);
-	if (n<=0)
-	{
-		if (errno==EAGAIN) return 0;
-		goto drop;
-	}
-	conn->in_size+=n;
-	if (conn->in_size>=sizeof(*hdr))
-	{
-		if (hdr->magic!=htonl(PPTP_MAGIC)) goto drop;
-		if (ntohs(hdr->length)>=PPTP_CTRL_SIZE_MAX) goto drop;
-		if (ntohs(hdr->length)>conn->in_size) goto drop;
-		if (ntohs(hdr->length)==conn->in_size)
+	while(1) {
+		n = read(h->fd,conn->in_buf,PPTP_CTRL_SIZE_MAX-conn->in_size);
+		if (n <= 0)
 		{
-			if (ntohs(hdr->length)!=PPTP_CTRL_SIZE(ntohs(hdr->ctrl_type))) goto drop;
-			if (process_packet(conn)) goto drop;
-			conn->in_size=0;
+			if (errno == EINTR)
+				continue;
+			if (errno == EAGAIN)
+				return 0;
+			log_error("pptp: read: %s\n",strerror(errno));
+			goto drop;
+		}
+		conn->in_size += n;
+		if (conn->in_size >= sizeof(*hdr)) {
+			if (hdr->magic != htonl(PPTP_MAGIC))
+				goto drop;
+			if (ntohs(hdr->length) >= PPTP_CTRL_SIZE_MAX)
+				goto drop;
+			if (ntohs(hdr->length) > conn->in_size)
+				goto drop;
+			if (ntohs(hdr->length) == conn->in_size) {
+				if (ntohs(hdr->length) != PPTP_CTRL_SIZE(ntohs(hdr->ctrl_type)))
+					goto drop;
+				if (process_packet(conn))
+					goto drop;
+				conn->in_size = 0;
+			}
 		}
 	}
-	//h->twait=TIMEOUT;
-	return 0;
 drop:
 	disconnect(conn);
 	return 1;
@@ -391,30 +387,37 @@ struct pptp_serv_t
 static int pptp_connect(struct triton_md_handler_t *h)
 {
   struct sockaddr_in addr;
-	socklen_t size=sizeof(addr);
+	socklen_t size = sizeof(addr);
 	int sock;
 	struct pptp_conn_t *conn;
 
-	while(1)
-	{
-		sock=accept(h->fd,(struct sockaddr *)&addr,&size);
-		if (sock<0)
-		{
-			if (errno==EAGAIN)
+	while(1) {
+		sock = accept(h->fd, (struct sockaddr *)&addr, &size);
+		if (sock < 0) {
+			if (errno == EAGAIN)
 				return 0;
-			log_error("pptp: accept failed\n");
-				continue;
+			log_error("pptp: accept failed: %s\n", strerror(errno));
+			continue;
 		}
-		conn=malloc(sizeof(*conn));
-		memset(conn,0,sizeof(*conn));
-		conn->hnd.fd=sock;
-		conn->hnd.read=pptp_read;
-		conn->hnd.write=pptp_write;
-		conn->ctx.close=pptp_close;
-		conn->ctx.free=pptp_free;
-		conn->hnd.ctx=&conn->ctx;
-		conn->in_buf=malloc(PPTP_CTRL_SIZE_MAX);
-		conn->out_buf=malloc(PPTP_CTRL_SIZE_MAX);
+
+		log_info("pptp: new connection from %s\n", inet_ntoa(addr.sin_addr));
+
+		if (fcntl(sock, F_SETFL, O_NONBLOCK)) {
+			log_error("pptp: failed to set nonblocking mode: %s, closing connection...\n", strerror(errno));
+			close(sock);
+			continue;
+		}
+
+		conn = malloc(sizeof(*conn));
+		memset(conn, 0, sizeof(*conn));
+		conn->hnd.fd = sock;
+		conn->hnd.read = pptp_read;
+		conn->hnd.write = pptp_write;
+		conn->ctx.close = pptp_close;
+		conn->ctx.free = pptp_free;
+		conn->hnd.ctx = &conn->ctx;
+		conn->in_buf = malloc(PPTP_CTRL_SIZE_MAX);
+		conn->out_buf = malloc(PPTP_CTRL_SIZE_MAX);
 
 		triton_register_ctx(&conn->ctx);
 		triton_md_register_handler(&conn->hnd);
@@ -436,36 +439,39 @@ static struct pptp_serv_t serv=
 	.hnd.ctx=&serv.ctx,
 };
 
-void __init pptp_init()
+void __init pptp_init(void)
 {
   struct sockaddr_in addr;
 	
-	serv.hnd.fd=socket (PF_INET, SOCK_STREAM, 0);
-  if (serv.hnd.fd<0)
-  {
-    log_error("pptp: failed to create server socket\n");
+	serv.hnd.fd = socket (PF_INET, SOCK_STREAM, 0);
+  if (serv.hnd.fd < 0) {
+    log_error("pptp: failed to create server socket: %s\n", strerror(errno));
     return;
   }
   addr.sin_family = AF_INET;
   addr.sin_port = htons (PPTP_PORT);
   addr.sin_addr.s_addr = htonl (INADDR_ANY);
-  if (bind (serv.hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0)
-  {
+  if (bind (serv.hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
   	perror("pptp: bind");
-    log_error("pptp: failed to bind socket\n");
+    log_error("pptp: failed to bind socket: %s\n", strerror(errno));
 		close(serv.hnd.fd);
     return;
   }
 
-  if (listen (serv.hnd.fd, 100)<0)
-  {
-    log_error("pptp: failed to listen socket\n");
+  if (listen (serv.hnd.fd, 100) < 0) {
+    log_error("pptp: failed to listen socket: %s\n", strerror(errno));
 		close(serv.hnd.fd);
     return;
   }
+
+	if (fcntl(serv.hnd.fd, F_SETFL, O_NONBLOCK)) {
+    log_error("pptp: failed to set nonblocking mode: %s\n", strerror(errno));
+		close(serv.hnd.fd);
+    return;
+	}
 	
 	triton_register_ctx(&serv.ctx);
 	triton_md_register_handler(&serv.hnd);
-	triton_md_enable_handler(&serv.hnd,MD_MODE_READ);
+	triton_md_enable_handler(&serv.hnd, MD_MODE_READ);
 }
 

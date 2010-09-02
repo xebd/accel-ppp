@@ -6,7 +6,6 @@ SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fvisibility=hidden -D_GNU_SOURCE")
 ADD_SUBDIRECTORY(triton)
 
 ADD_EXECUTABLE(pptpd
-	main.c
 	pptp.c
 	log.c
 	ppp.c
@@ -32,5 +31,7 @@ ADD_EXECUTABLE(pptpd
 	
 	pwdb.c
 	ipdb.c
+	
+	main.c
 )
 TARGET_LINK_LIBRARIES(pptpd pthread triton ssl)

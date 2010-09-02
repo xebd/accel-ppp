@@ -7,7 +7,7 @@
 
 #include "triton_p.h"
 
-int thread_count = 64;
+int thread_count = 4;
 int max_events = 64;
 
 static spinlock_t threads_lock = SPINLOCK_INITIALIZER;
@@ -66,7 +66,7 @@ cont:
 					if (h->read)
 						if (h->read(h))
 							continue;
-				if (h->trig_epoll_events & EPOLLOUT)
+				if (h->trig_epoll_events & (EPOLLOUT | EPOLLERR | EPOLLHUP))
 					if (h->write)
 						if (h->write(h))
 							continue;
@@ -130,13 +130,14 @@ int triton_queue_ctx(struct triton_ctx_t *ctx)
 	}
 
 	ctx->thread = list_entry(sleep_threads.next, typeof(*ctx->thread), entry2);
+	ctx->thread->ctx = ctx;
 	list_del(&ctx->thread->entry2);
 	spin_unlock(&threads_lock);
 
 	return 1;
 }
 
-void triton_register_ctx(struct triton_ctx_t *ctx)
+void __export triton_register_ctx(struct triton_ctx_t *ctx)
 {
 	spinlock_init(&ctx->lock);
 	INIT_LIST_HEAD(&ctx->handlers);
@@ -149,7 +150,7 @@ void triton_register_ctx(struct triton_ctx_t *ctx)
 	spin_unlock(&ctx_list_lock);
 }
 
-void triton_unregister_ctx(struct triton_ctx_t *ctx)
+void __export triton_unregister_ctx(struct triton_ctx_t *ctx)
 {
 	ctx->need_free = 1;
 	spin_lock(&ctx_list_lock);
@@ -157,7 +158,7 @@ void triton_unregister_ctx(struct triton_ctx_t *ctx)
 	spin_unlock(&ctx_list_lock);
 }
 
-int triton_init(const char *conf_file)
+int __export triton_init(const char *conf_file)
 {
 	default_ctx=malloc(sizeof(*default_ctx));
 	if (!default_ctx) {
@@ -181,7 +182,7 @@ int triton_init(const char *conf_file)
 	return 0;
 }
 
-void triton_run()
+void __export triton_run()
 {
 	struct triton_thread_t *t;
 	int i;
@@ -199,7 +200,7 @@ void triton_run()
 	timer_run();
 }
 
-void triton_terminate()
+void __export triton_terminate()
 {
 	struct triton_ctx_t *ctx;
 	struct triton_thread_t *t;
