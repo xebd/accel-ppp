@@ -20,8 +20,6 @@
 #include "ppp.h"
 
 
-#define TIMEOUT 10000
-
 #define STATE_IDLE 0
 #define STATE_ESTB 1
 #define STATE_PPP  2
@@ -35,6 +33,7 @@ struct pptp_conn_t
 	struct triton_timer_t timeout_timer;
 	struct triton_timer_t echo_timer;
 	int state;
+	int echo_sent;
 
 	uint8_t *in_buf;
 	int in_size;
@@ -46,9 +45,12 @@ struct pptp_conn_t
 	struct ppp_t ppp;
 };
 
+static int conf_timeout = 3;
+static int conf_echo_interval = 0;
+
 static int pptp_read(struct triton_md_handler_t *h);
 static int pptp_write(struct triton_md_handler_t *h);
-static void pptp_timeout(struct triton_md_handler_t *h);
+static void pptp_timeout(struct triton_timer_t *);
 static void ppp_started(struct ppp_t *);
 static void ppp_finished(struct ppp_t *);
 
@@ -57,6 +59,16 @@ static void disconnect(struct pptp_conn_t *conn)
 	triton_md_unregister_handler(&conn->hnd);
 	close(conn->hnd.fd);
 	
+	if (conn->timeout_timer.period) {
+		triton_timer_del(&conn->timeout_timer);
+		conn->timeout_timer.period = 0;
+	}
+
+	if (conn->echo_timer.period) {
+		triton_timer_del(&conn->echo_timer);
+		conn->echo_timer.period = 0;
+	}
+
 	if (conn->state == STATE_PPP) {
 		conn->state = STATE_CLOSE;
 		ppp_terminate(&conn->ppp, 1);
@@ -127,8 +139,6 @@ static int pptp_stop_ctrl_conn_rqst(struct pptp_conn_t *conn)
 		ppp_terminate(&conn->ppp, 0);
 	}
 
-	//conn->hnd.twait=1000;
-
 	send_pptp_stop_ctrl_conn_rply(conn, PPTP_CONN_STOP_OK, 0);
 	return -1;
 }
@@ -180,6 +190,8 @@ static int pptp_start_ctrl_conn_rqst(struct pptp_conn_t *conn)
 	if (send_pptp_start_ctrl_conn_rply(conn, PPTP_CONN_RES_SUCCESS, 0))
 		return -1;
 
+	triton_timer_mod(&conn->timeout_timer, 0);
+
 	conn->state = STATE_ESTB;
 
 	return 0;
@@ -212,7 +224,7 @@ static int pptp_out_call_rqst(struct pptp_conn_t *conn)
 	int pptp_sock;
 
 	if (conn->state != STATE_ESTB) {
-		log_info("unexpected PPTP_OUT_CALL_RQST\n");
+		log_error("unexpected PPTP_OUT_CALL_RQST\n");
 		if (send_pptp_out_call_rply(conn, msg, 0, PPTP_CALL_RES_GE, PPTP_GE_NOCONN))
 			return -1;
 		return 0;
@@ -263,14 +275,62 @@ static int pptp_out_call_rqst(struct pptp_conn_t *conn)
 	if (establish_ppp(&conn->ppp)) {
 		close(pptp_sock);
 		//if (send_pptp_stop_ctrl_conn_rqst(conn, 0, 0))
-		//	return -1;
 		conn->state = STATE_FIN;
-		//conn->hnd.twait=1000;
 		return -1;
-	} else
-		conn->state = STATE_PPP;
+	}
+	conn->state = STATE_PPP;
+	
+	triton_timer_del(&conn->timeout_timer);
+	conn->timeout_timer.period = 0;
+
+	if (conf_echo_interval) {
+		conn->echo_timer.period = conf_echo_interval * 1000;
+		triton_timer_add(&conn->ctx, &conn->echo_timer, 0);
+	}
 
 	return 0;
+}
+
+static int pptp_echo_rqst(struct pptp_conn_t *conn)
+{
+	struct pptp_echo_rqst *in_msg = (struct pptp_echo_rqst *)conn->in_buf;
+	struct pptp_echo_rply out_msg = {
+		.header = PPTP_HEADER_CTRL(PPTP_ECHO_RQST),
+		.identifier = in_msg->identifier,
+		.result_code = 1,
+	};
+
+	return post_msg(conn, &out_msg, sizeof(out_msg));
+}
+
+static int pptp_echo_rply(struct pptp_conn_t *conn)
+{
+	struct pptp_echo_rply *msg = (struct pptp_echo_rply *)conn->in_buf;
+	if (msg->identifier != conn->echo_sent) {
+		log_error("pptp:echo: identifier mismatch\n");
+		return -1;
+	}
+	conn->echo_sent = 0;
+	return 0;
+}
+static void pptp_send_echo(struct triton_timer_t *t)
+{
+	struct pptp_conn_t *conn = container_of(t, typeof(*conn), echo_timer);
+	struct pptp_echo_rqst msg = {
+		.header = PPTP_HEADER_CTRL(PPTP_ECHO_RQST),
+	};
+
+	if (conn->echo_sent) {
+		log_warn("pptp: no echo reply\n");
+		disconnect(conn);
+		return;
+	}
+
+	conn->echo_sent = random();
+	msg.identifier = conn->echo_sent;
+
+	if (post_msg(conn, &msg, sizeof(msg)))
+		disconnect(conn);
 }
 
 static int process_packet(struct pptp_conn_t *conn)
@@ -284,6 +344,10 @@ static int process_packet(struct pptp_conn_t *conn)
 			return pptp_stop_ctrl_conn_rqst(conn);
 		case PPTP_OUT_CALL_RQST:
 			return pptp_out_call_rqst(conn);
+		case PPTP_ECHO_RQST:
+			return pptp_echo_rqst(conn);
+		case PPTP_ECHO_RPLY:
+			return pptp_echo_rply(conn);
 	}
 	return 0;
 }
@@ -357,8 +421,10 @@ static int pptp_write(struct triton_md_handler_t *h)
 		}
 	}
 }
-static void pptp_timeout(struct triton_md_handler_t *h)
+static void pptp_timeout(struct triton_timer_t *t)
 {
+	struct pptp_conn_t *conn = container_of(t, typeof(*conn), timeout_timer);
+	disconnect(conn);
 }
 static void pptp_close(struct triton_ctx_t *ctx)
 {
@@ -426,10 +492,14 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		conn->ctx.close = pptp_close;
 		conn->in_buf = malloc(PPTP_CTRL_SIZE_MAX);
 		conn->out_buf = malloc(PPTP_CTRL_SIZE_MAX);
+		conn->timeout_timer.expire = pptp_timeout;
+		conn->timeout_timer.period = conf_timeout * 1000;
+		conn->echo_timer.expire = pptp_send_echo;
 
 		triton_register_ctx(&conn->ctx);
 		triton_md_register_handler(&conn->ctx, &conn->hnd);
 		triton_md_enable_handler(&conn->hnd,MD_MODE_READ);
+		triton_timer_add(&conn->ctx, &conn->timeout_timer, 0);
 	}
 	return 0;
 }
@@ -449,6 +519,7 @@ static struct pptp_serv_t serv=
 static void __init pptp_init(void)
 {
   struct sockaddr_in addr;
+	char *opt;
 	
 	serv.hnd.fd = socket (PF_INET, SOCK_STREAM, 0);
   if (serv.hnd.fd < 0) {
@@ -480,5 +551,13 @@ static void __init pptp_init(void)
 	triton_register_ctx(&serv.ctx);
 	triton_md_register_handler(&serv.ctx, &serv.hnd);
 	triton_md_enable_handler(&serv.hnd, MD_MODE_READ);
+
+	opt = conf_get_opt("pptp", "timeout");
+	if (opt && atoi(opt) > 0)
+		conf_timeout = atoi(opt);
+	
+	opt = conf_get_opt("pptp", "echo-interval");
+	if (opt && atoi(opt) > 0)
+		conf_echo_interval = atoi(opt);
 }
 
