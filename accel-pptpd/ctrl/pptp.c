@@ -14,8 +14,7 @@
 
 #include "list.h"
 #include "pptp_prot.h"
-#include "triton/triton.h"
-#include "pptpd.h"
+#include "triton.h"
 #include "log.h"
 #include "ppp.h"
 

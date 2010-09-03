@@ -294,19 +294,19 @@ static void auth_layer_free(struct ppp_layer_data_t *ld)
 	free(ad);
 }
 
-void auth_successed(struct ppp_t *ppp)
+void __export auth_successed(struct ppp_t *ppp)
 {
 	struct auth_layer_data_t *ad=container_of(ppp_find_layer_data(ppp,&auth_layer),typeof(*ad),ld);
 	log_debug("auth_layer_started\n");
 	ppp_layer_started(ppp,&ad->ld);
 }
 
-void auth_failed(struct ppp_t *ppp)
+void __export auth_failed(struct ppp_t *ppp)
 {
 	ppp_terminate(ppp, 0);
 }
 
-int ppp_auth_register_handler(struct ppp_auth_handler_t *h)
+int __export ppp_auth_register_handler(struct ppp_auth_handler_t *h)
 {
 	list_add_tail(&h->entry,&auth_handlers);
 	return 0;

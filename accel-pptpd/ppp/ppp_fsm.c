@@ -1,7 +1,7 @@
 #include <arpa/inet.h>
 #include <stdlib.h>
 
-#include "triton/triton.h"
+#include "triton.h"
 
 #include "ppp.h"
 #include "ppp_fsm.h"

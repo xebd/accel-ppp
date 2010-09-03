@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include "triton/triton.h"
+#include "triton.h"
 #include "ppp_fsm.h"
 /*
  * Options.

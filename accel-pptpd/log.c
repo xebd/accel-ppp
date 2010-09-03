@@ -20,6 +20,7 @@
 #include <pthread.h>
 #include <sys/time.h>
 
+#include "triton/triton.h"
 #include "log.h"
 
 #define RED_COLOR     "\033[1;31m"
@@ -61,7 +62,7 @@ static void do_log(int level,const char *fmt,va_list ap)
 	msg_completed=fmt[strlen(fmt)-1]=='\n';
 	//if (msg_completed) pthread_mutex_unlock(&lock);
 }
-void log_error(const char *fmt,...)
+void __export log_error(const char *fmt,...)
 {
 	if (log_level>=1)
 	{
@@ -70,7 +71,7 @@ void log_error(const char *fmt,...)
 		do_log(LOG_ERROR,fmt,ap);
 	}
 }
-void log_warn(const char *fmt,...)
+void __export log_warn(const char *fmt,...)
 {
 	if (log_level>=2)
 	{
@@ -79,7 +80,7 @@ void log_warn(const char *fmt,...)
 		do_log(LOG_WARN,fmt,ap);
 	}
 }
-void log_info(const char *fmt,...)
+void __export log_info(const char *fmt,...)
 {
 	if (log_level>=3)
 	{
@@ -88,7 +89,7 @@ void log_info(const char *fmt,...)
 		do_log(LOG_INFO,fmt,ap);
 	}
 }
-void log_debug(const char *fmt,...)
+void __export log_debug(const char *fmt,...)
 {
 	if (log_level>=4)
 	{
@@ -98,7 +99,7 @@ void log_debug(const char *fmt,...)
 	}
 }
 
-void log_msg(const char *fmt,...)
+void __export log_msg(const char *fmt,...)
 {
 	va_list ap;
 	if (msg_completed) return;
@@ -108,9 +109,10 @@ void log_msg(const char *fmt,...)
 	if (msg_completed) pthread_mutex_unlock(&lock);
 }
 
-void log_init(FILE *f,int level,int color)
+void __export log_init(FILE *f,int level,int color)
 {
 	log_file=f;
 	log_level=level;
 	log_color=color;
 }
+

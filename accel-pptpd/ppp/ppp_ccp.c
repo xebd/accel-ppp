@@ -4,7 +4,7 @@
 #include <linux/if_ppp.h>
 #include <arpa/inet.h>
 
-#include "triton/triton.h"
+#include "triton.h"
 
 #include "log.h"
 

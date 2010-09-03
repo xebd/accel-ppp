@@ -3,35 +3,31 @@ cmake_minimum_required(VERSION 2.6)
 
 SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fvisibility=hidden -D_GNU_SOURCE")
 
+INCLUDE_DIRECTORIES(include)
+
 ADD_SUBDIRECTORY(triton)
+ADD_SUBDIRECTORY(ctrl)
+ADD_SUBDIRECTORY(auth)
 
 ADD_EXECUTABLE(pptpd
-	pptp.c
+	ppp/ppp.c
+	ppp/ppp_fsm.c
+	ppp/ppp_lcp.c
+	ppp/lcp_opt_mru.c
+	ppp/lcp_opt_magic.c
+	ppp/lcp_opt_pcomp.c
+	ppp/lcp_opt_accomp.c
+	ppp/ppp_auth.c
+	ppp/ppp_ipcp.c
+	ppp/ipcp_opt_ipaddr.c
+	ppp/ipcp_opt_dns.c
+	ppp/ppp_ccp.c	
+
 	log.c
-	ppp.c
-	ppp_fsm.c
-	
-	ppp_lcp.c
-	lcp_opt_mru.c
-	lcp_opt_magic.c
-	lcp_opt_pcomp.c
-	lcp_opt_accomp.c
-	
-	ppp_auth.c
-	auth_pap.c
-	auth_chap_md5.c
-	auth_mschap_v1.c
-	auth_mschap_v2.c
-	
-	ppp_ipcp.c
-	ipcp_opt_ipaddr.c
-	ipcp_opt_dns.c
-	
-	ppp_ccp.c
-	
 	pwdb.c
 	ipdb.c
 	
 	main.c
 )
-TARGET_LINK_LIBRARIES(pptpd pthread triton ssl rt)
+TARGET_LINK_LIBRARIES(pptpd triton rt pthread ssl)
+

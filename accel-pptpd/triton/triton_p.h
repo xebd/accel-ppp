@@ -75,5 +75,6 @@ void triton_thread_wakeup(struct _triton_thread_t*);
 int conf_load(const char *fname);
 void triton_log_error(const char *fmt,...);
 void triton_log_debug(const char *fmt,...);
+int load_modules(const char *name);
 
 #endif

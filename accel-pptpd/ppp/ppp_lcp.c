@@ -4,7 +4,7 @@
 #include <linux/if_ppp.h>
 #include <arpa/inet.h>
 
-#include "triton/triton.h"
+#include "triton.h"
 
 #include "log.h"
 
@@ -524,7 +524,8 @@ static void start_echo(struct ppp_lcp_t *lcp)
 
 	lcp->echo_timer.period = lcp->echo_interval * 1000;
 	lcp->echo_timer.expire = send_echo_request;
-	triton_timer_add(lcp->ppp->ctrl->ctx, &lcp->echo_timer, 0);
+	if (lcp->echo_timer.period)
+		triton_timer_add(lcp->ppp->ctrl->ctx, &lcp->echo_timer, 0);
 }
 static void stop_echo(struct ppp_lcp_t *lcp)
 {

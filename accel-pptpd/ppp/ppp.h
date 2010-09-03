@@ -3,7 +3,7 @@
 
 #include <sys/types.h>
 
-#include "triton/triton.h"
+#include "triton.h"
 #include "list.h"
 
 /*

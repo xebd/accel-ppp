@@ -67,7 +67,7 @@ char *conf_get_opt(const char *sect, const char *name);
 #define TRITON_ERR_NOMSG  -6
 #define TRITON_ERR_BUSY   -5
 
-int triton_init(const char *conf_file);
+int triton_init(const char *conf_file, const char *mod_sect);
 void triton_run(void);
 void triton_terminate(void);
 

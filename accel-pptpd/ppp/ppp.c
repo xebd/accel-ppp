@@ -11,7 +11,7 @@
 #include <linux/ppp_defs.h>
 #include <linux/if_ppp.h>
 
-#include "triton/triton.h"
+#include "triton.h"
 
 #include "ppp.h"
 #include "ppp_fsm.h"
@@ -45,7 +45,7 @@ static void free_ppp(struct ppp_t *ppp)
 	free(ppp->unit_buf);
 }
 
-int establish_ppp(struct ppp_t *ppp)
+int __export establish_ppp(struct ppp_t *ppp)
 {
 	/* Open an instance of /dev/ppp and connect the channel to it */
 	if (ioctl(ppp->fd, PPPIOCGCHAN, &ppp->chan_idx)==-1)
@@ -141,7 +141,7 @@ exit_close_chan:
 	return -1;
 }
 
-void destablish_ppp(struct ppp_t *ppp)
+static void destablish_ppp(struct ppp_t *ppp)
 {
 	triton_md_unregister_handler(&ppp->chan_hnd);
 	triton_md_unregister_handler(&ppp->unit_hnd);
@@ -170,7 +170,7 @@ void print_buf(uint8_t *buf,int size)
 	printf("\n");
 }
 
-int ppp_chan_send(struct ppp_t *ppp, void *data, int size)
+int __export ppp_chan_send(struct ppp_t *ppp, void *data, int size)
 {
 	int n;
 
@@ -183,7 +183,7 @@ int ppp_chan_send(struct ppp_t *ppp, void *data, int size)
 	return n;
 }
 
-int ppp_unit_send(struct ppp_t *ppp, void *data, int size)
+int __export ppp_unit_send(struct ppp_t *ppp, void *data, int size)
 {
 	int n;
 
@@ -280,7 +280,7 @@ cont:
 	}
 }
 
-void ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
+void __export ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 {
 	struct layer_node_t *n=d->node;
 	
@@ -303,7 +303,7 @@ void ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 	}
 }
 
-void ppp_layer_finished(struct ppp_t *ppp, struct ppp_layer_data_t *d)
+void __export ppp_layer_finished(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 {
 	struct layer_node_t *n=d->node;
 	
@@ -322,7 +322,7 @@ void ppp_layer_finished(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 	destablish_ppp(ppp);
 }
 
-void ppp_terminate(struct ppp_t *ppp, int hard)
+void __export ppp_terminate(struct ppp_t *ppp, int hard)
 {
 	struct layer_node_t *n;
 	struct ppp_layer_data_t *d;
@@ -348,15 +348,15 @@ void ppp_terminate(struct ppp_t *ppp, int hard)
 	destablish_ppp(ppp);
 }
 
-void ppp_register_chan_handler(struct ppp_t *ppp,struct ppp_handler_t *h)
+void __export ppp_register_chan_handler(struct ppp_t *ppp,struct ppp_handler_t *h)
 {
 	list_add_tail(&h->entry,&ppp->chan_handlers);
 }
-void ppp_register_unit_handler(struct ppp_t *ppp,struct ppp_handler_t *h)
+void __export ppp_register_unit_handler(struct ppp_t *ppp,struct ppp_handler_t *h)
 {
 	list_add_tail(&h->entry,&ppp->unit_handlers);
 }
-void ppp_unregister_handler(struct ppp_t *ppp,struct ppp_handler_t *h)
+void __export ppp_unregister_handler(struct ppp_t *ppp,struct ppp_handler_t *h)
 {
 	list_del(&h->entry);
 }
@@ -370,7 +370,7 @@ static int get_layer_order(const char *name)
 	return -1;
 }
 
-int ppp_register_layer(const char *name, struct ppp_layer_t *layer)
+int __export ppp_register_layer(const char *name, struct ppp_layer_t *layer)
 {
 	int order;
 	struct layer_node_t *n,*n1;
@@ -406,7 +406,7 @@ insert:
 
 	return 0;
 }
-void ppp_unregister_layer(struct ppp_layer_t *layer)
+void __export ppp_unregister_layer(struct ppp_layer_t *layer)
 {
 	list_del(&layer->entry);
 }

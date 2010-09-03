@@ -69,7 +69,7 @@ static void __init __main(void)
 	if (!conf_file)
 		goto usage;
 
-	if (triton_init(conf_file))
+	if (triton_init(conf_file, "modules"))
 		_exit(EXIT_FAILURE);
 
 	return;

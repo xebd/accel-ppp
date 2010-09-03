@@ -188,7 +188,7 @@ void __export triton_unregister_ctx(struct triton_ctx_t *ud)
 	spin_unlock(&ctx_list_lock);
 }
 
-int __export triton_init(const char *conf_file)
+int __export triton_init(const char *conf_file, const char *mod_sect)
 {
 	ctx_pool = mempool_create(sizeof(struct _triton_ctx_t));
 
@@ -210,7 +210,10 @@ int __export triton_init(const char *conf_file)
 
 	if (timer_init())
 		return -1;
-	
+
+	if (load_modules(mod_sect))
+		return -1;
+
 	return 0;
 }
 
