@@ -509,11 +509,11 @@ static void ccp_recv(struct ppp_handler_t*h)
 			}
 			ccp_free_conf_req(ccp);
 			if (r==CCP_OPT_FAIL)
-				ppp_terminate(ccp->ppp);
+				ppp_terminate(ccp->ppp, 0);
 			break;
 		case CONFACK:
 			if (ccp_recv_conf_ack(ccp,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN))
-				ppp_terminate(ccp->ppp);
+				ppp_terminate(ccp->ppp, 0);
 			else
 				ppp_fsm_recv_conf_ack(&ccp->fsm);
 			break;
@@ -523,7 +523,7 @@ static void ccp_recv(struct ppp_handler_t*h)
 			break;
 		case CONFREJ:
 			if (ccp_recv_conf_rej(ccp,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN))
-				ppp_terminate(ccp->ppp);
+				ppp_terminate(ccp->ppp, 0);
 			else
 				ppp_fsm_recv_conf_rej(&ccp->fsm);
 			break;
@@ -532,7 +532,7 @@ static void ccp_recv(struct ppp_handler_t*h)
 			log_debug("recv [CCP TermReq id=%x \"%s\"]\n",hdr->id,term_msg);
 			free(term_msg);
 			ppp_fsm_recv_term_req(&ccp->fsm);
-			ppp_terminate(ccp->ppp);
+			ppp_terminate(ccp->ppp, 0);
 			break;
 		case TERMACK:
 			term_msg=strndup((char*)(hdr+1),ntohs(hdr->len));

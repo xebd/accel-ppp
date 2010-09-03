@@ -34,4 +34,4 @@ ADD_EXECUTABLE(pptpd
 	
 	main.c
 )
-TARGET_LINK_LIBRARIES(pptpd pthread triton ssl)
+TARGET_LINK_LIBRARIES(pptpd pthread triton ssl rt)

@@ -500,11 +500,11 @@ static void ipcp_recv(struct ppp_handler_t*h)
 			}
 			ipcp_free_conf_req(ipcp);
 			if (r==IPCP_OPT_FAIL)
-				ppp_terminate(ipcp->ppp);
+				ppp_terminate(ipcp->ppp, 0);
 			break;
 		case CONFACK:
 			if (ipcp_recv_conf_ack(ipcp,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN))
-				ppp_terminate(ipcp->ppp);
+				ppp_terminate(ipcp->ppp, 0);
 			else
 				ppp_fsm_recv_conf_ack(&ipcp->fsm);
 			break;
@@ -514,7 +514,7 @@ static void ipcp_recv(struct ppp_handler_t*h)
 			break;
 		case CONFREJ:
 			if (ipcp_recv_conf_rej(ipcp,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN))
-				ppp_terminate(ipcp->ppp);
+				ppp_terminate(ipcp->ppp, 0);
 			else
 				ppp_fsm_recv_conf_rej(&ipcp->fsm);
 			break;
@@ -523,7 +523,7 @@ static void ipcp_recv(struct ppp_handler_t*h)
 			log_debug("recv [IPCP TermReq id=%x \"%s\"]\n",hdr->id,term_msg);
 			free(term_msg);
 			ppp_fsm_recv_term_req(&ipcp->fsm);
-			ppp_terminate(ipcp->ppp);
+			ppp_terminate(ipcp->ppp, 0);
 			break;
 		case TERMACK:
 			term_msg=strndup((char*)(hdr+1),ntohs(hdr->len));

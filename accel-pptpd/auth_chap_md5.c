@@ -210,14 +210,14 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	{
 		log_error("chap-md5: id mismatch\n");
 		chap_send_failure(ad);
-		ppp_terminate(ad->ppp);
+		ppp_terminate(ad->ppp, 0);
 	}
 
 	if (msg->val_size!=VALUE_SIZE)
 	{
 		log_error("chap-md5: value-size should be %i, expected %i\n",VALUE_SIZE,msg->val_size);
 		chap_send_failure(ad);
-		ppp_terminate(ad->ppp);
+		ppp_terminate(ad->ppp, 0);
 	}
 
 	name=strndup(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);

@@ -29,6 +29,7 @@ struct layer_node_t
 static int ppp_chan_read(struct triton_md_handler_t*);
 static int ppp_unit_read(struct triton_md_handler_t*);
 static void init_layers(struct ppp_t *);
+static void free_layers(struct ppp_t *);
 static void start_first_layer(struct ppp_t *);
 
 struct ppp_t *init_ppp(void)
@@ -112,16 +113,14 @@ int establish_ppp(struct ppp_t *ppp)
 		goto exit_close_unit;
 	}
 
-	ppp->chan_hnd.ctx=ppp->ctrl->ctx;
 	ppp->chan_hnd.fd=ppp->chan_fd;
 	ppp->chan_hnd.read=ppp_chan_read;
 	//ppp->chan_hnd.twait=-1;
-	ppp->unit_hnd.ctx=ppp->ctrl->ctx;
 	ppp->unit_hnd.fd=ppp->unit_fd;
 	ppp->unit_hnd.read=ppp_unit_read;
 	//ppp->unit_hnd.twait=-1;
-	triton_md_register_handler(&ppp->chan_hnd);
-	triton_md_register_handler(&ppp->unit_hnd);
+	triton_md_register_handler(ppp->ctrl->ctx, &ppp->chan_hnd);
+	triton_md_register_handler(ppp->ctrl->ctx, &ppp->unit_hnd);
 	
 	triton_md_enable_handler(&ppp->chan_hnd,MD_MODE_READ);
 	triton_md_enable_handler(&ppp->unit_hnd,MD_MODE_READ);
@@ -150,8 +149,13 @@ void destablish_ppp(struct ppp_t *ppp)
 	close(ppp->unit_fd);
 	close(ppp->chan_fd);
 
+	ppp->unit_fd = -1;
+	ppp->chan_fd = -1;
+
 	free(ppp->unit_buf);
 	free(ppp->chan_buf);
+
+	free_layers(ppp);
 	
 	log_debug("ppp destablished\n");
 
@@ -222,6 +226,10 @@ cont:
 		list_for_each_entry(ppp_h, &ppp->chan_handlers, entry) {
 			if (ppp_h->proto == proto) {
 				ppp_h->recv(ppp_h);
+				if (ppp->chan_fd == -1) {
+					ppp->ctrl->finished(ppp);
+					return 1;
+				}
 				goto cont;
 			}
 		}
@@ -260,11 +268,15 @@ cont:
 		list_for_each_entry(ppp_h, &ppp->unit_handlers, entry) {
 			if (ppp_h->proto == proto) {
 				ppp_h->recv(ppp_h);
+				if (ppp->unit_fd == -1) {
+					ppp->ctrl->finished(ppp);
+					return 1;
+				}
 				goto cont;
 			}
 		}
 
-		log_warn("ppp_chan_read: discarding unknown packet %x\n",proto);
+		log_warn("ppp_unit_read: discarding unknown packet %x\n",proto);
 	}
 }
 
@@ -306,29 +318,33 @@ void ppp_layer_finished(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 				return;
 		}
 	}
+
 	destablish_ppp(ppp);
 }
 
-void ppp_terminate(struct ppp_t *ppp)
+void ppp_terminate(struct ppp_t *ppp, int hard)
 {
 	struct layer_node_t *n;
 	struct ppp_layer_data_t *d;
-	int s=0;
+	int s = 0;
 
 	log_debug("ppp_terminate\n");
 
-	list_for_each_entry(n,&ppp->layers,entry)
-	{
-		list_for_each_entry(d,&n->items,entry)
-		{
-			if (d->starting)
-			{
-				s=1;
+	if (hard) {
+		destablish_ppp(ppp);
+		return;
+	}
+	
+	list_for_each_entry(n,&ppp->layers,entry) {
+		list_for_each_entry(d,&n->items,entry) {
+			if (d->starting) {
+				s = 1;
 				d->layer->finish(d);
 			}
 		}
 	}
-	if (s) return;
+	if (s)
+		return;
 	destablish_ppp(ppp);
 }
 
@@ -397,26 +413,41 @@ void ppp_unregister_layer(struct ppp_layer_t *layer)
 
 static void init_layers(struct ppp_t *ppp)
 {
-	struct layer_node_t *n,*n1;
+	struct layer_node_t *n, *n1;
 	struct ppp_layer_t *l;
 	struct ppp_layer_data_t *d;
 
 	INIT_LIST_HEAD(&ppp->layers);
 
-	list_for_each_entry(n,&layers,entry)
-	{
-		n1=(struct layer_node_t*)malloc(sizeof(*n1));
-		memset(n1,0,sizeof(*n1));
+	list_for_each_entry(n,&layers,entry) {
+		n1 = (struct layer_node_t*)malloc(sizeof(*n1));
+		memset(n1, 0, sizeof(*n1));
 		INIT_LIST_HEAD(&n1->items);
-		list_add_tail(&n1->entry,&ppp->layers);
-		list_for_each_entry(l,&n->items,entry)
-		{
-			d=l->init(ppp);
-			d->layer=l;
-			d->started=0;
-			d->node=n1;
-			list_add_tail(&d->entry,&n1->items);
+		list_add_tail(&n1->entry, &ppp->layers);
+		list_for_each_entry(l, &n->items, entry) {
+			d = l->init(ppp);
+			d->layer = l;
+			d->started = 0;
+			d->node = n1;
+			list_add_tail(&d->entry, &n1->items);
 		}
+	}
+}
+
+static void free_layers(struct ppp_t *ppp)
+{
+	struct layer_node_t *n;
+	struct ppp_layer_data_t *d;
+	
+	while (!list_empty(&ppp->layers)) {
+		n = list_entry(ppp->layers.next, typeof(*n), entry);
+		while (!list_empty(&n->items)) {
+			d = list_entry(n->items.next, typeof(*d), entry);
+			list_del(&d->entry);
+			d->layer->free(d);
+		}
+		list_del(&n->entry);
+		free(n);
 	}
 }
 

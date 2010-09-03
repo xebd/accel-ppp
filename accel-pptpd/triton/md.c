@@ -16,6 +16,8 @@ static struct epoll_event *epoll_events;
 static pthread_t md_thr;
 static void *md_thread(void *arg);
 
+static mempool_t *md_pool;
+
 int md_init(void)
 {
 	epoll_fd = epoll_create(1);
@@ -29,6 +31,8 @@ int md_init(void)
 		fprintf(stderr,"md:cann't allocate memory\n");
 		return -1;
 	}
+
+	md_pool = mempool_create(sizeof(struct _triton_md_handler_t));
 
 	return 0;
 }
@@ -49,7 +53,7 @@ void md_terminate(void)
 static void *md_thread(void *arg)
 {
 	int i,n,r;
-	struct triton_md_handler_t *h;
+	struct _triton_md_handler_t *h;
 
 	while(1) {
 		n = epoll_wait(epoll_fd, epoll_events, max_events, -1);
@@ -61,13 +65,16 @@ static void *md_thread(void *arg)
 		}
 		
 		for(i = 0; i < n; i++) {
-			h = (struct triton_md_handler_t *)epoll_events[i].data.ptr;
+			h = (struct _triton_md_handler_t *)epoll_events[i].data.ptr;
 			spin_lock(&h->ctx->lock);
-			h->trig_epoll_events |= epoll_events[i].events;
-			if (!h->pending) {
-				list_add_tail(&h->entry2, &h->ctx->pending_handlers);
-				h->pending = 1;
-				r = triton_queue_ctx(h->ctx);
+			if (h->ud) {
+				h->trig_epoll_events |= epoll_events[i].events;
+				if (!h->pending) {
+					list_add_tail(&h->entry2, &h->ctx->pending_handlers);
+					h->pending = 1;
+					r = triton_queue_ctx(h->ctx);
+				} else
+					r = 0;
 			} else
 				r = 0;
 			spin_unlock(&h->ctx->lock);
@@ -79,25 +86,37 @@ static void *md_thread(void *arg)
 	return NULL;
 }
 
-void __export triton_md_register_handler(struct triton_md_handler_t *h)
+void __export triton_md_register_handler(struct triton_ctx_t *ctx, struct triton_md_handler_t *ud)
 {
+	struct _triton_md_handler_t *h = mempool_alloc(md_pool);
+	memset(h, 0, sizeof(*h));
+	h->ud = ud;
 	h->epoll_event.data.ptr = h;
-	if (!h->ctx)
-		h->ctx = default_ctx;
+	if (ctx)
+		h->ctx = (struct _triton_ctx_t *)ctx->tpd;
+	else
+		h->ctx = (struct _triton_ctx_t *)default_ctx->tpd;
+	ud->tpd = h;
 	spin_lock(&h->ctx->lock);
 	list_add_tail(&h->entry, &h->ctx->handlers);
 	spin_unlock(&h->ctx->lock);
 }
-void __export triton_md_unregister_handler(struct triton_md_handler_t *h)
+void __export triton_md_unregister_handler(struct triton_md_handler_t *ud)
 {
+	struct _triton_md_handler_t *h = (struct _triton_md_handler_t *)ud->tpd;
+	triton_md_disable_handler(ud, MD_MODE_READ | MD_MODE_WRITE);
 	spin_lock(&h->ctx->lock);
 	list_del(&h->entry);
 	if (h->pending)
 		list_del(&h->entry2);
+	h->ud = NULL;
 	spin_unlock(&h->ctx->lock);
+	sched_yield();
+	mempool_free(h);
 }
-int __export triton_md_enable_handler(struct triton_md_handler_t *h, int mode)
+int __export triton_md_enable_handler(struct triton_md_handler_t *ud, int mode)
 {
+	struct _triton_md_handler_t *h = (struct _triton_md_handler_t *)ud->tpd;
 	int r;
 	int events = h->epoll_event.events;
 
@@ -109,17 +128,18 @@ int __export triton_md_enable_handler(struct triton_md_handler_t *h, int mode)
 	h->epoll_event.events |= EPOLLET;
 	
 	if (events)
-		r = epoll_ctl(epoll_fd, EPOLL_CTL_MOD, h->fd, &h->epoll_event);
+		r = epoll_ctl(epoll_fd, EPOLL_CTL_MOD, h->ud->fd, &h->epoll_event);
 	else
-		r = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, h->fd, &h->epoll_event);
+		r = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, h->ud->fd, &h->epoll_event);
 
 	if (r)
 		triton_log_error("md:epoll_ctl: %s",strerror(errno));
 
 	return r;
 }
-int __export triton_md_disable_handler(struct triton_md_handler_t *h,int mode)
+int __export triton_md_disable_handler(struct triton_md_handler_t *ud,int mode)
 {
+	struct _triton_md_handler_t *h = (struct _triton_md_handler_t *)ud->tpd;
 	int r=0;
 
 	if (!h->epoll_event.events)
@@ -131,10 +151,10 @@ int __export triton_md_disable_handler(struct triton_md_handler_t *h,int mode)
 		h->epoll_event.events &= ~EPOLLOUT;
 
 	if (h->epoll_event.events & (EPOLLIN | EPOLLOUT))
-		r = epoll_ctl(epoll_fd, EPOLL_CTL_MOD, h->fd, &h->epoll_event);
+		r = epoll_ctl(epoll_fd, EPOLL_CTL_MOD, h->ud->fd, &h->epoll_event);
 	else {
 		h->epoll_event.events = 0;
-		r = epoll_ctl(epoll_fd, EPOLL_CTL_DEL, h->fd, NULL);
+		r = epoll_ctl(epoll_fd, EPOLL_CTL_DEL, h->ud->fd, NULL);
 	}
 
 	if (r)

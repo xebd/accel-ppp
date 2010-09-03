@@ -513,11 +513,11 @@ static void lcp_recv(struct ppp_handler_t*h)
 			}
 			lcp_free_conf_req(lcp);
 			if (r==LCP_OPT_FAIL)
-				ppp_terminate(lcp->ppp);
+				ppp_terminate(lcp->ppp, 0);
 			break;
 		case CONFACK:
 			if (lcp_recv_conf_ack(lcp,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN))
-				ppp_terminate(lcp->ppp);
+				ppp_terminate(lcp->ppp, 0);
 			else
 				ppp_fsm_recv_conf_ack(&lcp->fsm);
 			break;
@@ -527,7 +527,7 @@ static void lcp_recv(struct ppp_handler_t*h)
 			break;
 		case CONFREJ:
 			if (lcp_recv_conf_rej(lcp,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN))
-				ppp_terminate(lcp->ppp);
+				ppp_terminate(lcp->ppp, 0);
 			else
 				ppp_fsm_recv_conf_rej(&lcp->fsm);
 			break;
@@ -536,7 +536,7 @@ static void lcp_recv(struct ppp_handler_t*h)
 			log_debug("recv [LCP TermReq id=%x \"%s\"]\n",hdr->id,term_msg);
 			free(term_msg);
 			ppp_fsm_recv_term_req(&lcp->fsm);
-			ppp_terminate(lcp->ppp);
+			ppp_terminate(lcp->ppp, 0);
 			break;
 		case TERMACK:
 			term_msg=strndup((char*)(hdr+1),ntohs(hdr->len));

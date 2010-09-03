@@ -32,12 +32,13 @@ static int parse_cmdline(char ***argv)
 	*argv = malloc(ARG_MAX * sizeof(void *));
 	memset(*argv, 0, ARG_MAX * sizeof(void *));
 
-	for(i = 0; i < ARG_MAX; i++)
-	{
+	for(i = 0; i < ARG_MAX; i++) {
 		len = 0;
 		if (getdelim(&(*argv)[i], &len, 0, f) < 0)
 			break;
 	}
+
+	fclose(f);
 
 	return i;
 }
@@ -113,9 +114,12 @@ int main(int argc, char **argv)
 		}
 	}
 
+	signal(SIGTERM, sigterm);
+	signal(SIGPIPE, sigterm);
+	signal(SIGUSR1, sigterm);
+	
 	triton_run();
 	
-	signal(SIGTERM, sigterm);
 	sigfillset(&set);
 	sigdelset(&set, SIGTERM);
 	sigdelset(&set, SIGSEGV);

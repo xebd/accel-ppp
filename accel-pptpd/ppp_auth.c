@@ -303,7 +303,7 @@ void auth_successed(struct ppp_t *ppp)
 
 void auth_failed(struct ppp_t *ppp)
 {
-	ppp_terminate(ppp);
+	ppp_terminate(ppp, 0);
 }
 
 int ppp_auth_register_handler(struct ppp_auth_handler_t *h)

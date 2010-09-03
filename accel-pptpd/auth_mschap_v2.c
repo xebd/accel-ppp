@@ -302,14 +302,14 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	{
 		log_error("mschap-v2: id mismatch\n");
 		chap_send_failure(ad);
-		ppp_terminate(ad->ppp);
+		ppp_terminate(ad->ppp, 0);
 	}
 
 	if (msg->val_size!=RESPONSE_VALUE_SIZE)
 	{
 		log_error("mschap-v2: value-size should be %i, expected %i\n",RESPONSE_VALUE_SIZE,msg->val_size);
 		chap_send_failure(ad);
-		ppp_terminate(ad->ppp);
+		ppp_terminate(ad->ppp, 0);
 	}
 
 	if (chap_check_response(ad,msg))
