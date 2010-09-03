@@ -27,6 +27,7 @@ struct ppp_fsm_t
 	int max_terminate;
 	int max_configure;
 	int max_failure;
+	int timeout;
 
 	int id;
 	int recv_id;
@@ -43,6 +44,7 @@ struct ppp_fsm_t
 };
 
 void ppp_fsm_init(struct ppp_fsm_t*);
+void ppp_fsm_free(struct ppp_fsm_t*);
 
 void ppp_fsm_lower_up(struct ppp_fsm_t*);
 void ppp_fsm_lower_down(struct ppp_fsm_t*);

@@ -20,6 +20,9 @@ struct recv_opt_t
 	struct lcp_option_t *lopt;
 };
 
+static int conf_echo_interval = 0;
+static int conf_echo_failure = 3;
+
 static LIST_HEAD(option_handlers);
 
 static void lcp_layer_up(struct ppp_fsm_t*);
@@ -123,6 +126,7 @@ void lcp_layer_free(struct ppp_layer_data_t *ld)
 	stop_echo(lcp);
 	ppp_unregister_handler(lcp->ppp,&lcp->hnd);
 	lcp_options_free(lcp);
+	ppp_fsm_free(&lcp->fsm);
 	
 	free(lcp);
 }
@@ -515,19 +519,8 @@ static void send_echo_request(struct triton_timer_t *t)
 
 static void start_echo(struct ppp_lcp_t *lcp)
 {
-	char *opt;
-
-	opt = conf_get_opt("lcp","echo-failure");
-	if (!opt || atoi(opt) <= 0)
-		return;
-	
-	lcp->echo_failure = atoi(opt);
-	
-	opt = conf_get_opt("lcp","echo-interval");
-	if (!opt || atoi(opt) <= 0)
-		return;
-
-	lcp->echo_interval = atoi(opt);
+	lcp->echo_interval = conf_echo_interval;
+	lcp->echo_failure = conf_echo_failure;
 
 	lcp->echo_timer.period = lcp->echo_interval * 1000;
 	lcp->echo_timer.expire = send_echo_request;
@@ -650,5 +643,16 @@ static struct ppp_layer_t lcp_layer=
 
 static void __init lcp_init(void)
 {
+	char *opt;
+
 	ppp_register_layer("lcp",&lcp_layer);
+
+	opt = conf_get_opt("lcp", "echo-interval");
+	if (opt && atoi(opt) > 0)
+		conf_echo_interval = atoi(opt);
+
+	opt = conf_get_opt("lcp", "echo-failure");
+	if (opt && atoi(opt) > 0)
+		conf_echo_failure = atoi(opt);
+
 }
