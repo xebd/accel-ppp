@@ -121,8 +121,6 @@ int establish_ppp(struct ppp_t *ppp);
 int ppp_chan_send(struct ppp_t *ppp, void *data, int size);
 int ppp_unit_send(struct ppp_t *ppp, void *data, int size);
 
-void ppp_init(void);
-
 struct ppp_fsm_t* ppp_lcp_init(struct ppp_t *ppp);
 void ppp_layer_started(struct ppp_t *ppp,struct ppp_layer_data_t*);
 void ppp_layer_finished(struct ppp_t *ppp,struct ppp_layer_data_t*);
@@ -136,4 +134,5 @@ int ppp_register_layer(const char *name, struct ppp_layer_t *);
 void ppp_unregister_layer(struct ppp_layer_t *);
 struct ppp_layer_data_t *ppp_find_layer_data(struct ppp_t *, struct ppp_layer_t *);
 
+extern int sock_fd; // internet socket for ioctls
 #endif

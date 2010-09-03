@@ -8,6 +8,7 @@
 #include <time.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <sys/socket.h>
 
 #include "if_pppox.h"
 
@@ -445,7 +446,7 @@ static struct pptp_serv_t serv=
 	.ctx.close=pptp_serv_close,
 };
 
-void __init pptp_init(void)
+static void __init pptp_init(void)
 {
   struct sockaddr_in addr;
 	

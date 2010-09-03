@@ -1,6 +1,10 @@
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <arpa/inet.h>
+#include <net/if.h>
+#include <sys/ioctl.h>
+#include <linux/if_ppp.h>
 
 #include "ppp.h"
 #include "ppp_ipcp.h"
@@ -72,19 +76,56 @@ static int ipaddr_send_conf_nak(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 
 static int ipaddr_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt, uint8_t *ptr)
 {
-	struct ipaddr_option_t *ipaddr_opt=container_of(opt,typeof(*ipaddr_opt),opt);
-	struct ipcp_opt32_t *opt32=(struct ipcp_opt32_t*)ptr;
+	struct ipaddr_option_t *ipaddr_opt = container_of(opt,typeof(*ipaddr_opt), opt);
+	struct ipcp_opt32_t *opt32 = (struct ipcp_opt32_t*)ptr;
+	struct ifreq ifr;
+	struct sockaddr_in addr;
+	struct npioctl np;
 
-	if (ipaddr_opt->peer_addr==opt32->val)
-		return IPCP_OPT_ACK;
+	if (ipaddr_opt->peer_addr == opt32->val)
+		goto ack;
 		
-	if (!ipaddr_opt->peer_addr)
-	{
-		ipaddr_opt->peer_addr=opt32->val;
-		return IPCP_OPT_ACK;
+	if (!ipaddr_opt->peer_addr) {
+		ipaddr_opt->peer_addr = opt32->val;
+		goto ack;
 	}
 	
 	return IPCP_OPT_NAK;
+
+ack:
+	memset(&ifr, 0, sizeof(ifr));
+	memset(&addr, 0, sizeof(addr));
+
+	sprintf(ifr.ifr_name,"ppp%i",ipcp->ppp->unit_idx);
+
+	addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = ipaddr_opt->addr;
+	memcpy(&ifr.ifr_addr,&addr,sizeof(addr));
+
+	if (ioctl(sock_fd, SIOCSIFADDR, &ifr))
+		log_error("\nipcp: failed to set PA address: %s\n", strerror(errno));
+	
+  addr.sin_addr.s_addr = ipaddr_opt->peer_addr;
+	memcpy(&ifr.ifr_dstaddr,&addr,sizeof(addr));
+	
+	if (ioctl(sock_fd, SIOCSIFDSTADDR, &ifr))
+		log_error("\nipcp: failed to set remote PA address: %s\n", strerror(errno));
+
+	if (ioctl(sock_fd, SIOCGIFFLAGS, &ifr))
+		log_error("\nipcp: failed to get interface flags: %s\n", strerror(errno));
+
+	ifr.ifr_flags |= IFF_UP | IFF_POINTOPOINT;
+
+	if (ioctl(sock_fd, SIOCSIFFLAGS, &ifr))
+		log_error("\nipcp: failed to set interface flags: %s\n", strerror(errno));
+
+	np.protocol = PPP_IP;
+	np.mode = NPMODE_PASS;
+
+	if (ioctl(ipcp->ppp->unit_fd, PPPIOCSNPMODE, &np))
+		log_error("\nipcp: failed to set NP mode: %s\n", strerror(errno));
+
+	return IPCP_OPT_ACK;
 }
 
 static void ipaddr_print(void (*print)(const char *fmt,...),struct ipcp_option_t *opt, uint8_t *ptr)

@@ -480,3 +480,13 @@ struct ppp_layer_data_t *ppp_find_layer_data(struct ppp_t *ppp, struct ppp_layer
 	
 	return NULL;
 }
+
+int sock_fd;
+static void __init ppp_init(void)
+{
+	sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (sock_fd < 0) {
+		perror("socket");
+		_exit(EXIT_FAILURE);
+	}
+}
