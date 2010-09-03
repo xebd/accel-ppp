@@ -35,6 +35,8 @@ static struct lcp_option_t *magic_init(struct ppp_lcp_t *lcp)
 	magic_opt->opt.id=CI_MAGIC;
 	magic_opt->opt.len=6;
 
+	lcp->magic = magic_opt->magic;
+
 	return &magic_opt->opt;
 }
 

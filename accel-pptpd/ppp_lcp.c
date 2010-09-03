@@ -29,6 +29,8 @@ static void send_conf_ack(struct ppp_fsm_t*);
 static void send_conf_nak(struct ppp_fsm_t*);
 static void send_conf_rej(struct ppp_fsm_t*);
 static void lcp_recv(struct ppp_handler_t*);
+static void start_echo(struct ppp_lcp_t *lcp);
+static void stop_echo(struct ppp_lcp_t *lcp);
 
 static void lcp_options_init(struct ppp_lcp_t *lcp)
 {
@@ -106,6 +108,9 @@ void lcp_layer_finish(struct ppp_layer_data_t *ld)
 	struct ppp_lcp_t *lcp=container_of(ld,typeof(*lcp),ld);
 	
 	log_debug("lcp_layer_finish\n");
+
+	stop_echo(lcp);
+
 	ppp_fsm_close(&lcp->fsm);
 }
 
@@ -114,7 +119,8 @@ void lcp_layer_free(struct ppp_layer_data_t *ld)
 	struct ppp_lcp_t *lcp=container_of(ld,typeof(*lcp),ld);
 	
 	log_debug("lcp_layer_free\n");
-	
+
+	stop_echo(lcp);
 	ppp_unregister_handler(lcp->ppp,&lcp->hnd);
 	lcp_options_free(lcp);
 	
@@ -126,12 +132,15 @@ static void lcp_layer_up(struct ppp_fsm_t *fsm)
 	struct ppp_lcp_t *lcp=container_of(fsm,typeof(*lcp),fsm);
 	log_debug("lcp_layer_started\n");
 	ppp_layer_started(lcp->ppp,&lcp->ld);
+
+	start_echo(lcp);
 }
 
 static void lcp_layer_down(struct ppp_fsm_t *fsm)
 {
 	struct ppp_lcp_t *lcp=container_of(fsm,typeof(*lcp),fsm);
 	log_debug("lcp_layer_finished\n");
+	stop_echo(lcp);
 	ppp_layer_finished(lcp->ppp,&lcp->ld);
 }
 
@@ -453,25 +462,83 @@ static int lcp_recv_conf_ack(struct ppp_lcp_t *lcp,uint8_t *data,int size)
 
 static void lcp_recv_echo_repl(struct ppp_lcp_t *lcp,uint8_t *data,int size)
 {
+	uint32_t magic = *(uint32_t *)data;
 
+	if (size != 4) {
+		log_error("lcp:echo: magic number size mismatch\n");
+		ppp_terminate(lcp->ppp, 0);
+	}
+
+	log_debug("recv [LCP EchoRep id=%x <magic %x>]\n",lcp->fsm.recv_id,magic);
+
+	if (magic == lcp->magic) {
+		log_error("lcp:echo: loop-back detected\n");
+		ppp_terminate(lcp->ppp, 0);
+	}
+
+	lcp->echo_sent = 0;
 }
 
-void send_echo_reply(struct ppp_lcp_t *lcp)
+static void send_echo_reply(struct ppp_lcp_t *lcp)
 {
-	struct lcp_echo_reply_t
+	struct lcp_hdr_t *hdr=(struct lcp_hdr_t*)lcp->ppp->chan_buf;
+	uint32_t magic = *(uint32_t *)(hdr+1);
+
+	hdr->code=ECHOREP;
+	log_debug("send [LCP EchoRep id=%x <magic %x>]\n", hdr->id, magic);
+
+	ppp_chan_send(lcp->ppp,hdr,ntohs(hdr->len)+2);
+}
+static void send_echo_request(struct triton_timer_t *t)
+{
+	struct ppp_lcp_t *lcp = container_of(t, typeof(*lcp), echo_timer);
+	struct lcp_echo_req_t
 	{
 		struct lcp_hdr_t hdr;
-		struct lcp_opt32_t magic;
-	} __attribute__((packed)) msg = 
-	{
-		.hdr.proto=htons(PPP_LCP),
-		.hdr.code=ECHOREP,
-		.hdr.id=lcp->fsm.recv_id,
-		.hdr.len=htons(8),
-		.magic.val=0,
+		uint32_t magic;
+	} __attribute__((packed)) msg = {
+		.hdr.proto = htons(PPP_LCP),
+		.hdr.code = ECHOREQ,
+		.hdr.id = ++lcp->fsm.id,
+		.hdr.len = htons(8),
+		.magic = lcp->magic,
 	};
 
-	ppp_chan_send(lcp->ppp,&msg,ntohs(msg.hdr.len)+2);
+	if (++lcp->echo_sent > lcp->echo_failure) {
+		log_warn("lcp: no echo reply\n");
+		ppp_terminate(lcp->ppp, 0);
+	} else {
+		log_debug("send [LCP EchoReq id=%x <magic %x>]\n", msg.hdr.id, msg.magic);
+		ppp_chan_send(lcp->ppp,&msg,ntohs(msg.hdr.len)+2);
+	}
+}
+
+static void start_echo(struct ppp_lcp_t *lcp)
+{
+	char *opt;
+
+	opt = conf_get_opt("lcp","echo-failure");
+	if (!opt || atoi(opt) <= 0)
+		return;
+	
+	lcp->echo_failure = atoi(opt);
+	
+	opt = conf_get_opt("lcp","echo-interval");
+	if (!opt || atoi(opt) <= 0)
+		return;
+
+	lcp->echo_interval = atoi(opt);
+
+	lcp->echo_timer.period = lcp->echo_interval * 1000;
+	lcp->echo_timer.expire = send_echo_request;
+	triton_timer_add(lcp->ppp->ctrl->ctx, &lcp->echo_timer, 0);
+}
+static void stop_echo(struct ppp_lcp_t *lcp)
+{
+	if (lcp->echo_interval) {
+		triton_timer_del(&lcp->echo_timer);
+		lcp->echo_interval = 0;
+	}
 }
 
 static void lcp_recv(struct ppp_handler_t*h)

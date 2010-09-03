@@ -164,12 +164,12 @@ static struct conf_option_t *find_item(struct conf_sect_t *sect, const char *nam
 	return NULL;
 }
 
-struct conf_sect_t * conf_get_section(const char *name)
+__export struct conf_sect_t * conf_get_section(const char *name)
 {
 	return find_sect(name);
 }
 
-char * conf_get_opt(const char *sect, const char *name)
+__export char * conf_get_opt(const char *sect, const char *name)
 {
 	struct conf_option_t *opt;
 	struct conf_sect_t *s = conf_get_section(sect);
