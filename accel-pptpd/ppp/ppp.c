@@ -18,6 +18,7 @@
 #include "log.h"
 
 static LIST_HEAD(layers);
+int sock_fd;
 
 struct layer_node_t
 {
@@ -94,6 +95,7 @@ int __export establish_ppp(struct ppp_t *ppp)
 
 	INIT_LIST_HEAD(&ppp->chan_handlers);
 	INIT_LIST_HEAD(&ppp->unit_handlers);
+	INIT_LIST_HEAD(&ppp->pd_list);
 	
 	init_layers(ppp);
 
@@ -127,6 +129,7 @@ int __export establish_ppp(struct ppp_t *ppp)
 
 	log_debug("ppp established\n");
 
+	ppp_notify_started(ppp);
 	start_first_layer(ppp);
 
 	return 0;
@@ -159,6 +162,7 @@ static void destablish_ppp(struct ppp_t *ppp)
 	
 	log_debug("ppp destablished\n");
 
+	ppp_notify_finished(ppp);
 	ppp->ctrl->finished(ppp);
 }
 
@@ -481,7 +485,6 @@ struct ppp_layer_data_t *ppp_find_layer_data(struct ppp_t *ppp, struct ppp_layer
 	return NULL;
 }
 
-int sock_fd;
 static void __init ppp_init(void)
 {
 	sock_fd = socket(AF_INET, SOCK_DGRAM, 0);

@@ -12,13 +12,6 @@
 #define PPP_HEADERLEN	4
 #define PPP_MTU 1500
 
-/*
- * Timeouts.
- */
-#define DEFTIMEOUT	3	/* Timeout time in seconds */
-#define DEFMAXTERMREQS	2	/* Maximum Terminate-Request transmissions */
-#define DEFMAXCONFREQS	10	/* Maximum Configure-Request transmissions */
-#define DEFMAXNAKLOOPS	5	/* Maximum number of nak loops */
 
 /*
  * Protocol field values.
@@ -48,8 +41,6 @@
 #define PPP_LAYER_CCP  3
 #define PPP_LAYER_IPCP 4
 
-#define AUTH_MAX	3
-
 struct ppp_t;
 
 struct ppp_ctrl_t
@@ -57,6 +48,20 @@ struct ppp_ctrl_t
 	struct triton_ctx_t *ctx;
 	void (*started)(struct ppp_t*);
 	void (*finished)(struct ppp_t*);
+};
+
+struct ppp_notified_t
+{
+	struct list_head entry;
+	void (*started)(struct ppp_notified_t *, struct ppp_t *);
+	void (*finished)(struct ppp_notified_t *, struct ppp_t *);
+	void (*authenticated)(struct ppp_notified_t *, struct ppp_t *);
+};
+
+struct ppp_pd_t
+{
+	struct list_head entry;
+	void *key;
 };
 
 struct ppp_t
@@ -87,6 +92,8 @@ struct ppp_t
 	struct list_head layers;
 	
 	struct ppp_lcp_t *lcp;
+
+	struct list_head pd_list;
 };
 
 struct ppp_layer_t;
@@ -133,6 +140,11 @@ void ppp_unregister_handler(struct ppp_t *, struct ppp_handler_t *);
 int ppp_register_layer(const char *name, struct ppp_layer_t *);
 void ppp_unregister_layer(struct ppp_layer_t *);
 struct ppp_layer_data_t *ppp_find_layer_data(struct ppp_t *, struct ppp_layer_t *);
+
+void ppp_register_notified(struct ppp_notified_t *);
+void ppp_unregister_notified(struct ppp_notified_t *);
+void ppp_notify_started(struct ppp_t *ppp);
+void ppp_notify_finished(struct ppp_t *ppp);
 
 extern int sock_fd; // internet socket for ioctls
 #endif
