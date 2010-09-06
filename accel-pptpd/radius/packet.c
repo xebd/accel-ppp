@@ -2,7 +2,10 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
-#include <stdin.h>
+#include <stdio.h>
+#include <unistd.h>
+
+#include "log.h"
 
 #include "radius.h"
 
@@ -21,9 +24,9 @@ int rad_packet_build(struct rad_packet_t *pack)
 	
 	*ptr = pack->code; ptr++;
 	*ptr = pack->id; ptr++;
-	*(uint16_t*)ptr = pack->len; pt r+= 2;
+	*(uint16_t*)ptr = pack->len; ptr+= 2;
 	while (1) {
-		if (read(erandom_fd, ptr, 16) != 16) {
+		if (read(urandom_fd, ptr, 16) != 16) {
 			if (errno == EINTR)
 				continue;
 			log_error("radius:packet:read urandom: %s\n", strerror(errno));
@@ -34,14 +37,14 @@ int rad_packet_build(struct rad_packet_t *pack)
 	ptr+=16;
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
-		*ptr = attr->attr.id; ptr++;
+		*ptr = attr->attr->type; ptr++;
 		*ptr = attr->len; ptr++;
-		switch(attr->attr.type) {
+		switch(attr->attr->type) {
 			case ATTR_TYPE_INTEGER:
 				*(uint32_t*)ptr = attr->val.integer;
 				break;
 			case ATTR_TYPE_STRING:
-				memcpy(ptr, attr->val.string);
+				memcpy(ptr, attr->val.string, attr->len);
 				break;
 			case ATTR_TYPE_IPADDR:
 				*(in_addr_t*)ptr = attr->val.ipaddr;
@@ -57,6 +60,10 @@ int rad_packet_build(struct rad_packet_t *pack)
 	}
 
 	return 0;
+
+out_err:
+	free(ptr);
+	return -1;
 }
 
 struct rad_packet_t *rad_packet_recv(int fd)
@@ -76,7 +83,7 @@ struct rad_packet_t *rad_packet_recv(int fd)
 	memset(pack, 0, sizeof(*pack));
 	INIT_LIST_HEAD(&pack->attrs);
 
-	pack->buf = malloc(REQ_MAX_LENGTH);
+	pack->buf = malloc(REQ_LENGTH_MAX);
 	if (!pack->buf) {
 		log_error("radius:packet: out of memory\n");
 		free(pack);
@@ -84,7 +91,7 @@ struct rad_packet_t *rad_packet_recv(int fd)
 	}
 
 	while (1) {
-		n = read(fd, pack->buf, REQ_MAX_LENGTH);
+		n = read(fd, pack->buf, REQ_LENGTH_MAX);
 		if (n < 0) {
 			if (errno == EINTR)
 				continue;
@@ -120,7 +127,7 @@ struct rad_packet_t *rad_packet_recv(int fd)
 			log_error("radius:packet: too long attribute received (%i, %i)\n", type, len);
 			goto out_err;
 		}
-		da = rad_dict_find_attr_type(n);
+		da = rad_dict_find_attr_type(type);
 		if (da) {
 			attr = malloc(sizeof(*attr));
 			if (!attr) {
@@ -128,7 +135,6 @@ struct rad_packet_t *rad_packet_recv(int fd)
 				goto out_err;
 			}
 			attr->attr = da;
-			attr->type = type;
 			attr->len = len;
 			if (type == ATTR_TYPE_STRING) {
 				attr->val.string = malloc(len);
@@ -138,7 +144,7 @@ struct rad_packet_t *rad_packet_recv(int fd)
 					goto out_err;
 				}
 			} else
-				memcpy(&attr->type.integer, ptr, 4);
+				memcpy(&attr->val.integer, ptr, 4);
 			list_add_tail(&attr->entry, &pack->attrs);
 		} else
 			log_warn("radius:packet: unknown attribute type received (%i)\n", type);
@@ -162,8 +168,8 @@ void rad_packet_free(struct rad_packet_t *pack)
 
 	while(!list_empty(&pack->attrs)) {
 		attr = list_entry(pack->attrs.next, typeof(*attr), entry);
-		if (attr->attr.type == ATTR_TYPE_STRING)
-			free(attr->val.string);
+		if (attr->attr->type == ATTR_TYPE_STRING)
+			free((char*)attr->val.string);
 		list_del(&attr->entry);
 		free(attr);
 	}

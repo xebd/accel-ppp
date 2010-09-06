@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -7,30 +8,35 @@
 #include "pwdb.h"
 #include "radius.h"
 
+int conf_max_try = 3;
+int conf_timeout = 3;
+char *conf_nas_identifier = "accel-pptpd";
+char *conf_nas_ip_address;
+
 static struct ppp_notified_t notified;
 
 static int check_pap(struct radius_pd_t *rpd, const char *username, va_list args)
 {
 	struct rad_req_t *req;
 	int i, r = PWDB_DENIED;
-	int id = va_arg(args, int);
+	//int id = va_arg(args, int);
 	const char *passwd = va_arg(args, const char *);
 
-	req = rad_req_alloc(rpd, CODE_ACCESS_REQUEST);
+	req = rad_req_alloc(rpd, CODE_ACCESS_REQUEST, username);
 	if (!req)
 		return PWDB_DENIED;
 
 	if (rad_req_add_str(req, "User-Password", passwd, strlen(passwd)))
 		goto out;
 
-	for(i = 0; i < max_try; i++) {
+	for(i = 0; i < conf_max_try; i++) {
 		if (rad_req_send(req))
 			goto out;
 
-		if (rad_req_wait(req, timeout))
+		if (rad_req_wait(req, conf_timeout))
 			goto out;
 
-		if (req->answer)
+		if (req->reply)
 			break;
 	}
 
@@ -42,27 +48,30 @@ out:
 
 static int check_chap_md5(struct radius_pd_t *rpd, const char *username, va_list args)
 {
-	int id = va_arg(args, int);
-	const uint8_t *challenge = va_arg(args, const uint8_t *);
+	/*int id = va_arg(args, int);
+	const uint8_t *challenge = va_arg(args, const uint8_t *);*/
+	return PWDB_DENIED;
 }
 
 static int check_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list args)
 {
-	int id = va_arg(args, int);
+	/*int id = va_arg(args, int);
 	const uint8_t *challenge = va_arg(args, const uint8_t *);
 	const uint8_t *lm_response = va_arg(args, const uint8_t *);
 	const uint8_t *nt_response = va_arg(args, const uint8_t *);
-	int flags = va_arg(args, int);
+	int flags = va_arg(args, int);*/
+	return PWDB_DENIED;
 }
 
 static int check_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list args)
 {
-	int id = va_arg(args, int);
+	/*int id = va_arg(args, int);
 	const uint8_t *challenge = va_arg(args, const uint8_t *);
 	const uint8_t *peer_challenge = va_arg(args, const uint8_t *);
 	const uint8_t *response = va_arg(args, const uint8_t *);
 	int flags = va_arg(args, int);
-	uint8_t *authenticator = va_arg(args, uint8_t *);
+	uint8_t *authenticator = va_arg(args, uint8_t *);*/
+	return PWDB_DENIED;
 }
 
 static int check(struct pwdb_t *pwdb, struct ppp_t *ppp, const char *username, int type, va_list _args)
@@ -148,8 +157,10 @@ static void __init radius_init(void)
 		fprintf(stderr, "radius: dictionary not specified\n");
 		_exit(EXIT_FAILURE);
 	}
-	if (!rad_load_dict(dict))
+	if (!rad_dict_load(dict))
 		_exit(EXIT_FAILURE);
+
+	pwdb_register(&pwdb);
 	ppp_register_notified(&notified);
 }
 

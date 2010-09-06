@@ -50,9 +50,9 @@ static int split(char *buf, char **ptr)
 	return 0;
 }
 
-struct dict_attr_t *find_attr(struct rad_dict_t *dict, const char *name)
+struct rad_dict_attr_t *find_attr(struct rad_dict_t *dict, const char *name)
 {
-	struct dict_attr_t *attr;
+	struct rad_dict_attr_t *attr;
 
 	list_for_each_entry(attr, &dict->items, entry)
 		if (!strcmp(attr->name, name))
@@ -67,8 +67,8 @@ int rad_dict_load(const char *fname)
 	FILE *f;
 	char *buf, *ptr[3], *endptr;
 	int n = 0;
-	struct dict_attr_t *attr;
-	struct dict_value_t *val;
+	struct rad_dict_attr_t *attr;
+	struct rad_dict_value_t *val;
 	
 	f = fopen(fname, "r");
 	if (!f) {
@@ -180,8 +180,8 @@ out_err:
 
 void rad_dict_free(struct rad_dict_t *dict)
 {
-	struct dict_attr_t *attr;
-	struct dict_value_t *val;
+	struct rad_dict_attr_t *attr;
+	struct rad_dict_value_t *val;
 
 	while (!list_empty(&dict->items)) {
 		attr = list_entry(dict->items.next, typeof(*attr), entry);

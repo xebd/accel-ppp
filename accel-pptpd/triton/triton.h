@@ -43,6 +43,7 @@ struct conf_sect_t
 
 void triton_register_ctx(struct triton_ctx_t *);
 void triton_unregister_ctx(struct triton_ctx_t *);
+void triton_ctx_schedule(struct triton_md_handler_t *, struct triton_timer_t *);
 
 #define MD_MODE_READ 1
 #define MD_MODE_WRITE 2
