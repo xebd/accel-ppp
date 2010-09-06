@@ -7,23 +7,7 @@
 #include "radius.h"
 #include "log.h"
 
-
-struct dict_value_t
-{
-	struct list_head entry;
-	rad_value_t val;
-	const char *name;
-};
-
-struct dict_attr_t
-{
-	struct list_head entry;
-	const char *name;
-	int id;
-	int type;
-	rad_value_t val;
-	struct list_head values;
-};
+static struct rad_dict_t *dict;
 
 static char *skip_word(char *ptr)
 {
@@ -78,26 +62,25 @@ struct dict_attr_t *find_attr(struct rad_dict_t *dict, const char *name)
 }
 
 #define BUF_SIZE 1024
-void *rad_load_dict(const char *fname)
+int rad_dict_load(const char *fname)
 {
 	FILE *f;
 	char *buf, *ptr[3], *endptr;
 	int n = 0;
-	struct rad_dict_t *dict;
 	struct dict_attr_t *attr;
 	struct dict_value_t *val;
 	
 	f = fopen(fname, "r");
 	if (!f) {
 		log_error("radius: open dictioanary '%s': %s\n", fname, strerror(errno));
-		return NULL;
+		return -1;
 	}
 	
 	buf = malloc(BUF_SIZE);
 	if (!buf) {
 		log_error("radius: out of memory\n");
 		fclose(f);
-		return NULL;
+		return -1;
 	}
 
 	dict = malloc(sizeof(*dict));
@@ -105,7 +88,7 @@ void *rad_load_dict(const char *fname)
 		log_error("radius: out of memory\n");
 		fclose(f);
 		free(buf);
-		return NULL;
+		return -1;
 	}
 
 	INIT_LIST_HEAD(&dict->items);
@@ -186,16 +169,16 @@ void *rad_load_dict(const char *fname)
 	free(buf);
 	fclose(f);
 
-	return dict;
+	return 0;
 
 out_err:
-	rad_free_dict(dict);
+	rad_dict_free(dict);
 	free(buf);
 	fclose(f);
-	return NULL;
+	return -1;
 }
 
-void rad_free_dict(struct rad_dict_t *dict)
+void rad_dict_free(struct rad_dict_t *dict)
 {
 	struct dict_attr_t *attr;
 	struct dict_value_t *val;
@@ -217,3 +200,23 @@ void rad_free_dict(struct rad_dict_t *dict)
 	free(dict);
 }
 
+struct rad_dict_attr_t *rad_dict_find_attr(const char *name)
+{
+	struct rad_dict_attr_t *attr;
+
+	list_for_each_entry(attr, &dict->items, entry)
+		if (!strcmp(attr->name, name))
+			return attr;
+
+	return NULL;
+}
+struct rad_dict_value_t *rad_dict_find_val(struct rad_dict_attr_t *attr, const char *name)
+{
+	struct rad_dict_value_t *val;
+
+	list_for_each_entry(val, &attr->values, entry)
+		if (!strcmp(val->name, name))
+			return val;
+
+	return NULL;
+}

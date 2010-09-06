@@ -6,41 +6,26 @@
 
 static LIST_HEAD(pwdb_handlers);
 
-int __export pwdb_cleartext_check(struct ppp_t *ppp, const char *username,const char *password)
+int __export pwdb_check(struct ppp_t *ppp, const char *username, int type, ...)
 {
 	struct pwdb_t *pwdb;
-	int r = PWDB_NO_IMPL;
-
-	list_for_each_entry(pwdb, &pwdb_handlers, entry) {
-		if (!pwdb->cleartext_check)
-			continue;
-		r = pwdb->cleartext_check(pwdb, ppp, username, password);
-		if (r == PWDB_NO_IMPL)
-			continue;
-		break;
-	}
-
-	return r;
-}
-int __export pwdb_encrypted_check(struct ppp_t *ppp, const char *username, int type, ...)
-{
-	struct pwdb_t *pwdb;
-	int r = PWDB_NO_IMPL;
+	int r, res = PWDB_NO_IMPL;
 	va_list args;
 
 	va_start(args, type);
 
 	list_for_each_entry(pwdb, &pwdb_handlers, entry) {
-		if (!pwdb->encrypted_check)
+		if (!pwdb->check)
 			continue;
-		r = pwdb->encrypted_check(pwdb, ppp, username, type, args);
+		r = pwdb->check(pwdb, ppp, username, type, args);
 		if (r == PWDB_NO_IMPL)
 			continue;
-		break;
+		if (r == PWDB_SUCCESS)
+			return PWDB_SUCCESS;
+		res = r;
 	}
 
-	return r;
-
+	return res;
 }
 __export const char *pwdb_get_passwd(struct ppp_t *ppp, const char *username)
 {

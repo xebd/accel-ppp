@@ -55,6 +55,10 @@ int triton_timer_add(struct triton_ctx_t *ctx, struct triton_timer_t*,int abs_ti
 int triton_timer_mod(struct triton_timer_t *,int abs_time);
 void triton_timer_del(struct triton_timer_t *);
 
+typedef void (*triton_event_func)(void *);
+int triton_event_register_handler(int ev_id, triton_event_func func);
+void triton_event_fire(int ev_id, void *arg);
+
 struct conf_sect_t *conf_get_section(const char *name);
 char *conf_get_opt(const char *sect, const char *name);
 

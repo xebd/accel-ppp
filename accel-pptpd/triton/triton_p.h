@@ -57,6 +57,11 @@ struct _triton_timer_t
 	struct triton_timer_t *ud;
 };
 
+struct _triton_event_t
+{
+	struct list_head handlers;
+};
+
 typedef void * mempool_t;
 mempool_t *mempool_create(int size);
 void *mempool_alloc(mempool_t*);
@@ -64,9 +69,11 @@ void mempool_free(void*);
 
 int log_init(void);
 int md_init();
+int timer_init();
+int event_init();
+
 void md_run();
 void md_terminate();
-int timer_init();
 void timer_run();
 void timer_terminate();
 struct triton_ctx_t *default_ctx;

@@ -13,13 +13,11 @@ struct ppp_t;
 struct pwdb_t
 {
 	struct list_head entry;
-	int (*cleartext_check)(struct pwdb_t *, struct ppp_t *, const char *username, const char *password);
-	int (*encrypted_check)(struct pwdb_t *, struct ppp_t *, const char *username, int type, va_list args);
+	int (*check)(struct pwdb_t *, struct ppp_t *, const char *username, int type, va_list args);
 	const char* (*get_passwd)(struct pwdb_t *, struct ppp_t *, const char *username);
 };
 
-int pwdb_cleartext_check(struct ppp_t *, const char *username,const char *password);
-int pwdb_encrypted_check(struct ppp_t *, const char *username, int type, ...);
+int pwdb_check(struct ppp_t *, const char *username, int type, ...);
 const char *pwdb_get_passwd(struct ppp_t *, const char *username);
 
 void pwdb_register(struct pwdb_t *);

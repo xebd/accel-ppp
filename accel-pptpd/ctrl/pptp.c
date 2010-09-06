@@ -529,7 +529,6 @@ static void __init pptp_init(void)
   addr.sin_port = htons (PPTP_PORT);
   addr.sin_addr.s_addr = htonl (INADDR_ANY);
   if (bind (serv.hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
-  	perror("pptp: bind");
     log_error("pptp: failed to bind socket: %s\n", strerror(errno));
 		close(serv.hnd.fd);
     return;
