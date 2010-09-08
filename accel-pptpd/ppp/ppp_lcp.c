@@ -27,7 +27,7 @@ static LIST_HEAD(option_handlers);
 
 static void lcp_layer_up(struct ppp_fsm_t*);
 static void lcp_layer_down(struct ppp_fsm_t*);
-static void send_conf_req(struct ppp_fsm_t*);
+static int send_conf_req(struct ppp_fsm_t*);
 static void send_conf_ack(struct ppp_fsm_t*);
 static void send_conf_nak(struct ppp_fsm_t*);
 static void send_conf_rej(struct ppp_fsm_t*);
@@ -95,7 +95,7 @@ static struct ppp_layer_data_t *lcp_layer_init(struct ppp_t *ppp)
 	return &lcp->ld;
 }
 
-void lcp_layer_start(struct ppp_layer_data_t *ld)
+int lcp_layer_start(struct ppp_layer_data_t *ld)
 {
 	struct ppp_lcp_t *lcp=container_of(ld,typeof(*lcp),ld);
 	
@@ -103,7 +103,10 @@ void lcp_layer_start(struct ppp_layer_data_t *ld)
 
 	lcp_options_init(lcp);
 	ppp_fsm_lower_up(&lcp->fsm);
-	ppp_fsm_open(&lcp->fsm);
+	if (ppp_fsm_open(&lcp->fsm))
+		return -1;
+	
+	return 0;
 }
 
 void lcp_layer_finish(struct ppp_layer_data_t *ld)
@@ -161,7 +164,7 @@ static void print_ropt(struct recv_opt_t *ropt)
 	log_debug(" >");
 }
 
-static void send_conf_req(struct ppp_fsm_t *fsm)
+static int send_conf_req(struct ppp_fsm_t *fsm)
 {
 	struct ppp_lcp_t *lcp=container_of(fsm,typeof(*lcp),fsm);
 	uint8_t *buf=malloc(lcp->conf_req_len), *ptr=buf;
@@ -169,30 +172,42 @@ static void send_conf_req(struct ppp_fsm_t *fsm)
 	struct lcp_option_t *lopt;
 	int n;
 
-	log_debug("send [LCP ConfReq");
 	lcp_hdr->proto=htons(PPP_LCP);
 	lcp_hdr->code=CONFREQ;
 	lcp_hdr->id=++lcp->fsm.id;
 	lcp_hdr->len=0;
-	log_debug(" id=%x",lcp_hdr->id);
 	
 	ptr+=sizeof(*lcp_hdr);
 
 	list_for_each_entry(lopt,&lcp->options,entry)
 	{
 		n=lopt->h->send_conf_req(lcp,lopt,ptr);
+		if (n < 0)
+			return -1;
 		if (n)
 		{
-			log_debug(" ");
-			lopt->h->print(log_debug,lopt,NULL);
 			ptr+=n;
-		}
+			lopt->print = 1;
+		} else
+			lopt->print = 0;
 	}
 	
-	log_debug("]\n");
+	if (conf_ppp_verbose) {
+		log_debug("send [LCP ConfReq id=%x", lcp_hdr->id);
+		list_for_each_entry(lopt,&lcp->options,entry)
+		{
+			if (lopt->print) {
+				log_debug(" ");
+				lopt->h->print(log_debug,lopt,NULL);
+			}
+		}
+		log_debug("]\n");
+	}
 
 	lcp_hdr->len=htons((ptr-buf)-2);
 	ppp_chan_send(lcp->ppp,lcp_hdr,ptr-buf);
+
+	return 0;
 }
 
 static void send_conf_ack(struct ppp_fsm_t *fsm)

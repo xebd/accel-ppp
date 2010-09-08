@@ -27,10 +27,10 @@ int __export pwdb_check(struct ppp_t *ppp, const char *username, int type, ...)
 
 	return res;
 }
-__export const char *pwdb_get_passwd(struct ppp_t *ppp, const char *username)
+__export char *pwdb_get_passwd(struct ppp_t *ppp, const char *username)
 {
 	struct pwdb_t *pwdb;
-	const char *r = NULL;
+	char *r = NULL;
 
 	list_for_each_entry(pwdb, &pwdb_handlers, entry) {
 		if (!pwdb->get_passwd)

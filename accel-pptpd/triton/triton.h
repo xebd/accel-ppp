@@ -5,11 +5,11 @@
 
 #include "list.h"
 
-struct triton_ctx_t
+struct triton_context_t
 {
 	const void *tpd; // triton private data, don't touch!
-	void (*close)(struct triton_ctx_t*);
-	void (*free)(struct triton_ctx_t*);
+	void (*close)(struct triton_context_t*);
+	void (*free)(struct triton_context_t*);
 };
 
 struct triton_md_handler_t
@@ -41,18 +41,19 @@ struct conf_sect_t
 	struct list_head items;
 };
 
-void triton_register_ctx(struct triton_ctx_t *);
-void triton_unregister_ctx(struct triton_ctx_t *);
-void triton_ctx_schedule(struct triton_md_handler_t *, struct triton_timer_t *);
+int triton_context_register(struct triton_context_t *);
+void triton_context_unregister(struct triton_context_t *);
+void triton_context_schedule(struct triton_context_t *);
+void triton_context_wakeup(struct triton_context_t *);
 
 #define MD_MODE_READ 1
 #define MD_MODE_WRITE 2
-void triton_md_register_handler(struct triton_ctx_t *, struct triton_md_handler_t *);
+void triton_md_register_handler(struct triton_context_t *, struct triton_md_handler_t *);
 void triton_md_unregister_handler(struct triton_md_handler_t *h);
 int triton_md_enable_handler(struct triton_md_handler_t *h, int mode);
 int triton_md_disable_handler(struct triton_md_handler_t *h,int mode);
 
-int triton_timer_add(struct triton_ctx_t *ctx, struct triton_timer_t*,int abs_time);
+int triton_timer_add(struct triton_context_t *ctx, struct triton_timer_t*,int abs_time);
 int triton_timer_mod(struct triton_timer_t *,int abs_time);
 void triton_timer_del(struct triton_timer_t *);
 

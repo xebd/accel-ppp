@@ -45,7 +45,7 @@ struct ppp_t;
 
 struct ppp_ctrl_t
 {
-	struct triton_ctx_t *ctx;
+	struct triton_context_t *ctx;
 	void (*started)(struct ppp_t*);
 	void (*finished)(struct ppp_t*);
 };
@@ -111,7 +111,7 @@ struct ppp_layer_t
 {
 	struct list_head entry;
 	struct ppp_layer_data_t *(*init)(struct ppp_t *);
-	void (*start)(struct ppp_layer_data_t*);
+	int (*start)(struct ppp_layer_data_t*);
 	void (*finish)(struct ppp_layer_data_t*);
 	void (*free)(struct ppp_layer_data_t *);
 };
@@ -145,6 +145,8 @@ void ppp_register_notified(struct ppp_notified_t *);
 void ppp_unregister_notified(struct ppp_notified_t *);
 void ppp_notify_started(struct ppp_t *ppp);
 void ppp_notify_finished(struct ppp_t *ppp);
+
+extern int conf_ppp_verbose;
 
 extern int sock_fd; // internet socket for ioctls
 #endif

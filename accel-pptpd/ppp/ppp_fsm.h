@@ -37,7 +37,7 @@ struct ppp_fsm_t
 	void (*layer_down)(struct ppp_fsm_t*);
 	void (*layer_started)(struct ppp_fsm_t*);
 	void (*layer_finished)(struct ppp_fsm_t*);
-	void (*send_conf_req)(struct ppp_fsm_t*);
+	int (*send_conf_req)(struct ppp_fsm_t*);
 	void (*send_conf_ack)(struct ppp_fsm_t*);
 	void (*send_conf_nak)(struct ppp_fsm_t*);
 	void (*send_conf_rej)(struct ppp_fsm_t*);
@@ -46,9 +46,9 @@ struct ppp_fsm_t
 void ppp_fsm_init(struct ppp_fsm_t*);
 void ppp_fsm_free(struct ppp_fsm_t*);
 
-void ppp_fsm_lower_up(struct ppp_fsm_t*);
+int ppp_fsm_lower_up(struct ppp_fsm_t*);
 void ppp_fsm_lower_down(struct ppp_fsm_t*);
-void ppp_fsm_open(struct ppp_fsm_t*);
+int ppp_fsm_open(struct ppp_fsm_t*);
 void ppp_fsm_close(struct ppp_fsm_t*);
 void ppp_fsm_timeout0(struct ppp_fsm_t *layer);
 void ppp_fsm_timeout1(struct ppp_fsm_t *layer);

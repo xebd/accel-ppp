@@ -193,8 +193,8 @@ static int generate_response(struct chap_auth_data_t *ad, struct chap_response_t
 	uint8_t c_hash[SHA_DIGEST_LENGTH];
 	int i;
 	
-	name=strndup(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
-	passwd=pwdb_get_passwd(ad->ppp,name);
+	name = strndup(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
+	passwd = pwdb_get_passwd(ad->ppp,name);
 	if (!passwd)
 	{
 		free(name);

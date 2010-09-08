@@ -86,7 +86,7 @@ void *timer_thread(void *arg)
 	return NULL;
 }
 
-int __export triton_timer_add(struct triton_ctx_t *ctx, struct triton_timer_t *ud, int abs_time)
+int __export triton_timer_add(struct triton_context_t *ctx, struct triton_timer_t *ud, int abs_time)
 {
 	struct _triton_timer_t *t = mempool_alloc(timer_pool);
 
@@ -95,9 +95,9 @@ int __export triton_timer_add(struct triton_ctx_t *ctx, struct triton_timer_t *u
 	t->epoll_event.data.ptr = t;
 	t->epoll_event.events = EPOLLIN | EPOLLET;
 	if (ctx)
-		t->ctx = (struct _triton_ctx_t *)ctx->tpd;
+		t->ctx = (struct _triton_context_t *)ctx->tpd;
 	else
-		t->ctx = (struct _triton_ctx_t *)default_ctx->tpd;
+		t->ctx = (struct _triton_context_t *)default_ctx->tpd;
 	t->fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
 	if (t->fd < 0) {
 		triton_log_error("timer:timerfd_create: %s" ,strerror(errno));

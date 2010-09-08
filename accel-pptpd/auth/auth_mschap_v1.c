@@ -282,8 +282,8 @@ static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response
 	char *name;
 	int i;
 	
-	name=strndup(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
-	passwd=pwdb_get_passwd(ad->ppp,name);
+	name = strndup(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
+	passwd = pwdb_get_passwd(ad->ppp,name);
 	if (!passwd)
 	{
 		free(name);

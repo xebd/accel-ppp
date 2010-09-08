@@ -38,7 +38,7 @@ void ppp_fsm_free(struct ppp_fsm_t *layer)
 	stop_timer(layer);
 }
 
-void ppp_fsm_lower_up(struct ppp_fsm_t *layer)
+int ppp_fsm_lower_up(struct ppp_fsm_t *layer)
 {
 	switch(layer->fsm_state)
 	{
@@ -49,12 +49,15 @@ void ppp_fsm_lower_up(struct ppp_fsm_t *layer)
 			//if (layer->init_req_cnt) layer->init_req_cnt(layer);
 			init_req_counter(layer,layer->max_configure);
 			--layer->restart_counter;
-			if (layer->send_conf_req) layer->send_conf_req(layer);
+			if (layer->send_conf_req) 
+				if (layer->send_conf_req(layer))
+					return -1;
 			layer->fsm_state=FSM_Req_Sent;
 			break;
 		default:
 			break;
 	}
+	return 0;
 }
 
 void ppp_fsm_lower_down(struct ppp_fsm_t *layer)
@@ -84,7 +87,7 @@ void ppp_fsm_lower_down(struct ppp_fsm_t *layer)
 	}
 }
 
-void ppp_fsm_open(struct ppp_fsm_t *layer)
+int ppp_fsm_open(struct ppp_fsm_t *layer)
 {
 	switch(layer->fsm_state)
 	{
@@ -98,7 +101,9 @@ void ppp_fsm_open(struct ppp_fsm_t *layer)
 			//if (layer->init_req_cnt) layer->init_req_cnt(layer);
 			init_req_counter(layer,layer->max_configure);
 			--layer->restart_counter;
-			if (layer->send_conf_req) layer->send_conf_req(layer);
+			if (layer->send_conf_req)
+				if (layer->send_conf_req(layer))
+					return -1;
 			layer->fsm_state=FSM_Req_Sent;
 			break;
 		case FSM_Closing:
@@ -111,6 +116,7 @@ void ppp_fsm_open(struct ppp_fsm_t *layer)
 		default:
 			break;
 	}
+	return 0;
 }
 
 void ppp_fsm_close(struct ppp_fsm_t *layer)

@@ -3,10 +3,13 @@
 
 #include <pthread.h>
 #include <sys/epoll.h>
+#include <ucontext.h>
 
 #include "triton.h"
 #include "list.h"
 #include "spinlock.h"
+
+#define CTX_STACK_SIZE 8196
 
 struct _triton_thread_t
 {
@@ -14,32 +17,38 @@ struct _triton_thread_t
 	struct list_head entry2;
 	pthread_t thread;
 	int terminate:1;
-	struct _triton_ctx_t *ctx;
+	struct _triton_context_t *ctx;
+	ucontext_t uctx;
 };
 
-struct _triton_ctx_t
+struct _triton_context_t
 {
 	struct list_head entry;
 	struct list_head entry2;
+	
 	spinlock_t lock;
+	struct _triton_thread_t *thread;
+	
 	struct list_head handlers;
 	struct list_head timers;
-
-	struct _triton_thread_t *thread;
 	struct list_head pending_handlers;
 	struct list_head pending_timers;
+
+	ucontext_t uctx;
+
 	int queued:1;
+	int sleeping:1;
 	int need_close:1;
 	int need_free:1;
 
-	struct triton_ctx_t *ud;
+	struct triton_context_t *ud;
 };
 
 struct _triton_md_handler_t
 {
 	struct list_head entry;
 	struct list_head entry2;
-	struct _triton_ctx_t *ctx;
+	struct _triton_context_t *ctx;
 	struct epoll_event epoll_event;
 	uint32_t trig_epoll_events;
 	int pending:1;
@@ -51,7 +60,7 @@ struct _triton_timer_t
 	struct list_head entry;
 	struct list_head entry2;
 	struct epoll_event epoll_event;
-	struct _triton_ctx_t *ctx;
+	struct _triton_context_t *ctx;
 	int fd;
 	int pending:1;
 	struct triton_timer_t *ud;
@@ -76,8 +85,8 @@ void md_run();
 void md_terminate();
 void timer_run();
 void timer_terminate();
-struct triton_ctx_t *default_ctx;
-int triton_queue_ctx(struct _triton_ctx_t*);
+struct triton_context_t *default_ctx;
+int triton_queue_ctx(struct _triton_context_t*);
 void triton_thread_wakeup(struct _triton_thread_t*);
 int conf_load(const char *fname);
 void triton_log_error(const char *fmt,...);

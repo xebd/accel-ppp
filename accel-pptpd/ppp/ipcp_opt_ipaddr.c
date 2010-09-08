@@ -40,7 +40,6 @@ static struct ipcp_option_t *ipaddr_init(struct ppp_ipcp_t *ipcp)
 {
 	struct ipaddr_option_t *ipaddr_opt=malloc(sizeof(*ipaddr_opt));
 	memset(ipaddr_opt,0,sizeof(*ipaddr_opt));
-	ipdb_get(&ipaddr_opt->addr,&ipaddr_opt->peer_addr);
 	ipaddr_opt->opt.id=CI_ADDR;
 	ipaddr_opt->opt.len=6;
 
@@ -51,6 +50,9 @@ static void ipaddr_free(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt)
 {
 	struct ipaddr_option_t *ipaddr_opt=container_of(opt,typeof(*ipaddr_opt),opt);
 
+	if (ipaddr_opt->peer_addr)
+		ipdb_put(ipcp->ppp, ipaddr_opt->addr, ipaddr_opt->peer_addr);
+
 	free(ipaddr_opt);
 }
 
@@ -58,6 +60,12 @@ static int ipaddr_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 {
 	struct ipaddr_option_t *ipaddr_opt=container_of(opt,typeof(*ipaddr_opt),opt);
 	struct ipcp_opt32_t *opt32=(struct ipcp_opt32_t*)ptr;
+	
+	if (!ipaddr_opt->addr && ipdb_get(ipcp->ppp, &ipaddr_opt->addr, &ipaddr_opt->peer_addr)) {
+		log_warn("ppp:ipcp: no free IP address\n");
+		return -1;
+	}
+	
 	opt32->hdr.id=CI_ADDR;
 	opt32->hdr.len=6;
 	opt32->val=ipaddr_opt->addr;

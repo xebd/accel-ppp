@@ -22,7 +22,7 @@ static int auth_recv_conf_ack(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, u
 static void auth_print(void (*print)(const char *fmt,...),struct lcp_option_t*, uint8_t *ptr);
 
 static struct ppp_layer_data_t *auth_layer_init(struct ppp_t*);
-static void auth_layer_start(struct ppp_layer_data_t *);
+static int auth_layer_start(struct ppp_layer_data_t *);
 static void auth_layer_finish(struct ppp_layer_data_t *);
 static void auth_layer_free(struct ppp_layer_data_t *);
 
@@ -257,7 +257,7 @@ static struct ppp_layer_data_t *auth_layer_init(struct ppp_t *ppp)
 	return &ad->ld;
 }
 
-static void auth_layer_start(struct ppp_layer_data_t *ld)
+static int auth_layer_start(struct ppp_layer_data_t *ld)
 {
 	struct auth_layer_data_t *ad=container_of(ld,typeof(*ad),ld);
 	
@@ -270,6 +270,8 @@ static void auth_layer_start(struct ppp_layer_data_t *ld)
 		log_debug("auth_layer_started\n");
 		ppp_layer_started(ad->ppp,ld);
 	}
+
+	return 0;
 }
 
 static void auth_layer_finish(struct ppp_layer_data_t *ld)

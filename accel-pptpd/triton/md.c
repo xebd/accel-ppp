@@ -86,16 +86,16 @@ static void *md_thread(void *arg)
 	return NULL;
 }
 
-void __export triton_md_register_handler(struct triton_ctx_t *ctx, struct triton_md_handler_t *ud)
+void __export triton_md_register_handler(struct triton_context_t *ctx, struct triton_md_handler_t *ud)
 {
 	struct _triton_md_handler_t *h = mempool_alloc(md_pool);
 	memset(h, 0, sizeof(*h));
 	h->ud = ud;
 	h->epoll_event.data.ptr = h;
 	if (ctx)
-		h->ctx = (struct _triton_ctx_t *)ctx->tpd;
+		h->ctx = (struct _triton_context_t *)ctx->tpd;
 	else
-		h->ctx = (struct _triton_ctx_t *)default_ctx->tpd;
+		h->ctx = (struct _triton_context_t *)default_ctx->tpd;
 	ud->tpd = h;
 	spin_lock(&h->ctx->lock);
 	list_add_tail(&h->entry, &h->ctx->handlers);

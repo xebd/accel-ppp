@@ -90,6 +90,7 @@ struct lcp_option_t
 	int id;
 	int len;
 	int state;
+	int print:1;
 	struct lcp_option_handler_t *h;
 };
 

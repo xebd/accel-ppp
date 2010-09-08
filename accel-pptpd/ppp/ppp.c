@@ -17,6 +17,8 @@
 #include "ppp_fsm.h"
 #include "log.h"
 
+int conf_ppp_verbose;
+
 static LIST_HEAD(layers);
 int sock_fd;
 
@@ -302,7 +304,10 @@ void __export ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 		list_for_each_entry(d,&n->items,entry)
 		{
 			d->starting=1;
-			d->layer->start(d);
+			if (d->layer->start(d)) {
+				ppp_terminate(ppp, 0);
+				return;
+			}
 		}
 	}
 }
@@ -464,7 +469,10 @@ static void start_first_layer(struct ppp_t *ppp)
 	list_for_each_entry(d,&n->items,entry)
 	{
 		d->starting=1;
-		d->layer->start(d);
+		if (d->layer->start(d)) {
+			ppp_terminate(ppp, 0);
+			return;
+		}
 	}
 }
 
@@ -487,9 +495,15 @@ struct ppp_layer_data_t *ppp_find_layer_data(struct ppp_t *ppp, struct ppp_layer
 
 static void __init ppp_init(void)
 {
+	char *opt;
+
 	sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sock_fd < 0) {
 		perror("socket");
 		_exit(EXIT_FAILURE);
 	}
+
+	opt = conf_get_opt("ppp", "verbose");
+	if (opt && atoi(opt) > 0)
+		conf_ppp_verbose = 1;
 }

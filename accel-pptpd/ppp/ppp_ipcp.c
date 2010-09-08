@@ -24,7 +24,7 @@ static LIST_HEAD(option_handlers);
 
 static void ipcp_layer_up(struct ppp_fsm_t*);
 static void ipcp_layer_down(struct ppp_fsm_t*);
-static void send_conf_req(struct ppp_fsm_t*);
+static int send_conf_req(struct ppp_fsm_t*);
 static void send_conf_ack(struct ppp_fsm_t*);
 static void send_conf_nak(struct ppp_fsm_t*);
 static void send_conf_rej(struct ppp_fsm_t*);
@@ -90,7 +90,7 @@ static struct ppp_layer_data_t *ipcp_layer_init(struct ppp_t *ppp)
 	return &ipcp->ld;
 }
 
-void ipcp_layer_start(struct ppp_layer_data_t *ld)
+int ipcp_layer_start(struct ppp_layer_data_t *ld)
 {
 	struct ppp_ipcp_t *ipcp=container_of(ld,typeof(*ipcp),ld);
 	
@@ -98,7 +98,10 @@ void ipcp_layer_start(struct ppp_layer_data_t *ld)
 
 	ipcp_options_init(ipcp);
 	ppp_fsm_lower_up(&ipcp->fsm);
-	ppp_fsm_open(&ipcp->fsm);
+	if (ppp_fsm_open(&ipcp->fsm))
+		return -1;
+	
+	return 0;
 }
 
 void ipcp_layer_finish(struct ppp_layer_data_t *ld)
@@ -107,12 +110,8 @@ void ipcp_layer_finish(struct ppp_layer_data_t *ld)
 	
 	log_debug("ipcp_layer_finish\n");
 
-	ppp_fsm_lower_down(&ipcp->fsm);
-	
-	ppp_unregister_handler(ipcp->ppp,&ipcp->hnd);
-	ipcp_options_free(ipcp);
-
-	ppp_layer_finished(ipcp->ppp,ld);
+	ipcp->fsm.fsm_state = FSM_Closed;
+	ppp_layer_finished(ipcp->ppp,&ipcp->ld);
 }
 
 void ipcp_layer_free(struct ppp_layer_data_t *ld)
@@ -121,6 +120,10 @@ void ipcp_layer_free(struct ppp_layer_data_t *ld)
 	
 	log_debug("ipcp_layer_free\n");
 		
+	ppp_unregister_handler(ipcp->ppp,&ipcp->hnd);
+	ipcp_options_free(ipcp);
+	ppp_fsm_free(&ipcp->fsm);
+
 	free(ipcp);
 }
 
@@ -151,7 +154,7 @@ static void print_ropt(struct recv_opt_t *ropt)
 	log_debug(" >");
 }
 
-static void send_conf_req(struct ppp_fsm_t *fsm)
+static int send_conf_req(struct ppp_fsm_t *fsm)
 {
 	struct ppp_ipcp_t *ipcp=container_of(fsm,typeof(*ipcp),fsm);
 	uint8_t *buf=malloc(ipcp->conf_req_len), *ptr=buf;
@@ -159,30 +162,40 @@ static void send_conf_req(struct ppp_fsm_t *fsm)
 	struct ipcp_option_t *lopt;
 	int n;
 
-	log_debug("send [IPCP ConfReq");
 	ipcp_hdr->proto=htons(PPP_IPCP);
 	ipcp_hdr->code=CONFREQ;
 	ipcp_hdr->id=++ipcp->fsm.id;
 	ipcp_hdr->len=0;
-	log_debug(" id=%x",ipcp_hdr->id);
 	
 	ptr+=sizeof(*ipcp_hdr);
 
 	list_for_each_entry(lopt,&ipcp->options,entry)
 	{
-		n=lopt->h->send_conf_req(ipcp,lopt,ptr);
-		if (n)
-		{
-			log_debug(" ");
-			lopt->h->print(log_debug,lopt,NULL);
+		n = lopt->h->send_conf_req(ipcp, lopt, ptr);
+		if (n < 0)
+			return -1;
+		if (n) {
 			ptr+=n;
-		}
+			lopt->print = 1;
+		} else
+			lopt->print = 0;
 	}
-	
-	log_debug("]\n");
+
+	if (conf_ppp_verbose) {
+		log_debug("send [IPCP ConfReq id=%x", ipcp_hdr->id);
+		list_for_each_entry(lopt,&ipcp->options,entry){
+			if (lopt->print) {
+				log_debug(" ");
+				lopt->h->print(log_debug,lopt,NULL);
+			}
+		}
+		log_debug("]\n");
+	}
 
 	ipcp_hdr->len=htons((ptr-buf)-2);
 	ppp_unit_send(ipcp->ppp,ipcp_hdr,ptr-buf);
+
+	return 0;
 }
 
 static void send_conf_ack(struct ppp_fsm_t *fsm)
@@ -464,7 +477,7 @@ static void ipcp_recv(struct ppp_handler_t*h)
 
 	if (ipcp->fsm.fsm_state==FSM_Initial || ipcp->fsm.fsm_state==FSM_Closed)
 	{
-		log_error("IPCP: discaring packet\n");
+		log_warn("IPCP: discaring packet\n");
 		return;
 	}
 

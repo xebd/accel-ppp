@@ -27,7 +27,7 @@
 
 struct pptp_conn_t
 {
-	struct triton_ctx_t ctx;
+	struct triton_context_t ctx;
 	struct triton_md_handler_t hnd;
 	struct triton_timer_t timeout_timer;
 	struct triton_timer_t echo_timer;
@@ -73,7 +73,7 @@ static void disconnect(struct pptp_conn_t *conn)
 		ppp_terminate(&conn->ppp, 1);
 	}
 	
-	triton_unregister_ctx(&conn->ctx);
+	triton_context_unregister(&conn->ctx);
 	
 	free(conn->in_buf);
 	free(conn->out_buf);
@@ -425,7 +425,7 @@ static void pptp_timeout(struct triton_timer_t *t)
 	struct pptp_conn_t *conn = container_of(t, typeof(*conn), timeout_timer);
 	disconnect(conn);
 }
-static void pptp_close(struct triton_ctx_t *ctx)
+static void pptp_close(struct triton_context_t *ctx)
 {
 	struct pptp_conn_t *conn = container_of(ctx, typeof(*conn), ctx);
 	if (conn->state == STATE_PPP) {
@@ -455,7 +455,7 @@ static void ppp_finished(struct ppp_t *ppp)
 
 struct pptp_serv_t
 {
-	struct triton_ctx_t ctx;
+	struct triton_context_t ctx;
 	struct triton_md_handler_t hnd;
 };
 
@@ -495,14 +495,14 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		conn->timeout_timer.period = conf_timeout * 1000;
 		conn->echo_timer.expire = pptp_send_echo;
 
-		triton_register_ctx(&conn->ctx);
+		triton_context_register(&conn->ctx);
 		triton_md_register_handler(&conn->ctx, &conn->hnd);
 		triton_md_enable_handler(&conn->hnd,MD_MODE_READ);
 		triton_timer_add(&conn->ctx, &conn->timeout_timer, 0);
 	}
 	return 0;
 }
-static void pptp_serv_close(struct triton_ctx_t *ctx)
+static void pptp_serv_close(struct triton_context_t *ctx)
 {
 	struct pptp_serv_t *s=container_of(ctx,typeof(*s),ctx);
 	triton_md_unregister_handler(&s->hnd);
@@ -546,7 +546,7 @@ static void __init pptp_init(void)
     return;
 	}
 	
-	triton_register_ctx(&serv.ctx);
+	triton_context_register(&serv.ctx);
 	triton_md_register_handler(&serv.ctx, &serv.hnd);
 	triton_md_enable_handler(&serv.hnd, MD_MODE_READ);
 

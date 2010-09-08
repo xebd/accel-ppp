@@ -14,11 +14,11 @@ struct pwdb_t
 {
 	struct list_head entry;
 	int (*check)(struct pwdb_t *, struct ppp_t *, const char *username, int type, va_list args);
-	const char* (*get_passwd)(struct pwdb_t *, struct ppp_t *, const char *username);
+	char* (*get_passwd)(struct pwdb_t *, struct ppp_t *, const char *username);
 };
 
 int pwdb_check(struct ppp_t *, const char *username, int type, ...);
-const char *pwdb_get_passwd(struct ppp_t *, const char *username);
+char *pwdb_get_passwd(struct ppp_t *, const char *username);
 
 void pwdb_register(struct pwdb_t *);
 void pwdb_unregister(struct pwdb_t *);

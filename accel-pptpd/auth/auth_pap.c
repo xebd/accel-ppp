@@ -125,7 +125,7 @@ static void pap_send_ack(struct pap_auth_data_t *p, int id)
 	ppp_chan_send(p->ppp,msg,ntohs(msg->hdr.len)+2);
 }
 
-static void pap_send_nak(struct pap_auth_data_t *p,int id)
+static void pap_send_nak(struct pap_auth_data_t *p, int id)
 {
 	uint8_t buf[128];
 	struct pap_ack_t *msg=(struct pap_ack_t*)buf;
@@ -143,9 +143,10 @@ static void pap_send_nak(struct pap_auth_data_t *p,int id)
 
 static int pap_recv_req(struct pap_auth_data_t *p,struct pap_hdr_t *hdr)
 {
-	int ret;
+	int ret, r;
 	char *peer_id;
 	char *passwd;
+	const char *passwd2;
 	int peer_id_len;
 	int passwd_len;
 	uint8_t *ptr=(uint8_t*)(hdr+1);
@@ -170,17 +171,23 @@ static int pap_recv_req(struct pap_auth_data_t *p,struct pap_hdr_t *hdr)
 	peer_id=strndup((const char*)peer_id,peer_id_len);
 	passwd=strndup((const char*)ptr,passwd_len);
 
-	if (pwdb_check(p->ppp,peer_id,passwd))
-	{
+	r = pwdb_check(p->ppp, peer_id, PPP_PAP, passwd);
+	if (r == PWDB_NO_IMPL) {
+		passwd2 = pwdb_get_passwd(p->ppp, peer_id);
+		if (!passwd2 || strcmp(passwd2, passwd))
+			r = PWDB_DENIED;
+		else
+			r = PWDB_SUCCESS;
+	}
+	if (r == PWDB_DENIED) {
 		log_warn("PAP: authentication error\n");
-		pap_send_nak(p,hdr->id);
+		pap_send_nak(p, hdr->id);
 		auth_failed(p->ppp);
 		ret=-1;
-	}else
-	{
-		pap_send_ack(p,hdr->id);
+	} else {
+		pap_send_ack(p, hdr->id);
 		auth_successed(p->ppp);
-		ret=0;
+		ret = 0;
 	}
 
 	free(peer_id);
