@@ -14,6 +14,10 @@
 
 #include "radius.h"
 
+#define CHAP_MD5 5
+#define MSCHAP_V1 0x80
+#define MSCHAP_V2 0x81
+
 int conf_max_try = 3;
 int conf_timeout = 3;
 char *conf_nas_identifier = "accel-pptpd";
@@ -129,9 +133,54 @@ out:
 
 static int check_chap_md5(struct radius_pd_t *rpd, const char *username, va_list args)
 {
-	/*int id = va_arg(args, int);
-	const uint8_t *challenge = va_arg(args, const uint8_t *);*/
-	return PWDB_DENIED;
+	struct rad_req_t *req;
+	int i, r = PWDB_DENIED;
+	char chap_password[17];
+	
+	int id = va_arg(args, int);
+	const uint8_t *challenge = va_arg(args, const uint8_t *);
+	int challenge_len = va_arg(args, int);
+	const uint8_t *response = va_arg(args, const uint8_t *);
+
+	chap_password[0] = id;
+	memcpy(chap_password + 1, response, 16);
+
+	req = rad_req_alloc(rpd, CODE_ACCESS_REQUEST, username);
+	if (!req)
+		return PWDB_DENIED;
+	
+	req->server_name = conf_auth_server;
+	req->server_port = conf_auth_server_port;
+
+	if (challenge_len == 16)
+		memcpy(req->RA, challenge, 16);
+	else {
+		if (rad_req_add_str(req, "CHAP-Challenge", (char*)challenge, challenge_len, 0))
+			goto out;
+	}
+
+	if (rad_req_add_str(req, "CHAP-Password", chap_password, 17, 0))
+		goto out;
+
+	for(i = 0; i < conf_max_try; i++) {
+		if (rad_req_send(req))
+			goto out;
+
+		rad_req_wait(req, conf_timeout);
+
+		if (req->reply)
+			break;
+	}
+
+	if (req->reply && req->reply->code == CODE_ACCESS_ACCEPT) {
+		proc_attrs(req);
+		r = PWDB_SUCCESS;
+	}
+
+out:
+	rad_req_free(req);
+
+	return r;
 }
 
 static int check_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list args)
@@ -171,13 +220,13 @@ static int check(struct pwdb_t *pwdb, struct ppp_t *ppp, const char *username, i
 		case PPP_CHAP:
 			chap_type = va_arg(args, int);
 			switch(chap_type) {
-				case 0x05:
+				case CHAP_MD5:
 					r = check_chap_md5(rpd, username, args);
 					break;
-				case 0x80:
+				case MSCHAP_V1:
 					r = check_mschap_v1(rpd, username, args);
 					break;
-				case 0x81:
+				case MSCHAP_V2:
 					r = check_mschap_v2(rpd, username, args);
 					break;
 			}

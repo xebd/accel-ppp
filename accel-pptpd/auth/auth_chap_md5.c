@@ -20,6 +20,8 @@
 #define CHAP_SUCCESS   3
 #define CHAP_FAILURE   4
 
+#define CHAP_MD5 5
+
 #define VALUE_SIZE 16
 
 #define MSG_FAILURE   "Authentication failed"
@@ -128,13 +130,13 @@ static int chap_finish(struct ppp_t *ppp, struct auth_data_t *auth)
 
 static int lcp_send_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *ptr)
 {
-	*ptr=5;
+	*ptr = CHAP_MD5;
 	return 1;
 }
 
 static int lcp_recv_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *ptr)
 {
-	if (*ptr==5)
+	if (*ptr == CHAP_MD5)
 		return LCP_OPT_ACK;
 	return LCP_OPT_NAK;
 }
@@ -198,6 +200,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	uint8_t md5[MD5_DIGEST_LENGTH];
 	char *passwd;
 	char *name;
+	int r;
 	struct chap_challenge_t *msg=(struct chap_challenge_t*)hdr;
 
 	log_debug("recv [CHAP Response id=%x <", msg->hdr.id);
@@ -221,34 +224,45 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	}
 
 	name = strndup(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
-	passwd = pwdb_get_passwd(ad->ppp,name);
-	if (!passwd)
-	{
-		free(name);
-		log_debug("chap-md5: user not found\n");
-		chap_send_failure(ad);
-		return;
-	}
 
-	MD5_Init(&md5_ctx);
-	MD5_Update(&md5_ctx,&msg->hdr.id,1);
-	MD5_Update(&md5_ctx,passwd,strlen(passwd));
-	MD5_Update(&md5_ctx,ad->val,VALUE_SIZE);
-	MD5_Final(md5,&md5_ctx);
-	
-	if (memcmp(md5,msg->val,sizeof(md5)))
-	{
-		log_debug("chap-md5: challenge response mismatch\n");
+	r = pwdb_check(ad->ppp, name, PPP_CHAP, CHAP_MD5, ad->id, ad->val, VALUE_SIZE, msg->val);
+
+	if (r == PWDB_NO_IMPL) {
+		passwd = pwdb_get_passwd(ad->ppp,name);
+		if (!passwd)
+		{
+			free(name);
+			log_debug("chap-md5: user not found\n");
+			chap_send_failure(ad);
+			return;
+		}
+
+		MD5_Init(&md5_ctx);
+		MD5_Update(&md5_ctx,&msg->hdr.id,1);
+		MD5_Update(&md5_ctx,passwd,strlen(passwd));
+		MD5_Update(&md5_ctx,ad->val,VALUE_SIZE);
+		MD5_Final(md5,&md5_ctx);
+		
+		if (memcmp(md5,msg->val,sizeof(md5)))
+		{
+			log_debug("chap-md5: challenge response mismatch\n");
+			chap_send_failure(ad);
+			auth_failed(ad->ppp);
+		}else
+		{
+			chap_send_success(ad);
+			auth_successed(ad->ppp);
+		}
+		free(passwd);
+	} else if (r == PWDB_DENIED) {
 		chap_send_failure(ad);
 		auth_failed(ad->ppp);
-	}else
-	{
+	} else {
 		chap_send_success(ad);
 		auth_successed(ad->ppp);
 	}
 
 	free(name);
-	free(passwd);
 }
 
 static struct ppp_auth_handler_t chap=
