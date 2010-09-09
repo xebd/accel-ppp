@@ -47,6 +47,10 @@ void *mempool_alloc(mempool_t *pool)
 	}
 	spin_unlock(&p->lock);
 	it = malloc(sizeof(*it) + p->size);
+	if (!it) {
+		triton_log_error("out of memory\n");
+		return NULL;
+	}
 	it->owner = p;
 	it->magic = p->magic;
 	return it->ptr;

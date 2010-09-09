@@ -23,6 +23,7 @@ struct triton_context_t *default_ctx;
 static int terminate;
 
 static mempool_t *ctx_pool;
+static mempool_t *call_pool;
 
 void triton_thread_wakeup(struct _triton_thread_t *thread)
 {
@@ -74,6 +75,7 @@ static void ctx_thread(struct _triton_context_t *ctx)
 {
 	struct _triton_md_handler_t *h;
 	struct _triton_timer_t *t;
+	struct _triton_ctx_call_t *call;
 	uint64_t tt;
 	ucontext_t *uctx;
 
@@ -109,6 +111,13 @@ static void ctx_thread(struct _triton_context_t *ctx)
 						h->ud->write(h->ud);
 				h->trig_epoll_events = 0;
 				continue;
+			}
+			if (!list_empty(&ctx->pending_calls)) {
+				call = list_entry(ctx->pending_calls.next, typeof(*call), entry);
+				list_del(&call->entry);
+				spin_unlock(&ctx->lock);
+				call->func(call->arg);
+				mempool_free(call);
 			}
 			ctx->thread = NULL;
 			spin_unlock(&ctx->lock);
@@ -159,6 +168,9 @@ int __export triton_context_register(struct triton_context_t *ud)
 {
 	struct _triton_context_t *ctx = mempool_alloc(ctx_pool);
 
+	if (!ctx)
+		return -1;
+
 	memset(ctx, 0, sizeof(*ctx));
 	ctx->ud = ud;
 	spinlock_init(&ctx->lock);
@@ -166,6 +178,7 @@ int __export triton_context_register(struct triton_context_t *ud)
 	INIT_LIST_HEAD(&ctx->timers);
 	INIT_LIST_HEAD(&ctx->pending_handlers);
 	INIT_LIST_HEAD(&ctx->pending_timers);
+	INIT_LIST_HEAD(&ctx->pending_calls);
 
 	if (getcontext(&ctx->uctx)) {
 		triton_log_error("getcontext: %s\n", strerror(errno));
@@ -252,9 +265,28 @@ void __export triton_context_wakeup(struct triton_context_t *ud)
 		triton_thread_wakeup(ctx->thread);
 }
 
+int __export triton_context_call(struct triton_context_t *ud, void (*func)(void *), void *arg)
+{
+	struct _triton_context_t *ctx = (struct _triton_context_t *)ud->tpd;
+	struct _triton_ctx_call_t *call = mempool_alloc(call_pool);
+
+	if (!call)
+		return -1;
+	
+	call->func = func;
+	call->arg = arg;
+
+	spin_lock(&ctx->lock);
+	list_add_tail(&call->entry, &ctx->pending_calls);
+	spin_unlock(&ctx->lock);
+
+	return 0;
+}
+
 int __export triton_init(const char *conf_file, const char *mod_sect)
 {
 	ctx_pool = mempool_create(sizeof(struct _triton_context_t));
+	call_pool = mempool_create(sizeof(struct _triton_ctx_call_t));
 
 	default_ctx = malloc(sizeof(*default_ctx));
 	if (!default_ctx) {

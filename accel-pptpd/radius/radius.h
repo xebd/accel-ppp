@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 #include <netinet/in.h>
+#include <pthread.h>
+
 #include "triton.h"
 #include "ppp.h"
 
@@ -10,25 +12,35 @@
 
 #define ATTR_TYPE_INTEGER 0
 #define ATTR_TYPE_STRING  1
-#define ATTR_TYPE_DATE    2
-#define ATTR_TYPE_IPADDR  3
+#define ATTR_TYPE_OCTETS  2
+#define ATTR_TYPE_DATE    3
+#define ATTR_TYPE_IPADDR  4
 
 #define CODE_ACCESS_REQUEST 1
 #define CODE_ACCESS_ACCEPT  2
 #define CODE_ACCESS_REJECT  3
 #define CODE_ACCESS_CHALLENGE 11
 
-#define CODE_ACCOUNTING_REQUEST 4
+#define CODE_ACCOUNTING_REQUEST  4
 #define CODE_ACCOUNTING_RESPONSE 5
 
+#define CODE_DISCONNECT_REQUEST 40
+#define CODE_DISCONNECT_ACK     41
+#define CODE_DISCONNECT_NAK     42
+#define CODE_COA_REQUEST 43
+#define CODE_COA_ACK     44
+#define CODE_COA_NAK     45
 
 struct radius_pd_t
 {
+	struct list_head entry;
 	struct ppp_pd_t pd;
 	struct ppp_t *ppp;
+	pthread_mutex_t lock;
 
 	struct rad_req_t *acct_req;
 	struct triton_timer_t acct_interim_timer;
+	struct rad_packet_t *pd_coa_req;
 
 	in_addr_t ipaddr;
 	int acct_interim_interval;
@@ -38,6 +50,7 @@ typedef union
 {
 		int integer;
 		char *string;
+		uint8_t *octets;
 		time_t date;
 		in_addr_t ipaddr;
 } rad_value_t;
@@ -63,14 +76,13 @@ struct rad_dict_attr_t
 	struct list_head values;
 };
 
-struct rad_req_attr_t
+struct rad_attr_t
 {
 	struct list_head entry;
 	struct rad_dict_attr_t *attr;
 	//struct rad_dict_value_t *val;
 	rad_value_t val;
 	int len;
-	int printable:1;
 };
 
 struct rad_packet_t
@@ -103,11 +115,16 @@ extern char *conf_nas_identifier;
 extern char *conf_nas_ip_address;
 extern char *conf_gw_ip_address;
 extern char *conf_auth_server;
-extern char *conf_auth_server_secret;
+extern char *conf_auth_secret;
 extern int conf_auth_server_port;
 extern char *conf_acct_server;
-extern char *conf_acct_server_secret;
+extern char *conf_acct_secret;
 extern int conf_acct_server_port;
+extern char *conf_pd_coa_secret;
+
+int rad_check_nas_pack(struct rad_packet_t *pack);
+struct radius_pd_t *rad_find_session(const char *sessionid, const char *username, int port_id, in_addr_t ipaddr);
+struct radius_pd_t *rad_find_session_pack(struct rad_packet_t *pack);
 
 int rad_dict_load(const char *fname);
 void rad_dict_free(struct rad_dict_t *dict);
@@ -121,18 +138,21 @@ int rad_req_acct_fill(struct rad_req_t *);
 void rad_req_free(struct rad_req_t *);
 int rad_req_send(struct rad_req_t *);
 int rad_req_wait(struct rad_req_t *, int);
-struct rad_req_attr_t *rad_req_find_attr(struct rad_req_t *req, const char *name);
-int rad_req_add_int(struct rad_req_t *req, const char *name, int val);
-int rad_req_add_val(struct rad_req_t *req, const char *name, const char *val, int len);
-int rad_req_add_str(struct rad_req_t *req, const char *name, const char *val, int len, int printable);
-int rad_req_change_int(struct rad_req_t *req, const char *name, int val);
-int rad_req_change_val(struct rad_req_t *req, const char *name, const char *val, int len);
+
+struct rad_attr_t *rad_packet_find_attr(struct rad_packet_t *pack, const char *name);
+int rad_packet_add_int(struct rad_packet_t *pack, const char *name, int val);
+int rad_packet_add_val(struct rad_packet_t *pack, const char *name, const char *val);
+int rad_packet_add_str(struct rad_packet_t *pack, const char *name, const char *val, int len);
+int rad_packet_add_octets(struct rad_packet_t *pack, const char *name, uint8_t *val, int len);
+int rad_packet_change_int(struct rad_packet_t *pack, const char *name, int val);
+int rad_packet_change_val(struct rad_packet_t *pack, const char *name, const char *val);
 
 struct rad_packet_t *rad_packet_alloc(int code);
 int rad_packet_build(struct rad_packet_t *pack, uint8_t *RA);
-struct rad_packet_t *rad_packet_recv(int fd);
+struct rad_packet_t *rad_packet_recv(int fd, struct sockaddr_in *addr);
 void rad_packet_free(struct rad_packet_t *);
 void rad_packet_print(struct rad_packet_t *pack, void (*print)(const char *fmt, ...));
+int rad_packet_send(struct rad_packet_t *pck, int fd, struct sockaddr_in *addr);
 
 struct radius_pd_t *find_pd(struct ppp_t *ppp);
 void rad_proc_attrs(struct rad_req_t *req);

@@ -37,18 +37,18 @@ static void req_set_stat(struct rad_req_t *req, struct ppp_t *ppp)
 		return;
 	}
 
-	rad_req_change_int(req, "Acct-Input-Octets", ifreq.stats.p.ppp_ibytes);
-	rad_req_change_int(req, "Acct-Output-Octets", ifreq.stats.p.ppp_obytes);
-	rad_req_change_int(req, "Acct-Input-Packets", ifreq.stats.p.ppp_ipackets);
-	rad_req_change_int(req, "Acct-Output-Packets", ifreq.stats.p.ppp_opackets);
-	rad_req_change_int(req, "Acct-Session-Time", time(NULL) - ppp->start_time);
+	rad_packet_change_int(req->pack, "Acct-Input-Octets", ifreq.stats.p.ppp_ibytes);
+	rad_packet_change_int(req->pack, "Acct-Output-Octets", ifreq.stats.p.ppp_obytes);
+	rad_packet_change_int(req->pack, "Acct-Input-Packets", ifreq.stats.p.ppp_ipackets);
+	rad_packet_change_int(req->pack, "Acct-Output-Packets", ifreq.stats.p.ppp_opackets);
+	rad_packet_change_int(req->pack, "Acct-Session-Time", time(NULL) - ppp->start_time);
 }
 
 static int rad_acct_read(struct triton_md_handler_t *h)
 {
 	struct rad_req_t *req = container_of(h, typeof(*req), hnd);
 
-	req->reply = rad_packet_recv(h->fd);
+	req->reply = rad_packet_recv(h->fd, NULL);
 	if (!req->reply)
 		return 0;
 
@@ -83,9 +83,9 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 	if (rpd->acct_req->timeout.period)
 		return;
 
-	rad_req_change_val(rpd->acct_req, "Acct-Status-Type", "Interim-Update", 4);
+	rad_packet_change_val(rpd->acct_req->pack, "Acct-Status-Type", "Interim-Update");
 	req_set_stat(rpd->acct_req, rpd->ppp);
-	req_set_RA(rpd->acct_req, conf_acct_server_secret);
+	req_set_RA(rpd->acct_req, conf_acct_secret);
 	rad_req_send(rpd->acct_req);
 	rpd->acct_req->timeout.period = conf_timeout * 1000;
 	triton_timer_add(rpd->ppp->ctrl->ctx, &rpd->acct_req->timeout, 0);
@@ -109,7 +109,7 @@ int rad_acct_start(struct radius_pd_t *rpd)
 	//if (rad_req_add_str(rpd->acct_req, "Acct-Session-Id", rpd->ppp->sessionid, PPP_SESSIONID_LEN, 1))
 	//	goto out_err;
 
-	if (req_set_RA(rpd->acct_req, conf_acct_server_secret))
+	if (req_set_RA(rpd->acct_req, conf_acct_secret))
 		goto out_err;
 
 	if (rad_req_send(rpd->acct_req))
@@ -155,9 +155,9 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 		if (rpd->acct_req->timeout.period)
 			triton_timer_del(&rpd->acct_req->timeout);
 
-		rad_req_change_val(rpd->acct_req, "Acct-Status-Type", "Stop", 4);
+		rad_packet_change_val(rpd->acct_req->pack, "Acct-Status-Type", "Stop");
 		req_set_stat(rpd->acct_req, rpd->ppp);
-		req_set_RA(rpd->acct_req, conf_acct_server_secret);
+		req_set_RA(rpd->acct_req, conf_acct_secret);
 		/// !!! rad_req_add_val(rpd->acct_req, "Acct-Terminate-Cause", "");
 		for(i = 0; i < conf_max_try; i++) {
 			if (rad_req_send(rpd->acct_req))

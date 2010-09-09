@@ -42,10 +42,10 @@ static int split(char *buf, char **ptr)
 	}
 
 	buf = skip_word(buf);
-	if (*buf == '\n')
+	//if (*buf == '\n')
 		*buf = 0;
-	else if (*buf)
-		return -1;
+	//else if (*buf)
+	//	return -1;
 
 	return 0;
 }
@@ -124,6 +124,8 @@ int rad_dict_load(const char *fname)
 				attr->type = ATTR_TYPE_DATE;
 			else if (!strcmp(ptr[2], "ipaddr"))
 				attr->type = ATTR_TYPE_IPADDR;
+			else if (!strcmp(ptr[2], "octets"))
+				attr->type = ATTR_TYPE_OCTETS;
 			else {
 				log_error("radius:%s:%i: unknown attribute type\n", fname, n);
 				goto out_err;

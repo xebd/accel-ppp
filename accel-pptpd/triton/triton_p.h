@@ -33,6 +33,7 @@ struct _triton_context_t
 	struct list_head timers;
 	struct list_head pending_handlers;
 	struct list_head pending_timers;
+	struct list_head pending_calls;
 
 	ucontext_t uctx;
 
@@ -69,6 +70,14 @@ struct _triton_timer_t
 struct _triton_event_t
 {
 	struct list_head handlers;
+};
+
+struct _triton_ctx_call_t
+{
+	struct list_head entry;
+
+	void *arg;
+	void (*func)(void *);
 };
 
 typedef void * mempool_t;

@@ -27,8 +27,8 @@
 #	Following are the proper new names. Use these.
 #
 ATTRIBUTE	User-Name		1	string
-ATTRIBUTE	Password		2	string
-ATTRIBUTE	CHAP-Password		3	string
+ATTRIBUTE	Password		2	octets
+ATTRIBUTE	CHAP-Password		3	octets
 ATTRIBUTE	NAS-IP-Address		4	ipaddr
 ATTRIBUTE	NAS-Port-Id		5	integer
 ATTRIBUTE	Service-Type		6	integer
@@ -83,6 +83,7 @@ ATTRIBUTE	Login-LAT-Port		63	integer
 ATTRIBUTE	Connect-Info		77	string
 
 ATTRIBUTE	Acct-Interim-Interval	85	integer
+ATTRIBUTE	Error-Cause		101	integer
 
 #
 #	RFC3162 IPv6 attributes
@@ -186,6 +187,7 @@ VALUE		NAS-Port-Type		Sync			1
 VALUE		NAS-Port-Type		ISDN			2
 VALUE		NAS-Port-Type		ISDN-V120		3
 VALUE		NAS-Port-Type		ISDN-V110		4
+VALUE		NAS-Port-Type		Virtual			5
 
 #	Acct Terminate Causes, available in 3.3.2 and later
 
@@ -239,4 +241,3 @@ VALUE		Add-Port-To-IP-Address	Yes			1
 
 #VALUE		Server-Config		Password-Expiration	30
 #VALUE		Server-Config		Password-Warning	5
-

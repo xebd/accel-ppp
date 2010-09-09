@@ -43,18 +43,18 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 	if (!req->pack)
 		goto out_err;
 
-	if (rad_req_add_str(req, "User-Name", username, strlen(username), 1))
+	if (rad_packet_add_str(req->pack, "User-Name", username, strlen(username)))
 		goto out_err;
 	if (conf_nas_identifier)
-		if (rad_req_add_str(req, "NAS-Identifier", conf_nas_identifier, strlen(conf_nas_identifier), 1))
+		if (rad_packet_add_str(req->pack, "NAS-Identifier", conf_nas_identifier, strlen(conf_nas_identifier)))
 			goto out_err;
-	if (rad_req_add_int(req, "NAS-Port-Id", rpd->ppp->unit_idx))
+	if (rad_packet_add_int(req->pack, "NAS-Port-Id", rpd->ppp->unit_idx))
 		goto out_err;
-	if (rad_req_add_val(req, "NAS-Port-Type", "Sync", 4))
+	if (rad_packet_add_val(req->pack, "NAS-Port-Type", "Virtual"))
 		goto out_err;
-	if (rad_req_add_val(req, "Service-Type", "Framed-User", 4))
+	if (rad_packet_add_val(req->pack, "Service-Type", "Framed-User"))
 		goto out_err;
-	if (rad_req_add_val(req, "Framed-Protocol", "PPP", 4))
+	if (rad_packet_add_val(req->pack, "Framed-Protocol", "PPP"))
 		goto out_err;
 
 	return req;
@@ -71,19 +71,19 @@ int rad_req_acct_fill(struct rad_req_t *req)
 
 	memset(req->RA, 0, sizeof(req->RA));
 
-	if (rad_req_add_val(req, "Acct-Status-Type", "Start", 4))
+	if (rad_packet_add_val(req->pack, "Acct-Status-Type", "Start"))
 		return -1;
-	if (rad_req_add_str(req, "Acct-Session-Id", req->rpd->ppp->sessionid, PPP_SESSIONID_LEN, 1))
+	if (rad_packet_add_str(req->pack, "Acct-Session-Id", req->rpd->ppp->sessionid, PPP_SESSIONID_LEN))
 		return -1;
-	if (rad_req_add_int(req, "Acct-Session-Time", 0))
+	if (rad_packet_add_int(req->pack, "Acct-Session-Time", 0))
 		return -1;
-	if (rad_req_add_int(req, "Acct-Input-Octets", 0))
+	if (rad_packet_add_int(req->pack, "Acct-Input-Octets", 0))
 		return -1;
-	if (rad_req_add_int(req, "Acct-Output-Octets", 0))
+	if (rad_packet_add_int(req->pack, "Acct-Output-Octets", 0))
 		return -1;
-	if (rad_req_add_int(req, "Acct-Input-Packets", 0))
+	if (rad_packet_add_int(req->pack, "Acct-Input-Packets", 0))
 		return -1;
-	if (rad_req_add_int(req, "Acct-Output-Packets", 0))
+	if (rad_packet_add_int(req->pack, "Acct-Output-Packets", 0))
 		return -1;
 
 	return 0;
@@ -144,8 +144,6 @@ out_err:
 
 int rad_req_send(struct rad_req_t *req)
 {
-	int n;
-
 	if (req->hnd.fd == -1 && make_socket(req))
 		return -1;
 
@@ -157,20 +155,7 @@ int rad_req_send(struct rad_req_t *req)
 		rad_packet_print(req->pack, log_debug);
 	}
 
-	while (1) {
-		n = write(req->hnd.fd, req->pack->buf, req->pack->len);
-		//n = sendto(req->hnd.fd, req->pack->buf, req->pack->len, 0, &addr, sizeof(addr));
-		if (n < 0) {
-			if (errno == EINTR)
-				continue;
-			log_error("radius:write: %s\n", strerror(errno));
-			goto out_err;
-		} else if (n != req->pack->len) {
-			log_error("radius:write: short write %i, excpected %i\n", n, req->pack->len);
-			goto out_err;
-		}
-		break;
-	}
+	rad_packet_send(req->pack, req->hnd.fd, NULL);
 
 	return 0;
 
@@ -178,174 +163,6 @@ out_err:
 	close(req->hnd.fd);
 	req->hnd.fd = -1;
 	return -1;
-}
-
-int rad_req_add_int(struct rad_req_t *req, const char *name, int val)
-{
-	struct rad_req_attr_t *ra;
-	struct rad_dict_attr_t *attr;
-
-	if (req->pack->len + 2 + 4 >= REQ_LENGTH_MAX)
-		return -1;
-
-	attr = rad_dict_find_attr(name);
-	if (!attr)
-		return -1;
-	
-	ra = malloc(sizeof(*ra));
-	if (!ra)
-		return -1;
-
-	ra->attr = attr;
-	ra->len = 4;
-	ra->val.integer = val;
-	ra->printable = 1;
-	list_add_tail(&ra->entry, &req->pack->attrs);
-	req->pack->len += 2 + 4;
-
-	return 0;
-}
-
-int rad_req_change_int(struct rad_req_t *req, const char *name, int val)
-{
-	struct rad_req_attr_t *ra;
-	
-	ra = rad_req_find_attr(req, name);
-	if (!ra)
-		return -1;
-
-	ra->val.integer = val;
-
-	return 0;
-}
-
-int rad_req_add_str(struct rad_req_t *req, const char *name, const char *val, int len, int printable)
-{
-	struct rad_req_attr_t *ra;
-	struct rad_dict_attr_t *attr;
-
-	if (req->pack->len + 2 + len >= REQ_LENGTH_MAX)
-		return -1;
-
-	attr = rad_dict_find_attr(name);
-	if (!attr)
-		return -1;
-	
-	ra = malloc(sizeof(*ra));
-	if (!ra) {
-		log_error("radius: aout of memory\n");
-		return -1;
-	}
-
-	ra->attr = attr;
-	ra->len = len;
-	ra->val.string = malloc(len+1);
-	if (!ra->val.string) {
-		log_error("radius: out of memory\n");
-		free(ra);
-		return -1;
-	}
-	memcpy(ra->val.string, val, len);
-	ra->val.string[len] = 0;
-	ra->printable = printable;
-	list_add_tail(&ra->entry, &req->pack->attrs);
-	req->pack->len += 2 + len;
-
-	return 0;
-}
-
-int rad_req_change_str(struct rad_req_t *req, const char *name, const char *val, int len)
-{
-	struct rad_req_attr_t *ra;
-	
-	ra = rad_req_find_attr(req, name);
-	if (!ra)
-		return -1;
-
-	if (ra->len != len) {
-		if (req->pack->len - ra->len + len >= REQ_LENGTH_MAX)
-			return -1;
-
-		ra->val.string = realloc(ra->val.string, len + 1);
-		if (!ra->val.string) {
-			log_error("radius: out of memory\n");
-			return -1;
-		}
-	
-		req->pack->len += len - ra->len;
-		ra->len = len;
-	}
-
-	memcpy(ra->val.string, val, len);
-	ra->val.string[len] = 0;
-
-	return 0;
-}
-
-int rad_req_add_val(struct rad_req_t *req, const char *name, const char *val, int len)
-{
-	struct rad_req_attr_t *ra;
-	struct rad_dict_attr_t *attr;
-	struct rad_dict_value_t *v;
-
-	if (req->pack->len + 2 + len >= REQ_LENGTH_MAX)
-		return -1;
-
-	attr = rad_dict_find_attr(name);
-	if (!attr)
-		return -1;
-	
-	v = rad_dict_find_val_name(attr, val);
-	if (!v)
-		return -1;
-	
-	ra = malloc(sizeof(*ra));
-	if (!ra)
-		return -1;
-
-	ra->attr = attr;
-	ra->len = len;
-	ra->val = v->val;
-	ra->printable = 1;
-	list_add_tail(&ra->entry, &req->pack->attrs);
-	req->pack->len += 2 + len;
-
-	return 0;
-}
-
-int rad_req_change_val(struct rad_req_t *req, const char *name, const char *val, int len)
-{
-	struct rad_req_attr_t *ra;
-	struct rad_dict_value_t *v;
-	
-	ra = rad_req_find_attr(req, name);
-	if (!ra)
-		return -1;
-
-	v = rad_dict_find_val_name(ra->attr, val);
-	if (!v)
-		return -1;
-
-	if (req->pack->len - ra->len + len >= REQ_LENGTH_MAX)
-		return -1;
-	
-	req->pack->len += len - ra->len;
-
-	ra->len = len;
-	ra->val = v->val;
-	
-	return 0;
-}
-
-struct rad_req_attr_t *rad_req_find_attr(struct rad_req_t *req, const char *name)
-{
-	struct rad_req_attr_t *ra;
-
-	list_for_each_entry(ra, &req->pack->attrs, entry)
-		if (!strcmp(ra->attr->name, name))
-			return ra;
-
-	return NULL;
 }
 
 static void req_wakeup(struct rad_req_t *req)
@@ -359,7 +176,7 @@ static int rad_req_read(struct triton_md_handler_t *h)
 {
 	struct rad_req_t *req = container_of(h, typeof(*req), hnd);
 
-	req->reply = rad_packet_recv(h->fd);
+	req->reply = rad_packet_recv(h->fd, NULL);
 	req_wakeup(req);
 	
 	return 0;

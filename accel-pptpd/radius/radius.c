@@ -25,17 +25,21 @@ int conf_verbose = 0;
 
 char *conf_auth_server;
 int conf_auth_server_port = 1812;
-char *conf_auth_server_secret;
+char *conf_auth_secret;
 
 char *conf_acct_server;
 int conf_acct_server_port = 1813;
-char *conf_acct_server_secret;
+char *conf_acct_secret;
+char *conf_pd_coa_secret;
+
+static LIST_HEAD(sessions);
+static pthread_rwlock_t sessions_lock = PTHREAD_RWLOCK_INITIALIZER;
 
 static struct ppp_notified_t notified;
 
 void rad_proc_attrs(struct rad_req_t *req)
 {
-	struct rad_req_attr_t *attr;
+	struct rad_attr_t *attr;
 
 	list_for_each_entry(attr, &req->reply->attrs, entry) {
 		if (!strcmp(attr->attr->name, "Framed-IP-Address"))
@@ -102,7 +106,12 @@ static void ppp_starting(struct ppp_notified_t *n, struct ppp_t *ppp)
 	memset(pd, 0, sizeof(*pd));
 	pd->pd.key = n;
 	pd->ppp = ppp;
+	pthread_mutex_init(&pd->lock, NULL);
 	list_add_tail(&pd->pd.entry, &ppp->pd_list);
+
+	pthread_rwlock_wrlock(&sessions_lock);
+	list_add_tail(&pd->entry, &sessions);
+	pthread_rwlock_unlock(&sessions_lock);
 }
 
 static void ppp_started(struct ppp_notified_t *n, struct ppp_t *ppp)
@@ -121,6 +130,15 @@ static void ppp_finishing(struct ppp_notified_t *n, struct ppp_t *ppp)
 static void ppp_finished(struct ppp_notified_t *n, struct ppp_t *ppp)
 {
 	struct radius_pd_t *rpd = find_pd(ppp);
+
+	pthread_rwlock_wrlock(&sessions_lock);
+	pthread_mutex_lock(&rpd->lock);
+	list_del(&rpd->entry);
+	pthread_mutex_unlock(&rpd->lock);
+	pthread_rwlock_unlock(&sessions_lock);
+
+	if (rpd->pd_coa_req)
+		rad_packet_free(rpd->pd_coa_req);
 
 	list_del(&rpd->pd.entry);
 	free(rpd);
@@ -141,6 +159,74 @@ struct radius_pd_t *find_pd(struct ppp_t *ppp)
 	abort();
 }
 
+
+struct radius_pd_t *rad_find_session(const char *sessionid, const char *username, int port_id, in_addr_t ipaddr)
+{
+	struct radius_pd_t *rpd;
+	
+	pthread_rwlock_rdlock(&sessions_lock);
+	list_for_each_entry(rpd, &sessions, entry) {
+		if (sessionid && strcmp(sessionid, rpd->ppp->sessionid))
+			continue;
+		if (username && strcmp(username, rpd->ppp->username))
+			continue;
+		if (port_id >= 0 && port_id != rpd->ppp->unit_idx)
+			continue;
+		if (ipaddr && ipaddr != rpd->ipaddr)
+			continue;
+		pthread_mutex_lock(&rpd->lock);
+		pthread_rwlock_unlock(&sessions_lock);
+		return rpd;
+	}
+	pthread_rwlock_unlock(&sessions_lock);
+	return NULL;
+}
+
+struct radius_pd_t *rad_find_session_pack(struct rad_packet_t *pack)
+{
+	struct rad_attr_t *attr;
+	const char *sessionid = NULL;
+	const char *username = NULL;
+	int port_id = -1;
+	in_addr_t ipaddr = 0;
+	
+	list_for_each_entry(attr, &pack->attrs, entry) {
+		if (!strcmp(attr->attr->name, "Acct-Session-Id"))
+			sessionid = attr->val.string;
+		else if (!strcmp(attr->attr->name, "User-Name"))
+			username = attr->val.string;
+		else if (!strcmp(attr->attr->name, "NAS-Port-Id"))
+			port_id = attr->val.integer;
+		else if (!strcmp(attr->attr->name, "Framed-IP-Address"))
+			ipaddr = attr->val.ipaddr;
+	}
+
+	if (username && !sessionid)
+		return NULL;
+	
+	return rad_find_session(sessionid, username, port_id, ipaddr);
+}
+
+int rad_check_nas_pack(struct rad_packet_t *pack)
+{
+	struct rad_attr_t *attr;
+	const char *ident = NULL;
+	in_addr_t ipaddr = 0;
+	
+	list_for_each_entry(attr, &pack->attrs, entry) {
+		if (!strcmp(attr->attr->name, "NAS-Identifier"))
+			ident = attr->val.string;
+		else if (!strcmp(attr->attr->name, "NAS-IP-Address"))
+			ipaddr = attr->val.ipaddr;
+	}
+
+	if (conf_nas_identifier && (!ident || strcmp(conf_nas_identifier, ident)))
+		return -1;
+	if (conf_nas_ip_address && inet_addr(conf_nas_ip_address) != ipaddr)
+		return -1;
+	
+	return 0;
+}
 
 static struct ipdb_t ipdb = {
 	.get = get_ip,
@@ -211,16 +297,20 @@ static void __init radius_init(void)
 	if (!opt) {
 		log_error("radius: auth_server not specified\n");
 		_exit(EXIT_FAILURE);
-	} else if (parse_server(opt, &conf_auth_server, &conf_auth_server_port, &conf_auth_server_secret)) {
+	} else if (parse_server(opt, &conf_auth_server, &conf_auth_server_port, &conf_auth_secret)) {
 		log_error("radius: failed to parse auth_server\n");
 		_exit(EXIT_FAILURE);
 	}
 
 	opt = conf_get_opt("radius", "acct_server");
-	if (opt && parse_server(opt, &conf_acct_server, &conf_acct_server_port, &conf_acct_server_secret)) {
+	if (opt && parse_server(opt, &conf_acct_server, &conf_acct_server_port, &conf_acct_secret)) {
 		log_error("radius: failed to parse acct_server\n");
 		_exit(EXIT_FAILURE);
 	}
+
+	opt = conf_get_opt("radius", "pd_coa_secret");
+	if (opt)
+		conf_pd_coa_secret = opt;
 
 	opt = conf_get_opt("radius", "dictionary");
 	if (!opt) {

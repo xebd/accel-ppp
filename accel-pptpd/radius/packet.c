@@ -39,7 +39,7 @@ void print_buf(uint8_t *buf,int size)
 
 int rad_packet_build(struct rad_packet_t *pack, uint8_t *RA)
 {
-	struct rad_req_attr_t *attr;
+	struct rad_attr_t *attr;
 	uint8_t *ptr;
 
 	if (pack->buf)
@@ -65,6 +65,7 @@ int rad_packet_build(struct rad_packet_t *pack, uint8_t *RA)
 			case ATTR_TYPE_INTEGER:
 				*(uint32_t*)ptr = htonl(attr->val.integer);
 				break;
+			case ATTR_TYPE_OCTETS:
 			case ATTR_TYPE_STRING:
 				memcpy(ptr, attr->val.string, attr->len);
 				break;
@@ -85,13 +86,14 @@ int rad_packet_build(struct rad_packet_t *pack, uint8_t *RA)
 	return 0;
 }
 
-struct rad_packet_t *rad_packet_recv(int fd)
+struct rad_packet_t *rad_packet_recv(int fd, struct sockaddr_in *addr)
 {
 	struct rad_packet_t *pack;
-	struct rad_req_attr_t *attr;
+	struct rad_attr_t *attr;
 	struct rad_dict_attr_t *da;
 	uint8_t *ptr;
 	int n, id, len;
+	socklen_t addr_len = sizeof(*addr);
 
 	pack = rad_packet_alloc(0);
 	if (!pack)
@@ -104,7 +106,10 @@ struct rad_packet_t *rad_packet_recv(int fd)
 	}
 
 	while (1) {
-		n = read(fd, pack->buf, REQ_LENGTH_MAX);
+		if (addr)
+			n = recvfrom(fd, pack->buf, REQ_LENGTH_MAX, 0, addr, &addr_len);
+		else
+			n = read(fd, pack->buf, REQ_LENGTH_MAX);
 		if (n < 0) {
 			if (errno == EINTR)
 				continue;
@@ -164,6 +169,15 @@ struct rad_packet_t *rad_packet_recv(int fd)
 					memcpy(attr->val.string, ptr, len);
 					attr->val.string[len] = 0;
 					break;
+				case ATTR_TYPE_OCTETS:
+					attr->val.octets = malloc(len);
+					if (!attr->val.octets) {
+						log_error("radius:packet: out of memory\n");
+						free(attr);
+						goto out_err;
+					}
+					memcpy(attr->val.octets, ptr, len);
+					break;				
 				case ATTR_TYPE_DATE:
 				case ATTR_TYPE_INTEGER:
 					attr->val.integer = ntohl(*(uint32_t*)ptr);
@@ -188,15 +202,15 @@ out_err:
 
 void rad_packet_free(struct rad_packet_t *pack)
 {
-	struct rad_req_attr_t *attr;
+	struct rad_attr_t *attr;
 	
 	if (pack->buf)
 		free(pack->buf);
 
 	while(!list_empty(&pack->attrs)) {
 		attr = list_entry(pack->attrs.next, typeof(*attr), entry);
-		if (attr->attr->type == ATTR_TYPE_STRING)
-			free((char*)attr->val.string);
+		if (attr->attr->type == ATTR_TYPE_STRING || attr->attr->type == ATTR_TYPE_OCTETS)
+			free(attr->val.string);
 		list_del(&attr->entry);
 		free(attr);
 	}
@@ -206,7 +220,7 @@ void rad_packet_free(struct rad_packet_t *pack)
 
 void rad_packet_print(struct rad_packet_t *pack, void (*print)(const char *fmt, ...))
 {
-	struct rad_req_attr_t *attr;
+	struct rad_attr_t *attr;
 	struct rad_dict_value_t *val;
 	
 	print("[RADIUS ");
@@ -229,6 +243,24 @@ void rad_packet_print(struct rad_packet_t *pack, void (*print)(const char *fmt, 
 		case CODE_ACCOUNTING_RESPONSE:
 			printf("Accounting-Response");
 			break;
+		case CODE_DISCONNECT_REQUEST:
+			printf("Disconnect-Request");
+			break;
+		case CODE_DISCONNECT_ACK:
+			printf("Disconnect-ACK");
+			break;
+		case CODE_DISCONNECT_NAK:
+			printf("Disconnect-NAK");
+			break;
+		case CODE_COA_REQUEST:
+			printf("CoA-Request");
+			break;
+		case CODE_COA_ACK:
+			printf("CoA-ACK");
+			break;
+		case CODE_COA_NAK:
+			printf("CoA-NAK");
+			break;
 		default:
 			print("Unknown (%i)", pack->code);
 	}
@@ -236,25 +268,238 @@ void rad_packet_print(struct rad_packet_t *pack, void (*print)(const char *fmt, 
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		print(" <%s ", attr->attr->name);
-		if (attr->printable) {
-			switch (attr->attr->type) {
-				case ATTR_TYPE_INTEGER:
-					val = rad_dict_find_val(attr->attr, attr->val);
-					if (val)
-						print("%s", val->name);
-					else
-						print("%i", attr->val.integer);
-					break;
-				case ATTR_TYPE_STRING:
-					print("\"%s\"", attr->val.string);
-					break;
-				case ATTR_TYPE_IPADDR:
-					print("%i.%i.%i.%i", attr->val.ipaddr & 0xff, (attr->val.ipaddr >> 8) & 0xff, (attr->val.ipaddr >> 16) & 0xff, (attr->val.ipaddr >> 24) & 0xff);
-					break;
-			}
+		switch (attr->attr->type) {
+			case ATTR_TYPE_INTEGER:
+				val = rad_dict_find_val(attr->attr, attr->val);
+				if (val)
+					print("%s", val->name);
+				else
+					print("%i", attr->val.integer);
+				break;
+			case ATTR_TYPE_STRING:
+				print("\"%s\"", attr->val.string);
+				break;
+			case ATTR_TYPE_IPADDR:
+				print("%i.%i.%i.%i", attr->val.ipaddr & 0xff, (attr->val.ipaddr >> 8) & 0xff, (attr->val.ipaddr >> 16) & 0xff, (attr->val.ipaddr >> 24) & 0xff);
+				break;
 		}
 		print(">");
 	}
 	print("]\n");
+}
+
+int rad_packet_add_int(struct rad_packet_t *pack, const char *name, int val)
+{
+	struct rad_attr_t *ra;
+	struct rad_dict_attr_t *attr;
+
+	if (pack->len + 2 + 4 >= REQ_LENGTH_MAX)
+		return -1;
+
+	attr = rad_dict_find_attr(name);
+	if (!attr)
+		return -1;
+	
+	ra = malloc(sizeof(*ra));
+	if (!ra)
+		return -1;
+
+	ra->attr = attr;
+	ra->len = 4;
+	ra->val.integer = val;
+	list_add_tail(&ra->entry, &pack->attrs);
+	pack->len += 2 + 4;
+
+	return 0;
+}
+
+int rad_packet_change_int(struct rad_packet_t *pack, const char *name, int val)
+{
+	struct rad_attr_t *ra;
+	
+	ra = rad_packet_find_attr(pack, name);
+	if (!ra)
+		return -1;
+
+	ra->val.integer = val;
+
+	return 0;
+}
+
+int rad_packet_add_octets(struct rad_packet_t *pack, const char *name, uint8_t *val, int len)
+{
+	struct rad_attr_t *ra;
+	struct rad_dict_attr_t *attr;
+
+	if (pack->len + 2 + len >= REQ_LENGTH_MAX)
+		return -1;
+
+	attr = rad_dict_find_attr(name);
+	if (!attr)
+		return -1;
+	
+	ra = malloc(sizeof(*ra));
+	if (!ra) {
+		log_error("radius: out of memory\n");
+		return -1;
+	}
+
+	ra->attr = attr;
+	ra->len = len;
+	ra->val.octets = malloc(len);
+	if (!ra->val.octets) {
+		log_error("radius: out of memory\n");
+		free(ra);
+		return -1;
+	}
+	memcpy(ra->val.octets, val, len);
+	list_add_tail(&ra->entry, &pack->attrs);
+	pack->len += 2 + len;
+
+	return 0;
+}
+int rad_packet_add_str(struct rad_packet_t *pack, const char *name, const char *val, int len)
+{
+	struct rad_attr_t *ra;
+	struct rad_dict_attr_t *attr;
+
+	if (pack->len + 2 + len >= REQ_LENGTH_MAX)
+		return -1;
+
+	attr = rad_dict_find_attr(name);
+	if (!attr)
+		return -1;
+	
+	ra = malloc(sizeof(*ra));
+	if (!ra) {
+		log_error("radius: out of memory\n");
+		return -1;
+	}
+
+	ra->attr = attr;
+	ra->len = len;
+	ra->val.string = malloc(len+1);
+	if (!ra->val.string) {
+		log_error("radius: out of memory\n");
+		free(ra);
+		return -1;
+	}
+	memcpy(ra->val.string, val, len);
+	ra->val.string[len] = 0;
+	list_add_tail(&ra->entry, &pack->attrs);
+	pack->len += 2 + len;
+
+	return 0;
+}
+
+int rad_packet_change_str(struct rad_packet_t *pack, const char *name, const char *val, int len)
+{
+	struct rad_attr_t *ra;
+	
+	ra = rad_packet_find_attr(pack, name);
+	if (!ra)
+		return -1;
+
+	if (ra->len != len) {
+		if (pack->len - ra->len + len >= REQ_LENGTH_MAX)
+			return -1;
+
+		ra->val.string = realloc(ra->val.string, len + 1);
+		if (!ra->val.string) {
+			log_error("radius: out of memory\n");
+			return -1;
+		}
+	
+		pack->len += len - ra->len;
+		ra->len = len;
+	}
+
+	memcpy(ra->val.string, val, len);
+	ra->val.string[len] = 0;
+
+	return 0;
+}
+
+int rad_packet_add_val(struct rad_packet_t *pack, const char *name, const char *val)
+{
+	struct rad_attr_t *ra;
+	struct rad_dict_attr_t *attr;
+	struct rad_dict_value_t *v;
+
+	if (pack->len + 2 + 4 >= REQ_LENGTH_MAX)
+		return -1;
+
+	attr = rad_dict_find_attr(name);
+	if (!attr)
+		return -1;
+	
+	v = rad_dict_find_val_name(attr, val);
+	if (!v)
+		return -1;
+	
+	ra = malloc(sizeof(*ra));
+	if (!ra)
+		return -1;
+
+	ra->attr = attr;
+	ra->len = 4;
+	ra->val = v->val;
+	list_add_tail(&ra->entry, &pack->attrs);
+	pack->len += 2 + 4;
+
+	return 0;
+}
+
+int rad_packet_change_val(struct rad_packet_t *pack, const char *name, const char *val)
+{
+	struct rad_attr_t *ra;
+	struct rad_dict_value_t *v;
+	
+	ra = rad_packet_find_attr(pack, name);
+	if (!ra)
+		return -1;
+
+	v = rad_dict_find_val_name(ra->attr, val);
+	if (!v)
+		return -1;
+
+	ra->val = v->val;
+	
+	return 0;
+}
+
+struct rad_attr_t *rad_packet_find_attr(struct rad_packet_t *pack, const char *name)
+{
+	struct rad_attr_t *ra;
+
+	list_for_each_entry(ra, &pack->attrs, entry)
+		if (!strcmp(ra->attr->name, name))
+			return ra;
+
+	return NULL;
+}
+
+int rad_packet_send(struct rad_packet_t *pack, int fd, struct sockaddr_in *addr)
+{
+	int n;
+
+	while (1) {
+		if (addr)
+			n = sendto(fd, pack->buf, pack->len, 0, addr, sizeof(*addr));
+		else
+			n = write(fd, pack->buf, pack->len);
+		if (n < 0) {
+			if (errno == EINTR)
+				continue;
+			log_error("radius:write: %s\n", strerror(errno));
+			return -1;
+		} else if (n != pack->len) {
+			log_error("radius:write: short write %i, excpected %i\n", n, pack->len);
+			return -1;
+		}
+		break;
+	}
+
+	return 0;
 }
 

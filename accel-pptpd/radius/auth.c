@@ -56,11 +56,11 @@ int rad_auth_pap(struct radius_pd_t *rpd, const char *username, va_list args)
 	if (!req)
 		return PWDB_DENIED;
 	
-	epasswd = encrypt_password(passwd, conf_auth_server_secret, req->RA, &epasswd_len);
+	epasswd = encrypt_password(passwd, conf_auth_secret, req->RA, &epasswd_len);
 	if (!epasswd)
 		goto out;
 
-	if (rad_req_add_str(req, "Password", (char*)epasswd, epasswd_len, 0)) {
+	if (rad_packet_add_octets(req->pack, "Password", epasswd, epasswd_len)) {
 		free(epasswd);
 		goto out;
 	}
@@ -97,12 +97,12 @@ int rad_auth_chap_md5(struct radius_pd_t *rpd, const char *username, va_list arg
 {
 	struct rad_req_t *req;
 	int i, r = PWDB_DENIED;
-	char chap_password[17];
+	uint8_t chap_password[17];
 	
 	int id = va_arg(args, int);
-	const uint8_t *challenge = va_arg(args, const uint8_t *);
+	uint8_t *challenge = va_arg(args, uint8_t *);
 	int challenge_len = va_arg(args, int);
-	const uint8_t *response = va_arg(args, const uint8_t *);
+	uint8_t *response = va_arg(args, uint8_t *);
 
 	chap_password[0] = id;
 	memcpy(chap_password + 1, response, 16);
@@ -114,11 +114,11 @@ int rad_auth_chap_md5(struct radius_pd_t *rpd, const char *username, va_list arg
 	if (challenge_len == 16)
 		memcpy(req->RA, challenge, 16);
 	else {
-		if (rad_req_add_str(req, "CHAP-Challenge", (char*)challenge, challenge_len, 0))
+		if (rad_packet_add_octets(req->pack, "CHAP-Challenge", challenge, challenge_len))
 			goto out;
 	}
 
-	if (rad_req_add_str(req, "CHAP-Password", chap_password, 17, 0))
+	if (rad_packet_add_octets(req->pack, "CHAP-Password", chap_password, 17))
 		goto out;
 
 	for(i = 0; i < conf_max_try; i++) {
