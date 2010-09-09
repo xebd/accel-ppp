@@ -184,13 +184,13 @@ static int pap_recv_req(struct pap_auth_data_t *p,struct pap_hdr_t *hdr)
 		pap_send_nak(p, hdr->id);
 		auth_failed(p->ppp);
 		ret=-1;
+		free(peer_id);
 	} else {
 		pap_send_ack(p, hdr->id);
-		auth_successed(p->ppp);
+		auth_successed(p->ppp, peer_id);
 		ret = 0;
 	}
 
-	free(peer_id);
 	free(passwd);
 
 	return ret;

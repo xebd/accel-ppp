@@ -10,6 +10,7 @@
 #include <arpa/inet.h>
 #include <linux/ppp_defs.h>
 #include <linux/if_ppp.h>
+#include <openssl/md5.h>
 
 #include "triton.h"
 
@@ -20,7 +21,7 @@
 int conf_ppp_verbose;
 
 static LIST_HEAD(layers);
-int sock_fd;
+int __export sock_fd;
 
 struct layer_node_t
 {
@@ -46,6 +47,28 @@ static void free_ppp(struct ppp_t *ppp)
 {
 	free(ppp->chan_buf);
 	free(ppp->unit_buf);
+
+	if (ppp->username)
+		free(ppp->username);
+}
+
+static void generate_sessionid(struct ppp_t *ppp)
+{
+	MD5_CTX ctx;
+	uint8_t md5[MD5_DIGEST_LENGTH];
+	int i;
+		
+	MD5_Init(&ctx);
+	MD5_Update(&ctx,&ppp->unit_idx, 4);
+	MD5_Update(&ctx,&ppp->unit_fd, 4);
+	MD5_Update(&ctx,&ppp->chan_fd, 4);
+	MD5_Update(&ctx,&ppp->fd, 4);
+	MD5_Update(&ctx,&ppp->start_time, sizeof(time_t));
+	MD5_Update(&ctx,ppp->ctrl->ctx, sizeof(void *));
+	MD5_Final(md5,&ctx);
+
+	for( i = 0; i < 16; i++)
+		sprintf(ppp->sessionid + i*2, "%02X", md5[i]);
 }
 
 int __export establish_ppp(struct ppp_t *ppp)
@@ -90,6 +113,9 @@ int __export establish_ppp(struct ppp_t *ppp)
 		goto exit_close_unit;
 	}
 
+	ppp->start_time = time(NULL);
+	generate_sessionid(ppp);
+
 	log_info("connect: ppp%i <--> pptp(%s)\n",ppp->unit_idx,ppp->chan_name);
 	
 	ppp->chan_buf=malloc(PPP_MRU);
@@ -131,7 +157,7 @@ int __export establish_ppp(struct ppp_t *ppp)
 
 	log_debug("ppp established\n");
 
-	ppp_notify_started(ppp);
+	ppp_notify_starting(ppp);
 	start_first_layer(ppp);
 
 	return 0;
@@ -298,6 +324,7 @@ void __export ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 	if (n->entry.next==&ppp->layers)
 	{
 		ppp->ctrl->started(ppp);
+		ppp_notify_started(ppp);
 	}else
 	{
 		n=list_entry(n->entry.next,typeof(*n),entry);
@@ -338,6 +365,8 @@ void __export ppp_terminate(struct ppp_t *ppp, int hard)
 	int s = 0;
 
 	log_debug("ppp_terminate\n");
+
+	ppp_notify_finishing(ppp);
 
 	if (hard) {
 		destablish_ppp(ppp);

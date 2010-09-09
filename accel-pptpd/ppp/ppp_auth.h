@@ -27,7 +27,7 @@ struct ppp_auth_handler_t
 
 int ppp_auth_register_handler(struct ppp_auth_handler_t*);
 
-void auth_successed(struct ppp_t *ppp);
+void auth_successed(struct ppp_t *ppp, char *username);
 void auth_failed(struct ppp_t *ppp);
 
 #endif

@@ -7,7 +7,6 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#include "triton.h"
 #include "log.h"
 #include "radius.h"
 
@@ -26,8 +25,9 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 	memset(req, 0, sizeof(*req));
 	req->rpd = rpd;
 	req->hnd.fd = -1;
-	req->hnd.read = rad_req_read;
-	req->timeout.expire = rad_req_timeout;
+
+	req->server_name = conf_auth_server;
+	req->server_port = conf_auth_server_port;
 
 	while (1) {
 		if (read(urandom_fd, req->RA, 16) != 16) {
@@ -64,6 +64,31 @@ out_err:
 	return NULL;
 }
 
+int rad_req_acct_fill(struct rad_req_t *req)
+{
+	req->server_name = conf_acct_server;
+	req->server_port = conf_acct_server_port;
+
+	memset(req->RA, 0, sizeof(req->RA));
+
+	if (rad_req_add_val(req, "Acct-Status-Type", "Start", 4))
+		return -1;
+	if (rad_req_add_str(req, "Acct-Session-Id", req->rpd->ppp->sessionid, PPP_SESSIONID_LEN, 1))
+		return -1;
+	if (rad_req_add_int(req, "Acct-Session-Time", 0))
+		return -1;
+	if (rad_req_add_int(req, "Acct-Input-Octets", 0))
+		return -1;
+	if (rad_req_add_int(req, "Acct-Output-Octets", 0))
+		return -1;
+	if (rad_req_add_int(req, "Acct-Input-Packets", 0))
+		return -1;
+	if (rad_req_add_int(req, "Acct-Output-Packets", 0))
+		return -1;
+
+	return 0;
+}
+
 void rad_req_free(struct rad_req_t *req)
 {
 	if (req->hnd.fd >= 0 )
@@ -75,45 +100,57 @@ void rad_req_free(struct rad_req_t *req)
 	free(req);
 }
 
-int rad_req_send(struct rad_req_t *req)
+static int make_socket(struct rad_req_t *req)
 {
   struct sockaddr_in addr;
+
+	req->hnd.fd = socket(PF_INET, SOCK_DGRAM, 0);
+	if (req->hnd.fd < 0) {
+		log_error("radius:socket: %s\n", strerror(errno));
+		return -1;
+	}
+
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_family = AF_INET;
+
+	if (conf_nas_ip_address) {
+		addr.sin_addr.s_addr = inet_addr(conf_nas_ip_address);
+		if (bind(req->hnd.fd, (struct sockaddr *) &addr, sizeof(addr))) {
+			log_error("radius:bind: %s\n", strerror(errno));
+			goto out_err;
+		}
+	}
+
+	addr.sin_addr.s_addr = inet_addr(req->server_name);
+	addr.sin_port = htons(req->server_port);
+
+	if (connect(req->hnd.fd, (struct sockaddr *) &addr, sizeof(addr))) {
+		log_error("radius:connect: %s\n", strerror(errno));
+		goto out_err;
+	}
+
+	if (fcntl(req->hnd.fd, F_SETFL, O_NONBLOCK)) {
+		log_error("radius: failed to set nonblocking mode: %s\n", strerror(errno));
+		goto out_err;
+	}
+	
+	return 0;
+
+out_err:
+	close(req->hnd.fd);
+	req->hnd.fd = -1;
+	return -1;
+}
+
+int rad_req_send(struct rad_req_t *req)
+{
 	int n;
 
-	if (req->hnd.fd == -1) {
-		req->hnd.fd = socket(PF_INET, SOCK_DGRAM, 0);
-		if (req->hnd.fd < 0) {
-			log_error("radius:socket: %s\n", strerror(errno));
-			return -1;
-		}
+	if (req->hnd.fd == -1 && make_socket(req))
+		return -1;
 
-		memset(&addr, 0, sizeof(addr));
-		addr.sin_family = AF_INET;
-
-		if (conf_nas_ip_address) {
-			addr.sin_addr.s_addr = inet_addr(conf_nas_ip_address);
-			if (bind(req->hnd.fd, (struct sockaddr *) &addr, sizeof(addr))) {
-				log_error("radius:bind: %s\n", strerror(errno));
-				goto out_err;
-			}
-		}
-
-		addr.sin_addr.s_addr = inet_addr(req->server_name);
-		addr.sin_port = htons(req->server_port);
-
-		if (connect(req->hnd.fd, (struct sockaddr *) &addr, sizeof(addr))) {
-			log_error("radius:connect: %s\n", strerror(errno));
-			goto out_err;
-		}
-
-		if (fcntl(req->hnd.fd, F_SETFL, O_NONBLOCK)) {
-			log_error("radius: failed to set nonblocking mode: %s\n", strerror(errno));
-			goto out_err;
-		}
-
-		if (rad_packet_build(req->pack, req->RA))
-			goto out_err;
-	}
+	if (!req->pack->buf && rad_packet_build(req->pack, req->RA))
+		goto out_err;
 	
 	if (conf_verbose) {
 		log_debug("send ");
@@ -169,6 +206,19 @@ int rad_req_add_int(struct rad_req_t *req, const char *name, int val)
 	return 0;
 }
 
+int rad_req_change_int(struct rad_req_t *req, const char *name, int val)
+{
+	struct rad_req_attr_t *ra;
+	
+	ra = rad_req_find_attr(req, name);
+	if (!ra)
+		return -1;
+
+	ra->val.integer = val;
+
+	return 0;
+}
+
 int rad_req_add_str(struct rad_req_t *req, const char *name, const char *val, int len, int printable)
 {
 	struct rad_req_attr_t *ra;
@@ -204,6 +254,34 @@ int rad_req_add_str(struct rad_req_t *req, const char *name, const char *val, in
 	return 0;
 }
 
+int rad_req_change_str(struct rad_req_t *req, const char *name, const char *val, int len)
+{
+	struct rad_req_attr_t *ra;
+	
+	ra = rad_req_find_attr(req, name);
+	if (!ra)
+		return -1;
+
+	if (ra->len != len) {
+		if (req->pack->len - ra->len + len >= REQ_LENGTH_MAX)
+			return -1;
+
+		ra->val.string = realloc(ra->val.string, len + 1);
+		if (!ra->val.string) {
+			log_error("radius: out of memory\n");
+			return -1;
+		}
+	
+		req->pack->len += len - ra->len;
+		ra->len = len;
+	}
+
+	memcpy(ra->val.string, val, len);
+	ra->val.string[len] = 0;
+
+	return 0;
+}
+
 int rad_req_add_val(struct rad_req_t *req, const char *name, const char *val, int len)
 {
 	struct rad_req_attr_t *ra;
@@ -235,6 +313,41 @@ int rad_req_add_val(struct rad_req_t *req, const char *name, const char *val, in
 	return 0;
 }
 
+int rad_req_change_val(struct rad_req_t *req, const char *name, const char *val, int len)
+{
+	struct rad_req_attr_t *ra;
+	struct rad_dict_value_t *v;
+	
+	ra = rad_req_find_attr(req, name);
+	if (!ra)
+		return -1;
+
+	v = rad_dict_find_val_name(ra->attr, val);
+	if (!v)
+		return -1;
+
+	if (req->pack->len - ra->len + len >= REQ_LENGTH_MAX)
+		return -1;
+	
+	req->pack->len += len - ra->len;
+
+	ra->len = len;
+	ra->val = v->val;
+	
+	return 0;
+}
+
+struct rad_req_attr_t *rad_req_find_attr(struct rad_req_t *req, const char *name)
+{
+	struct rad_req_attr_t *ra;
+
+	list_for_each_entry(ra, &req->pack->attrs, entry)
+		if (!strcmp(ra->attr->name, name))
+			return ra;
+
+	return NULL;
+}
+
 static void req_wakeup(struct rad_req_t *req)
 {
 	triton_context_wakeup(req->rpd->ppp->ctrl->ctx);
@@ -260,6 +373,9 @@ static void rad_req_timeout(struct triton_timer_t *t)
 
 int rad_req_wait(struct rad_req_t *req, int timeout)
 {
+	req->hnd.read = rad_req_read;
+	req->timeout.expire = rad_req_timeout;
+
 	triton_context_register(&req->ctx);
 	triton_md_register_handler(&req->ctx, &req->hnd);
 	if (triton_md_enable_handler(&req->hnd, MD_MODE_READ))

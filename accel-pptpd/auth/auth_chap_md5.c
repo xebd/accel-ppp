@@ -251,18 +251,17 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		}else
 		{
 			chap_send_success(ad);
-			auth_successed(ad->ppp);
+			auth_successed(ad->ppp, name);
 		}
 		free(passwd);
 	} else if (r == PWDB_DENIED) {
 		chap_send_failure(ad);
 		auth_failed(ad->ppp);
+		free(name);
 	} else {
 		chap_send_success(ad);
-		auth_successed(ad->ppp);
+		auth_successed(ad->ppp, name);
 	}
-
-	free(name);
 }
 
 static struct ppp_auth_handler_t chap=

@@ -2,6 +2,7 @@
 #define PPP_H
 
 #include <sys/types.h>
+#include <time.h>
 
 #include "triton.h"
 #include "list.h"
@@ -41,6 +42,8 @@
 #define PPP_LAYER_CCP  3
 #define PPP_LAYER_IPCP 4
 
+#define PPP_SESSIONID_LEN 32
+
 struct ppp_t;
 
 struct ppp_ctrl_t
@@ -53,7 +56,9 @@ struct ppp_ctrl_t
 struct ppp_notified_t
 {
 	struct list_head entry;
+	void (*starting)(struct ppp_notified_t *, struct ppp_t *);
 	void (*started)(struct ppp_notified_t *, struct ppp_t *);
+	void (*finishing)(struct ppp_notified_t *, struct ppp_t *);
 	void (*finished)(struct ppp_notified_t *, struct ppp_t *);
 	void (*authenticated)(struct ppp_notified_t *, struct ppp_t *);
 };
@@ -76,6 +81,9 @@ struct ppp_t
 	int unit_idx;
 
 	char *chan_name;
+	char sessionid[PPP_SESSIONID_LEN+1];
+	time_t start_time;
+	char *username;
 
 	struct ppp_ctrl_t *ctrl;
 
@@ -143,7 +151,9 @@ struct ppp_layer_data_t *ppp_find_layer_data(struct ppp_t *, struct ppp_layer_t 
 
 void ppp_register_notified(struct ppp_notified_t *);
 void ppp_unregister_notified(struct ppp_notified_t *);
+void ppp_notify_starting(struct ppp_t *ppp);
 void ppp_notify_started(struct ppp_t *ppp);
+void ppp_notify_finishing(struct ppp_t *ppp);
 void ppp_notify_finished(struct ppp_t *ppp);
 
 extern int conf_ppp_verbose;

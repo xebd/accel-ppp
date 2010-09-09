@@ -82,6 +82,8 @@ ATTRIBUTE	Port-Limit		62	integer
 ATTRIBUTE	Login-LAT-Port		63	integer
 ATTRIBUTE	Connect-Info		77	string
 
+ATTRIBUTE	Acct-Interim-Interval	85	integer
+
 #
 #	RFC3162 IPv6 attributes
 #
@@ -162,7 +164,7 @@ VALUE		Login-Service		PortMaster		3
 
 VALUE		Acct-Status-Type	Start			1
 VALUE		Acct-Status-Type	Stop			2
-VALUE		Acct-Status-Type	Alive			3
+VALUE		Acct-Status-Type	Interim-Update		3
 VALUE		Acct-Status-Type	Accounting-On		7
 VALUE		Acct-Status-Type	Accounting-Off		8
 

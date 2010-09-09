@@ -296,10 +296,11 @@ static void auth_layer_free(struct ppp_layer_data_t *ld)
 	free(ad);
 }
 
-void __export auth_successed(struct ppp_t *ppp)
+void __export auth_successed(struct ppp_t *ppp, char *username)
 {
 	struct auth_layer_data_t *ad=container_of(ppp_find_layer_data(ppp,&auth_layer),typeof(*ad),ld);
 	log_debug("auth_layer_started\n");
+	ppp->username = username;
 	ppp_layer_started(ppp,&ad->ld);
 }
 

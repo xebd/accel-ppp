@@ -82,7 +82,7 @@ struct chap_auth_data_t
 
 static void chap_send_challenge(struct chap_auth_data_t *ad);
 static void chap_recv(struct ppp_handler_t *h);
-static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response_t *res);
+static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response_t *res, char *name);
 
 static void print_buf(const uint8_t *buf,int size)
 {
@@ -209,6 +209,7 @@ static void chap_send_challenge(struct chap_auth_data_t *ad)
 static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *hdr)
 {
 	struct chap_response_t *msg=(struct chap_response_t*)hdr;
+	char *name;
 
 	log_debug("recv [MSCHAP-v1 Response id=%x <", msg->hdr.id);
 	print_buf(msg->lm_hash,24);
@@ -222,24 +223,27 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	{
 		log_error("mschap-v1: id mismatch\n");
 		chap_send_failure(ad);
-		ppp_terminate(ad->ppp, 0);
+		auth_failed(ad->ppp);
 	}
 
 	if (msg->val_size!=RESPONSE_VALUE_SIZE)
 	{
 		log_error("mschap-v1: value-size should be %i, expected %i\n",RESPONSE_VALUE_SIZE,msg->val_size);
 		chap_send_failure(ad);
-		ppp_terminate(ad->ppp, 0);
+		auth_failed(ad->ppp);
 	}
 
-	if (chap_check_response(ad,msg))
+	name = strndup(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
+
+	if (chap_check_response(ad, msg, name))
 	{
 		chap_send_failure(ad);
 		auth_failed(ad->ppp);
+		free(name);
 	}else
 	{
 		chap_send_success(ad);
-		auth_successed(ad->ppp);
+		auth_successed(ad->ppp, name);
 	}
 }
 
@@ -272,17 +276,15 @@ static void des_encrypt(const uint8_t *input, const uint8_t *key, uint8_t *outpu
 	memcpy(output,res,8);	
 }
 
-static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response_t *msg)
+static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response_t *msg, char *name)
 {
 	MD4_CTX md4_ctx;
 	uint8_t z_hash[21];
 	uint8_t nt_hash[24];
 	char *passwd;
 	char *u_passwd;
-	char *name;
 	int i;
 	
-	name = strndup(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
 	passwd = pwdb_get_passwd(ad->ppp,name);
 	if (!passwd)
 	{

@@ -42,7 +42,11 @@ int rad_packet_build(struct rad_packet_t *pack, uint8_t *RA)
 	struct rad_req_attr_t *attr;
 	uint8_t *ptr;
 
-	ptr = malloc(pack->len);
+	if (pack->buf)
+		ptr = realloc(pack->buf, pack->len);
+	else
+		ptr = malloc(pack->len);
+
 	if (!ptr) {
 		log_error("radius:packet: out of memory\n");
 		return -1;
@@ -77,8 +81,7 @@ int rad_packet_build(struct rad_packet_t *pack, uint8_t *RA)
 		ptr += attr->len;
 	}
 
-	print_buf(pack->buf, pack->len);
-
+	//print_buf(pack->buf, pack->len);
 	return 0;
 }
 
@@ -219,6 +222,12 @@ void rad_packet_print(struct rad_packet_t *pack, void (*print)(const char *fmt, 
 			break;
 		case CODE_ACCESS_REJECT:
 			print("Access-Reject");
+			break;
+		case CODE_ACCOUNTING_REQUEST:
+			printf("Accounting-Request");
+			break;
+		case CODE_ACCOUNTING_RESPONSE:
+			printf("Accounting-Response");
 			break;
 		default:
 			print("Unknown (%i)", pack->code);

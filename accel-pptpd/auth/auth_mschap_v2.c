@@ -95,7 +95,7 @@ struct chap_auth_data_t
 
 static void chap_send_challenge(struct chap_auth_data_t *ad);
 static void chap_recv(struct ppp_handler_t *h);
-static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response_t *res);
+static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response_t *res, char *name);
 
 static void print_buf(const uint8_t *buf,int size)
 {
@@ -289,6 +289,7 @@ static void chap_send_challenge(struct chap_auth_data_t *ad)
 static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *hdr)
 {
 	struct chap_response_t *msg=(struct chap_response_t*)hdr;
+	char *name;
 
 	log_debug("recv [MSCHAP-v2 Response id=%x <", msg->hdr.id);
 	print_buf(msg->peer_challenge,16);
@@ -312,14 +313,22 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		ppp_terminate(ad->ppp, 0);
 	}
 
-	if (chap_check_response(ad,msg))
+	name=strndup(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
+	if (!name) {
+		log_error("mschap-v2: out of memory\n");
+		auth_failed(ad->ppp);
+		return;
+	}
+
+	if (chap_check_response(ad, msg, name))
 	{
 		chap_send_failure(ad);
 		auth_failed(ad->ppp);
+		free(name);
 	}else
 	{
 		chap_send_success(ad,msg);
-		auth_successed(ad->ppp);
+		auth_successed(ad->ppp, name);
 	}
 }
 
@@ -352,7 +361,7 @@ static void des_encrypt(const uint8_t *input, const uint8_t *key, uint8_t *outpu
 	memcpy(output,res,8);	
 }
 
-static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response_t *msg)
+static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response_t *msg, char *name)
 {
 	MD4_CTX md4_ctx;
 	SHA_CTX sha_ctx;
@@ -361,10 +370,8 @@ static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response
 	uint8_t nt_hash[24];
 	char *passwd;
 	char *u_passwd;
-	char *name;
 	int i;
 	
-	name=strndup(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
 	passwd=pwdb_get_passwd(ad->ppp,name);
 	if (!passwd)
 	{
