@@ -40,7 +40,7 @@ struct radius_pd_t
 
 	struct rad_req_t *acct_req;
 	struct triton_timer_t acct_interim_timer;
-	struct rad_packet_t *pd_coa_req;
+	struct rad_packet_t *dm_coa_req;
 
 	in_addr_t ipaddr;
 	int acct_interim_interval;
@@ -120,7 +120,7 @@ extern int conf_auth_server_port;
 extern char *conf_acct_server;
 extern char *conf_acct_secret;
 extern int conf_acct_server_port;
-extern char *conf_pd_coa_secret;
+extern char *conf_dm_coa_secret;
 
 int rad_check_nas_pack(struct rad_packet_t *pack);
 struct radius_pd_t *rad_find_session(const char *sessionid, const char *username, int port_id, in_addr_t ipaddr);

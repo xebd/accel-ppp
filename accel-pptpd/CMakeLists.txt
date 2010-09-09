@@ -28,6 +28,8 @@ ADD_EXECUTABLE(pptpd
 	log.c
 	pwdb.c
 	ipdb.c
+
+	iprange.c
 	
 	main.c
 )

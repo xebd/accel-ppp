@@ -30,7 +30,7 @@ char *conf_auth_secret;
 char *conf_acct_server;
 int conf_acct_server_port = 1813;
 char *conf_acct_secret;
-char *conf_pd_coa_secret;
+char *conf_dm_coa_secret;
 
 static LIST_HEAD(sessions);
 static pthread_rwlock_t sessions_lock = PTHREAD_RWLOCK_INITIALIZER;
@@ -137,8 +137,8 @@ static void ppp_finished(struct ppp_notified_t *n, struct ppp_t *ppp)
 	pthread_mutex_unlock(&rpd->lock);
 	pthread_rwlock_unlock(&sessions_lock);
 
-	if (rpd->pd_coa_req)
-		rad_packet_free(rpd->pd_coa_req);
+	if (rpd->dm_coa_req)
+		rad_packet_free(rpd->dm_coa_req);
 
 	list_del(&rpd->pd.entry);
 	free(rpd);
@@ -308,9 +308,9 @@ static void __init radius_init(void)
 		_exit(EXIT_FAILURE);
 	}
 
-	opt = conf_get_opt("radius", "pd_coa_secret");
+	opt = conf_get_opt("radius", "dm_coa_secret");
 	if (opt)
-		conf_pd_coa_secret = opt;
+		conf_dm_coa_secret = opt;
 
 	opt = conf_get_opt("radius", "dictionary");
 	if (!opt) {

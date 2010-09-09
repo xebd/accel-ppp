@@ -18,13 +18,13 @@
 
 #define PD_COA_PORT 3799
 
-struct pd_coa_serv_t
+struct dm_coa_serv_t
 {
 	struct triton_context_t ctx;
 	struct triton_md_handler_t hnd;
 };
 
-static int pd_coa_check_RA(struct rad_packet_t *pack, const char *secret)
+static int dm_coa_check_RA(struct rad_packet_t *pack, const char *secret)
 {
 	uint8_t RA[16];
 	MD5_CTX ctx;
@@ -41,7 +41,7 @@ static int pd_coa_check_RA(struct rad_packet_t *pack, const char *secret)
 	return memcmp(RA, pack->buf + 4, 16);
 }
 
-static void pd_coa_set_RA(struct rad_packet_t *pack, const char *secret)
+static void dm_coa_set_RA(struct rad_packet_t *pack, const char *secret)
 {
 	MD5_CTX ctx;
 
@@ -53,21 +53,21 @@ static void pd_coa_set_RA(struct rad_packet_t *pack, const char *secret)
 
 static void disconnect_request(struct radius_pd_t *rpd)
 {
-	rad_packet_free(rpd->pd_coa_req);
-	rpd->pd_coa_req = NULL;
+	rad_packet_free(rpd->dm_coa_req);
+	rpd->dm_coa_req = NULL;
 
 	ppp_terminate(rpd->ppp, 0);
 }
 
 static void coa_request(struct radius_pd_t *rpd)
 {
-	rad_packet_free(rpd->pd_coa_req);
-	rpd->pd_coa_req = NULL;
+	rad_packet_free(rpd->dm_coa_req);
+	rpd->dm_coa_req = NULL;
 
 /// TODO: CoA handling
 }
 
-static int pd_coa_read(struct triton_md_handler_t *h)
+static int dm_coa_read(struct triton_md_handler_t *h)
 {
 	struct rad_packet_t *pack;
 	struct rad_packet_t *reply = NULL;
@@ -82,12 +82,12 @@ static int pd_coa_read(struct triton_md_handler_t *h)
 		return 0;
 
 	if (pack->code != CODE_DISCONNECT_REQUEST	&& pack->code != CODE_COA_REQUEST) {
-		log_warn("radius:pd_coa: unexpected code (%i) received\n", pack->code);
+		log_warn("radius:dm_coa: unexpected code (%i) received\n", pack->code);
 		goto out_err_no_reply;
 	}
 
-	if (pd_coa_check_RA(pack, conf_pd_coa_secret)) {
-		log_warn("radius:pd_coa: RA validation failed\n");
+	if (dm_coa_check_RA(pack, conf_dm_coa_secret)) {
+		log_warn("radius:dm_coa: RA validation failed\n");
 		goto out_err_no_reply;
 	}
 
@@ -99,19 +99,19 @@ static int pd_coa_read(struct triton_md_handler_t *h)
 	}
 
 	if (rad_check_nas_pack(pack)) {
-		log_warn("radius:pd_coa: NAS identification failed\n");
+		log_warn("radius:dm_coa: NAS identification failed\n");
 		err_code = 403;
 		goto out_err;
 	}
 	
 	rpd = rad_find_session_pack(pack);
 	if (!rpd) {
-		log_warn("radius:pd_coa: session not found\n");
+		log_warn("radius:dm_coa: session not found\n");
 		err_code = 503;
 		goto out_err;
 	}
 	
-	rpd->pd_coa_req = pack;
+	rpd->dm_coa_req = pack;
 
 	if (pack->code == CODE_DISCONNECT_REQUEST)
 		triton_context_call(rpd->ppp->ctrl->ctx, (void (*)(void *))disconnect_request, rpd);
@@ -124,7 +124,7 @@ static int pd_coa_read(struct triton_md_handler_t *h)
 	reply->id = pack->id;
 	if (rad_packet_build(reply, RA))
 		goto out_err_no_reply;
-	pd_coa_set_RA(reply, conf_pd_coa_secret);
+	dm_coa_set_RA(reply, conf_dm_coa_secret);
 	if (conf_verbose) {
 		log_debug("send ");
 		rad_packet_print(reply, log_debug);
@@ -140,7 +140,7 @@ out_err:
 	reply->id = pack->id;
 	if (rad_packet_build(reply, RA))
 		goto out_err_no_reply;
-	pd_coa_set_RA(reply, conf_pd_coa_secret);
+	dm_coa_set_RA(reply, conf_dm_coa_secret);
 	if (conf_verbose) {
 		log_debug("send ");
 		rad_packet_print(reply, log_debug);
@@ -154,16 +154,16 @@ out_err_no_reply:
 	return 0;
 }
 
-static void pd_coa_close(struct triton_context_t *ctx)
+static void dm_coa_close(struct triton_context_t *ctx)
 {
-	struct pd_coa_serv_t *serv = container_of(ctx, typeof(*serv), ctx);
+	struct dm_coa_serv_t *serv = container_of(ctx, typeof(*serv), ctx);
 	triton_md_unregister_handler(&serv->hnd);
 	close(serv->hnd.fd);
 }
 
-static struct pd_coa_serv_t serv = {
-	.ctx.close = pd_coa_close,
-	.hnd.read = pd_coa_read,
+static struct dm_coa_serv_t serv = {
+	.ctx.close = dm_coa_close,
+	.hnd.read = dm_coa_read,
 };
 
 static void __init init(void)
@@ -172,7 +172,7 @@ static void __init init(void)
 
 	serv.hnd.fd = socket (PF_INET, SOCK_DGRAM, 0);
   if (serv.hnd.fd < 0) {
-    log_error("radius:pd_coa: socket: %s\n", strerror(errno));
+    log_error("radius:dm_coa: socket: %s\n", strerror(errno));
     return;
   }
   addr.sin_family = AF_INET;
@@ -182,13 +182,13 @@ static void __init init(void)
 	else
 		addr.sin_addr.s_addr = htonl (INADDR_ANY);
   if (bind (serv.hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
-    log_error("radius:pd_coa: bind: %s\n", strerror(errno));
+    log_error("radius:dm_coa: bind: %s\n", strerror(errno));
 		close(serv.hnd.fd);
     return;
   }
 
 	if (fcntl(serv.hnd.fd, F_SETFL, O_NONBLOCK)) {
-    log_error("radius:pd_coa: failed to set nonblocking mode: %s\n", strerror(errno));
+    log_error("radius:dm_coa: failed to set nonblocking mode: %s\n", strerror(errno));
 		close(serv.hnd.fd);
     return;
 	}

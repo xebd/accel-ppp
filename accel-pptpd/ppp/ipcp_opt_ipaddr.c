@@ -10,6 +10,7 @@
 #include "ppp_ipcp.h"
 #include "log.h"
 #include "ipdb.h"
+#include "iprange.h"
 
 static struct ipcp_option_t *ipaddr_init(struct ppp_ipcp_t *ipcp);
 static void ipaddr_free(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt);
@@ -63,6 +64,14 @@ static int ipaddr_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 	
 	if (!ipaddr_opt->addr && ipdb_get(ipcp->ppp, &ipaddr_opt->addr, &ipaddr_opt->peer_addr)) {
 		log_warn("ppp:ipcp: no free IP address\n");
+		return -1;
+	}
+	if (!iprange_client_check(ipaddr_opt->peer_addr)) {
+		log_warn("ppp:ipcp: to avoid hard loops requested IP cannot be assigned (%i.%i.%i.%i)\n",
+			ipaddr_opt->peer_addr&0xff, 
+			(ipaddr_opt->peer_addr >> 8)&0xff, 
+			(ipaddr_opt->peer_addr >> 16)&0xff, 
+			(ipaddr_opt->peer_addr >> 24)&0xff);
 		return -1;
 	}
 	

@@ -17,7 +17,7 @@
 #include "triton.h"
 #include "log.h"
 #include "ppp.h"
-
+#include "iprange.h"
 
 #define STATE_IDLE 0
 #define STATE_ESTB 1
@@ -476,6 +476,12 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		}
 
 		log_info("pptp: new connection from %s\n", inet_ntoa(addr.sin_addr));
+
+		if (iprange_client_check(addr.sin_addr.s_addr)) {
+			log_warn("pptp: IP is out of client-ip-range, droping connection...\n");
+			close(sock);
+			continue;
+		}
 
 		if (fcntl(sock, F_SETFL, O_NONBLOCK)) {
 			log_error("pptp: failed to set nonblocking mode: %s, closing connection...\n", strerror(errno));

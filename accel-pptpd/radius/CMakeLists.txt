@@ -6,7 +6,7 @@ SET(sources
 	packet.c
 	auth.c
 	acct.c
-	pd_coa.c
+	dm_coa.c
 )
 
 ADD_LIBRARY(radius SHARED ${sources})
