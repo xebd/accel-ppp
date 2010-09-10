@@ -71,7 +71,7 @@ static struct iprange_t *parse2(const char *str)
 	
 	r = malloc(sizeof(*r));
 	r->prefix = (f4 << 24) | (f3 << 16) | (f2 << 8) | f1;
-	r->end = (m << 24) | (f2 << 16) | (f3 << 8) | f1;
+	r->end = (m << 24) | (f3 << 16) | (f2 << 8) | f1;
 	r->mask = 0;
 
 	return r;

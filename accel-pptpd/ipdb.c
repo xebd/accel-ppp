@@ -3,23 +3,24 @@
 
 static LIST_HEAD(ipdb_handlers);
 
-int __export ipdb_get(struct ppp_t *ppp, in_addr_t *addr, in_addr_t *peer_addr)
+__export struct ipdb_item_t *ipdb_get(struct ppp_t *ppp)
 {
 	struct ipdb_t *ipdb;
+	struct ipdb_item_t *it;
 
-	list_for_each_entry(ipdb, &ipdb_handlers, entry)
-		if (!ipdb->get(ppp, addr, peer_addr))
-			return 0;
+	list_for_each_entry(ipdb, &ipdb_handlers, entry) {
+		it = ipdb->get(ppp);
+		if (it)
+			return it;
+	}
 
-	return -1;
+	return NULL;
 }
-void __export ipdb_put(struct ppp_t *ppp, in_addr_t addr, in_addr_t peer_addr)
-{
-	struct ipdb_t *ipdb;
 
-	list_for_each_entry(ipdb, &ipdb_handlers, entry)
-		if (ipdb->put)
-			ipdb->put(ppp, addr, peer_addr);
+void __export ipdb_put(struct ppp_t *ppp, struct ipdb_item_t *it)
+{
+	if (it->owner->put)
+		it->owner->put(ppp, it);
 }
 
 void __export ipdb_register(struct ipdb_t *ipdb)

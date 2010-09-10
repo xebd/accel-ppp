@@ -36,15 +36,22 @@ static LIST_HEAD(sessions);
 static pthread_rwlock_t sessions_lock = PTHREAD_RWLOCK_INITIALIZER;
 
 static struct ppp_notified_t notified;
+static struct ipdb_t ipdb;
 
 void rad_proc_attrs(struct rad_req_t *req)
 {
 	struct rad_attr_t *attr;
 
 	list_for_each_entry(attr, &req->reply->attrs, entry) {
-		if (!strcmp(attr->attr->name, "Framed-IP-Address"))
-			req->rpd->ipaddr = attr->val.ipaddr;
-		else if (!strcmp(attr->attr->name, "Acct-Interim-Interval"))
+		if (!strcmp(attr->attr->name, "Framed-IP-Address")) {
+			if (!conf_gw_ip_address)
+				log_warn("radius: gw-ip-address not specified, cann't assign IP address...\n");
+			else {
+				req->rpd->ipaddr.owner = &ipdb;
+				req->rpd->ipaddr.peer_addr = attr->val.ipaddr;
+				req->rpd->ipaddr.addr = inet_addr(conf_gw_ip_address);
+			}
+		} else if (!strcmp(attr->attr->name, "Acct-Interim-Interval"))
 			req->rpd->acct_interim_interval = attr->val.integer;
 	}
 }
@@ -83,20 +90,13 @@ static int check(struct pwdb_t *pwdb, struct ppp_t *ppp, const char *username, i
 	return r;
 }
 
-static int get_ip(struct ppp_t *ppp, in_addr_t *addr, in_addr_t *peer_addr)
+static struct ipdb_item_t *get_ip(struct ppp_t *ppp)
 {
 	struct radius_pd_t *rpd = find_pd(ppp);
 	
-	if (rpd->ipaddr) {
-		if (!conf_gw_ip_address) {
-			log_warn("radius: gw-ip-address not specified, cann't assign IP address...\n");
-			return -1;
-		}
-		*peer_addr = rpd->ipaddr;
-		*addr = inet_addr(conf_gw_ip_address);
-		return 0;
-	}
-	return -1;
+	if (rpd->ipaddr.peer_addr)
+		return &rpd->ipaddr;
+	return NULL;
 }
 
 static void ppp_starting(struct ppp_notified_t *n, struct ppp_t *ppp)
@@ -172,7 +172,7 @@ struct radius_pd_t *rad_find_session(const char *sessionid, const char *username
 			continue;
 		if (port_id >= 0 && port_id != rpd->ppp->unit_idx)
 			continue;
-		if (ipaddr && ipaddr != rpd->ipaddr)
+		if (ipaddr && ipaddr != rpd->ipaddr.peer_addr)
 			continue;
 		pthread_mutex_lock(&rpd->lock);
 		pthread_rwlock_unlock(&sessions_lock);
@@ -200,6 +200,9 @@ struct radius_pd_t *rad_find_session_pack(struct rad_packet_t *pack)
 		else if (!strcmp(attr->attr->name, "Framed-IP-Address"))
 			ipaddr = attr->val.ipaddr;
 	}
+
+	if (!sessionid && !username && port_id == -1 && ipaddr == 0)
+		return NULL;
 
 	if (username && !sessionid)
 		return NULL;

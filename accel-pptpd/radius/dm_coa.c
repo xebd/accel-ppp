@@ -24,6 +24,8 @@ struct dm_coa_serv_t
 	struct triton_md_handler_t hnd;
 };
 
+static struct dm_coa_serv_t serv;
+
 static int dm_coa_check_RA(struct rad_packet_t *pack, const char *secret)
 {
 	uint8_t RA[16];
@@ -51,8 +53,77 @@ static void dm_coa_set_RA(struct rad_packet_t *pack, const char *secret)
 	MD5_Final(pack->buf + 4, &ctx);
 }
 
+static int dm_coa_send_ack(int fd, struct rad_packet_t *req, struct sockaddr_in *addr)
+{
+	struct rad_packet_t *reply;
+	uint8_t RA[16];
+
+	memcpy(RA, req->buf + 4, sizeof(RA));
+
+	reply = rad_packet_alloc(req->code == CODE_COA_REQUEST ? CODE_COA_ACK : CODE_DISCONNECT_ACK);
+	if (!reply)
+		return -1;
+
+	reply->id = req->id;
+	
+	if (rad_packet_build(reply, RA)) {
+		rad_packet_free(reply);
+		return -1;
+	}
+
+	dm_coa_set_RA(reply, conf_dm_coa_secret);
+
+	if (conf_verbose) {
+		log_debug("send ");
+		rad_packet_print(reply, log_debug);
+	}
+
+	rad_packet_send(reply, fd, addr);
+	
+	rad_packet_free(reply);
+
+	return 0;
+}
+
+static int dm_coa_send_nak(int fd, struct rad_packet_t *req, struct sockaddr_in *addr, int err_code)
+{
+	struct rad_packet_t *reply;
+	uint8_t RA[16];
+
+	memcpy(RA, req->buf + 4, sizeof(RA));
+
+	reply = rad_packet_alloc(req->code == CODE_COA_REQUEST ? CODE_COA_NAK : CODE_DISCONNECT_NAK);
+	if (!reply)
+		return -1;
+
+	reply->id = req->id;
+
+	rad_packet_add_int(reply, "Error-Cause", err_code);
+
+	if (rad_packet_build(reply, RA)) {
+		rad_packet_free(reply);
+		return -1;
+	}
+
+	dm_coa_set_RA(reply, conf_dm_coa_secret);
+
+	if (conf_verbose) {
+		log_debug("send ");
+		rad_packet_print(reply, log_debug);
+	}
+
+	rad_packet_send(reply, fd, addr);
+	
+	rad_packet_free(reply);
+
+	return 0;
+}
+
+
 static void disconnect_request(struct radius_pd_t *rpd)
 {
+	dm_coa_send_ack(serv.hnd.fd, rpd->dm_coa_req, &rpd->dm_coa_addr);
+
 	rad_packet_free(rpd->dm_coa_req);
 	rpd->dm_coa_req = NULL;
 
@@ -61,19 +132,17 @@ static void disconnect_request(struct radius_pd_t *rpd)
 
 static void coa_request(struct radius_pd_t *rpd)
 {
+/// TODO: CoA handling
+	
 	rad_packet_free(rpd->dm_coa_req);
 	rpd->dm_coa_req = NULL;
-
-/// TODO: CoA handling
 }
 
 static int dm_coa_read(struct triton_md_handler_t *h)
 {
 	struct rad_packet_t *pack;
-	struct rad_packet_t *reply = NULL;
 	struct radius_pd_t *rpd;
 	int err_code;
-	uint8_t RA[16];
 	struct sockaddr_in addr;
 
 
@@ -91,8 +160,6 @@ static int dm_coa_read(struct triton_md_handler_t *h)
 		goto out_err_no_reply;
 	}
 
-	memcpy(RA, pack->buf + 4, sizeof(RA));
-	
 	if (conf_verbose) {
 		log_debug("recv ");
 		rad_packet_print(pack, log_debug);
@@ -112,6 +179,7 @@ static int dm_coa_read(struct triton_md_handler_t *h)
 	}
 	
 	rpd->dm_coa_req = pack;
+	memcpy(&rpd->dm_coa_addr, &addr, sizeof(addr));
 
 	if (pack->code == CODE_DISCONNECT_REQUEST)
 		triton_context_call(rpd->ppp->ctrl->ctx, (void (*)(void *))disconnect_request, rpd);
@@ -120,37 +188,13 @@ static int dm_coa_read(struct triton_md_handler_t *h)
 
 	pthread_mutex_unlock(&rpd->lock);
 
-	reply = rad_packet_alloc(pack->code == CODE_COA_REQUEST ? CODE_COA_ACK : CODE_DISCONNECT_ACK);
-	reply->id = pack->id;
-	if (rad_packet_build(reply, RA))
-		goto out_err_no_reply;
-	dm_coa_set_RA(reply, conf_dm_coa_secret);
-	if (conf_verbose) {
-		log_debug("send ");
-		rad_packet_print(reply, log_debug);
-	}
-	rad_packet_send(reply, h->fd, &addr);
-	rad_packet_free(reply);
-
 	return 0;
 
 out_err:
-	reply = rad_packet_alloc(pack->code == CODE_COA_REQUEST ? CODE_COA_NAK : CODE_DISCONNECT_NAK);
-	rad_packet_add_int(reply, "Error-Cause", err_code);
-	reply->id = pack->id;
-	if (rad_packet_build(reply, RA))
-		goto out_err_no_reply;
-	dm_coa_set_RA(reply, conf_dm_coa_secret);
-	if (conf_verbose) {
-		log_debug("send ");
-		rad_packet_print(reply, log_debug);
-	}
-	rad_packet_send(reply, h->fd, &addr);
+	dm_coa_send_nak(h->fd, pack, &addr, err_code);
 
 out_err_no_reply:
 	rad_packet_free(pack);
-	if (reply)
-		rad_packet_free(reply);
 	return 0;
 }
 

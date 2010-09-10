@@ -261,6 +261,7 @@ void __export triton_context_wakeup(struct triton_context_t *ud)
 	ctx->sleeping = 0;
 	r = triton_queue_ctx(ctx);
 	spin_unlock(&ctx->lock);
+
 	if (r)
 		triton_thread_wakeup(ctx->thread);
 }
@@ -269,6 +270,7 @@ int __export triton_context_call(struct triton_context_t *ud, void (*func)(void 
 {
 	struct _triton_context_t *ctx = (struct _triton_context_t *)ud->tpd;
 	struct _triton_ctx_call_t *call = mempool_alloc(call_pool);
+	int r;
 
 	if (!call)
 		return -1;
@@ -278,7 +280,11 @@ int __export triton_context_call(struct triton_context_t *ud, void (*func)(void 
 
 	spin_lock(&ctx->lock);
 	list_add_tail(&call->entry, &ctx->pending_calls);
+	r = triton_queue_ctx(ctx);
 	spin_unlock(&ctx->lock);
+
+	if (r)
+		triton_thread_wakeup(ctx->thread);
 
 	return 0;
 }

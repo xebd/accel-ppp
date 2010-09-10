@@ -7,6 +7,7 @@
 
 #include "triton.h"
 #include "ppp.h"
+#include "ipdb.h"
 
 #define REQ_LENGTH_MAX 4096
 
@@ -40,9 +41,11 @@ struct radius_pd_t
 
 	struct rad_req_t *acct_req;
 	struct triton_timer_t acct_interim_timer;
-	struct rad_packet_t *dm_coa_req;
 
-	in_addr_t ipaddr;
+	struct rad_packet_t *dm_coa_req;
+	struct sockaddr_in dm_coa_addr;
+
+	struct ipdb_item_t ipaddr;
 	int acct_interim_interval;
 };
 

@@ -30,6 +30,7 @@ ADD_EXECUTABLE(pptpd
 	ipdb.c
 
 	iprange.c
+	ippool.c
 	
 	main.c
 )
