@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 
+#include "events.h"
 #include "log.h"
 #include "ppp.h"
 #include "pwdb.h"
@@ -35,7 +36,7 @@ char *conf_dm_coa_secret;
 static LIST_HEAD(sessions);
 static pthread_rwlock_t sessions_lock = PTHREAD_RWLOCK_INITIALIZER;
 
-static struct ppp_notified_t notified;
+static void *pd_key;
 static struct ipdb_t ipdb;
 
 void rad_proc_attrs(struct rad_req_t *req)
@@ -99,12 +100,12 @@ static struct ipdb_item_t *get_ip(struct ppp_t *ppp)
 	return NULL;
 }
 
-static void ppp_starting(struct ppp_notified_t *n, struct ppp_t *ppp)
+static void ppp_starting(struct ppp_t *ppp)
 {
 	struct radius_pd_t *pd = malloc(sizeof(*pd));
 
 	memset(pd, 0, sizeof(*pd));
-	pd->pd.key = n;
+	pd->pd.key = pd_key;
 	pd->ppp = ppp;
 	pthread_mutex_init(&pd->lock, NULL);
 	list_add_tail(&pd->pd.entry, &ppp->pd_list);
@@ -114,20 +115,20 @@ static void ppp_starting(struct ppp_notified_t *n, struct ppp_t *ppp)
 	pthread_rwlock_unlock(&sessions_lock);
 }
 
-static void ppp_started(struct ppp_notified_t *n, struct ppp_t *ppp)
+static void ppp_started(struct ppp_t *ppp)
 {
 	struct radius_pd_t *rpd = find_pd(ppp);
 
 	if (rad_acct_start(rpd))
 		ppp_terminate(rpd->ppp, 0);
 }
-static void ppp_finishing(struct ppp_notified_t *n, struct ppp_t *ppp)
+static void ppp_finishing(struct ppp_t *ppp)
 {
 	struct radius_pd_t *rpd = find_pd(ppp);
 
 	rad_acct_stop(rpd);
 }
-static void ppp_finished(struct ppp_notified_t *n, struct ppp_t *ppp)
+static void ppp_finished(struct ppp_t *ppp)
 {
 	struct radius_pd_t *rpd = find_pd(ppp);
 
@@ -150,7 +151,7 @@ struct radius_pd_t *find_pd(struct ppp_t *ppp)
 	struct radius_pd_t *rpd;
 
 	list_for_each_entry(pd, &ppp->pd_list, entry) {
-		if (pd->key == &notified) {
+		if (pd->key == pd_key) {
 			rpd = container_of(pd, typeof(*rpd), pd);
 			return rpd;
 		}
@@ -239,13 +240,6 @@ static struct pwdb_t pwdb = {
 	.check = check,
 };
 
-static struct ppp_notified_t notified = {
-	.starting = ppp_starting,
-	.started = ppp_started,
-	.finishing = ppp_finishing,
-	.finished = ppp_finished,
-};
-
 static int parse_server(const char *opt, char **name, int *port, char **secret)
 {
 	char *str = strdup(opt);
@@ -325,6 +319,10 @@ static void __init radius_init(void)
 
 	pwdb_register(&pwdb);
 	ipdb_register(&ipdb);
-	ppp_register_notified(&notified);
+
+	triton_event_register_handler(EV_PPP_STARTING, (triton_event_func)ppp_starting);
+	triton_event_register_handler(EV_PPP_STARTED, (triton_event_func)ppp_started);
+	triton_event_register_handler(EV_PPP_FINISHING, (triton_event_func)ppp_finishing);
+	triton_event_register_handler(EV_PPP_FINISHED, (triton_event_func)ppp_finished);
 }
 

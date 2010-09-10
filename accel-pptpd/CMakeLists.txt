@@ -23,7 +23,6 @@ ADD_EXECUTABLE(pptpd
 	ppp/ipcp_opt_ipaddr.c
 	ppp/ipcp_opt_dns.c
 	ppp/ppp_ccp.c	
-	ppp/ppp_notify.c	
 
 	log.c
 	pwdb.c

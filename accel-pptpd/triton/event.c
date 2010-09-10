@@ -26,7 +26,7 @@ int event_init(void)
 	return 0;
 }
 
-int triton_event_register_handler(int ev_id, triton_event_func func)
+int __export triton_event_register_handler(int ev_id, triton_event_func func)
 {
 	struct _triton_event_t *ev;
 	struct event_handler_t *h;
@@ -85,7 +85,7 @@ int triton_event_register_handler(int ev_id, triton_event_func func)
 	return -1;
 }*/
 
-void triton_event_fire(int ev_id, void *arg)
+void __export triton_event_fire(int ev_id, void *arg)
 {
 	struct _triton_event_t *ev;
 	struct event_handler_t *h;

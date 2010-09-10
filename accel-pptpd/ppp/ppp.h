@@ -53,16 +53,6 @@ struct ppp_ctrl_t
 	void (*finished)(struct ppp_t*);
 };
 
-struct ppp_notified_t
-{
-	struct list_head entry;
-	void (*starting)(struct ppp_notified_t *, struct ppp_t *);
-	void (*started)(struct ppp_notified_t *, struct ppp_t *);
-	void (*finishing)(struct ppp_notified_t *, struct ppp_t *);
-	void (*finished)(struct ppp_notified_t *, struct ppp_t *);
-	void (*authenticated)(struct ppp_notified_t *, struct ppp_t *);
-};
-
 struct ppp_pd_t
 {
 	struct list_head entry;
@@ -148,13 +138,6 @@ void ppp_unregister_handler(struct ppp_t *, struct ppp_handler_t *);
 int ppp_register_layer(const char *name, struct ppp_layer_t *);
 void ppp_unregister_layer(struct ppp_layer_t *);
 struct ppp_layer_data_t *ppp_find_layer_data(struct ppp_t *, struct ppp_layer_t *);
-
-void ppp_register_notified(struct ppp_notified_t *);
-void ppp_unregister_notified(struct ppp_notified_t *);
-void ppp_notify_starting(struct ppp_t *ppp);
-void ppp_notify_started(struct ppp_t *ppp);
-void ppp_notify_finishing(struct ppp_t *ppp);
-void ppp_notify_finished(struct ppp_t *ppp);
 
 extern int conf_ppp_verbose;
 

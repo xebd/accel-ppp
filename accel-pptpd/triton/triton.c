@@ -313,6 +313,9 @@ int __export triton_init(const char *conf_file, const char *mod_sect)
 	if (timer_init())
 		return -1;
 
+	if (event_init())
+		return -1;
+
 	if (load_modules(mod_sect))
 		return -1;
 

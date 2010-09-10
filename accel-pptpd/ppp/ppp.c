@@ -14,6 +14,7 @@
 
 #include "triton.h"
 
+#include "events.h"
 #include "ppp.h"
 #include "ppp_fsm.h"
 #include "log.h"
@@ -157,7 +158,7 @@ int __export establish_ppp(struct ppp_t *ppp)
 
 	log_debug("ppp established\n");
 
-	ppp_notify_starting(ppp);
+	triton_event_fire(EV_PPP_STARTING, ppp);
 	start_first_layer(ppp);
 
 	return 0;
@@ -190,7 +191,7 @@ static void destablish_ppp(struct ppp_t *ppp)
 	
 	log_debug("ppp destablished\n");
 
-	ppp_notify_finished(ppp);
+	triton_event_fire(EV_PPP_FINISHED, ppp);
 	ppp->ctrl->finished(ppp);
 }
 
@@ -324,7 +325,7 @@ void __export ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 	if (n->entry.next==&ppp->layers)
 	{
 		ppp->ctrl->started(ppp);
-		ppp_notify_started(ppp);
+		triton_event_fire(EV_PPP_STARTED, ppp);
 	}else
 	{
 		n=list_entry(n->entry.next,typeof(*n),entry);
@@ -366,7 +367,7 @@ void __export ppp_terminate(struct ppp_t *ppp, int hard)
 
 	log_debug("ppp_terminate\n");
 
-	ppp_notify_finishing(ppp);
+	triton_event_fire(EV_PPP_FINISHING, ppp);
 
 	if (hard) {
 		destablish_ppp(ppp);

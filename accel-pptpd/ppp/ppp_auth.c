@@ -3,6 +3,7 @@
 #include <arpa/inet.h>
 
 #include "ppp.h"
+#include "events.h"
 #include "ppp_lcp.h"
 #include "log.h"
 
@@ -301,6 +302,7 @@ void __export auth_successed(struct ppp_t *ppp, char *username)
 	struct auth_layer_data_t *ad=container_of(ppp_find_layer_data(ppp,&auth_layer),typeof(*ad),ld);
 	log_debug("auth_layer_started\n");
 	ppp->username = username;
+	triton_event_fire(EV_PPP_AUTHORIZED, ppp);
 	ppp_layer_started(ppp,&ad->ld);
 }
 
