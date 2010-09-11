@@ -78,14 +78,14 @@ int rad_dict_load(const char *fname)
 	
 	buf = malloc(BUF_SIZE);
 	if (!buf) {
-		log_error("radius: out of memory\n");
+		log_emerg("radius: out of memory\n");
 		fclose(f);
 		return -1;
 	}
 
 	dict = malloc(sizeof(*dict));
 	if (!dict) {
-		log_error("radius: out of memory\n");
+		log_emerg("radius: out of memory\n");
 		fclose(f);
 		free(buf);
 		return -1;
@@ -104,7 +104,7 @@ int rad_dict_load(const char *fname)
 		if (!strcmp(buf, "ATTRIBUTE")) {
 			attr = malloc(sizeof(*attr));
 			if (!attr) {
-				log_error("radius: out of memory\n");
+				log_emerg("radius: out of memory\n");
 				goto out_err;
 			}
 			memset(attr, 0, sizeof(*attr));
@@ -138,7 +138,7 @@ int rad_dict_load(const char *fname)
 			}
 			val = malloc(sizeof(*val));
 			if (!val) {
-				log_error("radius: out of memory\n");
+				log_emerg("radius: out of memory\n");
 				goto out_err;
 			}
 			memset(val, 0, sizeof(*val));

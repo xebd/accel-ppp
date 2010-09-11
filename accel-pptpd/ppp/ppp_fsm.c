@@ -466,7 +466,7 @@ void send_term_req(struct ppp_fsm_t *layer)
 		.len = htons(4),
 	};
 
-	log_debug("send [LCP TermReq id=%i \"\"]\n",hdr.id);
+	log_ppp_debug("send [LCP TermReq id=%i \"\"]\n",hdr.id);
 
 	--layer->restart_counter;
 	ppp_chan_send(layer->ppp, &hdr, 6);
@@ -480,27 +480,23 @@ void send_term_ack(struct ppp_fsm_t *layer)
 		.len = htons(4),
 	};
 
-	log_debug("send [LCP TermAck id=%i \"\"]\n", hdr.id);
+	log_ppp_debug("send [LCP TermAck id=%i \"\"]\n", hdr.id);
 	
 	ppp_chan_send(layer->ppp, &hdr, 6);
 }
 
 static void stop_timer(struct ppp_fsm_t *fsm)
 {
-	if (fsm->restart_timer.period) {
-		fsm->restart_timer.period = 0;
+	if (fsm->restart_timer.tpd)
 		triton_timer_del(&fsm->restart_timer);
-	}
 }
 static void init_req_counter(struct ppp_fsm_t *layer,int timeout)
 {
 	layer->restart_timer.expire_tv.tv_sec=0;
 	layer->restart_counter = timeout;
 
-	if (!layer->restart_timer.period) {
-		layer->restart_timer.period = layer->timeout * 1000;
+	if (!layer->restart_timer.tpd)
 		triton_timer_add(layer->ppp->ctrl->ctx, &layer->restart_timer, 0);
-	}
 }
 static void zero_req_counter(struct ppp_fsm_t *layer)
 {

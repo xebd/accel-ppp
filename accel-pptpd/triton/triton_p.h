@@ -8,6 +8,7 @@
 #include "triton.h"
 #include "list.h"
 #include "spinlock.h"
+#include "mempool.h"
 
 #define CTX_STACK_SIZE 8196
 
@@ -43,6 +44,7 @@ struct _triton_context_t
 	int need_free:1;
 
 	struct triton_context_t *ud;
+	void *bf_arg;
 };
 
 struct _triton_md_handler_t
@@ -79,11 +81,6 @@ struct _triton_ctx_call_t
 	void *arg;
 	void (*func)(void *);
 };
-
-typedef void * mempool_t;
-mempool_t *mempool_create(int size);
-void *mempool_alloc(mempool_t*);
-void mempool_free(void*);
 
 int log_init(void);
 int md_init();

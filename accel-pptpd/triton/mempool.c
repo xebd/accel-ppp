@@ -20,7 +20,7 @@ struct _item_t
 	char ptr[0];
 };
 
-mempool_t *mempool_create(int size)
+__export mempool_t *mempool_create(int size)
 {
 	struct _mempool_t *p = malloc(sizeof(*p));
 
@@ -33,7 +33,7 @@ mempool_t *mempool_create(int size)
 	return (mempool_t *)p;
 }
 
-void *mempool_alloc(mempool_t *pool)
+__export void *mempool_alloc(mempool_t *pool)
 {
 	struct _mempool_t *p = (struct _mempool_t *)pool;
 	struct _item_t *it;
@@ -48,7 +48,7 @@ void *mempool_alloc(mempool_t *pool)
 	spin_unlock(&p->lock);
 	it = malloc(sizeof(*it) + p->size);
 	if (!it) {
-		triton_log_error("out of memory\n");
+		triton_log_error("mempool: out of memory\n");
 		return NULL;
 	}
 	it->owner = p;
@@ -56,7 +56,7 @@ void *mempool_alloc(mempool_t *pool)
 	return it->ptr;
 }
 
-void mempool_free(void *ptr)
+__export void mempool_free(void *ptr)
 {
 	struct _item_t *it = container_of(ptr, typeof(*it), ptr);
 

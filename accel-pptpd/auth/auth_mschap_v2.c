@@ -101,13 +101,13 @@ static void print_buf(const uint8_t *buf,int size)
 {
 	int i;
 	for(i=0;i<size;i++)
-		log_debug("%x",buf[i]);
+		log_ppp_debug("%x",buf[i]);
 }
 static void print_str(const char *buf,int size)
 {
 	int i;
 	for(i=0;i<size;i++)
-		log_debug("%c",buf[i]);
+		log_ppp_debug("%c",buf[i]);
 }
 
 
@@ -177,7 +177,7 @@ static void chap_send_failure(struct chap_auth_data_t *ad)
 		.message=MSG_FAILURE,
 	};
 	
-	log_debug("send [MSCHAP-v2 Failure id=%x \"%s\"]\n",msg.hdr.id,MSG_FAILURE);
+	log_ppp_debug("send [MSCHAP-v2 Failure id=%x \"%s\"]\n",msg.hdr.id,MSG_FAILURE);
 
 	ppp_chan_send(ad->ppp,&msg,ntohs(msg.hdr.len)+2);
 }
@@ -260,7 +260,7 @@ static void chap_send_success(struct chap_auth_data_t *ad, struct chap_response_
 		sprintf(msg.message+2+i*2,"%02X",response[i]);
 	msg.message[2+i*2]=' ';
 	
-	log_debug("send [MSCHAP-v2 Success id=%x \"%s\"]\n",msg.hdr.id,msg.message);
+	log_ppp_debug("send [MSCHAP-v2 Success id=%x \"%s\"]\n",msg.hdr.id,msg.message);
 
 	ppp_chan_send(ad->ppp,&msg,ntohs(msg.hdr.len)+2);
 }
@@ -279,9 +279,9 @@ static void chap_send_challenge(struct chap_auth_data_t *ad)
 	read(urandom_fd,ad->val,VALUE_SIZE);
 	memcpy(msg.val,ad->val,VALUE_SIZE);
 
-	log_debug("send [MSCHAP-v2 Challenge id=%x <",msg.hdr.id);
+	log_ppp_debug("send [MSCHAP-v2 Challenge id=%x <",msg.hdr.id);
 	print_buf(msg.val,VALUE_SIZE);
-	log_debug(">]\n");
+	log_ppp_debug(">]\n");
 
 	ppp_chan_send(ad->ppp,&msg,ntohs(msg.hdr.len)+2);
 }
@@ -291,31 +291,31 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	struct chap_response_t *msg=(struct chap_response_t*)hdr;
 	char *name;
 
-	log_debug("recv [MSCHAP-v2 Response id=%x <", msg->hdr.id);
+	log_ppp_debug("recv [MSCHAP-v2 Response id=%x <", msg->hdr.id);
 	print_buf(msg->peer_challenge,16);
-	log_debug(">, <");
+	log_ppp_debug(">, <");
 	print_buf(msg->nt_hash,24);
-	log_debug(">, F=%i, name=\"",msg->flags);
+	log_ppp_debug(">, F=%i, name=\"",msg->flags);
 	print_str(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
-	log_debug("\"]\n");
+	log_ppp_debug("\"]\n");
 
 	if (msg->hdr.id!=ad->id)
 	{
-		log_error("mschap-v2: id mismatch\n");
+		log_ppp_error("mschap-v2: id mismatch\n");
 		chap_send_failure(ad);
 		ppp_terminate(ad->ppp, 0);
 	}
 
 	if (msg->val_size!=RESPONSE_VALUE_SIZE)
 	{
-		log_error("mschap-v2: value-size should be %i, expected %i\n",RESPONSE_VALUE_SIZE,msg->val_size);
+		log_ppp_error("mschap-v2: value-size should be %i, expected %i\n",RESPONSE_VALUE_SIZE,msg->val_size);
 		chap_send_failure(ad);
 		ppp_terminate(ad->ppp, 0);
 	}
 
 	name=strndup(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
 	if (!name) {
-		log_error("mschap-v2: out of memory\n");
+		log_emerg("mschap-v2: out of memory\n");
 		auth_failed(ad->ppp);
 		return;
 	}
@@ -376,7 +376,7 @@ static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response
 	if (!passwd)
 	{
 		free(name);
-		log_debug("mschap-v2: user not found\n");
+		log_ppp_debug("mschap-v2: user not found\n");
 		chap_send_failure(ad);
 		return -1;
 	}
@@ -428,14 +428,14 @@ static void chap_recv(struct ppp_handler_t *h)
 
 	if (d->ppp->chan_buf_size<sizeof(*hdr) || ntohs(hdr->len)<HDR_LEN || ntohs(hdr->len)<d->ppp->chan_buf_size-2)
 	{
-		log_warn("mschap-v2: short packet received\n");
+		log_ppp_warn("mschap-v2: short packet received\n");
 		return;
 	}
 
 	if (hdr->code==CHAP_RESPONSE) chap_recv_response(d,hdr);
 	else
 	{
-		log_warn("mschap-v2: unknown code received %x\n",hdr->code);
+		log_ppp_warn("mschap-v2: unknown code received %x\n",hdr->code);
 	}
 }
 

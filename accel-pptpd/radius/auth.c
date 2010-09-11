@@ -19,7 +19,7 @@ static uint8_t* encrypt_password(const char *passwd, const char *secret, const u
 	
 	epasswd = malloc(chunk_cnt * 16);
 	if (!epasswd) {
-		log_error("radius: out of memory\n");
+		log_emerg("radius: out of memory\n");
 		return NULL;
 	}
 
@@ -137,7 +137,7 @@ int rad_auth_chap_md5(struct radius_pd_t *rpd, const char *username, va_list arg
 	}
 
 	if (!req->reply)
-		log_warn("radius:auth: no response\n");
+		log_ppp_warn("radius:auth: no response\n");
 	else if (req->reply->code == CODE_ACCESS_ACCEPT) {
 		rad_proc_attrs(req);
 		r = PWDB_SUCCESS;

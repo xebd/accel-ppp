@@ -1,25 +1,66 @@
-//
-// C++ Interface: log
-//
-// Description:
-//
-//
-// Author:  <xeb@mail.ru>, (C) 2009
-//
-// Copyright: See COPYING file that comes with this distribution
-//
-//
+#ifndef __LOG_H
+#define __LOG_H
 
-#ifndef LOG_H
-#define LOG_H
+#include <stdarg.h>
+#include <sys/time.h>
+#include "list.h"
 
-#include <stdio.h>
+#define LOG_MSG   0
+#define LOG_ERROR 1
+#define LOG_WARN  2
+#define LOG_INFO  3
+#define LOG_DEBUG 4
 
-void log_init(FILE *f,int level,int color);
+#define LOG_CHUNK_SIZE 128
+
+struct ppp_t;
+struct triton_context_t;
+
+struct log_msg_t
+{
+	struct list_head entry;
+	void *lpd;
+	struct timeval timestamp;
+	int level;
+	struct log_chunk_t *hdr;
+	struct list_head *chunks;		
+};
+
+struct log_chunk_t
+{
+	struct list_head entry;
+	int len;
+	char msg[0];
+};
+
+struct log_target_t
+{
+	struct list_head entry;
+
+	void (*log)(struct log_msg_t *);
+	void (*session_log)(struct ppp_t *ppp, struct log_msg_t *);
+	void (*session_start)(struct ppp_t *ppp);
+	void (*session_stop)(struct ppp_t *ppp);
+};
+
+void log_free_msg(struct log_msg_t *msg);
+
+void log_emerg(const char *fmt, ...);
+
 void log_error(const char *fmt,...);
 void log_warn(const char *fmt,...);
 void log_info(const char *fmt,...);
 void log_debug(const char *fmt,...);
 void log_msg(const char *fmt,...);
+
+void log_ppp_error(const char *fmt,...);
+void log_ppp_warn(const char *fmt,...);
+void log_ppp_info(const char *fmt,...);
+void log_ppp_debug(const char *fmt,...);
+void log_ppp_msg(const char *fmt,...);
+
+void log_switch(struct triton_context_t *ctx, void *arg);
+
+void log_register_target(struct log_target_t *t);
 
 #endif

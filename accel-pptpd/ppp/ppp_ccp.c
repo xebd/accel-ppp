@@ -35,8 +35,6 @@ static void ccp_options_init(struct ppp_ccp_t *ccp)
 	struct ccp_option_t *lopt;
 	struct ccp_option_handler_t *h;
 
-	INIT_LIST_HEAD(&ccp->options);
-
 	list_for_each_entry(h,&option_handlers,entry)
 	{
 		lopt=h->init(ccp);
@@ -66,7 +64,7 @@ static struct ppp_layer_data_t *ccp_layer_init(struct ppp_t *ppp)
 	struct ppp_ccp_t *ccp=malloc(sizeof(*ccp));
 	memset(ccp,0,sizeof(*ccp));
 	
-	log_debug("ccp_layer_init\n");
+	log_ppp_debug("ccp_layer_init\n");
 
 	ccp->ppp=ppp;
 	ccp->fsm.ppp=ppp;
@@ -85,6 +83,7 @@ static struct ppp_layer_data_t *ccp_layer_init(struct ppp_t *ppp)
 	ccp->fsm.send_conf_nak=send_conf_nak;
 	ccp->fsm.send_conf_rej=send_conf_rej;
 
+	INIT_LIST_HEAD(&ccp->options);
 	INIT_LIST_HEAD(&ccp->ropt_list);
 
 	return &ccp->ld;
@@ -94,7 +93,7 @@ int ccp_layer_start(struct ppp_layer_data_t *ld)
 {
 	struct ppp_ccp_t *ccp=container_of(ld,typeof(*ccp),ld);
 	
-	log_debug("ccp_layer_start\n");
+	log_ppp_debug("ccp_layer_start\n");
 
 	ccp_options_init(ccp);
 	ppp_fsm_lower_up(&ccp->fsm);
@@ -108,7 +107,7 @@ void ccp_layer_finish(struct ppp_layer_data_t *ld)
 {
 	struct ppp_ccp_t *ccp=container_of(ld,typeof(*ccp),ld);
 	
-	log_debug("ccp_layer_finish\n");
+	log_ppp_debug("ccp_layer_finish\n");
 
 	ccp->fsm.fsm_state = FSM_Closed;
 	ppp_layer_finished(ccp->ppp,&ccp->ld);
@@ -118,7 +117,7 @@ void ccp_layer_free(struct ppp_layer_data_t *ld)
 {
 	struct ppp_ccp_t *ccp=container_of(ld,typeof(*ccp),ld);
 	
-	log_debug("ccp_layer_free\n");
+	log_ppp_debug("ccp_layer_free\n");
 		
 	ppp_unregister_handler(ccp->ppp,&ccp->hnd);
 	ccp_options_free(ccp);
@@ -130,14 +129,14 @@ void ccp_layer_free(struct ppp_layer_data_t *ld)
 static void ccp_layer_up(struct ppp_fsm_t *fsm)
 {
 	struct ppp_ccp_t *ccp=container_of(fsm,typeof(*ccp),fsm);
-	log_debug("ccp_layer_started\n");
+	log_ppp_debug("ccp_layer_started\n");
 	ppp_layer_started(ccp->ppp,&ccp->ld);
 }
 
 static void ccp_layer_down(struct ppp_fsm_t *fsm)
 {
 	struct ppp_ccp_t *ccp=container_of(fsm,typeof(*ccp),fsm);
-	log_debug("ccp_layer_finished\n");
+	log_ppp_debug("ccp_layer_finished\n");
 	ppp_layer_finished(ccp->ppp,&ccp->ld);
 }
 
@@ -146,12 +145,12 @@ static void print_ropt(struct recv_opt_t *ropt)
 	int i;
 	uint8_t *ptr=(uint8_t*)ropt->hdr;
 
-	log_debug(" <");
+	log_ppp_debug(" <");
 	for(i=0; i<ropt->len; i++)
 	{
-		log_debug(" %x",ptr[i]);
+		log_ppp_debug(" %x",ptr[i]);
 	}
-	log_debug(" >");
+	log_ppp_debug(" >");
 }
 
 static int send_conf_req(struct ppp_fsm_t *fsm)
@@ -162,12 +161,12 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 	struct ccp_option_t *lopt;
 	int n;
 
-	log_debug("send [CCP ConfReq");
+	log_ppp_debug("send [CCP ConfReq");
 	ccp_hdr->proto=htons(PPP_CCP);
 	ccp_hdr->code=CONFREQ;
 	ccp_hdr->id=++ccp->fsm.id;
 	ccp_hdr->len=0;
-	log_debug(" id=%x",ccp_hdr->id);
+	log_ppp_debug(" id=%x",ccp_hdr->id);
 	
 	ptr+=sizeof(*ccp_hdr);
 
@@ -178,13 +177,13 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 			return -1;
 		if (n)
 		{
-			log_debug(" ");
-			lopt->h->print(log_debug,lopt,NULL);
+			log_ppp_debug(" ");
+			lopt->h->print(log_ppp_debug,lopt,NULL);
 			ptr+=n;
 		}
 	}
 	
-	log_debug("]\n");
+	log_ppp_debug("]\n");
 
 	ccp_hdr->len=htons((ptr-buf)-2);
 	ppp_unit_send(ccp->ppp,ccp_hdr,ptr-buf);
@@ -198,7 +197,7 @@ static void send_conf_ack(struct ppp_fsm_t *fsm)
 	struct ccp_hdr_t *hdr=(struct ccp_hdr_t*)ccp->ppp->unit_buf;
 
 	hdr->code=CONFACK;
-	log_debug("send [CCP ConfAck id=%x ]\n",ccp->fsm.recv_id);
+	log_ppp_debug("send [CCP ConfAck id=%x ]\n",ccp->fsm.recv_id);
 
 	ppp_unit_send(ccp->ppp,hdr,ntohs(hdr->len)+2);
 }
@@ -210,7 +209,7 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 	struct ccp_hdr_t *ccp_hdr=(struct ccp_hdr_t*)ptr;
 	struct recv_opt_t *ropt;
 
-	log_debug("send [CCP ConfNak id=%x",ccp->fsm.recv_id);
+	log_ppp_debug("send [CCP ConfNak id=%x",ccp->fsm.recv_id);
 
 	ccp_hdr->proto=htons(PPP_CCP);
 	ccp_hdr->code=CONFNAK;
@@ -223,13 +222,13 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 	{
 		if (ropt->state==CCP_OPT_NAK)
 		{
-			log_debug(" ");
-			ropt->lopt->h->print(log_debug,ropt->lopt,NULL);
+			log_ppp_debug(" ");
+			ropt->lopt->h->print(log_ppp_debug,ropt->lopt,NULL);
 			ptr+=ropt->lopt->h->send_conf_nak(ccp,ropt->lopt,ptr);
 		}
 	}
 	
-	log_debug("]\n");
+	log_ppp_debug("]\n");
 
 	ccp_hdr->len=htons((ptr-buf)-2);
 	ppp_unit_send(ccp->ppp,ccp_hdr,ptr-buf);
@@ -242,7 +241,7 @@ static void send_conf_rej(struct ppp_fsm_t *fsm)
 	struct ccp_hdr_t *ccp_hdr=(struct ccp_hdr_t*)ptr;
 	struct recv_opt_t *ropt;
 
-	log_debug("send [CCP ConfRej id=%x ",ccp->fsm.recv_id);
+	log_ppp_debug("send [CCP ConfRej id=%x ",ccp->fsm.recv_id);
 
 	ccp_hdr->proto=htons(PPP_CCP);
 	ccp_hdr->code=CONFREJ;
@@ -255,15 +254,15 @@ static void send_conf_rej(struct ppp_fsm_t *fsm)
 	{
 		if (ropt->state==CCP_OPT_REJ)
 		{
-			log_debug(" ");
-			if (ropt->lopt)	ropt->lopt->h->print(log_debug,ropt->lopt,(uint8_t*)ropt->hdr);
+			log_ppp_debug(" ");
+			if (ropt->lopt)	ropt->lopt->h->print(log_ppp_debug,ropt->lopt,(uint8_t*)ropt->hdr);
 			else print_ropt(ropt);
 			memcpy(ptr,ropt->hdr,ropt->len);
 			ptr+=ropt->len;
 		}
 	}
 
-	log_debug("]\n");
+	log_ppp_debug("]\n");
 
 	ccp_hdr->len=htons((ptr-buf)-2);
 	ppp_unit_send(ccp->ppp,ccp_hdr,ptr-buf);
@@ -297,15 +296,15 @@ static int ccp_recv_conf_req(struct ppp_ccp_t *ccp,uint8_t *data,int size)
 	list_for_each_entry(lopt,&ccp->options,entry)
 		lopt->state=CCP_OPT_NONE;
 
-	log_debug("recv [CCP ConfReq id=%x",ccp->fsm.recv_id);
+	log_ppp_debug("recv [CCP ConfReq id=%x",ccp->fsm.recv_id);
 	list_for_each_entry(ropt,&ccp->ropt_list,entry)
 	{
 		list_for_each_entry(lopt,&ccp->options,entry)
 		{
 			if (lopt->id==ropt->hdr->id)
 			{
-				log_debug(" ");
-				lopt->h->print(log_debug,lopt,(uint8_t*)ropt->hdr);
+				log_ppp_debug(" ");
+				lopt->h->print(log_ppp_debug,lopt,(uint8_t*)ropt->hdr);
 				r=lopt->h->recv_conf_req(ccp,lopt,(uint8_t*)ropt->hdr);
 				if (ack)
 				{
@@ -325,13 +324,13 @@ static int ccp_recv_conf_req(struct ppp_ccp_t *ccp,uint8_t *data,int size)
 			ack=1;
 		else if (!ropt->lopt)
 		{
-			log_debug(" ");
+			log_ppp_debug(" ");
 			print_ropt(ropt);
 			ropt->state=CCP_OPT_REJ;
 			ret=CCP_OPT_REJ;
 		}
 	}
-	log_debug("]\n");
+	log_ppp_debug("]\n");
 
 	/*list_for_each_entry(lopt,&ccp->options,entry)
 	{
@@ -364,11 +363,11 @@ static int ccp_recv_conf_rej(struct ppp_ccp_t *ccp,uint8_t *data,int size)
 	struct ccp_option_t *lopt;
 	int res=0;
 
-	log_debug("recv [CCP ConfRej id=%x",ccp->fsm.recv_id);
+	log_ppp_debug("recv [CCP ConfRej id=%x",ccp->fsm.recv_id);
 
 	if (ccp->fsm.recv_id!=ccp->fsm.id)
 	{
-		log_debug(": id mismatch ]\n");
+		log_ppp_debug(": id mismatch ]\n");
 		return 0;
 	}
 
@@ -391,7 +390,7 @@ static int ccp_recv_conf_rej(struct ppp_ccp_t *ccp,uint8_t *data,int size)
 		data+=hdr->len;
 		size-=hdr->len;
 	}
-	log_debug("]\n");
+	log_ppp_debug("]\n");
 	return res;
 }
 
@@ -401,11 +400,11 @@ static int ccp_recv_conf_nak(struct ppp_ccp_t *ccp,uint8_t *data,int size)
 	struct ccp_option_t *lopt;
 	int res=0;
 
-	log_debug("recv [CCP ConfNak id=%x",ccp->fsm.recv_id);
+	log_ppp_debug("recv [CCP ConfNak id=%x",ccp->fsm.recv_id);
 
 	if (ccp->fsm.recv_id!=ccp->fsm.id)
 	{
-		log_debug(": id mismatch ]\n");
+		log_ppp_debug(": id mismatch ]\n");
 		return 0;
 	}
 
@@ -417,8 +416,8 @@ static int ccp_recv_conf_nak(struct ppp_ccp_t *ccp,uint8_t *data,int size)
 		{
 			if (lopt->id==hdr->id)
 			{
-				log_debug(" ");
-				lopt->h->print(log_debug,lopt,data);
+				log_ppp_debug(" ");
+				lopt->h->print(log_ppp_debug,lopt,data);
 				if (lopt->h->recv_conf_nak(ccp,lopt,data))
 					res=-1;
 				break;
@@ -428,7 +427,7 @@ static int ccp_recv_conf_nak(struct ppp_ccp_t *ccp,uint8_t *data,int size)
 		data+=hdr->len;
 		size-=hdr->len;
 	}
-	log_debug("]\n");
+	log_ppp_debug("]\n");
 	return res;
 }
 
@@ -438,11 +437,11 @@ static int ccp_recv_conf_ack(struct ppp_ccp_t *ccp,uint8_t *data,int size)
 	struct ccp_option_t *lopt;
 	int res=0;
 
-	log_debug("recv [CCP ConfAck id=%x",ccp->fsm.recv_id);
+	log_ppp_debug("recv [CCP ConfAck id=%x",ccp->fsm.recv_id);
 
 	if (ccp->fsm.recv_id!=ccp->fsm.id)
 	{
-		log_debug(": id mismatch ]\n");
+		log_ppp_debug(": id mismatch ]\n");
 		return 0;
 	}
 
@@ -454,8 +453,8 @@ static int ccp_recv_conf_ack(struct ppp_ccp_t *ccp,uint8_t *data,int size)
 		{
 			if (lopt->id==hdr->id)
 			{
-				log_debug(" ");
-				lopt->h->print(log_debug,lopt,data);
+				log_ppp_debug(" ");
+				lopt->h->print(log_ppp_debug,lopt,data);
 				if (!lopt->h->recv_conf_ack)
 					break;
 				if (lopt->h->recv_conf_ack(ccp,lopt,data))
@@ -467,7 +466,7 @@ static int ccp_recv_conf_ack(struct ppp_ccp_t *ccp,uint8_t *data,int size)
 		data+=hdr->len;
 		size-=hdr->len;
 	}
-	log_debug("]\n");
+	log_ppp_debug("]\n");
 	return res;
 }
 
@@ -480,20 +479,20 @@ static void ccp_recv(struct ppp_handler_t*h)
 
 	if (ccp->fsm.fsm_state==FSM_Initial || ccp->fsm.fsm_state==FSM_Closed)
 	{
-		log_warn("CCP: discaring packet\n");
+		log_ppp_warn("CCP: discaring packet\n");
 		return;
 	}
 
 	if (ccp->ppp->unit_buf_size<PPP_HEADERLEN+2)
 	{
-		log_warn("CCP: short packet received\n");
+		log_ppp_warn("CCP: short packet received\n");
 		return;
 	}
 
 	hdr=(struct ccp_hdr_t *)ccp->ppp->unit_buf;
 	if (ntohs(hdr->len)<PPP_HEADERLEN)
 	{
-		log_warn("CCP: short packet received\n");
+		log_ppp_warn("CCP: short packet received\n");
 		return;
 	}
 
@@ -536,19 +535,19 @@ static void ccp_recv(struct ppp_handler_t*h)
 			break;
 		case TERMREQ:
 			term_msg=strndup((char*)(hdr+1),ntohs(hdr->len));
-			log_debug("recv [CCP TermReq id=%x \"%s\"]\n",hdr->id,term_msg);
+			log_ppp_debug("recv [CCP TermReq id=%x \"%s\"]\n",hdr->id,term_msg);
 			free(term_msg);
 			ppp_fsm_recv_term_req(&ccp->fsm);
 			ppp_terminate(ccp->ppp, 0);
 			break;
 		case TERMACK:
 			term_msg=strndup((char*)(hdr+1),ntohs(hdr->len));
-			log_debug("recv [CCP TermAck id=%x \"%s\"]\n",hdr->id,term_msg);
+			log_ppp_debug("recv [CCP TermAck id=%x \"%s\"]\n",hdr->id,term_msg);
 			free(term_msg);
 			ppp_fsm_recv_term_ack(&ccp->fsm);
 			break;
 		case CODEREJ:
-			log_debug("recv [CCP CodeRej id=%x]\n",hdr->id);
+			log_ppp_debug("recv [CCP CodeRej id=%x]\n",hdr->id);
 			ppp_fsm_recv_code_rej_bad(&ccp->fsm);
 			break;
 		default:

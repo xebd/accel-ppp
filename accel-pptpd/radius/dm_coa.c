@@ -74,8 +74,8 @@ static int dm_coa_send_ack(int fd, struct rad_packet_t *req, struct sockaddr_in 
 	dm_coa_set_RA(reply, conf_dm_coa_secret);
 
 	if (conf_verbose) {
-		log_debug("send ");
-		rad_packet_print(reply, log_debug);
+		log_ppp_debug("send ");
+		rad_packet_print(reply, log_ppp_debug);
 	}
 
 	rad_packet_send(reply, fd, addr);
@@ -108,8 +108,8 @@ static int dm_coa_send_nak(int fd, struct rad_packet_t *req, struct sockaddr_in 
 	dm_coa_set_RA(reply, conf_dm_coa_secret);
 
 	if (conf_verbose) {
-		log_debug("send ");
-		rad_packet_print(reply, log_debug);
+		log_ppp_debug("send ");
+		rad_packet_print(reply, log_ppp_debug);
 	}
 
 	rad_packet_send(reply, fd, addr);
@@ -122,6 +122,11 @@ static int dm_coa_send_nak(int fd, struct rad_packet_t *req, struct sockaddr_in 
 
 static void disconnect_request(struct radius_pd_t *rpd)
 {
+	if (conf_verbose) {
+		log_ppp_debug("recv ");
+		rad_packet_print(rpd->dm_coa_req, log_ppp_debug);
+	}
+
 	dm_coa_send_ack(serv.hnd.fd, rpd->dm_coa_req, &rpd->dm_coa_addr);
 
 	rad_packet_free(rpd->dm_coa_req);
@@ -132,6 +137,10 @@ static void disconnect_request(struct radius_pd_t *rpd)
 
 static void coa_request(struct radius_pd_t *rpd)
 {
+	if (conf_verbose) {
+		log_ppp_debug("recv ");
+		rad_packet_print(rpd->dm_coa_req, log_ppp_debug);
+	}
 /// TODO: CoA handling
 	
 	rad_packet_free(rpd->dm_coa_req);
@@ -207,6 +216,7 @@ static void dm_coa_close(struct triton_context_t *ctx)
 
 static struct dm_coa_serv_t serv = {
 	.ctx.close = dm_coa_close,
+	.ctx.before_switch = log_switch,
 	.hnd.read = dm_coa_read,
 };
 
@@ -237,7 +247,7 @@ static void __init init(void)
     return;
 	}
 	
-	triton_context_register(&serv.ctx);
+	triton_context_register(&serv.ctx, NULL);
 	triton_md_register_handler(&serv.ctx, &serv.hnd);
 	triton_md_enable_handler(&serv.hnd, MD_MODE_READ);
 }

@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <errno.h>
 #include <arpa/inet.h>
@@ -64,12 +65,12 @@ static int ipaddr_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 	if (!ipaddr_opt->ip) {
 		ipaddr_opt->ip = ipdb_get(ipcp->ppp);
 		if (!ipaddr_opt->ip) {
-			log_warn("ppp:ipcp: no free IP address\n");
+			log_ppp_warn("ppp:ipcp: no free IP address\n");
 			return -1;
 		}
 	}
 	if (!iprange_client_check(ipaddr_opt->ip->peer_addr)) {
-		log_warn("ppp:ipcp: to avoid hard loops requested IP cannot be assigned (%i.%i.%i.%i)\n",
+		log_ppp_warn("ppp:ipcp: to avoid hard loops requested IP cannot be assigned (%i.%i.%i.%i)\n",
 			ipaddr_opt->ip->peer_addr&0xff, 
 			(ipaddr_opt->ip->peer_addr >> 8)&0xff, 
 			(ipaddr_opt->ip->peer_addr >> 16)&0xff, 
@@ -115,34 +116,34 @@ ack:
 	memset(&ifr, 0, sizeof(ifr));
 	memset(&addr, 0, sizeof(addr));
 
-	sprintf(ifr.ifr_name,"ppp%i",ipcp->ppp->unit_idx);
+	strcpy(ifr.ifr_name, ipcp->ppp->ifname);
 
 	addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = ipaddr_opt->ip->addr;
 	memcpy(&ifr.ifr_addr,&addr,sizeof(addr));
 
 	if (ioctl(sock_fd, SIOCSIFADDR, &ifr))
-		log_error("\nipcp: failed to set PA address: %s\n", strerror(errno));
+		log_ppp_error("ipcp: failed to set PA address: %s\n", strerror(errno));
 	
   addr.sin_addr.s_addr = ipaddr_opt->ip->peer_addr;
 	memcpy(&ifr.ifr_dstaddr,&addr,sizeof(addr));
 	
 	if (ioctl(sock_fd, SIOCSIFDSTADDR, &ifr))
-		log_error("\nipcp: failed to set remote PA address: %s\n", strerror(errno));
+		log_ppp_error("ipcp: failed to set remote PA address: %s\n", strerror(errno));
 
 	if (ioctl(sock_fd, SIOCGIFFLAGS, &ifr))
-		log_error("\nipcp: failed to get interface flags: %s\n", strerror(errno));
+		log_ppp_error("ipcp: failed to get interface flags: %s\n", strerror(errno));
 
 	ifr.ifr_flags |= IFF_UP | IFF_POINTOPOINT;
 
 	if (ioctl(sock_fd, SIOCSIFFLAGS, &ifr))
-		log_error("\nipcp: failed to set interface flags: %s\n", strerror(errno));
+		log_ppp_error("ipcp: failed to set interface flags: %s\n", strerror(errno));
 
 	np.protocol = PPP_IP;
 	np.mode = NPMODE_PASS;
 
 	if (ioctl(ipcp->ppp->unit_fd, PPPIOCSNPMODE, &np))
-		log_error("\nipcp: failed to set NP mode: %s\n", strerror(errno));
+		log_ppp_error("ipcp: failed to set NP mode: %s\n", strerror(errno));
 
 	return IPCP_OPT_ACK;
 }

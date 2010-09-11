@@ -76,13 +76,13 @@ static void print_buf(const uint8_t *buf,int size)
 {
 	int i;
 	for(i=0;i<size;i++)
-		log_debug("%x ",buf[i]);
+		log_ppp_debug("%x",buf[i]);
 }
 static void print_str(const char *buf,int size)
 {
 	int i;
 	for(i=0;i<size;i++)
-		log_debug("%c",buf[i]);
+		log_ppp_debug("%c",buf[i]);
 }
 
 
@@ -152,7 +152,7 @@ static void chap_send_failure(struct chap_auth_data_t *ad)
 		.message=MSG_FAILURE,
 	};
 	
-	log_debug("send [CHAP Failure id=%x \"%s\"]\n",msg.hdr.id,MSG_FAILURE);
+	log_ppp_debug("send [CHAP Failure id=%x \"%s\"]\n",msg.hdr.id,MSG_FAILURE);
 
 	ppp_chan_send(ad->ppp,&msg,ntohs(msg.hdr.len)+2);
 }
@@ -168,7 +168,7 @@ static void chap_send_success(struct chap_auth_data_t *ad)
 		.message=MSG_SUCCESS,
 	};
 	
-	log_debug("send [CHAP Success id=%x \"%s\"]\n",msg.hdr.id,MSG_SUCCESS);
+	log_ppp_debug("send [CHAP Success id=%x \"%s\"]\n",msg.hdr.id,MSG_SUCCESS);
 
 	ppp_chan_send(ad->ppp,&msg,ntohs(msg.hdr.len)+2);
 }
@@ -187,9 +187,9 @@ static void chap_send_challenge(struct chap_auth_data_t *ad)
 	read(urandom_fd,ad->val,VALUE_SIZE);
 	memcpy(msg.val,ad->val,VALUE_SIZE);
 
-	log_debug("send [CHAP Challenge id=%x <",msg.hdr.id);
+	log_ppp_debug("send [CHAP Challenge id=%x <",msg.hdr.id);
 	print_buf(msg.val,VALUE_SIZE);
-	log_debug(">]\n");
+	log_ppp_debug(">]\n");
 
 	ppp_chan_send(ad->ppp,&msg,ntohs(msg.hdr.len)+2);
 }
@@ -203,22 +203,22 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	int r;
 	struct chap_challenge_t *msg=(struct chap_challenge_t*)hdr;
 
-	log_debug("recv [CHAP Response id=%x <", msg->hdr.id);
+	log_ppp_debug("recv [CHAP Response id=%x <", msg->hdr.id);
 	print_buf(msg->val,msg->val_size);
-	log_debug(">, name=\"");
+	log_ppp_debug(">, name=\"");
 	print_str(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
-	log_debug("\"]\n");
+	log_ppp_debug("\"]\n");
 
 	if (msg->hdr.id!=ad->id)
 	{
-		log_error("chap-md5: id mismatch\n");
+		log_ppp_error("chap-md5: id mismatch\n");
 		chap_send_failure(ad);
 		ppp_terminate(ad->ppp, 0);
 	}
 
 	if (msg->val_size!=VALUE_SIZE)
 	{
-		log_error("chap-md5: value-size should be %i, expected %i\n",VALUE_SIZE,msg->val_size);
+		log_ppp_error("chap-md5: value-size should be %i, expected %i\n",VALUE_SIZE,msg->val_size);
 		chap_send_failure(ad);
 		ppp_terminate(ad->ppp, 0);
 	}
@@ -232,7 +232,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		if (!passwd)
 		{
 			free(name);
-			log_debug("chap-md5: user not found\n");
+			log_ppp_debug("chap-md5: user not found\n");
 			chap_send_failure(ad);
 			return;
 		}
@@ -245,7 +245,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		
 		if (memcmp(md5,msg->val,sizeof(md5)))
 		{
-			log_debug("chap-md5: challenge response mismatch\n");
+			log_ppp_debug("chap-md5: challenge response mismatch\n");
 			chap_send_failure(ad);
 			auth_failed(ad->ppp);
 		}else
@@ -282,14 +282,14 @@ static void chap_recv(struct ppp_handler_t *h)
 
 	if (d->ppp->chan_buf_size<sizeof(*hdr) || ntohs(hdr->len)<HDR_LEN || ntohs(hdr->len)<d->ppp->chan_buf_size-2)
 	{
-		log_warn("CHAP: short packet received\n");
+		log_ppp_warn("CHAP: short packet received\n");
 		return;
 	}
 
 	if (hdr->code==CHAP_RESPONSE) chap_recv_response(d,hdr);
 	else
 	{
-		log_warn("CHAP: unknown code received %x\n",hdr->code);
+		log_ppp_warn("CHAP: unknown code received %x\n",hdr->code);
 	}
 }
 

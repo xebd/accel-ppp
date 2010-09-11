@@ -1,7 +1,7 @@
 PROJECT (pptpd)
 cmake_minimum_required(VERSION 2.6)
 
-SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fvisibility=hidden -D_GNU_SOURCE")
+SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fvisibility=hidden -D_GNU_SOURCE -DSPINLOCK_GCC")
 
 INCLUDE_DIRECTORIES(include)
 
@@ -9,6 +9,7 @@ ADD_SUBDIRECTORY(triton)
 ADD_SUBDIRECTORY(ctrl)
 ADD_SUBDIRECTORY(auth)
 ADD_SUBDIRECTORY(radius)
+ADD_SUBDIRECTORY(logs)
 
 ADD_EXECUTABLE(pptpd
 	ppp/ppp.c
@@ -24,13 +25,13 @@ ADD_EXECUTABLE(pptpd
 	ppp/ipcp_opt_dns.c
 	ppp/ppp_ccp.c	
 
-	log.c
 	pwdb.c
 	ipdb.c
 
 	iprange.c
 	ippool.c
 	
+	log.c
 	main.c
 )
 TARGET_LINK_LIBRARIES(pptpd triton rt pthread ssl)

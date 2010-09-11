@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
@@ -30,10 +31,10 @@ static void req_set_stat(struct rad_req_t *req, struct ppp_t *ppp)
 
 	memset(&ifreq, 0, sizeof(ifreq));
 	ifreq.stats_ptr = (void *)&ifreq.stats;
-	sprintf(ifreq.ifr__name, "ppp%i", ppp->unit_idx);
+	strcpy(ifreq.ifr__name, ppp->ifname);
 
 	if (ioctl(sock_fd, SIOCGPPPSTATS, &ifreq)) {
-		log_error("radius: failed to get ppp statistics: %s\n", strerror(errno));
+		log_ppp_error("radius: failed to get ppp statistics: %s\n", strerror(errno));
 		return;
 	}
 
@@ -53,8 +54,8 @@ static int rad_acct_read(struct triton_md_handler_t *h)
 		return 0;
 
 	if (conf_verbose) {
-		log_debug("send ");
-		rad_packet_print(req->reply, log_debug);
+		log_ppp_debug("send ");
+		rad_packet_print(req->reply, log_ppp_debug);
 	}
 
 	if (req->reply->code != CODE_ACCOUNTING_RESPONSE || req->reply->id != req->pack->id) {
@@ -62,7 +63,6 @@ static int rad_acct_read(struct triton_md_handler_t *h)
 		req->reply = NULL;
 	} else {
 		req->pack->id++;
-		req->timeout.period = 0;
 		triton_timer_del(&req->timeout);
 	}
 
@@ -80,7 +80,7 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 {
 	struct radius_pd_t *rpd = container_of(t, typeof(*rpd), acct_interim_timer);
 
-	if (rpd->acct_req->timeout.period)
+	if (rpd->acct_req->timeout.tpd)
 		return;
 
 	rad_packet_change_val(rpd->acct_req->pack, "Acct-Status-Type", "Interim-Update");
@@ -95,12 +95,12 @@ int rad_acct_start(struct radius_pd_t *rpd)
 {
 	rpd->acct_req = rad_req_alloc(rpd, CODE_ACCOUNTING_REQUEST, rpd->ppp->username);
 	if (!rpd->acct_req) {
-		log_error("radius: out of memory\n");
+		log_emerg("radius: out of memory\n");
 		return -1;
 	}
 
 	if (rad_req_acct_fill(rpd->acct_req)) {
-		log_error("radius:acct: failed to fill accounting attributes\n");
+		log_ppp_error("radius:acct: failed to fill accounting attributes\n");
 		goto out_err;
 	}
 
@@ -147,12 +147,12 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 {
 	int i;
 
-	if (rpd->acct_interim_timer.period)
+	if (rpd->acct_interim_timer.tpd)
 		triton_timer_del(&rpd->acct_interim_timer);
 
 	if (rpd->acct_req) {
 		triton_md_unregister_handler(&rpd->acct_req->hnd);
-		if (rpd->acct_req->timeout.period)
+		if (rpd->acct_req->timeout.tpd)
 			triton_timer_del(&rpd->acct_req->timeout);
 
 		rad_packet_change_val(rpd->acct_req->pack, "Acct-Status-Type", "Stop");
@@ -172,7 +172,7 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 				break;
 		}
 		if (!rpd->acct_req->reply)
-			log_warn("radius:acct_stop: no response\n");
+			log_ppp_warn("radius:acct_stop: no response\n");
 
 		rad_req_free(rpd->acct_req);
 		rpd->acct_req = NULL;

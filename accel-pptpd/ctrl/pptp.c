@@ -12,6 +12,7 @@
 
 #include "if_pppox.h"
 
+#include "events.h"
 #include "list.h"
 #include "pptp_prot.h"
 #include "triton.h"
@@ -58,20 +59,18 @@ static void disconnect(struct pptp_conn_t *conn)
 	triton_md_unregister_handler(&conn->hnd);
 	close(conn->hnd.fd);
 	
-	if (conn->timeout_timer.period) {
+	if (conn->timeout_timer.tpd)
 		triton_timer_del(&conn->timeout_timer);
-		conn->timeout_timer.period = 0;
-	}
 
-	if (conn->echo_timer.period) {
+	if (conn->echo_timer.tpd)
 		triton_timer_del(&conn->echo_timer);
-		conn->echo_timer.period = 0;
-	}
 
 	if (conn->state == STATE_PPP) {
 		conn->state = STATE_CLOSE;
 		ppp_terminate(&conn->ppp, 1);
 	}
+
+	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp);
 	
 	triton_context_unregister(&conn->ctx);
 	
@@ -84,7 +83,7 @@ static int post_msg(struct pptp_conn_t *conn, void *buf, int size)
 {
 	int n;
 	if (conn->out_size) {
-		log_debug("post_msg: buffer is not empty\n");
+		log_error("post_msg: buffer is not empty\n");
 		return -1;
 	}
 
@@ -94,7 +93,7 @@ static int post_msg(struct pptp_conn_t *conn, void *buf, int size)
 			n = 0;
 		else {
 			if (errno != EPIPE)
-				log_debug("post_msg: failed to write socket %i\n",errno);
+				log_ppp_debug("post_msg: failed to write socket %i\n",errno);
 			return -1;
 		}
 	}
@@ -131,7 +130,7 @@ static int send_pptp_stop_ctrl_conn_rply(struct pptp_conn_t *conn, int reason, i
 static int pptp_stop_ctrl_conn_rqst(struct pptp_conn_t *conn)
 {
 	struct pptp_stop_ctrl_conn *msg = (struct pptp_stop_ctrl_conn *)conn->in_buf;
-	log_info("PPTP_STOP_CTRL_CONN_RQST reason=%i error_code=%i\n",msg->reason_result, msg->error_code);
+	log_ppp_info("PPTP_STOP_CTRL_CONN_RQST reason=%i error_code=%i\n",msg->reason_result, msg->error_code);
 
 	if (conn->state == STATE_PPP) {
 		conn->state = STATE_FIN;
@@ -168,20 +167,20 @@ static int pptp_start_ctrl_conn_rqst(struct pptp_conn_t *conn)
 	struct pptp_start_ctrl_conn *msg = (struct pptp_start_ctrl_conn *)conn->in_buf;
 
 	if (conn->state != STATE_IDLE) {
-		log_info("unexpected PPTP_START_CTRL_CONN_RQST\n");
+		log_ppp_warn("unexpected PPTP_START_CTRL_CONN_RQST\n");
 		if (send_pptp_start_ctrl_conn_rply(conn, PPTP_CONN_RES_EXISTS, 0))
 			return -1;
 		return 0;
 	}
 
 	if (msg->version != htons(PPTP_VERSION)) {
-		log_info("PPTP version mismatch: expecting %x, received %s\n", PPTP_VERSION, msg->version);
+		log_ppp_warn("PPTP version mismatch: expecting %x, received %s\n", PPTP_VERSION, msg->version);
 		if (send_pptp_start_ctrl_conn_rply(conn, PPTP_CONN_RES_PROTOCOL, 0))
 			return -1;
 		return 0;
 	}
 	if (!(ntohl(msg->framing_cap) & PPTP_FRAME_SYNC)) {
-		log_info("connection does not supports sync mode\n");
+		log_ppp_warn("connection does not supports sync mode\n");
 		if (send_pptp_start_ctrl_conn_rply(conn, PPTP_CONN_RES_GE, 0))
 			return -1;
 		return 0;
@@ -223,7 +222,7 @@ static int pptp_out_call_rqst(struct pptp_conn_t *conn)
 	int pptp_sock;
 
 	if (conn->state != STATE_ESTB) {
-		log_error("unexpected PPTP_OUT_CALL_RQST\n");
+		log_ppp_warn("unexpected PPTP_OUT_CALL_RQST\n");
 		if (send_pptp_out_call_rply(conn, msg, 0, PPTP_CALL_RES_GE, PPTP_GE_NOCONN))
 			return -1;
 		return 0;
@@ -245,11 +244,11 @@ static int pptp_out_call_rqst(struct pptp_conn_t *conn)
 
 	pptp_sock = socket(AF_PPPOX, SOCK_STREAM, PX_PROTO_PPTP);
 	if (pptp_sock < 0) {
-		log_error("failed to create PPTP socket (%s)\n", strerror(errno));
+		log_ppp_error("failed to create PPTP socket (%s)\n", strerror(errno));
 		return -1;
 	}
 	if (bind(pptp_sock, (struct sockaddr*)&src_addr, sizeof(src_addr))) {
-		log_error("failed to bind PPTP socket (%s)\n", strerror(errno));
+		log_ppp_error("failed to bind PPTP socket (%s)\n", strerror(errno));
 		close(pptp_sock);
 		return -1;
 	}
@@ -257,7 +256,7 @@ static int pptp_out_call_rqst(struct pptp_conn_t *conn)
 	getsockname(pptp_sock, (struct sockaddr*)&src_addr, &addrlen);
 
 	if (connect(pptp_sock, (struct sockaddr*)&dst_addr, sizeof(dst_addr))) {
-		log_error("failed to connect PPTP socket (%s)\n", strerror(errno));
+		log_ppp_error("failed to connect PPTP socket (%s)\n", strerror(errno));
 		close(pptp_sock);
 		return -1;
 	}
@@ -267,10 +266,9 @@ static int pptp_out_call_rqst(struct pptp_conn_t *conn)
 
 	conn->ppp.fd = pptp_sock;
 	conn->ppp.chan_name = strdup(inet_ntoa(dst_addr.sa_addr.pptp.sin_addr));
-	conn->ppp.ctrl = &conn->ctrl;
-	conn->ctrl.ctx = &conn->ctx;
-	conn->ctrl.started = ppp_started;
-	conn->ctrl.finished = ppp_finished;
+
+	triton_event_fire(EV_CTRL_STARTED, &conn->ppp);
+
 	if (establish_ppp(&conn->ppp)) {
 		close(pptp_sock);
 		//if (send_pptp_stop_ctrl_conn_rqst(conn, 0, 0))
@@ -279,8 +277,8 @@ static int pptp_out_call_rqst(struct pptp_conn_t *conn)
 	}
 	conn->state = STATE_PPP;
 	
-	triton_timer_del(&conn->timeout_timer);
-	conn->timeout_timer.period = 0;
+	if (conn->timeout_timer.tpd)
+		triton_timer_del(&conn->timeout_timer);
 
 	if (conf_echo_interval) {
 		conn->echo_timer.period = conf_echo_interval * 1000;
@@ -306,7 +304,7 @@ static int pptp_echo_rply(struct pptp_conn_t *conn)
 {
 	struct pptp_echo_rply *msg = (struct pptp_echo_rply *)conn->in_buf;
 	if (msg->identifier != conn->echo_sent) {
-		log_error("pptp:echo: identifier mismatch\n");
+		log_ppp_warn("pptp:echo: identifier mismatch\n");
 		return -1;
 	}
 	conn->echo_sent = 0;
@@ -320,7 +318,7 @@ static void pptp_send_echo(struct triton_timer_t *t)
 	};
 
 	if (conn->echo_sent) {
-		log_warn("pptp: no echo reply\n");
+		log_ppp_warn("pptp: no echo reply\n");
 		disconnect(conn);
 		return;
 	}
@@ -364,7 +362,7 @@ static int pptp_read(struct triton_md_handler_t *h)
 				continue;
 			if (errno == EAGAIN)
 				return 0;
-			log_error("pptp: read: %s\n",strerror(errno));
+			log_ppp_error("pptp: read: %s\n",strerror(errno));
 			goto drop;
 		}
 		if (n == 0)
@@ -405,7 +403,7 @@ static int pptp_write(struct triton_md_handler_t *h)
 				n = 0;
 			else {
 				if (errno != EPIPE)
-					log_error("pptp:post_msg: %s\n", strerror(errno));
+					log_ppp_error("pptp:post_msg: %s\n", strerror(errno));
 				disconnect(conn);
 				return 1;
 			}
@@ -436,18 +434,17 @@ static void pptp_close(struct triton_context_t *ctx)
 }
 static void ppp_started(struct ppp_t *ppp)
 {
-	log_msg("ppp_started\n");
+	log_ppp_debug("ppp_started\n");
 }
 static void ppp_finished(struct ppp_t *ppp)
 {
 	struct pptp_conn_t *conn = container_of(ppp, typeof(*conn), ppp);
 
-	log_msg("ppp_finished\n");
-	close(conn->ppp.fd);
 	//send_pptp_stop_ctrl_conn_rqst(conn, 0, 0);
 	if (conn->state != STATE_CLOSE) {
+		log_ppp_debug("ppp_finished\n");
 		conn->state = STATE_CLOSE;
-		disconnect(conn);
+		triton_context_call(&conn->ctx, (void (*)(void*))disconnect, conn);
 	}
 }
 
@@ -495,16 +492,25 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		conn->hnd.read = pptp_read;
 		conn->hnd.write = pptp_write;
 		conn->ctx.close = pptp_close;
+		conn->ctx.before_switch = log_switch;
 		conn->in_buf = malloc(PPTP_CTRL_SIZE_MAX);
 		conn->out_buf = malloc(PPTP_CTRL_SIZE_MAX);
 		conn->timeout_timer.expire = pptp_timeout;
 		conn->timeout_timer.period = conf_timeout * 1000;
 		conn->echo_timer.expire = pptp_send_echo;
+		conn->ctrl.ctx = &conn->ctx;
+		conn->ctrl.started = ppp_started;
+		conn->ctrl.finished = ppp_finished;
+	
+		ppp_init(&conn->ppp);
+		conn->ppp.ctrl = &conn->ctrl;
 
-		triton_context_register(&conn->ctx);
+		triton_context_register(&conn->ctx, &conn->ppp);
 		triton_md_register_handler(&conn->ctx, &conn->hnd);
 		triton_md_enable_handler(&conn->hnd,MD_MODE_READ);
 		triton_timer_add(&conn->ctx, &conn->timeout_timer, 0);
+
+		triton_event_fire(EV_CTRL_STARTING, &conn->ppp);
 	}
 	return 0;
 }
@@ -552,7 +558,7 @@ static void __init pptp_init(void)
     return;
 	}
 	
-	triton_context_register(&serv.ctx);
+	triton_context_register(&serv.ctx, NULL);
 	triton_md_register_handler(&serv.ctx, &serv.hnd);
 	triton_md_enable_handler(&serv.hnd, MD_MODE_READ);
 

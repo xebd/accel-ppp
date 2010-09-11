@@ -1,7 +1,7 @@
 #ifndef __TRITON_SPINLOCK_H
 #define __TRITON_SPINLOCK_H
 
-#ifdef USE_SPINLOCK
+#ifdef GCC_SPINLOCK
 typedef unsigned char spinlock_t;
 #define spin_lock(l) {while(__sync_lock_test_and_set(l,1));}
 #define spin_unlock(l) __sync_lock_release(l)

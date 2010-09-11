@@ -46,7 +46,7 @@ void rad_proc_attrs(struct rad_req_t *req)
 	list_for_each_entry(attr, &req->reply->attrs, entry) {
 		if (!strcmp(attr->attr->name, "Framed-IP-Address")) {
 			if (!conf_gw_ip_address)
-				log_warn("radius: gw-ip-address not specified, cann't assign IP address...\n");
+				log_ppp_warn("radius: gw-ip-address not specified, cann't assign IP address...\n");
 			else {
 				req->rpd->ipaddr.owner = &ipdb;
 				req->rpd->ipaddr.peer_addr = attr->val.ipaddr;
@@ -105,7 +105,7 @@ static void ppp_starting(struct ppp_t *ppp)
 	struct radius_pd_t *pd = malloc(sizeof(*pd));
 
 	memset(pd, 0, sizeof(*pd));
-	pd->pd.key = pd_key;
+	pd->pd.key = &pd_key;
 	pd->ppp = ppp;
 	pthread_mutex_init(&pd->lock, NULL);
 	list_add_tail(&pd->pd.entry, &ppp->pd_list);
@@ -151,12 +151,12 @@ struct radius_pd_t *find_pd(struct ppp_t *ppp)
 	struct radius_pd_t *rpd;
 
 	list_for_each_entry(pd, &ppp->pd_list, entry) {
-		if (pd->key == pd_key) {
+		if (pd->key == &pd_key) {
 			rpd = container_of(pd, typeof(*rpd), pd);
 			return rpd;
 		}
 	}
-	log_error("radius:BUG: rpd not found\n");
+	log_emerg("radius:BUG: rpd not found\n");
 	abort();
 }
 

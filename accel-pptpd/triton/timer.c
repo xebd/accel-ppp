@@ -164,5 +164,6 @@ void __export triton_timer_del(struct triton_timer_t *ud)
 	spin_unlock(&t->ctx->lock);
 	sched_yield();
 	mempool_free(t);
+	ud->tpd = NULL;
 }
 

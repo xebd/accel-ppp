@@ -10,6 +10,7 @@ struct triton_context_t
 	const void *tpd; // triton private data, don't touch!
 	void (*close)(struct triton_context_t*);
 	void (*free)(struct triton_context_t*);
+	void (*before_switch)(struct triton_context_t *ctx, void *arg);
 };
 
 struct triton_md_handler_t
@@ -41,7 +42,7 @@ struct conf_sect_t
 	struct list_head items;
 };
 
-int triton_context_register(struct triton_context_t *);
+int triton_context_register(struct triton_context_t *, void *arg);
 void triton_context_unregister(struct triton_context_t *);
 void triton_context_schedule(struct triton_context_t *);
 void triton_context_wakeup(struct triton_context_t *);

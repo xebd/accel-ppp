@@ -160,7 +160,7 @@ static int auth_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, u
 		}
 	}
 
-	log_msg("cann't negotiate authentication type\n");
+	log_ppp_msg("cann't negotiate authentication type\n");
 	return LCP_OPT_FAIL;
 }
 
@@ -180,7 +180,7 @@ static int auth_recv_conf_nak(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, u
 
 	if (!auth_opt->auth)
 	{
-		log_error("auth: unexcepcted configure-nak\n");
+		log_ppp_error("auth: unexcepcted configure-nak\n");
 		return -1;
 	}
 	auth_opt->auth->state=LCP_OPT_NAK;
@@ -193,7 +193,7 @@ static int auth_recv_conf_nak(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, u
 			return 0;
 	}
 
-	log_msg("cann't negotiate authentication type\n");
+	log_ppp_msg("cann't negotiate authentication type\n");
 	return -1;
 }
 
@@ -204,7 +204,7 @@ static int auth_recv_conf_rej(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, u
 
 	if (!auth_opt->auth)
 	{
-		log_error("auth: unexcepcted configure-reject\n");
+		log_ppp_error("auth: unexcepcted configure-reject\n");
 		return -1;
 	}
 	auth_opt->auth->state=LCP_OPT_NAK;
@@ -217,7 +217,7 @@ static int auth_recv_conf_rej(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, u
 			return 0;
 	}
 
-	log_msg("cann't negotiate authentication type\n");
+	log_ppp_msg("cann't negotiate authentication type\n");
 	return -1;
 }
 
@@ -249,7 +249,7 @@ static struct ppp_layer_data_t *auth_layer_init(struct ppp_t *ppp)
 {
 	struct auth_layer_data_t *ad=(struct auth_layer_data_t*)malloc(sizeof(*ad));
 
-	log_debug("auth_layer_init\n");
+	log_ppp_debug("auth_layer_init\n");
 	
 	memset(ad,0,sizeof(*ad));
 
@@ -262,13 +262,13 @@ static int auth_layer_start(struct ppp_layer_data_t *ld)
 {
 	struct auth_layer_data_t *ad=container_of(ld,typeof(*ad),ld);
 	
-	log_debug("auth_layer_start\n");
+	log_ppp_debug("auth_layer_start\n");
 	
 	if (ad->auth_opt.auth)
 		ad->auth_opt.auth->h->start(ad->ppp,ad->auth_opt.auth);
 	else
 	{
-		log_debug("auth_layer_started\n");
+		log_ppp_debug("auth_layer_started\n");
 		ppp_layer_started(ad->ppp,ld);
 	}
 
@@ -279,12 +279,12 @@ static void auth_layer_finish(struct ppp_layer_data_t *ld)
 {
 	struct auth_layer_data_t *ad=container_of(ld,typeof(*ad),ld);
 	
-	log_debug("auth_layer_finish\n");
+	log_ppp_debug("auth_layer_finish\n");
 	
 	if (ad->auth_opt.auth)
 		ad->auth_opt.auth->h->finish(ad->ppp,ad->auth_opt.auth);
 	
-	log_debug("auth_layer_finished\n");
+	log_ppp_debug("auth_layer_finished\n");
 	ppp_layer_finished(ad->ppp,ld);
 }
 
@@ -292,7 +292,7 @@ static void auth_layer_free(struct ppp_layer_data_t *ld)
 {
 	struct auth_layer_data_t *ad=container_of(ld,typeof(*ad),ld);
 
-	log_debug("auth_layer_free\n");
+	log_ppp_debug("auth_layer_free\n");
 	
 	free(ad);
 }
@@ -300,7 +300,7 @@ static void auth_layer_free(struct ppp_layer_data_t *ld)
 void __export auth_successed(struct ppp_t *ppp, char *username)
 {
 	struct auth_layer_data_t *ad=container_of(ppp_find_layer_data(ppp,&auth_layer),typeof(*ad),ld);
-	log_debug("auth_layer_started\n");
+	log_ppp_debug("auth_layer_started\n");
 	ppp->username = username;
 	triton_event_fire(EV_PPP_AUTHORIZED, ppp);
 	ppp_layer_started(ppp,&ad->ld);

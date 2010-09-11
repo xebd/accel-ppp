@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <stdio.h>
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <linux/if_ppp.h>
@@ -96,13 +97,13 @@ static int mru_recv_conf_ack(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, ui
 		.ifr_mtu = mru_opt->mtu,
 	};
 
-	sprintf(ifr.ifr_name,"ppp%i",lcp->ppp->unit_idx);
+	strcpy(ifr.ifr_name, lcp->ppp->ifname);
 
 	if (ioctl(lcp->ppp->unit_fd, PPPIOCSMRU, &mru_opt->mru))
-		log_error("\nlcp:mru: failed to set MRU: %s\n", strerror(errno));
+		log_ppp_error("lcp:mru: failed to set MRU: %s\n", strerror(errno));
 
 	if (ioctl(sock_fd, SIOCSIFMTU, &ifr))
-		log_error("\nlcp:mru: failed to set MTU: %s\n", strerror(errno));
+		log_ppp_error("lcp:mru: failed to set MTU: %s\n", strerror(errno));
 	
 	return 0;
 }

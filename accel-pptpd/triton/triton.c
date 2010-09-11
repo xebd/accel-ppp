@@ -43,9 +43,10 @@ static void* triton_thread(struct _triton_thread_t *thread)
 		sigwait(&set, &sig);
 
 cont:
-		if (swapcontext(&thread->uctx, &thread->ctx->uctx)) {
+		if (thread->ctx->ud->before_switch)
+			thread->ctx->ud->before_switch(thread->ctx->ud, thread->ctx->bf_arg);
+		if (swapcontext(&thread->uctx, &thread->ctx->uctx))
 			triton_log_error("swapcontext: %s\n", strerror(errno));
-		}
 	
 		if (thread->ctx->need_free)
 			mempool_free(thread->ctx);
@@ -164,7 +165,7 @@ int triton_queue_ctx(struct _triton_context_t *ctx)
 	return 1;
 }
 
-int __export triton_context_register(struct triton_context_t *ud)
+int __export triton_context_register(struct triton_context_t *ud, void *bf_arg)
 {
 	struct _triton_context_t *ctx = mempool_alloc(ctx_pool);
 
@@ -173,6 +174,7 @@ int __export triton_context_register(struct triton_context_t *ud)
 
 	memset(ctx, 0, sizeof(*ctx));
 	ctx->ud = ud;
+	ctx->bf_arg = bf_arg;
 	spinlock_init(&ctx->lock);
 	INIT_LIST_HEAD(&ctx->handlers);
 	INIT_LIST_HEAD(&ctx->timers);
@@ -299,7 +301,7 @@ int __export triton_init(const char *conf_file, const char *mod_sect)
 		fprintf(stderr,"cann't allocate memory\n");
 		return -1;
 	}
-	triton_context_register(default_ctx);	
+	triton_context_register(default_ctx, NULL);	
 
 	if (conf_load(conf_file))
 		return -1;

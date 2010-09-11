@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -25,6 +26,7 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 	memset(req, 0, sizeof(*req));
 	req->rpd = rpd;
 	req->hnd.fd = -1;
+	req->ctx.before_switch = log_switch;
 
 	req->server_name = conf_auth_server;
 	req->server_port = conf_auth_server_port;
@@ -33,7 +35,7 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 		if (read(urandom_fd, req->RA, 16) != 16) {
 			if (errno == EINTR)
 				continue;
-			log_error("radius:req:read urandom: %s\n", strerror(errno));
+			log_ppp_error("radius:req:read urandom: %s\n", strerror(errno));
 			goto out_err;
 		}
 		break;
@@ -106,7 +108,7 @@ static int make_socket(struct rad_req_t *req)
 
 	req->hnd.fd = socket(PF_INET, SOCK_DGRAM, 0);
 	if (req->hnd.fd < 0) {
-		log_error("radius:socket: %s\n", strerror(errno));
+		log_ppp_error("radius:socket: %s\n", strerror(errno));
 		return -1;
 	}
 
@@ -116,7 +118,7 @@ static int make_socket(struct rad_req_t *req)
 	if (conf_nas_ip_address) {
 		addr.sin_addr.s_addr = inet_addr(conf_nas_ip_address);
 		if (bind(req->hnd.fd, (struct sockaddr *) &addr, sizeof(addr))) {
-			log_error("radius:bind: %s\n", strerror(errno));
+			log_ppp_error("radius:bind: %s\n", strerror(errno));
 			goto out_err;
 		}
 	}
@@ -125,12 +127,12 @@ static int make_socket(struct rad_req_t *req)
 	addr.sin_port = htons(req->server_port);
 
 	if (connect(req->hnd.fd, (struct sockaddr *) &addr, sizeof(addr))) {
-		log_error("radius:connect: %s\n", strerror(errno));
+		log_ppp_error("radius:connect: %s\n", strerror(errno));
 		goto out_err;
 	}
 
 	if (fcntl(req->hnd.fd, F_SETFL, O_NONBLOCK)) {
-		log_error("radius: failed to set nonblocking mode: %s\n", strerror(errno));
+		log_ppp_error("radius: failed to set nonblocking mode: %s\n", strerror(errno));
 		goto out_err;
 	}
 	
@@ -151,8 +153,8 @@ int rad_req_send(struct rad_req_t *req)
 		goto out_err;
 	
 	if (conf_verbose) {
-		log_debug("send ");
-		rad_packet_print(req->pack, log_debug);
+		log_ppp_debug("send ");
+		rad_packet_print(req->pack, log_ppp_debug);
 	}
 
 	rad_packet_send(req->pack, req->hnd.fd, NULL);
@@ -193,7 +195,7 @@ int rad_req_wait(struct rad_req_t *req, int timeout)
 	req->hnd.read = rad_req_read;
 	req->timeout.expire = rad_req_timeout;
 
-	triton_context_register(&req->ctx);
+	triton_context_register(&req->ctx, req->rpd->ppp);
 	triton_md_register_handler(&req->ctx, &req->hnd);
 	if (triton_md_enable_handler(&req->hnd, MD_MODE_READ))
 		return -1;
@@ -205,8 +207,8 @@ int rad_req_wait(struct rad_req_t *req, int timeout)
 	triton_context_schedule(req->rpd->ppp->ctrl->ctx);
 
 	if (conf_verbose && req->reply) {
-		log_debug("recv ");
-		rad_packet_print(req->reply, log_debug);
+		log_ppp_debug("recv ");
+		rad_packet_print(req->reply, log_ppp_debug);
 	}
 	return 0;
 }

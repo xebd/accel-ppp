@@ -37,11 +37,12 @@ static void init_layers(struct ppp_t *);
 static void free_layers(struct ppp_t *);
 static void start_first_layer(struct ppp_t *);
 
-struct ppp_t *init_ppp(void)
+void __export ppp_init(struct ppp_t *ppp)
 {
-	struct ppp_t *ppp=malloc(sizeof(*ppp));
 	memset(ppp,0,sizeof(*ppp));
-	return ppp;
+	INIT_LIST_HEAD(&ppp->chan_handlers);
+	INIT_LIST_HEAD(&ppp->unit_handlers);
+	INIT_LIST_HEAD(&ppp->pd_list);
 }
 
 static void free_ppp(struct ppp_t *ppp)
@@ -77,70 +78,67 @@ int __export establish_ppp(struct ppp_t *ppp)
 	/* Open an instance of /dev/ppp and connect the channel to it */
 	if (ioctl(ppp->fd, PPPIOCGCHAN, &ppp->chan_idx)==-1)
 	{
-	    log_error("Couldn't get channel number\n");
+	    log_ppp_error("Couldn't get channel number\n");
 	    return -1;
 	}
 
 	ppp->chan_fd=open("/dev/ppp", O_RDWR);
 	if (ppp->chan_fd<0)
 	{
-	    log_error("Couldn't reopen /dev/ppp\n");
+	    log_ppp_error("Couldn't reopen /dev/ppp\n");
 	    return -1;
 	}
 
 	if (ioctl(ppp->chan_fd, PPPIOCATTCHAN, &ppp->chan_idx)<0)
 	{
-	    log_error("Couldn't attach to channel %d\n", ppp->chan_idx);
+	    log_ppp_error("Couldn't attach to channel %d\n", ppp->chan_idx);
 	    goto exit_close_chan;
 	}
 
 	ppp->unit_fd=open("/dev/ppp", O_RDWR);
 	if (ppp->unit_fd<0)
 	{
-	    log_error("Couldn't reopen /dev/ppp\n");
+	    log_ppp_error("Couldn't reopen /dev/ppp\n");
 	    goto exit_close_chan;
 	}
 
 	ppp->unit_idx=-1;
 	if (ioctl(ppp->unit_fd, PPPIOCNEWUNIT, &ppp->unit_idx)<0)
 	{
-		log_error("Couldn't create new ppp unit\n");
+		log_ppp_error("Couldn't create new ppp unit\n");
 		goto exit_close_unit;
 	}
 
   if (ioctl(ppp->chan_fd, PPPIOCCONNECT, &ppp->unit_idx)<0)
   {
-		log_error("Couldn't attach to PPP unit %d\n", ppp->unit_idx);
+		log_ppp_error("Couldn't attach to PPP unit %d\n", ppp->unit_idx);
 		goto exit_close_unit;
 	}
 
 	ppp->start_time = time(NULL);
 	generate_sessionid(ppp);
+	sprintf(ppp->ifname, "ppp%i", ppp->unit_idx);
 
-	log_info("connect: ppp%i <--> pptp(%s)\n",ppp->unit_idx,ppp->chan_name);
+	log_ppp_info("connect: ppp%i <--> pptp(%s)\n",ppp->unit_idx,ppp->chan_name);
 	
 	ppp->chan_buf=malloc(PPP_MRU);
 	ppp->unit_buf=malloc(PPP_MRU);
 
-	INIT_LIST_HEAD(&ppp->chan_handlers);
-	INIT_LIST_HEAD(&ppp->unit_handlers);
-	INIT_LIST_HEAD(&ppp->pd_list);
-	
 	init_layers(ppp);
 
 	if (list_empty(&ppp->layers))
 	{
-		log_error("no layers to start\n");
+		log_ppp_error("no layers to start\n");
 		goto exit_close_unit;
 	}
 
 	if (fcntl(ppp->chan_fd, F_SETFL, O_NONBLOCK)) {
-		log_error("ppp: cann't to set nonblocking mode: %s\n", strerror(errno));
+		log_ppp_error("ppp: cann't to set nonblocking mode: %s\n", strerror(errno));
 		goto exit_close_unit;
 	}
 	
 	if (fcntl(ppp->unit_fd, F_SETFL, O_NONBLOCK)) {
-		log_error("ppp: cann't to set nonblocking mode: %s\n", strerror(errno));
+		log_ppp_error("ppp: cann't to set nonblocking mode: %s\n", strerror(errno));
 		goto exit_close_unit;
 	}
 
@@ -156,7 +154,7 @@ int __export establish_ppp(struct ppp_t *ppp)
 	triton_md_enable_handler(&ppp->chan_hnd,MD_MODE_READ);
 	triton_md_enable_handler(&ppp->unit_hnd,MD_MODE_READ);
 
-	log_debug("ppp established\n");
+	log_ppp_debug("ppp established\n");
 
 	triton_event_fire(EV_PPP_STARTING, ppp);
 	start_first_layer(ppp);
@@ -180,6 +178,7 @@ static void destablish_ppp(struct ppp_t *ppp)
 	
 	close(ppp->unit_fd);
 	close(ppp->chan_fd);
+	close(ppp->fd);
 
 	ppp->unit_fd = -1;
 	ppp->chan_fd = -1;
@@ -189,7 +188,7 @@ static void destablish_ppp(struct ppp_t *ppp)
 
 	free_layers(ppp);
 	
-	log_debug("ppp destablished\n");
+	log_ppp_debug("ppp destablished\n");
 
 	triton_event_fire(EV_PPP_FINISHED, ppp);
 	ppp->ctrl->finished(ppp);
@@ -212,7 +211,7 @@ int __export ppp_chan_send(struct ppp_t *ppp, void *data, int size)
 	
 	n=write(ppp->chan_fd,data,size);
 	if (n<size)
-		log_error("ppp_chan_send: short write %i, excpected %i\n",n,size);
+		log_ppp_error("ppp_chan_send: short write %i, excpected %i\n",n,size);
 	return n;
 }
 
@@ -225,7 +224,7 @@ int __export ppp_unit_send(struct ppp_t *ppp, void *data, int size)
 	
 	n=write(ppp->unit_fd,data,size);
 	if (n<size)
-		log_error("ppp_unit_send: short write %i, excpected %i\n",n,size);
+		log_ppp_error("ppp_unit_send: short write %i, excpected %i\n",n,size);
 	return n;
 }
 
@@ -243,7 +242,7 @@ cont:
 				continue;
 			if (errno == EAGAIN)
 				return 0;
-			log_error("ppp_chan_read: %s\n",strerror(errno));
+			log_ppp_error("ppp_chan_read: %s\n",strerror(errno));
 			return 0;
 		}
 
@@ -251,7 +250,7 @@ cont:
 		//print_buf(ppp->chan_buf,ppp->chan_buf_size);
 
 		if (ppp->chan_buf_size < 2) {
-			log_error("ppp_chan_read: short read %i\n", ppp->chan_buf_size);
+			log_ppp_error("ppp_chan_read: short read %i\n", ppp->chan_buf_size);
 			continue;
 		}
 
@@ -267,7 +266,7 @@ cont:
 			}
 		}
 
-		log_warn("ppp_chan_read: discarding unknown packet %x\n", proto);
+		log_ppp_warn("ppp_chan_read: discarding unknown packet %x\n", proto);
 	}
 }
 
@@ -285,7 +284,7 @@ cont:
 				continue;
 			if (errno == EAGAIN)
 				return 0;
-			log_error("ppp_chan_read: %s\n",strerror(errno));
+			log_ppp_error("ppp_chan_read: %s\n",strerror(errno));
 			return 0;
 		}
 
@@ -293,7 +292,7 @@ cont:
 		//print_buf(ppp->unit_buf,ppp->unit_buf_size);
 
 		if (ppp->unit_buf_size < 2) {
-			log_error("ppp_chan_read: short read %i\n", ppp->unit_buf_size);
+			log_ppp_error("ppp_chan_read: short read %i\n", ppp->unit_buf_size);
 			continue;
 		}
 
@@ -309,7 +308,7 @@ cont:
 			}
 		}
 
-		log_warn("ppp_unit_read: discarding unknown packet %x\n",proto);
+		log_ppp_warn("ppp_unit_read: discarding unknown packet %x\n",proto);
 	}
 }
 
@@ -365,7 +364,7 @@ void __export ppp_terminate(struct ppp_t *ppp, int hard)
 	struct ppp_layer_data_t *d;
 	int s = 0;
 
-	log_debug("ppp_terminate\n");
+	log_ppp_debug("ppp_terminate\n");
 
 	triton_event_fire(EV_PPP_FINISHING, ppp);
 
@@ -523,7 +522,7 @@ struct ppp_layer_data_t *ppp_find_layer_data(struct ppp_t *ppp, struct ppp_layer
 	return NULL;
 }
 
-static void __init ppp_init(void)
+static void __init init(void)
 {
 	char *opt;
 
@@ -537,3 +536,4 @@ static void __init ppp_init(void)
 	if (opt && atoi(opt) > 0)
 		conf_ppp_verbose = 1;
 }
+

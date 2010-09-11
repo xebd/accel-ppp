@@ -16,7 +16,7 @@ struct rad_packet_t *rad_packet_alloc(int code)
 
 	pack = malloc(sizeof(*pack));
 	if (!pack) {
-		log_error("radius:packet: out of memory\n");
+		log_emerg("radius:packet: out of memory\n");
 		return NULL;
 	}
 
@@ -48,7 +48,7 @@ int rad_packet_build(struct rad_packet_t *pack, uint8_t *RA)
 		ptr = malloc(pack->len);
 
 	if (!ptr) {
-		log_error("radius:packet: out of memory\n");
+		log_emerg("radius:packet: out of memory\n");
 		return -1;
 	}
 	
@@ -76,7 +76,7 @@ int rad_packet_build(struct rad_packet_t *pack, uint8_t *RA)
 				*(uint32_t*)ptr = htonl(attr->val.date);
 				break;
 			default:
-				log_error("radius:packet:BUG: unknown attribute type\n");
+				log_emerg("radius:packet:BUG: unknown attribute type\n");
 				abort();
 		}
 		ptr += attr->len;
@@ -101,7 +101,7 @@ struct rad_packet_t *rad_packet_recv(int fd, struct sockaddr_in *addr)
 
 	pack->buf = malloc(REQ_LENGTH_MAX);
 	if (!pack->buf) {
-		log_error("radius:packet: out of memory\n");
+		log_emerg("radius:packet: out of memory\n");
 		goto out_err;
 	}
 
@@ -113,14 +113,14 @@ struct rad_packet_t *rad_packet_recv(int fd, struct sockaddr_in *addr)
 		if (n < 0) {
 			if (errno == EINTR)
 				continue;
-			log_error("radius:packet:read: %s\n", strerror(errno));
+			log_ppp_error("radius:packet:read: %s\n", strerror(errno));
 			goto out_err;
 		}
 		break;
 	}
 
 	if (n < 20) {
-		log_warn("radius:packet: short packed received (%i)\n", n);
+		log_ppp_warn("radius:packet: short packed received (%i)\n", n);
 		goto out_err;
 	}
 
@@ -131,7 +131,7 @@ struct rad_packet_t *rad_packet_recv(int fd, struct sockaddr_in *addr)
 	pack->len = ntohs(*(uint16_t*)ptr); ptr += 2;
 
 	if (pack->len > n) {
-		log_warn("radius:packet: short packet received %i, expected %i\n", pack->len, n);
+		log_ppp_warn("radius:packet: short packet received %i, expected %i\n", pack->len, n);
 		goto out_err;
 	}
 
@@ -142,18 +142,18 @@ struct rad_packet_t *rad_packet_recv(int fd, struct sockaddr_in *addr)
 		id = *ptr; ptr++;
 		len = *ptr - 2; ptr++;
 		if (len < 0) {
-			log_warn("radius:packet short attribute len received\n");
+			log_ppp_warn("radius:packet short attribute len received\n");
 			goto out_err;
 		}
 		if (2 + len > n) {
-			log_warn("radius:packet: too long attribute received (%i, %i)\n", id, len);
+			log_ppp_warn("radius:packet: too long attribute received (%i, %i)\n", id, len);
 			goto out_err;
 		}
 		da = rad_dict_find_attr_id(id);
 		if (da) {
 			attr = malloc(sizeof(*attr));
 			if (!attr) {
-				log_error("radius:packet: out of memory\n");
+				log_emerg("radius:packet: out of memory\n");
 				goto out_err;
 			}
 			attr->attr = da;
@@ -162,7 +162,7 @@ struct rad_packet_t *rad_packet_recv(int fd, struct sockaddr_in *addr)
 				case ATTR_TYPE_STRING:
 					attr->val.string = malloc(len+1);
 					if (!attr->val.string) {
-						log_error("radius:packet: out of memory\n");
+						log_emerg("radius:packet: out of memory\n");
 						free(attr);
 						goto out_err;
 					}
@@ -172,7 +172,7 @@ struct rad_packet_t *rad_packet_recv(int fd, struct sockaddr_in *addr)
 				case ATTR_TYPE_OCTETS:
 					attr->val.octets = malloc(len);
 					if (!attr->val.octets) {
-						log_error("radius:packet: out of memory\n");
+						log_emerg("radius:packet: out of memory\n");
 						free(attr);
 						goto out_err;
 					}
@@ -188,7 +188,7 @@ struct rad_packet_t *rad_packet_recv(int fd, struct sockaddr_in *addr)
 			}
 			list_add_tail(&attr->entry, &pack->attrs);
 		} else
-			log_warn("radius:packet: unknown attribute received (%i)\n", id);
+			log_ppp_warn("radius:packet: unknown attribute received (%i)\n", id);
 		ptr += len;
 		n -= 2 + len;
 	}
@@ -340,7 +340,7 @@ int rad_packet_add_octets(struct rad_packet_t *pack, const char *name, uint8_t *
 	
 	ra = malloc(sizeof(*ra));
 	if (!ra) {
-		log_error("radius: out of memory\n");
+		log_emerg("radius: out of memory\n");
 		return -1;
 	}
 
@@ -348,7 +348,7 @@ int rad_packet_add_octets(struct rad_packet_t *pack, const char *name, uint8_t *
 	ra->len = len;
 	ra->val.octets = malloc(len);
 	if (!ra->val.octets) {
-		log_error("radius: out of memory\n");
+		log_emerg("radius: out of memory\n");
 		free(ra);
 		return -1;
 	}
@@ -372,7 +372,7 @@ int rad_packet_add_str(struct rad_packet_t *pack, const char *name, const char *
 	
 	ra = malloc(sizeof(*ra));
 	if (!ra) {
-		log_error("radius: out of memory\n");
+		log_emerg("radius: out of memory\n");
 		return -1;
 	}
 
@@ -380,7 +380,7 @@ int rad_packet_add_str(struct rad_packet_t *pack, const char *name, const char *
 	ra->len = len;
 	ra->val.string = malloc(len+1);
 	if (!ra->val.string) {
-		log_error("radius: out of memory\n");
+		log_emerg("radius: out of memory\n");
 		free(ra);
 		return -1;
 	}
@@ -406,7 +406,7 @@ int rad_packet_change_str(struct rad_packet_t *pack, const char *name, const cha
 
 		ra->val.string = realloc(ra->val.string, len + 1);
 		if (!ra->val.string) {
-			log_error("radius: out of memory\n");
+			log_emerg("radius: out of memory\n");
 			return -1;
 		}
 	
@@ -491,10 +491,10 @@ int rad_packet_send(struct rad_packet_t *pack, int fd, struct sockaddr_in *addr)
 		if (n < 0) {
 			if (errno == EINTR)
 				continue;
-			log_error("radius:write: %s\n", strerror(errno));
+			log_ppp_error("radius:write: %s\n", strerror(errno));
 			return -1;
 		} else if (n != pack->len) {
-			log_error("radius:write: short write %i, excpected %i\n", n, pack->len);
+			log_ppp_error("radius:write: short write %i, excpected %i\n", n, pack->len);
 			return -1;
 		}
 		break;

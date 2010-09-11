@@ -120,7 +120,7 @@ static void pap_send_ack(struct pap_auth_data_t *p, int id)
 	msg->msg_len=sizeof(MSG_SUCCESSED)-1;
 	memcpy(msg->msg,MSG_SUCCESSED,sizeof(MSG_SUCCESSED));
 	
-	log_debug("send [PAP AuthAck id=%x \"%s\"]\n",id,MSG_SUCCESSED);
+	log_ppp_debug("send [PAP AuthAck id=%x \"%s\"]\n",id,MSG_SUCCESSED);
 	
 	ppp_chan_send(p->ppp,msg,ntohs(msg->hdr.len)+2);
 }
@@ -136,7 +136,7 @@ static void pap_send_nak(struct pap_auth_data_t *p, int id)
 	msg->msg_len=sizeof(MSG_FAILED)-1;
 	memcpy(msg->msg,MSG_FAILED,sizeof(MSG_FAILED));
 	
-	log_debug("send [PAP AuthNak id=%x \"%s\"]\n",id,MSG_FAILED);
+	log_ppp_debug("send [PAP AuthNak id=%x \"%s\"]\n",id,MSG_FAILED);
 	
 	ppp_chan_send(p->ppp,msg,ntohs(msg->hdr.len)+2);
 }
@@ -151,12 +151,12 @@ static int pap_recv_req(struct pap_auth_data_t *p,struct pap_hdr_t *hdr)
 	int passwd_len;
 	uint8_t *ptr=(uint8_t*)(hdr+1);
 
-	log_debug("recv [PAP AuthReq id=%x]\n",hdr->id);
+	log_ppp_debug("recv [PAP AuthReq id=%x]\n",hdr->id);
 
 	peer_id_len=*(uint8_t*)ptr; ptr++;
 	if (peer_id_len>ntohs(hdr->len)-sizeof(*hdr)+2-1)
 	{
-		log_warn("PAP: short packet received\n");
+		log_ppp_warn("PAP: short packet received\n");
 		return -1;
 	}
 	peer_id=(char*)ptr; ptr+=peer_id_len;
@@ -164,7 +164,7 @@ static int pap_recv_req(struct pap_auth_data_t *p,struct pap_hdr_t *hdr)
 	passwd_len=*(uint8_t*)ptr; ptr++;
 	if (passwd_len>ntohs(hdr->len)-sizeof(*hdr)+2-2-peer_id_len)
 	{
-		log_warn("PAP: short packet received\n");
+		log_ppp_warn("PAP: short packet received\n");
 		return -1;
 	}
 
@@ -180,7 +180,7 @@ static int pap_recv_req(struct pap_auth_data_t *p,struct pap_hdr_t *hdr)
 			r = PWDB_SUCCESS;
 	}
 	if (r == PWDB_DENIED) {
-		log_warn("PAP: authentication error\n");
+		log_ppp_warn("PAP: authentication error\n");
 		pap_send_nak(p, hdr->id);
 		auth_failed(p->ppp);
 		ret=-1;
@@ -203,14 +203,14 @@ static void pap_recv(struct ppp_handler_t *h)
 
 	if (d->ppp->chan_buf_size<sizeof(*hdr) || ntohs(hdr->len)<HDR_LEN || ntohs(hdr->len)<d->ppp->chan_buf_size-2)
 	{
-		log_warn("PAP: short packet received\n");
+		log_ppp_warn("PAP: short packet received\n");
 		return;
 	}
 
 	if (hdr->code==PAP_REQ) pap_recv_req(d,hdr);
 	else
 	{
-		log_warn("PAP: unknown code received %x\n",hdr->code);
+		log_ppp_warn("PAP: unknown code received %x\n",hdr->code);
 	}
 }
 
