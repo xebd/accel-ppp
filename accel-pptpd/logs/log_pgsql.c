@@ -136,7 +136,7 @@ static void wakeup_log(void)
 	write_next_msg();
 }
 
-static void general_log(struct log_msg_t *msg)
+static void queue_log(struct log_msg_t *msg)
 {
 	int r = 0;
 	spin_lock(&queue_lock);
@@ -152,10 +152,17 @@ static void general_log(struct log_msg_t *msg)
 		triton_context_call(&pgsql_ctx, (void (*)(void*))wakeup_log, NULL);
 }
 
+
+static void general_log(struct log_msg_t *msg)
+{
+	msg->tpd = NULL;
+	queue_log(msg);
+}
+
 static void session_log(struct ppp_t *ppp, struct log_msg_t *msg)
 {
 	msg->tpd = ppp;
-	general_log(msg);
+	queue_log(msg);
 }
 
 static int wait_connect(struct triton_md_handler_t *h)

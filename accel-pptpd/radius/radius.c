@@ -196,7 +196,7 @@ struct radius_pd_t *rad_find_session_pack(struct rad_packet_t *pack)
 			sessionid = attr->val.string;
 		else if (!strcmp(attr->attr->name, "User-Name"))
 			username = attr->val.string;
-		else if (!strcmp(attr->attr->name, "NAS-Port-Id"))
+		else if (!strcmp(attr->attr->name, "NAS-Port"))
 			port_id = attr->val.integer;
 		else if (!strcmp(attr->attr->name, "Framed-IP-Address"))
 			ipaddr = attr->val.ipaddr;

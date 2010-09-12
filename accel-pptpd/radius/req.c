@@ -50,7 +50,7 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 	if (conf_nas_identifier)
 		if (rad_packet_add_str(req->pack, "NAS-Identifier", conf_nas_identifier, strlen(conf_nas_identifier)))
 			goto out_err;
-	if (rad_packet_add_int(req->pack, "NAS-Port-Id", rpd->ppp->unit_idx))
+	if (rad_packet_add_int(req->pack, "NAS-Port", rpd->ppp->unit_idx))
 		goto out_err;
 	if (rad_packet_add_val(req->pack, "NAS-Port-Type", "Virtual"))
 		goto out_err;
@@ -73,6 +73,8 @@ int rad_req_acct_fill(struct rad_req_t *req)
 
 	memset(req->RA, 0, sizeof(req->RA));
 
+	if (rad_packet_add_val(req->pack, "Acct-Authentic", "RADIUS"))
+		return -1;
 	if (rad_packet_add_val(req->pack, "Acct-Status-Type", "Start"))
 		return -1;
 	if (rad_packet_add_str(req->pack, "Acct-Session-Id", req->rpd->ppp->sessionid, PPP_SESSIONID_LEN))

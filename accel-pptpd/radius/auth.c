@@ -60,7 +60,7 @@ int rad_auth_pap(struct radius_pd_t *rpd, const char *username, va_list args)
 	if (!epasswd)
 		goto out;
 
-	if (rad_packet_add_octets(req->pack, "Password", epasswd, epasswd_len)) {
+	if (rad_packet_add_octets(req->pack, "User-Password", epasswd, epasswd_len)) {
 		free(epasswd);
 		goto out;
 	}

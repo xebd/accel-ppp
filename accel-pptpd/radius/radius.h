@@ -61,6 +61,15 @@ typedef union
 struct rad_dict_t
 {
 	struct list_head items;
+	struct list_head vendors;
+};
+
+struct rad_dict_vendor_t
+{
+	struct list_head entry;
+	int id;
+	const char *name;
+	struct list_head items;
 };
 
 struct rad_dict_value_t
@@ -135,6 +144,7 @@ struct rad_dict_attr_t *rad_dict_find_attr(const char *name);
 struct rad_dict_attr_t *rad_dict_find_attr_id(int type);
 struct rad_dict_value_t *rad_dict_find_val_name(struct rad_dict_attr_t *, const char *name);
 struct rad_dict_value_t *rad_dict_find_val(struct rad_dict_attr_t *, rad_value_t val);
+struct rad_dict_vendor_t *rad_dict_find_vendor_name(const char *name);
 
 struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *username);
 int rad_req_acct_fill(struct rad_req_t *);
