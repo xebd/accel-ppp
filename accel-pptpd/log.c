@@ -13,8 +13,6 @@
 
 #include "log.h"
 
-#define LOG_MAX_SIZE 4096
-
 struct log_pd_t
 {
 	struct ppp_pd_t pd;
@@ -33,6 +31,8 @@ struct _log_msg_t
 };
 
 static int log_level=10;
+static int conf_copy = 0;
+
 static LIST_HEAD(targets);
 static mempool_t msg_pool;
 static mempool_t _msg_pool;
@@ -80,8 +80,6 @@ static void do_log(int level, const char *fmt, va_list ap, struct ppp_t *ppp)
 	if (ppp && !ppp->username) {
 		lpd = find_pd(ppp);
 		list_add_tail(&cur_msg->entry, &lpd->msgs);
-		cur_msg = NULL;
-		return;
 	}
 
 	list_for_each_entry(t, &targets, entry) {
@@ -92,7 +90,8 @@ static void do_log(int level, const char *fmt, va_list ap, struct ppp_t *ppp)
 					break;
 				t->session_log(ppp, m);
 			}
-		} else {
+		}
+		if (!ppp || conf_copy) {
 			if (t->log) {
 				m = clone_msg(cur_msg);
 				if (!m)
@@ -103,7 +102,8 @@ static void do_log(int level, const char *fmt, va_list ap, struct ppp_t *ppp)
 	}
 
 out:
-	_log_free_msg(cur_msg);
+	if (!ppp || ppp->username)
+		_log_free_msg(cur_msg);
 	cur_msg = NULL;
 }
 
@@ -411,6 +411,10 @@ static void __init log_init(void)
 		if (!emerg_file)
 			fprintf(stderr, "log:open: %s\n", strerror(errno));
 	}
+
+	opt = conf_get_opt("log", "copy");
+	if (opt && atoi(opt) > 0)
+		conf_copy = 1;
 
 	msg_pool = mempool_create(sizeof(struct log_msg_t));
 	_msg_pool = mempool_create(sizeof(struct _log_msg_t));

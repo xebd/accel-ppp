@@ -26,6 +26,7 @@ void ppp_fsm_init(struct ppp_fsm_t *layer)
 {
 	layer->fsm_state = FSM_Initial;
 	layer->restart_timer.expire = restart_timer_func;
+	layer->restart_timer.period = conf_timeout * 1000;
 	layer->restart_counter = 0;
 
 	layer->max_terminate = conf_max_terminate;
@@ -492,7 +493,6 @@ static void stop_timer(struct ppp_fsm_t *fsm)
 }
 static void init_req_counter(struct ppp_fsm_t *layer,int timeout)
 {
-	layer->restart_timer.expire_tv.tv_sec=0;
 	layer->restart_counter = timeout;
 
 	if (!layer->restart_timer.tpd)

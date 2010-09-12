@@ -504,6 +504,7 @@ static void send_echo_reply(struct ppp_lcp_t *lcp)
 	uint32_t magic = *(uint32_t *)(hdr+1);
 
 	hdr->code=ECHOREP;
+	*(uint32_t *)(hdr+1) = lcp->magic;
 	log_ppp_debug("send [LCP EchoRep id=%x <magic %x>]\n", hdr->id, magic);
 
 	ppp_chan_send(lcp->ppp,hdr,ntohs(hdr->len)+2);
@@ -606,14 +607,14 @@ static void lcp_recv(struct ppp_handler_t*h)
 				ppp_fsm_recv_conf_rej(&lcp->fsm);
 			break;
 		case TERMREQ:
-			term_msg=strndup((char*)(hdr+1),ntohs(hdr->len));
+			term_msg=strndup((char*)(hdr+1),ntohs(hdr->len)-4);
 			log_ppp_debug("recv [LCP TermReq id=%x \"%s\"]\n",hdr->id,term_msg);
 			free(term_msg);
 			ppp_fsm_recv_term_req(&lcp->fsm);
 			ppp_terminate(lcp->ppp, 0);
 			break;
 		case TERMACK:
-			term_msg=strndup((char*)(hdr+1),ntohs(hdr->len));
+			term_msg=strndup((char*)(hdr+1),ntohs(hdr->len)-4);
 			log_ppp_debug("recv [LCP TermAck id=%x \"%s\"]\n",hdr->id,term_msg);
 			free(term_msg);
 			ppp_fsm_recv_term_ack(&lcp->fsm);

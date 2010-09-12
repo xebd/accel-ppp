@@ -12,6 +12,7 @@
 #define LOG_DEBUG 4
 
 #define LOG_CHUNK_SIZE 128
+#define LOG_MAX_SIZE 4096
 
 struct ppp_t;
 struct triton_context_t;
@@ -20,6 +21,7 @@ struct log_msg_t
 {
 	struct list_head entry;
 	void *lpd;
+	void *tpd;
 	struct timeval timestamp;
 	int level;
 	struct log_chunk_t *hdr;

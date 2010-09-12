@@ -91,7 +91,7 @@ static void set_hdr(struct log_msg_t *msg, struct ppp_t *ppp)
 	sprintf(msg->hdr->msg, "%s[%s]: %s: %s%s%s", conf_color ? level_color[msg->level] : "", 
 		timestamp, level_name[msg->level],
 		ppp ? ppp->ifname : "",
-		ppp ? ":" : "",
+		ppp ? ": " : "",
 		conf_color ? NORMAL_COLOR : "");
 	msg->hdr->len = strlen(msg->hdr->msg);
 }
