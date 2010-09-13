@@ -18,6 +18,8 @@
 #include "ppp_lcp.h"
 #include "pwdb.h"
 
+#define MSCHAP_V2 0x81 
+
 #define CHAP_CHALLENGE 1
 #define CHAP_RESPONSE  2
 #define CHAP_SUCCESS   3
@@ -95,7 +97,7 @@ struct chap_auth_data_t
 
 static void chap_send_challenge(struct chap_auth_data_t *ad);
 static void chap_recv(struct ppp_handler_t *h);
-static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response_t *res, char *name);
+static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response_t *msg, const char *name);
 
 static void print_buf(const uint8_t *buf,int size)
 {
@@ -155,13 +157,13 @@ static int chap_finish(struct ppp_t *ppp, struct auth_data_t *auth)
 
 static int lcp_send_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *ptr)
 {
-	*ptr=0x81;
+	*ptr = MSCHAP_V2;
 	return 1;
 }
 
 static int lcp_recv_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *ptr)
 {
-	if (*ptr==0x81)
+	if (*ptr == MSCHAP_V2)
 		return LCP_OPT_ACK;
 	return LCP_OPT_NAK;
 }
@@ -182,24 +184,20 @@ static void chap_send_failure(struct chap_auth_data_t *ad)
 	ppp_chan_send(ad->ppp,&msg,ntohs(msg.hdr.len)+2);
 }
 
-static int generate_response(struct chap_auth_data_t *ad, struct chap_response_t *msg, uint8_t *response)
+static int generate_response(struct chap_auth_data_t *ad, struct chap_response_t *msg, const char *name, char *authenticator)
 {
 	MD4_CTX md4_ctx;
 	SHA_CTX sha_ctx;
 	char *passwd;
 	char *u_passwd;
-	char *name;
 	uint8_t pw_hash[MD4_DIGEST_LENGTH];
 	uint8_t c_hash[SHA_DIGEST_LENGTH];
+	uint8_t response[SHA_DIGEST_LENGTH];
 	int i;
 	
-	name = strndup(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
 	passwd = pwdb_get_passwd(ad->ppp,name);
 	if (!passwd)
-	{
-		free(name);
 		return -1;
-	}
 
 	u_passwd=malloc(strlen(passwd)*2);
 	for(i=0; i<strlen(passwd); i++)
@@ -234,14 +232,16 @@ static int generate_response(struct chap_auth_data_t *ad, struct chap_response_t
 	SHA1_Update(&sha_ctx,magic2,41);
 	SHA1_Final(response,&sha_ctx);
 	
-	free(name);
+	for(i=0; i<20; i++)
+		sprintf(authenticator+i*2,"%02X",response[i]);
+	
 	free(passwd);
 	free(u_passwd);
 
 	return 0;
 }
 
-static void chap_send_success(struct chap_auth_data_t *ad, struct chap_response_t *res_msg)
+static void chap_send_success(struct chap_auth_data_t *ad, struct chap_response_t *res_msg, const char *authenticator)
 {
 	struct chap_success_t msg=
 	{
@@ -251,15 +251,9 @@ static void chap_send_success(struct chap_auth_data_t *ad, struct chap_response_
 		.hdr.len=htons(sizeof(msg)-1-2),
 		.message=MSG_SUCCESS,
 	};
-	uint8_t response[20];
-	int i;
 
-	if (generate_response(ad,res_msg,response))
-		return;
-	for(i=0; i<20; i++)
-		sprintf(msg.message+2+i*2,"%02X",response[i]);
-	msg.message[2+i*2]=' ';
-	
+	memcpy(msg.message + 2, authenticator, 40);
+
 	log_ppp_debug("send [MSCHAP-v2 Success id=%x \"%s\"]\n",msg.hdr.id,msg.message);
 
 	ppp_chan_send(ad->ppp,&msg,ntohs(msg.hdr.len)+2);
@@ -290,6 +284,8 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 {
 	struct chap_response_t *msg=(struct chap_response_t*)hdr;
 	char *name;
+	char authenticator[40];
+	int r;
 
 	log_ppp_debug("recv [MSCHAP-v2 Response id=%x <", msg->hdr.id);
 	print_buf(msg->peer_challenge,16);
@@ -319,15 +315,21 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		auth_failed(ad->ppp);
 		return;
 	}
+	
+	r = pwdb_check(ad->ppp, name, PPP_CHAP, MSCHAP_V2, ad->id, ad->val, msg->peer_challenge, msg->reserved, msg->nt_hash, msg->flags, authenticator);
 
-	if (chap_check_response(ad, msg, name))
-	{
+	if (r == PWDB_NO_IMPL) {	
+		r = chap_check_response(ad, msg, name);
+		if (generate_response(ad, msg, name, authenticator))
+			r = PWDB_DENIED;
+	}
+
+	if (r == PWDB_DENIED) {
 		chap_send_failure(ad);
 		auth_failed(ad->ppp);
 		free(name);
-	}else
-	{
-		chap_send_success(ad,msg);
+	} else {
+		chap_send_success(ad, msg, authenticator);
 		auth_successed(ad->ppp, name);
 	}
 }
@@ -361,7 +363,7 @@ static void des_encrypt(const uint8_t *input, const uint8_t *key, uint8_t *outpu
 	memcpy(output,res,8);	
 }
 
-static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response_t *msg, char *name)
+static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response_t *msg, const char *name)
 {
 	MD4_CTX md4_ctx;
 	SHA_CTX sha_ctx;
@@ -375,7 +377,6 @@ static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response
 	passwd=pwdb_get_passwd(ad->ppp,name);
 	if (!passwd)
 	{
-		free(name);
 		log_ppp_debug("mschap-v2: user not found\n");
 		chap_send_failure(ad);
 		return -1;
@@ -403,7 +404,6 @@ static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response
 	des_encrypt(c_hash,z_hash+7,nt_hash+8);
 	des_encrypt(c_hash,z_hash+14,nt_hash+16);
 
-	free(name);
 	free(passwd);
 	free(u_passwd);
 

@@ -179,13 +179,49 @@ out:
 
 int rad_auth_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list args)
 {
-	/*int id = va_arg(args, int);
+	int r;
+	struct rad_req_t *req;
+	struct rad_attr_t *ra;
+	uint8_t mschap_response[50];
+
+	int id = va_arg(args, int);
 	const uint8_t *challenge = va_arg(args, const uint8_t *);
 	const uint8_t *peer_challenge = va_arg(args, const uint8_t *);
+	const uint8_t *reserved = va_arg(args, const uint8_t *);
 	const uint8_t *response = va_arg(args, const uint8_t *);
 	int flags = va_arg(args, int);
-	uint8_t *authenticator = va_arg(args, uint8_t *);*/
-	return PWDB_NO_IMPL;
+	uint8_t *authenticator = va_arg(args, uint8_t *);
+
+	req = rad_req_alloc(rpd, CODE_ACCESS_REQUEST, username);
+	if (!req)
+		return PWDB_DENIED;
+	
+	mschap_response[0] = id;
+	mschap_response[1] = flags;
+	memcpy(mschap_response + 2, peer_challenge, 16);
+	memcpy(mschap_response + 2 + 16, reserved, 8);
+	memcpy(mschap_response + 2 + 16 + 8, response, 24);
+
+	if (rad_packet_add_vendor_octets(req->pack, "Microsoft", "MS-CHAP-Challenge", challenge, 16))
+		goto out;
+	
+	if (rad_packet_add_vendor_octets(req->pack, "Microsoft", "MS-CHAP2-Response", mschap_response, sizeof(mschap_response)))
+		goto out;
+
+	r = rad_auth_send(req);
+	if (r == PWDB_SUCCESS) {
+		ra = rad_packet_find_vendor_attr(req->reply, "Microsoft", "MS-CHAP2-Success");
+		if (!ra) {
+			log_error("radius:auth:mschap-v2: 'MS-CHAP-Success' not found in radius response\n");
+			r = PWDB_DENIED;
+		} else
+			memcpy(authenticator, ra->val.octets + 3, 40);
+	}
+
+out:
+	rad_req_free(req);
+
+	return r;
 }
 
 

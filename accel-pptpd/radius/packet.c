@@ -96,8 +96,9 @@ struct rad_packet_t *rad_packet_recv(int fd, struct sockaddr_in *addr)
 	struct rad_packet_t *pack;
 	struct rad_attr_t *attr;
 	struct rad_dict_attr_t *da;
+	struct rad_dict_vendor_t *vendor;
 	uint8_t *ptr;
-	int n, id, len;
+	int n, id, len, vendor_id;
 	socklen_t addr_len = sizeof(*addr);
 
 	pack = rad_packet_alloc(0);
@@ -154,13 +155,26 @@ struct rad_packet_t *rad_packet_recv(int fd, struct sockaddr_in *addr)
 			log_ppp_warn("radius:packet: too long attribute received (%i, %i)\n", id, len);
 			goto out_err;
 		}
-		da = rad_dict_find_attr_id(id);
+		if (id == 26) {
+			vendor_id = ntohl(*(uint32_t *)ptr);
+			vendor = rad_dict_find_vendor_id(vendor_id);
+			if (vendor) {
+				ptr += 4;
+				id = *ptr; ptr++;
+				len = *ptr - 2; ptr++;
+				n -= 2 + len;
+			} else
+				log_ppp_warn("radius:packet: vendor %s not found\n", id);
+		}
+		da = rad_dict_find_attr_id(vendor, id);
 		if (da) {
 			attr = malloc(sizeof(*attr));
 			if (!attr) {
 				log_emerg("radius:packet: out of memory\n");
 				goto out_err;
 			}
+			memset(attr, 0, sizeof(*attr));
+			attr->vendor = vendor;
 			attr->attr = da;
 			attr->len = len;
 			switch (da->type) {
@@ -555,3 +569,20 @@ int rad_packet_add_vendor_octets(struct rad_packet_t *pack, const char *vendor_n
 	return 0;
 }
 
+struct rad_attr_t *rad_packet_find_vendor_attr(struct rad_packet_t *pack, const char *vendor_name, const char *name)
+{
+	struct rad_attr_t *ra;
+
+	list_for_each_entry(ra, &pack->attrs, entry) {
+		if (!ra->vendor)
+			continue;
+		if (strcmp(ra->vendor->name, vendor_name))
+			continue;
+		if (strcmp(ra->attr->name, name))
+			continue;
+
+		return ra;
+	}
+
+	return NULL;
+}

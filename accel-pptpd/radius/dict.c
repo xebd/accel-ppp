@@ -286,11 +286,12 @@ struct rad_dict_attr_t *rad_dict_find_attr(const char *name)
 	return dict_find_attr(&dict->items, name);
 }
 
-struct rad_dict_attr_t *rad_dict_find_attr_id(int id)
+struct rad_dict_attr_t *rad_dict_find_attr_id(struct rad_dict_vendor_t *vendor, int id)
 {
 	struct rad_dict_attr_t *attr;
+	struct list_head *items = vendor ? &vendor->items : &dict->items;
 	
-	list_for_each_entry(attr, &dict->items, entry)
+	list_for_each_entry(attr, items, entry)
 		if (attr->id == id)
 			return attr;
 
@@ -328,6 +329,18 @@ struct rad_dict_vendor_t *rad_dict_find_vendor_name(const char *name)
 
 	list_for_each_entry(vendor, &dict->vendors, entry) {
 		if (!strcmp(vendor->name, name))
+			return vendor;
+	}
+
+	return NULL;
+}
+
+struct rad_dict_vendor_t *rad_dict_find_vendor_id(int id)
+{
+	struct rad_dict_vendor_t *vendor;
+
+	list_for_each_entry(vendor, &dict->vendors, entry) {
+		if (vendor->id == id)
 			return vendor;
 	}
 

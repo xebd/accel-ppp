@@ -235,6 +235,12 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	}
 
 	name = strndup(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
+	if (!name) {
+		log_emerg("mschap-v2: out of memory\n");
+		auth_failed(ad->ppp);
+		return;
+	}
+	
 	r = pwdb_check(ad->ppp, name, PPP_CHAP, MSCHAP_V1, ad->id, ad->val, VALUE_SIZE, msg->lm_hash, msg->nt_hash, msg->flags);
 	if (r == PWDB_NO_IMPL)
 		r = chap_check_response(ad, msg, name);
