@@ -17,6 +17,8 @@
 #include "ppp_lcp.h"
 #include "pwdb.h"
 
+#define MSCHAP_V1 0x80
+
 #define CHAP_CHALLENGE 1
 #define CHAP_RESPONSE  2
 #define CHAP_SUCCESS   3
@@ -54,7 +56,7 @@ struct chap_response_t
 	uint8_t val_size;
 	uint8_t lm_hash[24];
 	uint8_t nt_hash[24];
-	uint8_t use_nt_hash;
+	uint8_t flags;
 	char name[0];
 } __attribute__((packed));
 
@@ -82,7 +84,7 @@ struct chap_auth_data_t
 
 static void chap_send_challenge(struct chap_auth_data_t *ad);
 static void chap_recv(struct ppp_handler_t *h);
-static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response_t *res, char *name);
+static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response_t *res, const char *name);
 
 static void print_buf(const uint8_t *buf,int size)
 {
@@ -96,8 +98,6 @@ static void print_str(const char *buf,int size)
 	for(i=0;i<size;i++)
 		log_ppp_debug("%c",buf[i]);
 }
-
-
 
 static struct auth_data_t* auth_data_init(struct ppp_t *ppp)
 {
@@ -142,13 +142,13 @@ static int chap_finish(struct ppp_t *ppp, struct auth_data_t *auth)
 
 static int lcp_send_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *ptr)
 {
-	*ptr=0x80;
+	*ptr=MSCHAP_V1;
 	return 1;
 }
 
 static int lcp_recv_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *ptr)
 {
-	if (*ptr==0x80)
+	if (*ptr==MSCHAP_V1)
 		return LCP_OPT_ACK;
 	return LCP_OPT_NAK;
 }
@@ -210,12 +210,13 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 {
 	struct chap_response_t *msg=(struct chap_response_t*)hdr;
 	char *name;
+	int r;
 
 	log_ppp_debug("recv [MSCHAP-v1 Response id=%x <", msg->hdr.id);
 	print_buf(msg->lm_hash,24);
 	log_ppp_debug(">, <");
 	print_buf(msg->nt_hash,24);
-	log_ppp_debug(">, F=%i, name=\"",msg->use_nt_hash);
+	log_ppp_debug(">, F=%i, name=\"",msg->flags);
 	print_str(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
 	log_ppp_debug("\"]\n");
 
@@ -234,14 +235,15 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	}
 
 	name = strndup(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
-
-	if (chap_check_response(ad, msg, name))
-	{
+	r = pwdb_check(ad->ppp, name, PPP_CHAP, MSCHAP_V1, ad->id, ad->val, VALUE_SIZE, msg->lm_hash, msg->nt_hash, msg->flags);
+	if (r == PWDB_NO_IMPL)
+		r = chap_check_response(ad, msg, name);
+	
+	if (r == PWDB_DENIED) {
 		chap_send_failure(ad);
 		auth_failed(ad->ppp);
 		free(name);
-	}else
-	{
+	} else {
 		chap_send_success(ad);
 		auth_successed(ad->ppp, name);
 	}
@@ -276,7 +278,7 @@ static void des_encrypt(const uint8_t *input, const uint8_t *key, uint8_t *outpu
 	memcpy(output,res,8);	
 }
 
-static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response_t *msg, char *name)
+static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response_t *msg, const char *name)
 {
 	MD4_CTX md4_ctx;
 	uint8_t z_hash[21];
@@ -288,10 +290,9 @@ static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response
 	passwd = pwdb_get_passwd(ad->ppp,name);
 	if (!passwd)
 	{
-		free(name);
 		log_ppp_debug("mschap-v1: user not found\n");
 		chap_send_failure(ad);
-		return -1;
+		return PWDB_DENIED;
 	}
 
 	u_passwd=malloc(strlen(passwd)*2);
@@ -310,11 +311,10 @@ static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response
 	des_encrypt(ad->val,z_hash+7,nt_hash+8);
 	des_encrypt(ad->val,z_hash+14,nt_hash+16);
 
-	free(name);
 	free(passwd);
 	free(u_passwd);
 
-	return memcmp(nt_hash,msg->nt_hash,24);
+	return memcmp(nt_hash,msg->nt_hash,24) ? PWDB_DENIED : PWDB_SUCCESS;
 }
 
 static struct ppp_auth_handler_t chap=

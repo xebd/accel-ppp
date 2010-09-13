@@ -43,10 +43,40 @@ static uint8_t* encrypt_password(const char *passwd, const char *secret, const u
 	return epasswd;
 }
 
+static int rad_auth_send(struct rad_req_t *req)
+{
+	int i;
+
+	for(i = 0; i < conf_max_try; i++) {
+		if (rad_req_send(req))
+			goto out;
+
+		rad_req_wait(req, conf_timeout);
+
+		if (req->reply) {
+			if (req->reply->id != req->pack->id) {
+				rad_packet_free(req->reply);
+				req->reply = NULL;
+			} else
+				break;
+		}
+	}
+
+	if (!req->reply)
+		log_ppp_warn("radius:auth: no response\n");
+	else if (req->reply->code == CODE_ACCESS_ACCEPT) {
+		rad_proc_attrs(req);
+		return PWDB_SUCCESS;
+	}
+
+out:
+	return PWDB_DENIED;
+}
+
 int rad_auth_pap(struct radius_pd_t *rpd, const char *username, va_list args)
 {
 	struct rad_req_t *req;
-	int i, r = PWDB_DENIED;
+	int r = PWDB_DENIED;
 	//int id = va_arg(args, int);
 	const char *passwd = va_arg(args, const char *);
 	uint8_t *epasswd;
@@ -67,25 +97,7 @@ int rad_auth_pap(struct radius_pd_t *rpd, const char *username, va_list args)
 
 	free(epasswd);
 
-	for(i = 0; i < conf_max_try; i++) {
-		if (rad_req_send(req))
-			goto out;
-
-		rad_req_wait(req, conf_timeout);
-
-		if (req->reply) {
-			if (req->reply->id != req->pack->id) {
-				rad_packet_free(req->reply);
-				req->reply = NULL;
-			} else
-				break;
-		}
-	}
-
-	if (req->reply && req->reply->code == CODE_ACCESS_ACCEPT) {
-		rad_proc_attrs(req);
-		r = PWDB_SUCCESS;
-	}
+	rad_auth_send(req);
 
 out:
 	rad_req_free(req);
@@ -96,7 +108,7 @@ out:
 int rad_auth_chap_md5(struct radius_pd_t *rpd, const char *username, va_list args)
 {
 	struct rad_req_t *req;
-	int i, r = PWDB_DENIED;
+	int r = PWDB_DENIED;
 	uint8_t chap_password[17];
 	
 	int id = va_arg(args, int);
@@ -121,27 +133,7 @@ int rad_auth_chap_md5(struct radius_pd_t *rpd, const char *username, va_list arg
 	if (rad_packet_add_octets(req->pack, "CHAP-Password", chap_password, 17))
 		goto out;
 
-	for(i = 0; i < conf_max_try; i++) {
-		if (rad_req_send(req))
-			goto out;
-
-		rad_req_wait(req, conf_timeout);
-
-		if (req->reply) {
-			if (req->reply->id != req->pack->id) {
-				rad_packet_free(req->reply);
-				req->reply = NULL;
-			} else
-				break;
-		}
-	}
-
-	if (!req->reply)
-		log_ppp_warn("radius:auth: no response\n");
-	else if (req->reply->code == CODE_ACCESS_ACCEPT) {
-		rad_proc_attrs(req);
-		r = PWDB_SUCCESS;
-	}
+	r = rad_auth_send(req);
 
 out:
 	rad_req_free(req);
@@ -151,12 +143,38 @@ out:
 
 int rad_auth_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list args)
 {
-	/*int id = va_arg(args, int);
+	int r;
+	struct rad_req_t *req;
+	uint8_t response[50];
+
+	int id = va_arg(args, int);
 	const uint8_t *challenge = va_arg(args, const uint8_t *);
+	int challenge_len = va_arg(args, int);
 	const uint8_t *lm_response = va_arg(args, const uint8_t *);
 	const uint8_t *nt_response = va_arg(args, const uint8_t *);
-	int flags = va_arg(args, int);*/
-	return PWDB_NO_IMPL;
+	int flags = va_arg(args, int);
+
+	req = rad_req_alloc(rpd, CODE_ACCESS_REQUEST, username);
+	if (!req)
+		return PWDB_DENIED;
+	
+	response[0] = id;
+	response[1] = flags;
+	memcpy(response + 2, lm_response, 24);
+	memcpy(response + 2 + 24, nt_response, 24);
+
+	if (rad_packet_add_vendor_octets(req->pack, "Microsoft", "MS-CHAP-Challenge", challenge, challenge_len))
+		goto out;
+	
+	if (rad_packet_add_vendor_octets(req->pack, "Microsoft", "MS-CHAP-Response", response, sizeof(response)))
+		goto out;
+
+	r = rad_auth_send(req);
+
+out:
+	rad_req_free(req);
+
+	return r;
 }
 
 int rad_auth_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list args)

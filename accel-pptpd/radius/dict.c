@@ -270,16 +270,22 @@ void rad_dict_free(struct rad_dict_t *dict)
 	free(dict);
 }
 
-struct rad_dict_attr_t *rad_dict_find_attr(const char *name)
+static struct rad_dict_attr_t *dict_find_attr(struct list_head *items, const char *name)
 {
 	struct rad_dict_attr_t *attr;
 
-	list_for_each_entry(attr, &dict->items, entry)
+	list_for_each_entry(attr, items, entry)
 		if (!strcmp(attr->name, name))
 			return attr;
 
 	return NULL;
 }
+
+struct rad_dict_attr_t *rad_dict_find_attr(const char *name)
+{
+	return dict_find_attr(&dict->items, name);
+}
+
 struct rad_dict_attr_t *rad_dict_find_attr_id(int id)
 {
 	struct rad_dict_attr_t *attr;
@@ -290,6 +296,7 @@ struct rad_dict_attr_t *rad_dict_find_attr_id(int id)
 
 	return NULL;
 }
+
 struct rad_dict_value_t *rad_dict_find_val_name(struct rad_dict_attr_t *attr, const char *name)
 {
 	struct rad_dict_value_t *val;
@@ -326,3 +333,9 @@ struct rad_dict_vendor_t *rad_dict_find_vendor_name(const char *name)
 
 	return NULL;
 }
+
+struct rad_dict_attr_t *rad_dict_find_vendor_attr(struct rad_dict_vendor_t *vendor, const char *name)
+{
+	return dict_find_attr(&vendor->items, name);
+}
+

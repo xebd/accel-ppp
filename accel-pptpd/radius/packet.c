@@ -59,6 +59,11 @@ int rad_packet_build(struct rad_packet_t *pack, uint8_t *RA)
 	memcpy(ptr, RA, 16);	ptr+=16;
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
+		if (attr->vendor) {
+			*ptr = 26; ptr++;
+			*ptr = attr->len + 2 + 6; ptr++;
+			*(uint32_t *)ptr = htonl(attr->vendor->id); ptr+=4;
+		} 
 		*ptr = attr->attr->id; ptr++;
 		*ptr = attr->len + 2; ptr++;
 		switch(attr->attr->type) {
@@ -267,7 +272,10 @@ void rad_packet_print(struct rad_packet_t *pack, void (*print)(const char *fmt, 
 	print(" id=%x", pack->id);
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
-		print(" <%s ", attr->attr->name);
+		if (attr->vendor)
+			print("<%s %s ", attr->vendor->name, attr->attr->name);
+		else
+			print(" <%s ", attr->attr->name);
 		switch (attr->attr->type) {
 			case ATTR_TYPE_INTEGER:
 				val = rad_dict_find_val(attr->attr, attr->val);
@@ -304,6 +312,7 @@ int rad_packet_add_int(struct rad_packet_t *pack, const char *name, int val)
 	if (!ra)
 		return -1;
 
+	memset(ra, 0, sizeof(*ra));
 	ra->attr = attr;
 	ra->len = 4;
 	ra->val.integer = val;
@@ -344,6 +353,7 @@ int rad_packet_add_octets(struct rad_packet_t *pack, const char *name, uint8_t *
 		return -1;
 	}
 
+	memset(ra, 0, sizeof(*ra));
 	ra->attr = attr;
 	ra->len = len;
 	ra->val.octets = malloc(len);
@@ -376,6 +386,7 @@ int rad_packet_add_str(struct rad_packet_t *pack, const char *name, const char *
 		return -1;
 	}
 
+	memset(ra, 0, sizeof(*ra));
 	ra->attr = attr;
 	ra->len = len;
 	ra->val.string = malloc(len+1);
@@ -441,6 +452,7 @@ int rad_packet_add_val(struct rad_packet_t *pack, const char *name, const char *
 	if (!ra)
 		return -1;
 
+	memset(ra, 0, sizeof(*ra));
 	ra->attr = attr;
 	ra->len = 4;
 	ra->val = v->val;
@@ -499,6 +511,46 @@ int rad_packet_send(struct rad_packet_t *pack, int fd, struct sockaddr_in *addr)
 		}
 		break;
 	}
+
+	return 0;
+}
+
+int rad_packet_add_vendor_octets(struct rad_packet_t *pack, const char *vendor_name, const char *name, const uint8_t *val, int len)
+{
+	struct rad_attr_t *ra;
+	struct rad_dict_attr_t *attr;
+	struct rad_dict_vendor_t *vendor;
+
+	if (pack->len + 6 + 2 + len >= REQ_LENGTH_MAX)
+		return -1;
+
+	vendor = rad_dict_find_vendor_name(vendor_name);
+	if (!vendor)
+		return -1;
+
+	attr = rad_dict_find_vendor_attr(vendor, name);
+	if (!attr)
+		return -1;
+	
+	ra = malloc(sizeof(*ra));
+	if (!ra) {
+		log_emerg("radius: out of memory\n");
+		return -1;
+	}
+	
+	memset(ra, 0, sizeof(*ra));
+	ra->vendor = vendor;
+	ra->attr = attr;
+	ra->len = len;
+	ra->val.octets = malloc(len);
+	if (!ra->val.octets) {
+		log_emerg("radius: out of memory\n");
+		free(ra);
+		return -1;
+	}
+	memcpy(ra->val.octets, val, len);
+	list_add_tail(&ra->entry, &pack->attrs);
+	pack->len += 6 + 2 + len;
 
 	return 0;
 }

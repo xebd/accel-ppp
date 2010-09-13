@@ -92,6 +92,7 @@ struct rad_attr_t
 {
 	struct list_head entry;
 	struct rad_dict_attr_t *attr;
+	struct rad_dict_vendor_t *vendor;
 	//struct rad_dict_value_t *val;
 	rad_value_t val;
 	int len;
@@ -145,6 +146,7 @@ struct rad_dict_attr_t *rad_dict_find_attr_id(int type);
 struct rad_dict_value_t *rad_dict_find_val_name(struct rad_dict_attr_t *, const char *name);
 struct rad_dict_value_t *rad_dict_find_val(struct rad_dict_attr_t *, rad_value_t val);
 struct rad_dict_vendor_t *rad_dict_find_vendor_name(const char *name);
+struct rad_dict_attr_t *rad_dict_find_vendor_attr(struct rad_dict_vendor_t *vendor, const char *name);
 
 struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *username);
 int rad_req_acct_fill(struct rad_req_t *);
@@ -159,6 +161,7 @@ int rad_packet_add_str(struct rad_packet_t *pack, const char *name, const char *
 int rad_packet_add_octets(struct rad_packet_t *pack, const char *name, uint8_t *val, int len);
 int rad_packet_change_int(struct rad_packet_t *pack, const char *name, int val);
 int rad_packet_change_val(struct rad_packet_t *pack, const char *name, const char *val);
+int rad_packet_add_vendor_octets(struct rad_packet_t *pack, const char *vendor_name, const char *name, const uint8_t *val, int len);
 
 struct rad_packet_t *rad_packet_alloc(int code);
 int rad_packet_build(struct rad_packet_t *pack, uint8_t *RA);
