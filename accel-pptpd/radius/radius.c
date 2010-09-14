@@ -11,7 +11,7 @@
 #include "pwdb.h"
 #include "ipdb.h"
 
-#include "radius.h"
+#include "radius_p.h"
 
 #define CHAP_MD5 5
 #define MSCHAP_V1 0x80

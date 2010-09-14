@@ -3,6 +3,7 @@
 
 #include <sys/types.h>
 #include <time.h>
+#include <netinet/in.h>
 
 #include "triton.h"
 #include "list.h"
@@ -76,6 +77,8 @@ struct ppp_t
 	char sessionid[PPP_SESSIONID_LEN+1];
 	time_t start_time;
 	char *username;
+	in_addr_t ipaddr;
+	in_addr_t peer_ipaddr;
 
 	struct ppp_ctrl_t *ctrl;
 

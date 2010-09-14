@@ -9,7 +9,7 @@
 #include <arpa/inet.h>
 
 #include "log.h"
-#include "radius.h"
+#include "radius_p.h"
 
 static int urandom_fd;
 

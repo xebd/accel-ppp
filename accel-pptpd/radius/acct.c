@@ -8,7 +8,7 @@
 #include <openssl/md5.h>
 
 #include "log.h"
-#include "radius.h"
+#include "radius_p.h"
 
 static int req_set_RA(struct rad_req_t *req, const char *secret)
 {

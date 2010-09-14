@@ -113,6 +113,9 @@ static int ipaddr_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 	return IPCP_OPT_NAK;
 
 ack:
+	ipcp->ppp->ipaddr = ipaddr_opt->ip->addr;
+	ipcp->ppp->peer_ipaddr = ipaddr_opt->ip->peer_addr;
+
 	memset(&ifr, 0, sizeof(ifr));
 	memset(&addr, 0, sizeof(addr));
 

@@ -8,7 +8,7 @@
 
 #include "log.h"
 
-#include "radius.h"
+#include "radius_p.h"
 
 struct rad_packet_t *rad_packet_alloc(int code)
 {
@@ -165,7 +165,8 @@ struct rad_packet_t *rad_packet_recv(int fd, struct sockaddr_in *addr)
 				n -= 2 + len;
 			} else
 				log_ppp_warn("radius:packet: vendor %s not found\n", id);
-		}
+		} else
+			vendor = NULL;
 		da = rad_dict_find_attr_id(vendor, id);
 		if (da) {
 			attr = malloc(sizeof(*attr));
@@ -257,28 +258,28 @@ void rad_packet_print(struct rad_packet_t *pack, void (*print)(const char *fmt, 
 			print("Access-Reject");
 			break;
 		case CODE_ACCOUNTING_REQUEST:
-			printf("Accounting-Request");
+			print("Accounting-Request");
 			break;
 		case CODE_ACCOUNTING_RESPONSE:
-			printf("Accounting-Response");
+			print("Accounting-Response");
 			break;
 		case CODE_DISCONNECT_REQUEST:
-			printf("Disconnect-Request");
+			print("Disconnect-Request");
 			break;
 		case CODE_DISCONNECT_ACK:
-			printf("Disconnect-ACK");
+			print("Disconnect-ACK");
 			break;
 		case CODE_DISCONNECT_NAK:
-			printf("Disconnect-NAK");
+			print("Disconnect-NAK");
 			break;
 		case CODE_COA_REQUEST:
-			printf("CoA-Request");
+			print("CoA-Request");
 			break;
 		case CODE_COA_ACK:
-			printf("CoA-ACK");
+			print("CoA-ACK");
 			break;
 		case CODE_COA_NAK:
-			printf("CoA-NAK");
+			print("CoA-NAK");
 			break;
 		default:
 			print("Unknown (%i)", pack->code);

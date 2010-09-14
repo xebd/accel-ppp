@@ -10,6 +10,7 @@ ADD_SUBDIRECTORY(ctrl)
 ADD_SUBDIRECTORY(auth)
 ADD_SUBDIRECTORY(radius)
 ADD_SUBDIRECTORY(logs)
+ADD_SUBDIRECTORY(extra)
 
 ADD_EXECUTABLE(pptpd
 	ppp/ppp.c
@@ -30,7 +31,10 @@ ADD_EXECUTABLE(pptpd
 
 	iprange.c
 	ippool.c
-	
+
+	utils.c
+	sigchld.c
+
 	log.c
 	main.c
 )

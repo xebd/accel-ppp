@@ -12,9 +12,10 @@
 #include <openssl/md5.h>
 
 #include "triton.h"
+#include "events.h"
 #include "log.h"
 
-#include "radius.h"
+#include "radius_p.h"
 
 #define PD_COA_PORT 3799
 
@@ -98,7 +99,8 @@ static int dm_coa_send_nak(int fd, struct rad_packet_t *req, struct sockaddr_in 
 
 	reply->id = req->id;
 
-	rad_packet_add_int(reply, "Error-Cause", err_code);
+	if (err_code)
+		rad_packet_add_int(reply, "Error-Cause", err_code);
 
 	if (rad_packet_build(reply, RA)) {
 		rad_packet_free(reply);
@@ -137,14 +139,28 @@ static void disconnect_request(struct radius_pd_t *rpd)
 
 static void coa_request(struct radius_pd_t *rpd)
 {
+	struct ev_radius_t ev = {
+		.ppp = rpd->ppp,
+		.request = rpd->dm_coa_req,
+	};
+
 	if (conf_verbose) {
 		log_ppp_debug("recv ");
 		rad_packet_print(rpd->dm_coa_req, log_ppp_debug);
 	}
-/// TODO: CoA handling
+
+	triton_event_fire(EV_RADIUS_COA, &ev);
+
+	if (ev.res)
+		dm_coa_send_nak(serv.hnd.fd, rpd->dm_coa_req, &rpd->dm_coa_addr, 0);
+	else
+		dm_coa_send_ack(serv.hnd.fd, rpd->dm_coa_req, &rpd->dm_coa_addr);
 	
 	rad_packet_free(rpd->dm_coa_req);
+
+	pthread_mutex_lock(&rpd->lock);
 	rpd->dm_coa_req = NULL;
+	pthread_mutex_unlock(&rpd->lock);
 }
 
 static int dm_coa_read(struct triton_md_handler_t *h)
@@ -187,6 +203,11 @@ static int dm_coa_read(struct triton_md_handler_t *h)
 		goto out_err;
 	}
 	
+	if (rpd->dm_coa_req) {
+		pthread_mutex_unlock(&rpd->lock);
+		goto out_err_no_reply;
+	}
+
 	rpd->dm_coa_req = pack;
 	memcpy(&rpd->dm_coa_addr, &addr, sizeof(addr));
 

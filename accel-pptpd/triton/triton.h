@@ -29,6 +29,13 @@ struct triton_timer_t
 	void (*expire)(struct triton_timer_t *);
 };
 
+struct triton_sigchld_handler_t
+{
+	void *tpd;
+	int pid;
+	void (*handler)(struct triton_sigchld_handler_t *h, int status);
+};
+
 struct conf_option_t
 {
 	struct list_head entry;

@@ -35,6 +35,17 @@ static void* triton_thread(struct _triton_thread_t *thread)
 	sigset_t set;
 	int sig;
 
+	sigfillset(&set);
+	pthread_sigmask(SIG_BLOCK, &set, NULL);
+
+	sigdelset(&set, SIGUSR1);
+	sigdelset(&set, SIGQUIT);
+	sigdelset(&set, SIGSEGV);
+	sigdelset(&set, SIGFPE);
+	sigdelset(&set, SIGILL);
+	sigdelset(&set, SIGBUS);
+	pthread_sigmask(SIG_UNBLOCK, &set, NULL);
+
 	sigemptyset(&set);
 	sigaddset(&set, SIGUSR1);
 	sigaddset(&set, SIGQUIT);

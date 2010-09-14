@@ -11,6 +11,18 @@
 #define EV_CTRL_FINISHED    8
 #define EV_IP_CHANGED       100
 #define EV_SHAPE_CHANGED    101 
+#define EV_RADIUS_ACCESS_ACCEPT 200
+#define EV_RADIUS_COA           201
+
+struct ppp_t;
+struct rad_packet_t;
+struct ev_radius_t
+{
+	struct ppp_t *ppp;
+	struct rad_packet_t *request;
+	struct rad_packet_t *reply;
+	int res;
+};
 
 #endif
 

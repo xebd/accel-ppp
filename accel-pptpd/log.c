@@ -300,8 +300,6 @@ static struct log_pd_t *find_pd(struct ppp_t *ppp)
 			return lpd;
 		}
 	}
-	list_for_each_entry(pd, &ppp->pd_list, entry)
-		printf("%p %p\n", pd->key, &pd_key);
 	log_emerg("log:BUG: pd not found\n");
 	abort();
 }

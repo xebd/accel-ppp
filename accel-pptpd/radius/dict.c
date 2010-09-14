@@ -5,7 +5,7 @@
 #include <limits.h>
 
 #include "list.h"
-#include "radius.h"
+#include "radius_p.h"
 #include "log.h"
 
 static struct rad_dict_t *dict;
@@ -281,12 +281,12 @@ static struct rad_dict_attr_t *dict_find_attr(struct list_head *items, const cha
 	return NULL;
 }
 
-struct rad_dict_attr_t *rad_dict_find_attr(const char *name)
+__export struct rad_dict_attr_t *rad_dict_find_attr(const char *name)
 {
 	return dict_find_attr(&dict->items, name);
 }
 
-struct rad_dict_attr_t *rad_dict_find_attr_id(struct rad_dict_vendor_t *vendor, int id)
+__export struct rad_dict_attr_t *rad_dict_find_attr_id(struct rad_dict_vendor_t *vendor, int id)
 {
 	struct rad_dict_attr_t *attr;
 	struct list_head *items = vendor ? &vendor->items : &dict->items;
@@ -298,7 +298,7 @@ struct rad_dict_attr_t *rad_dict_find_attr_id(struct rad_dict_vendor_t *vendor, 
 	return NULL;
 }
 
-struct rad_dict_value_t *rad_dict_find_val_name(struct rad_dict_attr_t *attr, const char *name)
+__export struct rad_dict_value_t *rad_dict_find_val_name(struct rad_dict_attr_t *attr, const char *name)
 {
 	struct rad_dict_value_t *val;
 
@@ -309,7 +309,7 @@ struct rad_dict_value_t *rad_dict_find_val_name(struct rad_dict_attr_t *attr, co
 	return NULL;
 }
 
-struct rad_dict_value_t *rad_dict_find_val(struct rad_dict_attr_t *attr, rad_value_t v)
+__export struct rad_dict_value_t *rad_dict_find_val(struct rad_dict_attr_t *attr, rad_value_t v)
 {
 	struct rad_dict_value_t *val;
 
@@ -323,7 +323,7 @@ struct rad_dict_value_t *rad_dict_find_val(struct rad_dict_attr_t *attr, rad_val
 	return NULL;
 }
 
-struct rad_dict_vendor_t *rad_dict_find_vendor_name(const char *name)
+__export struct rad_dict_vendor_t *rad_dict_find_vendor_name(const char *name)
 {
 	struct rad_dict_vendor_t *vendor;
 
@@ -335,7 +335,7 @@ struct rad_dict_vendor_t *rad_dict_find_vendor_name(const char *name)
 	return NULL;
 }
 
-struct rad_dict_vendor_t *rad_dict_find_vendor_id(int id)
+__export struct rad_dict_vendor_t *rad_dict_find_vendor_id(int id)
 {
 	struct rad_dict_vendor_t *vendor;
 
@@ -347,7 +347,7 @@ struct rad_dict_vendor_t *rad_dict_find_vendor_id(int id)
 	return NULL;
 }
 
-struct rad_dict_attr_t *rad_dict_find_vendor_attr(struct rad_dict_vendor_t *vendor, const char *name)
+__export struct rad_dict_attr_t *rad_dict_find_vendor_attr(struct rad_dict_vendor_t *vendor, const char *name)
 {
 	return dict_find_attr(&vendor->items, name);
 }

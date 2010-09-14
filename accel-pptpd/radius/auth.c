@@ -2,10 +2,12 @@
 #include <string.h>
 #include <openssl/md5.h>
 
+#include "triton.h"
+#include "events.h"
 #include "log.h"
 #include "pwdb.h"
 
-#include "radius.h"
+#include "radius_p.h"
 
 
 static uint8_t* encrypt_password(const char *passwd, const char *secret, const uint8_t *RA, int *epasswd_len)
@@ -97,7 +99,15 @@ int rad_auth_pap(struct radius_pd_t *rpd, const char *username, va_list args)
 
 	free(epasswd);
 
-	rad_auth_send(req);
+	r = rad_auth_send(req);
+	if (r == PWDB_SUCCESS) {
+		struct ev_radius_t ev = {
+			.ppp = rpd->ppp,
+			.request = req->pack,
+			.reply = req->reply,
+		};
+		triton_event_fire(EV_RADIUS_ACCESS_ACCEPT, &ev);
+	}
 
 out:
 	rad_req_free(req);
@@ -134,6 +144,14 @@ int rad_auth_chap_md5(struct radius_pd_t *rpd, const char *username, va_list arg
 		goto out;
 
 	r = rad_auth_send(req);
+	if (r == PWDB_SUCCESS) {
+		struct ev_radius_t ev = {
+			.ppp = rpd->ppp,
+			.request = req->pack,
+			.reply = req->reply,
+		};
+		triton_event_fire(EV_RADIUS_ACCESS_ACCEPT, &ev);
+	}
 
 out:
 	rad_req_free(req);
@@ -154,7 +172,7 @@ int rad_auth_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list ar
 	const uint8_t *nt_response = va_arg(args, const uint8_t *);
 	int flags = va_arg(args, int);
 
-	req = rad_req_alloc(rpd, CODE_ACCESS_REQUEST, username);
+	req = rad_req_alloc(rpd, CODE_ACCESS_ACCEPT, username);
 	if (!req)
 		return PWDB_DENIED;
 	
@@ -170,6 +188,14 @@ int rad_auth_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list ar
 		goto out;
 
 	r = rad_auth_send(req);
+	if (r == PWDB_SUCCESS) {
+		struct ev_radius_t ev = {
+			.ppp = rpd->ppp,
+			.request = req->pack,
+			.reply = req->reply,
+		};
+		triton_event_fire(EV_RADIUS_ACCESS_ACCEPT, &ev);
+	}
 
 out:
 	rad_req_free(req);
@@ -216,6 +242,14 @@ int rad_auth_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list ar
 			r = PWDB_DENIED;
 		} else
 			memcpy(authenticator, ra->val.octets + 3, 40);
+	}
+	if (r == PWDB_SUCCESS) {
+		struct ev_radius_t ev = {
+			.ppp = rpd->ppp,
+			.request = req->pack,
+			.reply = req->reply,
+		};
+		triton_event_fire(EV_RADIUS_ACCESS_ACCEPT, &ev);
 	}
 
 out:
