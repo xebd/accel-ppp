@@ -2,6 +2,7 @@
 #define TRITON_H
 
 #include <sys/time.h>
+#include <stdint.h>
 
 #include "list.h"
 
@@ -49,6 +50,22 @@ struct conf_sect_t
 	struct list_head items;
 };
 
+struct triton_stat_t
+{
+	uint32_t mempool_allocated;
+	uint32_t mempool_available;
+	uint32_t thread_count;
+	uint32_t thread_active;
+	uint32_t context_count;
+	uint32_t context_sleeping;
+	uint32_t context_pending;
+	uint32_t md_handler_count;
+	uint32_t md_handler_pending;
+	uint32_t timer_count;
+	uint32_t timer_pending;
+};
+
+extern struct triton_stat_t triton_stat;
 int triton_context_register(struct triton_context_t *, void *arg);
 void triton_context_unregister(struct triton_context_t *);
 void triton_context_schedule(struct triton_context_t *);
@@ -82,7 +99,8 @@ char *conf_get_opt(const char *sect, const char *name);
 #define TRITON_ERR_NOMSG  -6
 #define TRITON_ERR_BUSY   -5
 
-int triton_init(const char *conf_file, const char *mod_sect);
+int triton_init(const char *conf_file);
+int triton_load_modules(const char *md_sect);
 void triton_run(void);
 void triton_terminate(void);
 

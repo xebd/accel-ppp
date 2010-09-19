@@ -13,12 +13,15 @@
 
 #include "log.h"
 
+#include "memdebug.h"
+
 struct log_pd_t
 {
 	struct ppp_pd_t pd;
 	struct ppp_t *ppp;
 	struct list_head msgs;
 	struct log_msg_t *msg;
+	int authorized:1;
 };
 
 struct _log_msg_t
@@ -43,6 +46,7 @@ static __thread struct _log_msg_t *cur_msg;
 static __thread char stat_buf[LOG_MAX_SIZE+1];
 
 static FILE *emerg_file;
+static FILE *debug_file;
 
 static void *pd_key;
 
@@ -50,6 +54,7 @@ static void _log_free_msg(struct _log_msg_t *msg);
 static struct log_msg_t *clone_msg(struct _log_msg_t *msg);
 static int add_msg(struct _log_msg_t *msg, const char *buf);
 static struct log_pd_t *find_pd(struct ppp_t *ppp);
+static void write_msg(FILE *f, struct _log_msg_t *msg, struct ppp_t *ppp);
 
 static void do_log(int level, const char *fmt, va_list ap, struct ppp_t *ppp)
 {
@@ -61,6 +66,7 @@ static void do_log(int level, const char *fmt, va_list ap, struct ppp_t *ppp)
 		return;
 
 	vsnprintf(stat_buf, LOG_MAX_SIZE, fmt, ap);
+
 	if (!cur_msg) {
 		cur_msg = mempool_alloc(_msg_pool);
 		if (!cur_msg)
@@ -77,13 +83,16 @@ static void do_log(int level, const char *fmt, va_list ap, struct ppp_t *ppp)
 	if (stat_buf[strlen(stat_buf) - 1] != '\n')
 		return;
 
+	if (debug_file)
+		write_msg(debug_file, cur_msg, ppp);
+
 	if (ppp && !ppp->username) {
 		lpd = find_pd(ppp);
 		list_add_tail(&cur_msg->entry, &lpd->msgs);
 	}
 
 	list_for_each_entry(t, &targets, entry) {
-		if (ppp) {
+		if (ppp && ppp->username) {
 			if (t->session_log) {
 				m = clone_msg(cur_msg);
 				if (!m)
@@ -304,9 +313,25 @@ static struct log_pd_t *find_pd(struct ppp_t *ppp)
 	abort();
 }
 
+static void write_msg(FILE *f, struct _log_msg_t *msg, struct ppp_t *ppp)
+{
+	struct log_chunk_t *chunk;
+
+	if (ppp)
+		sprintf(stat_buf,"%s: %s: ", ppp->ifname, ppp->sessionid);
+	else
+		stat_buf[0] = 0;
+	
+	list_for_each_entry(chunk, &msg->chunks, entry)
+		strcat(stat_buf, chunk->msg);
+	
+	fwrite(stat_buf, strlen(stat_buf), 1, f);
+	fflush(f);
+}
+
 static void ev_ctrl_starting(struct ppp_t *ppp)
 {
-	struct log_pd_t *lpd = malloc(sizeof(*lpd));
+	struct log_pd_t *lpd = _malloc(sizeof(*lpd));
 	if (!lpd) {
 		log_emerg("log: out of memory\n");
 		return;
@@ -331,7 +356,7 @@ static void ev_ctrl_finished(struct ppp_t *ppp)
 		abort();
 	}
 
-	if (ppp->username) {
+	if (lpd->authorized) {
 		if (!list_empty(&lpd->msgs)) {
 			log_emerg("log:BUG: lpd->msgs is not empty\n");
 			abort();
@@ -358,7 +383,7 @@ static void ev_ctrl_finished(struct ppp_t *ppp)
 	}
 
 	list_del(&lpd->pd.entry);
-	free(lpd);
+	_free(lpd);
 }
 
 static void ev_ppp_authorized(struct ppp_t *ppp)
@@ -387,6 +412,8 @@ static void ev_ppp_authorized(struct ppp_t *ppp)
 
 		_log_free_msg(msg);
 	}
+
+	lpd->authorized = 1;
 }
 
 void __export log_switch(struct triton_context_t *ctx, void *arg)
@@ -406,6 +433,13 @@ static void __init log_init(void)
 	opt = conf_get_opt("log", "log-emerg");
 	if (opt) {
 		emerg_file = fopen(opt, "a");
+		if (!emerg_file)
+			fprintf(stderr, "log:open: %s\n", strerror(errno));
+	}
+
+	opt = conf_get_opt("log", "log-debug");
+	if (opt) {
+		debug_file = fopen(opt, "a");
 		if (!emerg_file)
 			fprintf(stderr, "log:open: %s\n", strerror(errno));
 	}

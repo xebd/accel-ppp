@@ -8,6 +8,8 @@
 
 #include "triton_p.h"
 
+#include "memdebug.h"
+
 extern int max_events;
 
 static int epoll_fd;
@@ -26,7 +28,7 @@ int md_init(void)
 		return -1;
 	}
 
-	epoll_events = malloc(max_events * sizeof(struct epoll_event));
+	epoll_events = _malloc(max_events * sizeof(struct epoll_event));
 	if (!epoll_events) {
 		fprintf(stderr,"md:cann't allocate memory\n");
 		return -1;
@@ -54,6 +56,20 @@ static void *md_thread(void *arg)
 {
 	int i,n,r;
 	struct _triton_md_handler_t *h;
+	sigset_t set;
+
+	sigfillset(&set);
+	pthread_sigmask(SIG_BLOCK, &set, NULL);
+
+	sigemptyset(&set);
+	sigaddset(&set, SIGQUIT);
+	sigaddset(&set, SIGSEGV);
+	sigaddset(&set, SIGFPE);
+	sigaddset(&set, SIGILL);
+	sigaddset(&set, SIGBUS);
+	sigdelset(&set, 35);
+	sigdelset(&set, 36);
+	pthread_sigmask(SIG_UNBLOCK, &set, NULL);
 
 	while(1) {
 		n = epoll_wait(epoll_fd, epoll_events, max_events, -1);
@@ -100,6 +116,8 @@ void __export triton_md_register_handler(struct triton_context_t *ctx, struct tr
 	spin_lock(&h->ctx->lock);
 	list_add_tail(&h->entry, &h->ctx->handlers);
 	spin_unlock(&h->ctx->lock);
+
+	__sync_fetch_and_add(&triton_stat.md_handler_count, 1);
 }
 void __export triton_md_unregister_handler(struct triton_md_handler_t *ud)
 {
@@ -113,6 +131,8 @@ void __export triton_md_unregister_handler(struct triton_md_handler_t *ud)
 	spin_unlock(&h->ctx->lock);
 	sched_yield();
 	mempool_free(h);
+	
+	__sync_fetch_and_sub(&triton_stat.md_handler_count, 1);
 }
 int __export triton_md_enable_handler(struct triton_md_handler_t *ud, int mode)
 {

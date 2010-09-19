@@ -9,6 +9,8 @@
 #include "ppp_lcp.h"
 #include "pwdb.h"
 
+#include "memdebug.h"
+
 #define MSG_FAILED "Authentication failed"
 #define MSG_SUCCESSED "Authentication successed"
 
@@ -63,7 +65,7 @@ static struct ppp_auth_handler_t pap=
 
 static struct auth_data_t* auth_data_init(struct ppp_t *ppp)
 {
-	struct pap_auth_data_t *d=malloc(sizeof(*d));
+	struct pap_auth_data_t *d=_malloc(sizeof(*d));
 
 	memset(d,0,sizeof(*d));
 	d->auth.proto=PPP_PAP;
@@ -76,7 +78,7 @@ static void auth_data_free(struct ppp_t *ppp,struct auth_data_t *auth)
 {
 	struct pap_auth_data_t *d=container_of(auth,typeof(*d),auth);
 
-	free(d);
+	_free(d);
 }
 
 static int pap_start(struct ppp_t *ppp, struct auth_data_t *auth)
@@ -168,8 +170,8 @@ static int pap_recv_req(struct pap_auth_data_t *p,struct pap_hdr_t *hdr)
 		return -1;
 	}
 
-	peer_id=strndup((const char*)peer_id,peer_id_len);
-	passwd=strndup((const char*)ptr,passwd_len);
+	peer_id=_strndup((const char*)peer_id,peer_id_len);
+	passwd=_strndup((const char*)ptr,passwd_len);
 
 	r = pwdb_check(p->ppp, peer_id, PPP_PAP, passwd);
 	if (r == PWDB_NO_IMPL) {
@@ -184,14 +186,14 @@ static int pap_recv_req(struct pap_auth_data_t *p,struct pap_hdr_t *hdr)
 		pap_send_nak(p, hdr->id);
 		auth_failed(p->ppp);
 		ret=-1;
-		free(peer_id);
+		_free(peer_id);
 	} else {
 		pap_send_ack(p, hdr->id);
 		auth_successed(p->ppp, peer_id);
 		ret = 0;
 	}
 
-	free(passwd);
+	_free(passwd);
 
 	return ret;
 }

@@ -6,6 +6,8 @@
 #include "ppp_lcp.h"
 #include "log.h"
 
+#include "memdebug.h"
+
 static struct lcp_option_t *magic_init(struct ppp_lcp_t *lcp);
 static void magic_free(struct ppp_lcp_t *lcp, struct lcp_option_t *opt);
 static int magic_send_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr);
@@ -29,7 +31,7 @@ static struct lcp_option_handler_t magic_opt_hnd=
 
 static struct lcp_option_t *magic_init(struct ppp_lcp_t *lcp)
 {
-	struct magic_option_t *magic_opt=malloc(sizeof(*magic_opt));
+	struct magic_option_t *magic_opt=_malloc(sizeof(*magic_opt));
 	memset(magic_opt,0,sizeof(*magic_opt));
 	magic_opt->magic=random();
 	magic_opt->opt.id=CI_MAGIC;
@@ -44,7 +46,7 @@ static void magic_free(struct ppp_lcp_t *lcp, struct lcp_option_t *opt)
 {
 	struct magic_option_t *magic_opt=container_of(opt,typeof(*magic_opt),opt);
 
-	free(magic_opt);
+	_free(magic_opt);
 }
 
 static int magic_send_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)

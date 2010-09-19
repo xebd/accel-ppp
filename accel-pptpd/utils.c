@@ -3,6 +3,7 @@
 #include "triton.h"
 #include "utils.h"
 
+#include "memdebug.h"
 
 void __export u_inet_ntoa(in_addr_t addr, char *str)
 {

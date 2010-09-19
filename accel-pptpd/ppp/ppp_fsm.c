@@ -8,6 +8,8 @@
 #include "ppp_lcp.h"
 #include "log.h"
 
+#include "memdebug.h"
+
 static int conf_max_terminate = 2;
 static int conf_max_configure = 5;
 static int conf_max_failure = 5;
@@ -372,7 +374,7 @@ void ppp_fsm_recv_term_req(struct ppp_fsm_t *layer)
 	{
 		case FSM_Opened:
 			if (layer->layer_down) layer->layer_down(layer);
-			send_term_req(layer);
+			//send_term_req(layer);
 			send_term_ack(layer);
 			//if (layer->zero_req_cnt) layer->zero_req_cnt(layer);
 			zero_req_counter(layer);
@@ -381,7 +383,7 @@ void ppp_fsm_recv_term_req(struct ppp_fsm_t *layer)
 		case FSM_Req_Sent:
 		case FSM_Ack_Rcvd:
 		case FSM_Ack_Sent:
-			send_term_req(layer);
+			send_term_ack(layer);
 			layer->fsm_state=FSM_Req_Sent;
 			break;
 		default:

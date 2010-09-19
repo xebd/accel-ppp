@@ -18,6 +18,8 @@
 #include "ppp_lcp.h"
 #include "pwdb.h"
 
+#include "memdebug.h"
+
 #define MSCHAP_V2 0x81 
 
 #define CHAP_CHALLENGE 1
@@ -116,7 +118,7 @@ static void print_str(const char *buf,int size)
 
 static struct auth_data_t* auth_data_init(struct ppp_t *ppp)
 {
-	struct chap_auth_data_t *d=malloc(sizeof(*d));
+	struct chap_auth_data_t *d=_malloc(sizeof(*d));
 
 	memset(d,0,sizeof(*d));
 	d->auth.proto=PPP_CHAP;
@@ -129,7 +131,7 @@ static void auth_data_free(struct ppp_t *ppp,struct auth_data_t *auth)
 {
 	struct chap_auth_data_t *d=container_of(auth,typeof(*d),auth);
 
-	free(d);
+	_free(d);
 }
 
 static int chap_start(struct ppp_t *ppp, struct auth_data_t *auth)
@@ -199,7 +201,7 @@ static int generate_response(struct chap_auth_data_t *ad, struct chap_response_t
 	if (!passwd)
 		return -1;
 
-	u_passwd=malloc(strlen(passwd)*2);
+	u_passwd=_malloc(strlen(passwd)*2);
 	for(i=0; i<strlen(passwd); i++)
 	{
 		u_passwd[i*2]=passwd[i];
@@ -235,8 +237,8 @@ static int generate_response(struct chap_auth_data_t *ad, struct chap_response_t
 	for(i=0; i<20; i++)
 		sprintf(authenticator+i*2,"%02X",response[i]);
 	
-	free(passwd);
-	free(u_passwd);
+	_free(passwd);
+	_free(u_passwd);
 
 	return 0;
 }
@@ -309,7 +311,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		ppp_terminate(ad->ppp, 0);
 	}
 
-	name=strndup(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
+	name=_strndup(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
 	if (!name) {
 		log_emerg("mschap-v2: out of memory\n");
 		auth_failed(ad->ppp);
@@ -327,7 +329,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	if (r == PWDB_DENIED) {
 		chap_send_failure(ad);
 		auth_failed(ad->ppp);
-		free(name);
+		_free(name);
 	} else {
 		chap_send_success(ad, msg, authenticator);
 		auth_successed(ad->ppp, name);
@@ -382,7 +384,7 @@ static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response
 		return -1;
 	}
 
-	u_passwd=malloc(strlen(passwd)*2);
+	u_passwd=_malloc(strlen(passwd)*2);
 	for(i=0; i<strlen(passwd); i++)
 	{
 		u_passwd[i*2]=passwd[i];
@@ -404,8 +406,8 @@ static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response
 	des_encrypt(c_hash,z_hash+7,nt_hash+8);
 	des_encrypt(c_hash,z_hash+14,nt_hash+16);
 
-	free(passwd);
-	free(u_passwd);
+	_free(passwd);
+	_free(u_passwd);
 
 	return memcmp(nt_hash,msg->nt_hash,24);
 }

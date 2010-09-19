@@ -11,6 +11,8 @@
 #include "ppp.h"
 #include "ppp_ccp.h"
 
+#include "memdebug.h"
+
 struct recv_opt_t
 {
 	struct list_head entry;
@@ -34,6 +36,8 @@ static void ccp_options_init(struct ppp_ccp_t *ccp)
 {
 	struct ccp_option_t *lopt;
 	struct ccp_option_handler_t *h;
+
+	ccp->conf_req_len = sizeof(struct ccp_hdr_t);
 
 	list_for_each_entry(h,&option_handlers,entry)
 	{
@@ -61,7 +65,7 @@ static void ccp_options_free(struct ppp_ccp_t *ccp)
 
 static struct ppp_layer_data_t *ccp_layer_init(struct ppp_t *ppp)
 {
-	struct ppp_ccp_t *ccp=malloc(sizeof(*ccp));
+	struct ppp_ccp_t *ccp=_malloc(sizeof(*ccp));
 	memset(ccp,0,sizeof(*ccp));
 	
 	log_ppp_debug("ccp_layer_init\n");
@@ -123,7 +127,7 @@ void ccp_layer_free(struct ppp_layer_data_t *ld)
 	ccp_options_free(ccp);
 	ppp_fsm_free(&ccp->fsm);
 
-	free(ccp);
+	_free(ccp);
 }
 
 static void ccp_layer_up(struct ppp_fsm_t *fsm)
@@ -156,7 +160,7 @@ static void print_ropt(struct recv_opt_t *ropt)
 static int send_conf_req(struct ppp_fsm_t *fsm)
 {
 	struct ppp_ccp_t *ccp=container_of(fsm,typeof(*ccp),fsm);
-	uint8_t *buf=malloc(ccp->conf_req_len), *ptr=buf;
+	uint8_t *buf=_malloc(ccp->conf_req_len), *ptr=buf;
 	struct ccp_hdr_t *ccp_hdr=(struct ccp_hdr_t*)ptr;
 	struct ccp_option_t *lopt;
 	int n;
@@ -188,6 +192,8 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 	ccp_hdr->len=htons((ptr-buf)-2);
 	ppp_unit_send(ccp->ppp,ccp_hdr,ptr-buf);
 
+	_free(buf);
+
 	return 0;
 }
 
@@ -205,7 +211,7 @@ static void send_conf_ack(struct ppp_fsm_t *fsm)
 static void send_conf_nak(struct ppp_fsm_t *fsm)
 {
 	struct ppp_ccp_t *ccp=container_of(fsm,typeof(*ccp),fsm);
-	uint8_t *buf=malloc(ccp->conf_req_len), *ptr=buf;
+	uint8_t *buf=_malloc(ccp->conf_req_len), *ptr=buf;
 	struct ccp_hdr_t *ccp_hdr=(struct ccp_hdr_t*)ptr;
 	struct recv_opt_t *ropt;
 
@@ -232,12 +238,14 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 
 	ccp_hdr->len=htons((ptr-buf)-2);
 	ppp_unit_send(ccp->ppp,ccp_hdr,ptr-buf);
+
+	_free(buf);
 }
 
 static void send_conf_rej(struct ppp_fsm_t *fsm)
 {
 	struct ppp_ccp_t *ccp=container_of(fsm,typeof(*ccp),fsm);
-	uint8_t *buf=malloc(ccp->ropt_len), *ptr=buf;
+	uint8_t *buf=_malloc(ccp->ropt_len + sizeof(struct ccp_hdr_t)), *ptr=buf;
 	struct ccp_hdr_t *ccp_hdr=(struct ccp_hdr_t*)ptr;
 	struct recv_opt_t *ropt;
 
@@ -266,6 +274,8 @@ static void send_conf_rej(struct ppp_fsm_t *fsm)
 
 	ccp_hdr->len=htons((ptr-buf)-2);
 	ppp_unit_send(ccp->ppp,ccp_hdr,ptr-buf);
+
+	_free(buf);
 }
 
 static int ccp_recv_conf_req(struct ppp_ccp_t *ccp,uint8_t *data,int size)
@@ -281,7 +291,7 @@ static int ccp_recv_conf_req(struct ppp_ccp_t *ccp,uint8_t *data,int size)
 	{
 		hdr=(struct ccp_opt_hdr_t *)data;
 
-		ropt=malloc(sizeof(*ropt));
+		ropt=_malloc(sizeof(*ropt));
 		memset(ropt,0,sizeof(*ropt));
 		if (hdr->len>size) ropt->len=size;
 		else ropt->len=hdr->len;
@@ -353,7 +363,7 @@ static void ccp_free_conf_req(struct ppp_ccp_t *ccp)
 	{
 		ropt=list_entry(ccp->ropt_list.next,typeof(*ropt),entry);
 		list_del(&ropt->entry);
-		free(ropt);
+		_free(ropt);
 	}
 }
 
@@ -534,16 +544,16 @@ static void ccp_recv(struct ppp_handler_t*h)
 				ppp_fsm_recv_conf_rej(&ccp->fsm);
 			break;
 		case TERMREQ:
-			term_msg=strndup((char*)(hdr+1),ntohs(hdr->len));
+			term_msg=_strndup((char*)(hdr+1),ntohs(hdr->len));
 			log_ppp_debug("recv [CCP TermReq id=%x \"%s\"]\n",hdr->id,term_msg);
-			free(term_msg);
+			_free(term_msg);
 			ppp_fsm_recv_term_req(&ccp->fsm);
 			ppp_terminate(ccp->ppp, 0);
 			break;
 		case TERMACK:
-			term_msg=strndup((char*)(hdr+1),ntohs(hdr->len));
+			term_msg=_strndup((char*)(hdr+1),ntohs(hdr->len));
 			log_ppp_debug("recv [CCP TermAck id=%x \"%s\"]\n",hdr->id,term_msg);
-			free(term_msg);
+			_free(term_msg);
 			ppp_fsm_recv_term_ack(&ccp->fsm);
 			break;
 		case CODEREJ:

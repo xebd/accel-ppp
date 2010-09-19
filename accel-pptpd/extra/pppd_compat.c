@@ -16,6 +16,8 @@
 #include "utils.h"
 #include "sigchld.h"
 
+#include "memdebug.h"
+
 static char *conf_ip_up = "/etc/ppp/ip-up";
 static char *conf_ip_down = "/etc/ppp/ip-down";
 static char *conf_ip_change = "/etc/ppp/ip-change";
@@ -75,7 +77,7 @@ static void ip_change_handler(struct sigchld_handler_t *h, int status)
 
 static void ev_ppp_starting(struct ppp_t *ppp)
 {
-	struct pppd_compat_pd_t *pd = malloc(sizeof(*pd));
+	struct pppd_compat_pd_t *pd = _malloc(sizeof(*pd));
 
 	if (!pd) {
 		log_emerg("pppd_compat: out of memory\n");
@@ -134,14 +136,15 @@ static void ev_ppp_finished(struct ppp_t *ppp)
 	if (!pd)
 		return;
 	
-	if (pd->started) {
-		pthread_mutex_lock(&pd->ip_up_hnd.lock);
-		if (pd->ip_up_hnd.pid) {
-			log_ppp_warn("pppd_compat: ip-up is not yet finished, terminating it ...\n");
-			kill(pd->ip_up_hnd.pid, SIGTERM);
-			pthread_mutex_unlock(&pd->ip_up_hnd.lock);
-		}
+	if (!pd->started)
+		goto skip;
+
+	pthread_mutex_lock(&pd->ip_up_hnd.lock);
+	if (pd->ip_up_hnd.pid) {
+		log_ppp_warn("pppd_compat: ip-up is not yet finished, terminating it ...\n");
+		kill(pd->ip_up_hnd.pid, SIGTERM);
 	}
+	pthread_mutex_unlock(&pd->ip_up_hnd.lock);
 
 	argv[4] = ipaddr;
 	argv[5] = peer_ipaddr;
@@ -163,22 +166,21 @@ static void ev_ppp_finished(struct ppp_t *ppp)
 	} else
 		log_error("pppd_compat: fork: %s\n", strerror(errno));
 
-	if (pd->started) {
-		pthread_mutex_lock(&pd->ip_up_hnd.lock);
-		if (pd->ip_up_hnd.pid) {
-			log_ppp_warn("pppd_compat: ip-up is not yet finished, killing it ...\n");
-			kill(pd->ip_up_hnd.pid, SIGKILL);
-			pthread_mutex_unlock(&pd->ip_up_hnd.lock);
-			sigchld_unregister_handler(&pd->ip_up_hnd);
-		} else
-			pthread_mutex_unlock(&pd->ip_up_hnd.lock);
-	}
+	pthread_mutex_lock(&pd->ip_up_hnd.lock);
+	if (pd->ip_up_hnd.pid) {
+		log_ppp_warn("pppd_compat: ip-up is not yet finished, killing it ...\n");
+		kill(pd->ip_up_hnd.pid, SIGKILL);
+		pthread_mutex_unlock(&pd->ip_up_hnd.lock);
+		sigchld_unregister_handler(&pd->ip_up_hnd);
+	} else
+		pthread_mutex_unlock(&pd->ip_up_hnd.lock);
 
+skip:
 	if (pd->radattr_saved)
 		remove_radattr(ppp);
 	
 	list_del(&pd->pd.entry);
-	free(pd);
+	_free(pd);
 }
 
 static void ev_radius_access_accept(struct ev_radius_t *ev)
@@ -230,7 +232,7 @@ static void remove_radattr(struct ppp_t *ppp)
 {
 	char *fname;
 
-	fname = malloc(PATH_MAX);
+	fname = _malloc(PATH_MAX);
 	if (!fname) {
 		log_emerg("pppd_compat: out of memory\n");
 		return;
@@ -243,7 +245,7 @@ static void remove_radattr(struct ppp_t *ppp)
 	sprintf(fname, "%s_old.%s", conf_radattr_prefix, ppp->ifname);
 	unlink(fname);
 
-	free(fname);
+	_free(fname);
 }
 
 static void write_radattr(struct ppp_t *ppp, struct rad_packet_t *pack, int save_old)
@@ -254,17 +256,17 @@ static void write_radattr(struct ppp_t *ppp, struct rad_packet_t *pack, int save
 	char *fname1, *fname2;
 	int i;
 
-	fname1 = malloc(PATH_MAX);
+	fname1 = _malloc(PATH_MAX);
 	if (!fname1) {
 		log_emerg("pppd_compat: out of memory\n");
 		return;
 	}
 
 	if (save_old) {
-		fname2 = malloc(PATH_MAX);
+		fname2 = _malloc(PATH_MAX);
 		if (!fname2) {
 			log_emerg("pppd_compat: out of memory\n");
-			free(fname1);
+			_free(fname1);
 			return;
 		}
 	}
@@ -309,9 +311,9 @@ static void write_radattr(struct ppp_t *ppp, struct rad_packet_t *pack, int save
 	} else
 		log_ppp_warn("pppd_compat: failed to create '%s': %s\n", fname1, strerror(errno));
 	
-	free(fname1);
+	_free(fname1);
 	if (save_old)
-		free(fname2);
+		_free(fname2);
 }
 
 static struct pppd_compat_pd_t *find_pd(struct ppp_t *ppp)

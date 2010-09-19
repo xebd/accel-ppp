@@ -8,6 +8,8 @@
 
 #include "triton/triton.h"
 
+#include "memdebug.h"
+
 static int goto_daemon;
 static char *pid_file;
 static char *conf_file;
@@ -29,7 +31,7 @@ static int parse_cmdline(char ***argv)
 		_exit(EXIT_FAILURE);
 	}
 
-	*argv = malloc(ARG_MAX * sizeof(void *));
+	*argv = _malloc(ARG_MAX * sizeof(void *));
 	memset(*argv, 0, ARG_MAX * sizeof(void *));
 
 	for(i = 0; i < ARG_MAX; i++) {
@@ -69,7 +71,7 @@ static void __init __main(void)
 	if (!conf_file)
 		goto usage;
 
-	if (triton_init(conf_file, "modules"))
+	if (triton_init(conf_file))
 		_exit(EXIT_FAILURE);
 
 	return;
@@ -85,6 +87,9 @@ usage:
 int main(int argc, char **argv)
 {
 	sigset_t set;
+
+	if (triton_load_modules("modules"))
+		return EXIT_FAILURE;
 
 	if (goto_daemon) {
 		pid_t pid = fork();
@@ -121,6 +126,7 @@ int main(int argc, char **argv)
 	triton_run();
 	
 	sigfillset(&set);
+	sigdelset(&set, SIGINT);
 	sigdelset(&set, SIGTERM);
 	sigdelset(&set, SIGSEGV);
 	sigdelset(&set, SIGILL);

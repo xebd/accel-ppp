@@ -6,6 +6,8 @@
 #include "ppp_lcp.h"
 #include "log.h"
 
+#include "memdebug.h"
+
 static struct lcp_option_t *accomp_init(struct ppp_lcp_t *lcp);
 static void accomp_free(struct ppp_lcp_t *lcp, struct lcp_option_t *opt);
 static int accomp_send_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr);
@@ -31,7 +33,7 @@ static struct lcp_option_handler_t accomp_opt_hnd=
 
 static struct lcp_option_t *accomp_init(struct ppp_lcp_t *lcp)
 {
-	struct accomp_option_t *accomp_opt=malloc(sizeof(*accomp_opt));
+	struct accomp_option_t *accomp_opt=_malloc(sizeof(*accomp_opt));
 	memset(accomp_opt,0,sizeof(*accomp_opt));
 	accomp_opt->accomp=0;
 	accomp_opt->opt.id=CI_ACCOMP;
@@ -44,7 +46,7 @@ static void accomp_free(struct ppp_lcp_t *lcp, struct lcp_option_t *opt)
 {
 	struct accomp_option_t *accomp_opt=container_of(opt,typeof(*accomp_opt),opt);
 
-	free(accomp_opt);
+	_free(accomp_opt);
 }
 
 static int accomp_send_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)

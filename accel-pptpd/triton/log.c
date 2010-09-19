@@ -3,6 +3,8 @@
 
 #include "triton_p.h"
 
+#include "memdebug.h"
+
 static FILE *f_error;
 static FILE *f_debug;
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;

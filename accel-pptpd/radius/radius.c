@@ -13,6 +13,8 @@
 
 #include "radius_p.h"
 
+#include "memdebug.h"
+
 #define CHAP_MD5 5
 #define MSCHAP_V1 0x80
 #define MSCHAP_V2 0x81
@@ -102,7 +104,7 @@ static struct ipdb_item_t *get_ip(struct ppp_t *ppp)
 
 static void ppp_starting(struct ppp_t *ppp)
 {
-	struct radius_pd_t *pd = malloc(sizeof(*pd));
+	struct radius_pd_t *pd = _malloc(sizeof(*pd));
 
 	memset(pd, 0, sizeof(*pd));
 	pd->pd.key = &pd_key;
@@ -138,11 +140,14 @@ static void ppp_finished(struct ppp_t *ppp)
 	pthread_mutex_unlock(&rpd->lock);
 	pthread_rwlock_unlock(&sessions_lock);
 
+	if (rpd->acct_req)
+		rad_req_free(rpd->acct_req);
+
 	if (rpd->dm_coa_req)
 		rad_packet_free(rpd->dm_coa_req);
 
 	list_del(&rpd->pd.entry);
-	free(rpd);
+	_free(rpd);
 }
 
 struct radius_pd_t *find_pd(struct ppp_t *ppp)
@@ -242,7 +247,7 @@ static struct pwdb_t pwdb = {
 
 static int parse_server(const char *opt, char **name, int *port, char **secret)
 {
-	char *str = strdup(opt);
+	char *str = _strdup(opt);
 	char *p1, *p2;
 
 	p1 = strstr(str, ":");

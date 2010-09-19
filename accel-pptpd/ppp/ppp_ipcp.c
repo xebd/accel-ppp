@@ -11,6 +11,8 @@
 #include "ppp.h"
 #include "ppp_ipcp.h"
 
+#include "memdebug.h"
+
 struct recv_opt_t
 {
 	struct list_head entry;
@@ -35,6 +37,8 @@ static void ipcp_options_init(struct ppp_ipcp_t *ipcp)
 	struct ipcp_option_t *lopt;
 	struct ipcp_option_handler_t *h;
 
+	ipcp->conf_req_len = sizeof(struct ipcp_hdr_t);
+	
 	list_for_each_entry(h,&option_handlers,entry)
 	{
 		lopt=h->init(ipcp);
@@ -61,7 +65,7 @@ static void ipcp_options_free(struct ppp_ipcp_t *ipcp)
 
 static struct ppp_layer_data_t *ipcp_layer_init(struct ppp_t *ppp)
 {
-	struct ppp_ipcp_t *ipcp=malloc(sizeof(*ipcp));
+	struct ppp_ipcp_t *ipcp=_malloc(sizeof(*ipcp));
 	memset(ipcp,0,sizeof(*ipcp));
 	
 	log_ppp_debug("ipcp_layer_init\n");
@@ -123,7 +127,7 @@ void ipcp_layer_free(struct ppp_layer_data_t *ld)
 	ipcp_options_free(ipcp);
 	ppp_fsm_free(&ipcp->fsm);
 
-	free(ipcp);
+	_free(ipcp);
 }
 
 static void ipcp_layer_up(struct ppp_fsm_t *fsm)
@@ -156,7 +160,7 @@ static void print_ropt(struct recv_opt_t *ropt)
 static int send_conf_req(struct ppp_fsm_t *fsm)
 {
 	struct ppp_ipcp_t *ipcp=container_of(fsm,typeof(*ipcp),fsm);
-	uint8_t *buf=malloc(ipcp->conf_req_len), *ptr=buf;
+	uint8_t *buf=_malloc(ipcp->conf_req_len), *ptr=buf;
 	struct ipcp_hdr_t *ipcp_hdr=(struct ipcp_hdr_t*)ptr;
 	struct ipcp_option_t *lopt;
 	int n;
@@ -194,6 +198,8 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 	ipcp_hdr->len=htons((ptr-buf)-2);
 	ppp_unit_send(ipcp->ppp,ipcp_hdr,ptr-buf);
 
+	_free(buf);
+
 	return 0;
 }
 
@@ -211,7 +217,7 @@ static void send_conf_ack(struct ppp_fsm_t *fsm)
 static void send_conf_nak(struct ppp_fsm_t *fsm)
 {
 	struct ppp_ipcp_t *ipcp=container_of(fsm,typeof(*ipcp),fsm);
-	uint8_t *buf=malloc(ipcp->conf_req_len), *ptr=buf;
+	uint8_t *buf=_malloc(ipcp->conf_req_len), *ptr=buf;
 	struct ipcp_hdr_t *ipcp_hdr=(struct ipcp_hdr_t*)ptr;
 	struct recv_opt_t *ropt;
 
@@ -238,12 +244,14 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 
 	ipcp_hdr->len=htons((ptr-buf)-2);
 	ppp_unit_send(ipcp->ppp,ipcp_hdr,ptr-buf);
+
+	_free(buf);
 }
 
 static void send_conf_rej(struct ppp_fsm_t *fsm)
 {
 	struct ppp_ipcp_t *ipcp=container_of(fsm,typeof(*ipcp),fsm);
-	uint8_t *buf=malloc(ipcp->ropt_len), *ptr=buf;
+	uint8_t *buf=_malloc(ipcp->ropt_len + sizeof(struct ipcp_hdr_t)), *ptr=buf;
 	struct ipcp_hdr_t *ipcp_hdr=(struct ipcp_hdr_t*)ptr;
 	struct recv_opt_t *ropt;
 
@@ -272,6 +280,8 @@ static void send_conf_rej(struct ppp_fsm_t *fsm)
 
 	ipcp_hdr->len=htons((ptr-buf)-2);
 	ppp_unit_send(ipcp->ppp,ipcp_hdr,ptr-buf);
+
+	_free(buf);
 }
 
 static int ipcp_recv_conf_req(struct ppp_ipcp_t *ipcp,uint8_t *data,int size)
@@ -287,7 +297,7 @@ static int ipcp_recv_conf_req(struct ppp_ipcp_t *ipcp,uint8_t *data,int size)
 	{
 		hdr=(struct ipcp_opt_hdr_t *)data;
 
-		ropt=malloc(sizeof(*ropt));
+		ropt=_malloc(sizeof(*ropt));
 		memset(ropt,0,sizeof(*ropt));
 		if (hdr->len>size) ropt->len=size;
 		else ropt->len=hdr->len;
@@ -350,7 +360,7 @@ static void ipcp_free_conf_req(struct ppp_ipcp_t *ipcp)
 	{
 		ropt=list_entry(ipcp->ropt_list.next,typeof(*ropt),entry);
 		list_del(&ropt->entry);
-		free(ropt);
+		_free(ropt);
 	}
 }
 
@@ -531,16 +541,16 @@ static void ipcp_recv(struct ppp_handler_t*h)
 				ppp_fsm_recv_conf_rej(&ipcp->fsm);
 			break;
 		case TERMREQ:
-			term_msg=strndup((char*)(hdr+1),ntohs(hdr->len));
+			term_msg=_strndup((char*)(hdr+1),ntohs(hdr->len));
 			log_ppp_debug("recv [IPCP TermReq id=%x \"%s\"]\n",hdr->id,term_msg);
-			free(term_msg);
+			_free(term_msg);
 			ppp_fsm_recv_term_req(&ipcp->fsm);
 			ppp_terminate(ipcp->ppp, 0);
 			break;
 		case TERMACK:
-			term_msg=strndup((char*)(hdr+1),ntohs(hdr->len));
+			term_msg=_strndup((char*)(hdr+1),ntohs(hdr->len));
 			log_ppp_debug("recv [IPCP TermAck id=%x \"%s\"]\n",hdr->id,term_msg);
-			free(term_msg);
+			_free(term_msg);
 			ppp_fsm_recv_term_ack(&ipcp->fsm);
 			break;
 		case CODEREJ:

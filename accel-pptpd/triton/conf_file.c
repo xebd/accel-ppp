@@ -5,6 +5,8 @@
 
 #include "triton_p.h"
 
+#include "memdebug.h"
+
 struct sect_t
 {
 	struct list_head entry;
@@ -35,15 +37,14 @@ int conf_load(const char *fname)
 		return -1;
 	}
 	
-	buf = malloc(1024);
-	path0 = malloc(4096);
-	path = malloc(4096);
+	buf = _malloc(1024);
+	path0 = _malloc(4096);
+	path = _malloc(4096);
 	
 	getcwd(path0, 1024);
 	
 	while(!feof(f)) {
-		buf = fgets(buf, 1024, f);
-		if (!buf)
+		if (!fgets(buf, 1024, f))
 			break;
 		++cur_line;
 		if (buf[strlen(buf) - 1] == '\n')
@@ -103,9 +104,9 @@ int conf_load(const char *fname)
 		sect_add_item(cur_sect, str, str2);
 	}
 	
-	free(buf);
-	free(path);
-	free(path0);
+	_free(buf);
+	_free(path);
+	_free(path0);
 	fclose(f);
 
 	return 0;
@@ -132,9 +133,9 @@ static struct conf_sect_t *find_sect(const char *name)
 
 static struct conf_sect_t *create_sect(const char *name)
 {
-	struct sect_t *s = malloc(sizeof(struct sect_t));
+	struct sect_t *s = _malloc(sizeof(struct sect_t));
 	
-	s->sect = malloc(sizeof(struct conf_sect_t));
+	s->sect = _malloc(sizeof(struct conf_sect_t));
 	s->sect->name = (char*)strdup(name);
 	INIT_LIST_HEAD(&s->sect->items);
 	
@@ -145,10 +146,10 @@ static struct conf_sect_t *create_sect(const char *name)
 
 static void sect_add_item(struct conf_sect_t *sect, const char *name, const char *val)
 {
-	struct conf_option_t *opt = malloc(sizeof(struct conf_option_t));
+	struct conf_option_t *opt = _malloc(sizeof(struct conf_option_t));
 	
-	opt->name = strdup(name);
-	opt->val = val ? strdup(val) : NULL;
+	opt->name = _strdup(name);
+	opt->val = val ? _strdup(val) : NULL;
 	
 	list_add_tail(&opt->entry, &sect->items);
 }

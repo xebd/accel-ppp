@@ -9,6 +9,7 @@
 
 #include "radius_p.h"
 
+#include "memdebug.h"
 
 static uint8_t* encrypt_password(const char *passwd, const char *secret, const uint8_t *RA, int *epasswd_len)
 {
@@ -19,7 +20,7 @@ static uint8_t* encrypt_password(const char *passwd, const char *secret, const u
 	
 	chunk_cnt = (strlen(passwd) - 1) / 16 + 1;
 	
-	epasswd = malloc(chunk_cnt * 16);
+	epasswd = _malloc(chunk_cnt * 16);
 	if (!epasswd) {
 		log_emerg("radius: out of memory\n");
 		return NULL;
@@ -93,11 +94,11 @@ int rad_auth_pap(struct radius_pd_t *rpd, const char *username, va_list args)
 		goto out;
 
 	if (rad_packet_add_octets(req->pack, "User-Password", epasswd, epasswd_len)) {
-		free(epasswd);
+		_free(epasswd);
 		goto out;
 	}
 
-	free(epasswd);
+	_free(epasswd);
 
 	r = rad_auth_send(req);
 	if (r == PWDB_SUCCESS) {

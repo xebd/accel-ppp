@@ -9,6 +9,8 @@
 
 #include "triton_p.h"
 
+#include "memdebug.h"
+
 extern int max_events;
 static int epoll_fd;
 static struct epoll_event *epoll_events;
@@ -26,7 +28,7 @@ int timer_init(void)
 		return -1;
 	}
 
-	epoll_events = malloc(max_events * sizeof(struct epoll_event));
+	epoll_events = _malloc(max_events * sizeof(struct epoll_event));
 	if (!epoll_events) {
 		fprintf(stderr,"timer:cann't allocate memory\n");
 		return -1;
@@ -55,7 +57,19 @@ void *timer_thread(void *arg)
 {
 	int i,n,r;
 	struct _triton_timer_t *t;
-	
+	sigset_t set;
+
+	sigfillset(&set);
+	pthread_sigmask(SIG_BLOCK, &set, NULL);
+
+	sigemptyset(&set);
+	sigaddset(&set, SIGQUIT);
+	sigaddset(&set, SIGSEGV);
+	sigaddset(&set, SIGFPE);
+	sigaddset(&set, SIGILL);
+	sigaddset(&set, SIGBUS);
+	pthread_sigmask(SIG_UNBLOCK, &set, NULL);
+
 	while(1) {
 		n = epoll_wait(epoll_fd, epoll_events, max_events, -1);
 		if (n < 0) {
@@ -129,6 +143,8 @@ int __export triton_timer_add(struct triton_context_t *ctx, struct triton_timer_
 		return -1;
 	}
 
+	__sync_fetch_and_add(&triton_stat.timer_count, 1);
+	
 	return 0;
 }
 int __export triton_timer_mod(struct triton_timer_t *ud,int abs_time)
@@ -165,5 +181,7 @@ void __export triton_timer_del(struct triton_timer_t *ud)
 	sched_yield();
 	mempool_free(t);
 	ud->tpd = NULL;
+	
+	__sync_fetch_and_sub(&triton_stat.timer_count, 1);
 }
 

@@ -20,6 +20,8 @@
 #include "ppp.h"
 #include "iprange.h"
 
+#include "memdebug.h"
+
 #define STATE_IDLE 0
 #define STATE_ESTB 1
 #define STATE_PPP  2
@@ -73,10 +75,13 @@ static void disconnect(struct pptp_conn_t *conn)
 	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp);
 	
 	triton_context_unregister(&conn->ctx);
+
+	if (conn->ppp.chan_name)
+		_free(conn->ppp.chan_name);
 	
-	free(conn->in_buf);
-	free(conn->out_buf);
-	free(conn);
+	_free(conn->in_buf);
+	_free(conn->out_buf);
+	_free(conn);
 }
 
 static int post_msg(struct pptp_conn_t *conn, void *buf, int size)
@@ -265,7 +270,7 @@ static int pptp_out_call_rqst(struct pptp_conn_t *conn)
 		return -1;
 
 	conn->ppp.fd = pptp_sock;
-	conn->ppp.chan_name = strdup(inet_ntoa(dst_addr.sa_addr.pptp.sin_addr));
+	conn->ppp.chan_name = _strdup(inet_ntoa(dst_addr.sa_addr.pptp.sin_addr));
 
 	triton_event_fire(EV_CTRL_STARTED, &conn->ppp);
 
@@ -486,15 +491,15 @@ static int pptp_connect(struct triton_md_handler_t *h)
 			continue;
 		}
 
-		conn = malloc(sizeof(*conn));
+		conn = _malloc(sizeof(*conn));
 		memset(conn, 0, sizeof(*conn));
 		conn->hnd.fd = sock;
 		conn->hnd.read = pptp_read;
 		conn->hnd.write = pptp_write;
 		conn->ctx.close = pptp_close;
 		conn->ctx.before_switch = log_switch;
-		conn->in_buf = malloc(PPTP_CTRL_SIZE_MAX);
-		conn->out_buf = malloc(PPTP_CTRL_SIZE_MAX);
+		conn->in_buf = _malloc(PPTP_CTRL_SIZE_MAX);
+		conn->out_buf = _malloc(PPTP_CTRL_SIZE_MAX);
 		conn->timeout_timer.expire = pptp_timeout;
 		conn->timeout_timer.period = conf_timeout * 1000;
 		conn->echo_timer.expire = pptp_send_echo;

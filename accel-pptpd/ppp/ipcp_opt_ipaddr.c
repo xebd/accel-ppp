@@ -13,6 +13,8 @@
 #include "ipdb.h"
 #include "iprange.h"
 
+#include "memdebug.h"
+
 static struct ipcp_option_t *ipaddr_init(struct ppp_ipcp_t *ipcp);
 static void ipaddr_free(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt);
 static int ipaddr_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt, uint8_t *ptr);
@@ -39,7 +41,7 @@ static struct ipcp_option_handler_t ipaddr_opt_hnd=
 
 static struct ipcp_option_t *ipaddr_init(struct ppp_ipcp_t *ipcp)
 {
-	struct ipaddr_option_t *ipaddr_opt=malloc(sizeof(*ipaddr_opt));
+	struct ipaddr_option_t *ipaddr_opt=_malloc(sizeof(*ipaddr_opt));
 	memset(ipaddr_opt,0,sizeof(*ipaddr_opt));
 	ipaddr_opt->opt.id=CI_ADDR;
 	ipaddr_opt->opt.len=6;
@@ -54,7 +56,7 @@ static void ipaddr_free(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt)
 	if (ipaddr_opt->ip)
 		ipdb_put(ipcp->ppp, ipaddr_opt->ip);
 
-	free(ipaddr_opt);
+	_free(ipaddr_opt);
 }
 
 static int ipaddr_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt, uint8_t *ptr)
@@ -65,7 +67,7 @@ static int ipaddr_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 	if (!ipaddr_opt->ip) {
 		ipaddr_opt->ip = ipdb_get(ipcp->ppp);
 		if (!ipaddr_opt->ip) {
-			log_ppp_warn("ppp:ipcp: no free IP address\n");
+			log_ppp_warn("ppp:ipcp: no _free IP address\n");
 			return -1;
 		}
 	}

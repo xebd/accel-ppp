@@ -11,32 +11,57 @@
 
 #include "sigchld.h"
 
+#include "memdebug.h"
+
 static LIST_HEAD(handlers);
-static int refs;
-static int sleeping = 1;
+static int lock_refs;
 static pthread_mutex_t handlers_lock = PTHREAD_MUTEX_INITIALIZER;
-static pthread_mutex_t refs_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t refs_cond = PTHREAD_COND_INITIALIZER;
+static pthread_t sigchld_thr;
 
-static struct triton_context_t sigchld_ctx;
-
-static void sigchld_handler(void *arg)
+static void* sigchld_thread(void *arg)
 {
+	sigset_t set;
 	struct sigchld_handler_t *h, *h0;
 	pid_t pid;
-	int status;
+	int status, sig;
+
+	sigfillset(&set);
+	pthread_sigmask(SIG_BLOCK, &set, NULL);
+
+	sigemptyset(&set);
+	sigaddset(&set, SIGUSR1);
+	sigaddset(&set, SIGQUIT);
+	sigaddset(&set, SIGSEGV);
+	sigaddset(&set, SIGFPE);
+	sigaddset(&set, SIGILL);
+	sigaddset(&set, SIGBUS);
+	sigaddset(&set, SIGCHLD);
+	pthread_sigmask(SIG_UNBLOCK, &set, NULL);
+
+	sigemptyset(&set);
+	sigaddset(&set, SIGCHLD);
+	sigaddset(&set, SIGQUIT);
 
 	while (1) {	
-		pid = waitpid(0, &status, WNOHANG);
-		pthread_mutex_lock(&handlers_lock);
-		if (pid == 0 || (pid == -1 && errno == ECHILD)) {
-			sleeping = 1;
-			pthread_mutex_unlock(&handlers_lock);
-			return;
-		} else if (pid < 0) {
-			pthread_mutex_unlock(&handlers_lock);
+		pid = waitpid(0, &status, 0);
+		if (pid < 0) {
+			if (errno == EINTR)
+				continue;
+			if (errno == ECHILD) {
+				sigwait(&set, &sig);
+				if (sig == SIGQUIT)
+					break;
+				continue;
+			}
 			log_error("sigchld: waitpid: %s\n", strerror(errno));
-			return;
+			continue;
 		}
+
+		pthread_mutex_lock(&handlers_lock);
+		while (lock_refs)
+			pthread_cond_wait(&refs_cond, &handlers_lock);
+
 		h0 = NULL;
 		list_for_each_entry(h, &handlers, entry) {
 			if (h->pid == pid) {
@@ -53,6 +78,8 @@ static void sigchld_handler(void *arg)
 			pthread_mutex_unlock(&h0->lock);
 		}
 	}
+
+	return NULL;
 }
 
 void __export sigchld_register_handler(struct sigchld_handler_t *h)
@@ -78,57 +105,21 @@ void __export sigchld_unregister_handler(struct sigchld_handler_t *h)
 
 void __export sigchld_lock()
 {
-	sigset_t set;
-
-	pthread_mutex_lock(&refs_lock);
-	if (refs == 0) {
-		sigemptyset(&set);
-		sigaddset(&set, SIGCHLD);
-		sigprocmask(SIG_BLOCK, &set, NULL);
-	}
-	++refs;
-	pthread_mutex_unlock(&refs_lock);
+	pthread_mutex_lock(&handlers_lock);
+	++lock_refs;
+	pthread_mutex_unlock(&handlers_lock);
 }
 
 void __export sigchld_unlock()
 {
-	sigset_t set;
-
-	pthread_mutex_lock(&refs_lock);
-	if (refs == 1) {
-		sigemptyset(&set);
-		sigaddset(&set, SIGCHLD);
-		sigprocmask(SIG_UNBLOCK, &set, NULL);
-	}
-	--refs;
-	pthread_mutex_unlock(&refs_lock);
-
-}
-
-static void sigchld(int num)
-{
-	int s;
-	
 	pthread_mutex_lock(&handlers_lock);
-	s = sleeping;
-	sleeping = 0;
+	if (--lock_refs == 0)
+		pthread_cond_signal(&refs_cond);
 	pthread_mutex_unlock(&handlers_lock);
-
-	if (s)
-		triton_context_call(&sigchld_ctx, sigchld_handler, NULL);
 }
 
 static void __init init(void)
 {
-	struct sigaction sa_sigchld = {
-		.sa_handler = sigchld,
-		.sa_flags = SA_NOCLDSTOP,
-	};
-
-	if (sigaction(SIGCHLD, &sa_sigchld, NULL)) {
-		fprintf(stderr, "sigchld: sigaction: %s\n", strerror(errno));
-		return;
-	}
-
-	triton_context_register(&sigchld_ctx, NULL);
+	if (pthread_create(&sigchld_thr, NULL, sigchld_thread, NULL))
+		fprintf(stderr, "sigchld: pthread_create: %s\n", strerror(errno));
 }

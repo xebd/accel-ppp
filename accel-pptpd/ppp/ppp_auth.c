@@ -9,6 +9,7 @@
 
 #include "ppp_auth.h"
 
+#include "memdebug.h"
 
 static LIST_HEAD(auth_handlers);
 static int extra_opt_len=0;
@@ -247,7 +248,7 @@ print_d:
 
 static struct ppp_layer_data_t *auth_layer_init(struct ppp_t *ppp)
 {
-	struct auth_layer_data_t *ad=(struct auth_layer_data_t*)malloc(sizeof(*ad));
+	struct auth_layer_data_t *ad = _malloc(sizeof(*ad));
 
 	log_ppp_debug("auth_layer_init\n");
 	
@@ -294,7 +295,7 @@ static void auth_layer_free(struct ppp_layer_data_t *ld)
 
 	log_ppp_debug("auth_layer_free\n");
 	
-	free(ad);
+	_free(ad);
 }
 
 void __export auth_successed(struct ppp_t *ppp, char *username)

@@ -7,6 +7,8 @@
 
 #include "triton_p.h"
 
+#include "memdebug.h"
+
 int load_modules(const char *name)
 {
 	struct conf_sect_t *sect;
@@ -40,7 +42,7 @@ int load_modules(const char *name)
 
 out_err:
 	chdir(cwd);
-	free(cwd);
+	_free(cwd);
 	return -1;
 }
 

@@ -1,5 +1,7 @@
 #include "ppp.h"
 
+#include "memdebug.h"
+
 int ppp_store_pd(struct ppp_t *ppp, pd_key_t key, void *data)
 {
 	struct ppp_pd_t *pd;

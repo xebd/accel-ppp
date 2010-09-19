@@ -10,6 +10,8 @@
 #include "list.h"
 #include "ppp.h"
 
+#include "memdebug.h"
+
 static char *conf_conninfo;
 static int conf_queue_max = 1000;
 static char *conf_query;
@@ -48,22 +50,30 @@ static void unpack_msg(struct log_msg_t *msg)
 		log_buf[0] = 0;
 }
 
-static void set_hdr(struct log_msg_t *msg)
+static void set_hdr(struct log_msg_t *msg, struct ppp_t *ppp)
 {
 	struct tm tm;
 
 	localtime_r(&msg->timestamp.tv_sec, &tm);
 
 	strftime(msg->hdr->msg, LOG_CHUNK_SIZE, "%Y-%m-%d %H:%M:%S", &tm);
-	msg->hdr->len = strlen(msg->hdr->msg);
+	msg->hdr->len = strlen(msg->hdr->msg) + 1;
+	if (ppp && ppp->username) {
+		strcpy(msg->hdr->msg + msg->hdr->len, ppp->username);
+		msg->hdr->len += strlen(ppp->username) + 1;
+		strcpy(msg->hdr->msg + msg->hdr->len, ppp->sessionid);
+		msg->hdr->len += strlen(ppp->sessionid) + 1;
+	} else 
+		memset(msg->hdr->msg + msg->hdr->len, 0, 2);
+		
 }
 
 static void write_next_msg(void)
 {
 	struct log_msg_t *msg;
-	struct ppp_t *ppp;
 	const char *paramValues[4];
 	int paramFormats[4] = {0, 0, 0, 0};
+	char *ptr1, *ptr2;
 
 	spin_lock(&queue_lock);
 	if (!list_empty(&msg_queue)) {
@@ -72,18 +82,13 @@ static void write_next_msg(void)
 		--queue_size;
 		spin_unlock(&queue_lock);
 
-		set_hdr(msg);
 		unpack_msg(msg);
 
-		ppp = msg->tpd;
-		if (ppp) {
-			paramValues[1] = ppp->username;
-			paramValues[2] = ppp->sessionid;
-		} else {
-			paramValues[1] = NULL;
-			paramValues[2] = NULL;
-		}
-		
+		ptr1 = strchr(msg->hdr->msg, 0);
+		ptr2 = strchr(ptr1 + 1, 0);
+
+		paramValues[1] = ptr1[1] ? ptr1 + 1 : NULL;
+		paramValues[2] = ptr2[1] ? ptr2 + 1 : NULL;
 		paramValues[0] = msg->hdr->msg;
 		paramValues[3] = log_buf;
 
@@ -138,30 +143,33 @@ static void wakeup_log(void)
 
 static void queue_log(struct log_msg_t *msg)
 {
-	int r = 0;
+	int r = 0, f = 0;
 	spin_lock(&queue_lock);
 	if (queue_size < conf_queue_max) {
 		list_add_tail(&msg->entry, &msg_queue);
 		++queue_size;
 		r = sleeping;
 		sleeping = 0;
-	}
+	} else
+		f = 1;
 	spin_unlock(&queue_lock);
 
 	if (r)
 		triton_context_call(&pgsql_ctx, (void (*)(void*))wakeup_log, NULL);
+	else if (f)
+		log_free_msg(msg);
 }
 
 
 static void general_log(struct log_msg_t *msg)
 {
-	msg->tpd = NULL;
+	set_hdr(msg, NULL);
 	queue_log(msg);
 }
 
 static void session_log(struct ppp_t *ppp, struct log_msg_t *msg)
 {
-	msg->tpd = ppp;
+	set_hdr(msg, ppp);
 	queue_log(msg);
 }
 
@@ -253,11 +261,11 @@ static void __init init(void)
 		opt = conf_get_opt("log-pgsql", "log-table");
 		if (!opt || strlen(opt) > 32)
 			opt = "log";
-		conf_query = malloc(sizeof(QUERY_TEMPLATE) + strlen(opt));
+		conf_query = _malloc(sizeof(QUERY_TEMPLATE) + strlen(opt));
 		sprintf(conf_query, QUERY_TEMPLATE, opt);
 	}
 
-	log_buf = malloc(LOG_MAX_SIZE + 1);
+	log_buf = _malloc(LOG_MAX_SIZE + 1);
 	if (!log_buf) {
 		log_emerg("log_pgsql: out of memory\n");
 		return;

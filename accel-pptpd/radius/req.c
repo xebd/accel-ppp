@@ -11,6 +11,8 @@
 #include "log.h"
 #include "radius_p.h"
 
+#include "memdebug.h"
+
 static int urandom_fd;
 
 static int rad_req_read(struct triton_md_handler_t *h);
@@ -18,7 +20,7 @@ static void rad_req_timeout(struct triton_timer_t *t);
 
 struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *username)
 {
-	struct rad_req_t *req = malloc(sizeof(*req));
+	struct rad_req_t *req = _malloc(sizeof(*req));
 
 	if (!req)
 		return NULL;
@@ -101,7 +103,7 @@ void rad_req_free(struct rad_req_t *req)
 		rad_packet_free(req->pack);
 	if (req->reply)
 		rad_packet_free(req->reply);
-	free(req);
+	_free(req);
 }
 
 static int make_socket(struct rad_req_t *req)

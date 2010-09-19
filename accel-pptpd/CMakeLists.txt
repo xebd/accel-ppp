@@ -1,7 +1,7 @@
 PROJECT (pptpd)
 cmake_minimum_required(VERSION 2.6)
 
-SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fvisibility=hidden -D_GNU_SOURCE -DSPINLOCK_GCC")
+SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fvisibility=hidden -D_GNU_SOURCE -DSPINLOCK_GCC -DMEMDEBUG")
 
 INCLUDE_DIRECTORIES(include)
 
@@ -37,6 +37,7 @@ ADD_EXECUTABLE(pptpd
 
 	log.c
 	main.c
+	memdebug.c
 )
 TARGET_LINK_LIBRARIES(pptpd triton rt pthread ssl)
 

@@ -8,6 +8,8 @@
 #include "radius_p.h"
 #include "log.h"
 
+#include "memdebug.h"
+
 static struct rad_dict_t *dict;
 
 static char *skip_word(char *ptr)
@@ -216,19 +218,19 @@ int rad_dict_load(const char *fname)
 	INIT_LIST_HEAD(&dict->items);
 	INIT_LIST_HEAD(&dict->vendors);
 
-	path = malloc(PATH_MAX);
+	path = _malloc(PATH_MAX);
 	if (!path) {
 		log_emerg("radius: out of memory\n");
 		goto out_free_dict;
 	}
 
-	fname1 = malloc(PATH_MAX);
+	fname1 = _malloc(PATH_MAX);
 	if (!fname1) {
 		log_emerg("radius: out of memory\n");
 		goto out_free_path;
 	}
 
-	buf = malloc(BUF_SIZE);
+	buf = _malloc(BUF_SIZE);
 	if (!buf) {
 		log_emerg("radius: out of memory\n");
 		goto out_free_fname1;
@@ -239,9 +241,9 @@ int rad_dict_load(const char *fname)
 	r = dict_load(fname);
 
 out_free_fname1:
-	free(fname1);
+	_free(fname1);
 out_free_path:
-	free(path);
+	_free(path);
 out_free_dict:
 	if (r)
 		rad_dict_free(dict);
@@ -258,16 +260,16 @@ void rad_dict_free(struct rad_dict_t *dict)
 		while (!list_empty(&attr->values)) {
 			val = list_entry(attr->values.next, typeof(*val), entry);
 			list_del(&val->entry);
-			free((char*)val->name);
+			_free((char*)val->name);
 			if (attr->type == ATTR_TYPE_STRING)
-				free((char*)val->val.string);
-			free(val);
+				_free((char*)val->val.string);
+			_free(val);
 		}
 		list_del(&attr->entry);
-		free((char*)attr->name);
-		free(attr);
+		_free((char*)attr->name);
+		_free(attr);
 	}
-	free(dict);
+	_free(dict);
 }
 
 static struct rad_dict_attr_t *dict_find_attr(struct list_head *items, const char *name)

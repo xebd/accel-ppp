@@ -15,6 +15,8 @@
 #include "ppp_lcp.h"
 #include "pwdb.h"
 
+#include "memdebug.h"
+
 #define CHAP_CHALLENGE 1
 #define CHAP_RESPONSE  2
 #define CHAP_SUCCESS   3
@@ -89,7 +91,7 @@ static void print_str(const char *buf,int size)
 
 static struct auth_data_t* auth_data_init(struct ppp_t *ppp)
 {
-	struct chap_auth_data_t *d=malloc(sizeof(*d));
+	struct chap_auth_data_t *d=_malloc(sizeof(*d));
 
 	memset(d,0,sizeof(*d));
 	d->auth.proto=PPP_CHAP;
@@ -102,7 +104,7 @@ static void auth_data_free(struct ppp_t *ppp,struct auth_data_t *auth)
 {
 	struct chap_auth_data_t *d=container_of(auth,typeof(*d),auth);
 
-	free(d);
+	_free(d);
 }
 
 static int chap_start(struct ppp_t *ppp, struct auth_data_t *auth)
@@ -223,7 +225,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		ppp_terminate(ad->ppp, 0);
 	}
 
-	name = strndup(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
+	name = _strndup(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
 
 	r = pwdb_check(ad->ppp, name, PPP_CHAP, CHAP_MD5, ad->id, ad->val, VALUE_SIZE, msg->val);
 
@@ -231,7 +233,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		passwd = pwdb_get_passwd(ad->ppp,name);
 		if (!passwd)
 		{
-			free(name);
+			_free(name);
 			log_ppp_debug("chap-md5: user not found\n");
 			chap_send_failure(ad);
 			return;
@@ -253,11 +255,11 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 			chap_send_success(ad);
 			auth_successed(ad->ppp, name);
 		}
-		free(passwd);
+		_free(passwd);
 	} else if (r == PWDB_DENIED) {
 		chap_send_failure(ad);
 		auth_failed(ad->ppp);
-		free(name);
+		_free(name);
 	} else {
 		chap_send_success(ad);
 		auth_successed(ad->ppp, name);

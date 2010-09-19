@@ -4,6 +4,8 @@
 #include "triton_p.h"
 #include "conf_file.h"
 
+#include "memdebug.h"
+
 static struct conf_file_sect_t *sect=NULL;
 
 static const char* find_option(const char *name)

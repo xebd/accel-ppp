@@ -17,6 +17,8 @@
 
 #include "radius_p.h"
 
+#include "memdebug.h"
+
 #define PD_COA_PORT 3799
 
 struct dm_coa_serv_t

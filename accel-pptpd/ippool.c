@@ -9,6 +9,8 @@
 #include "list.h"
 #include "triton/spinlock.h"
 
+#include "memdebug.h"
+
 struct ippool_item_t
 {
 	struct list_head entry;
@@ -148,9 +150,6 @@ static void generate_pool(void)
 		it->it.peer_addr = peer_addr->addr;
 
 		list_add_tail(&it->entry, &ippool);
-		
-		free(addr);
-		free(peer_addr);
 	}
 }
 

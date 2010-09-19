@@ -10,6 +10,8 @@
 #include "ppp.h"
 #include "spinlock.h"
 
+#include "memdebug.h"
+
 #define RED_COLOR     "\033[1;31m"
 #define GREEN_COLOR   "\033[1;32m"
 #define YELLOW_COLOR  "\033[1;33m"
@@ -171,7 +173,7 @@ static int log_write(struct triton_md_handler_t *h)
 			triton_md_unregister_handler(&lf->hnd);
 			close(lf->hnd.fd);
 			triton_context_unregister(&lf->ctx);
-			free(lf->lpd);
+			_free(lf->lpd);
 			return 1;
 		}
 		lf->sleeping = 1;
@@ -261,13 +263,13 @@ static void per_user_session_start(struct ppp_t *ppp)
 	struct log_file_pd_t *lpd;
 	char *fname;
 	
-	fname = malloc(PATH_MAX + 32);
+	fname = _malloc(PATH_MAX + 32);
 	if (!fname) {
 		log_emerg("log_file: out of memory\n");
 		return;
 	}
 
-	lpd = malloc(sizeof(*lpd));
+	lpd = _malloc(sizeof(*lpd));
 	if (!lpd) {
 		log_emerg("log_file: out of memory\n");
 		goto out_err;
@@ -296,26 +298,26 @@ static void per_user_session_start(struct ppp_t *ppp)
 	
 
 	list_add_tail(&lpd->pd.entry, &ppp->pd_list);
-	free(fname);
+	_free(fname);
 	return;
 
 out_err:
-	free(fname);
+	_free(fname);
 	if (lpd)
-		free(lpd);
+		_free(lpd);
 }
 static void per_session_start(struct ppp_t *ppp)
 {
 	struct log_file_pd_t *lpd;
 	char *fname;
 	
-	fname = malloc(PATH_MAX + 32);
+	fname = _malloc(PATH_MAX + 32);
 	if (!fname) {
 		log_emerg("log_file: out of memory\n");
 		return;
 	}
 
-	lpd = malloc(sizeof(*lpd));
+	lpd = _malloc(sizeof(*lpd));
 	if (!lpd) {
 		log_emerg("log_file: out of memory\n");
 		goto out_err;
@@ -336,13 +338,13 @@ static void per_session_start(struct ppp_t *ppp)
 		goto out_err;
 	
 	list_add_tail(&lpd->pd.entry, &ppp->pd_list);
-	free(fname);
+	_free(fname);
 	return;
 
 out_err:
-	free(fname);
+	_free(fname);
 	if (lpd)
-		free(lpd);
+		_free(lpd);
 }
 
 static void session_stop(struct ppp_t *ppp, void *pd_key)
@@ -400,10 +402,10 @@ static void __init init(void)
 	
 	opt = conf_get_opt("log", "log-file");
 	if (opt) {
-		log_file = malloc(sizeof(*log_file));
+		log_file = _malloc(sizeof(*log_file));
 		memset(log_file, 0, sizeof(*log_file));
 		if (log_file_init(log_file, opt)) {
-			free(log_file);
+			_free(log_file);
 			log_file = NULL;
 		}
 	}

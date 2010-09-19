@@ -19,6 +19,8 @@
 #include "ppp_fsm.h"
 #include "log.h"
 
+#include "memdebug.h"
+
 int conf_ppp_verbose;
 
 static LIST_HEAD(layers);
@@ -34,24 +36,25 @@ struct layer_node_t
 static int ppp_chan_read(struct triton_md_handler_t*);
 static int ppp_unit_read(struct triton_md_handler_t*);
 static void init_layers(struct ppp_t *);
-static void free_layers(struct ppp_t *);
+static void _free_layers(struct ppp_t *);
 static void start_first_layer(struct ppp_t *);
 
 void __export ppp_init(struct ppp_t *ppp)
 {
 	memset(ppp,0,sizeof(*ppp));
+	INIT_LIST_HEAD(&ppp->layers);
 	INIT_LIST_HEAD(&ppp->chan_handlers);
 	INIT_LIST_HEAD(&ppp->unit_handlers);
 	INIT_LIST_HEAD(&ppp->pd_list);
 }
 
-static void free_ppp(struct ppp_t *ppp)
+static void _free_ppp(struct ppp_t *ppp)
 {
-	free(ppp->chan_buf);
-	free(ppp->unit_buf);
+	_free(ppp->chan_buf);
+	_free(ppp->unit_buf);
 
 	if (ppp->username)
-		free(ppp->username);
+		_free(ppp->username);
 }
 
 static void generate_sessionid(struct ppp_t *ppp)
@@ -121,8 +124,8 @@ int __export establish_ppp(struct ppp_t *ppp)
 
 	log_ppp_info("connect: ppp%i <--> pptp(%s)\n",ppp->unit_idx,ppp->chan_name);
 	
-	ppp->chan_buf=malloc(PPP_MRU);
-	ppp->unit_buf=malloc(PPP_MRU);
+	ppp->chan_buf=_malloc(PPP_MRU);
+	ppp->unit_buf=_malloc(PPP_MRU);
 
 	init_layers(ppp);
 
@@ -166,7 +169,7 @@ exit_close_unit:
 exit_close_chan:
 	close(ppp->chan_fd);
 
-	free_ppp(ppp);
+	_free_ppp(ppp);
 
 	return -1;
 }
@@ -183,15 +186,20 @@ static void destablish_ppp(struct ppp_t *ppp)
 	ppp->unit_fd = -1;
 	ppp->chan_fd = -1;
 
-	free(ppp->unit_buf);
-	free(ppp->chan_buf);
+	_free(ppp->unit_buf);
+	_free(ppp->chan_buf);
 
-	free_layers(ppp);
+	_free_layers(ppp);
 	
 	log_ppp_debug("ppp destablished\n");
 
 	triton_event_fire(EV_PPP_FINISHED, ppp);
 	ppp->ctrl->finished(ppp);
+
+	if (ppp->username) {
+		_free(ppp->username);
+		ppp->username = NULL;
+	}
 }
 
 void print_buf(uint8_t *buf,int size)
@@ -424,7 +432,7 @@ int __export ppp_register_layer(const char *name, struct ppp_layer_t *layer)
 			continue;
 		if (order<n->order)
 		{
-			n1=malloc(sizeof(*n1));
+			n1=_malloc(sizeof(*n1));
 			memset(n1,0,sizeof(*n1));
 			n1->order=order;
 			INIT_LIST_HEAD(&n1->items);
@@ -433,7 +441,7 @@ int __export ppp_register_layer(const char *name, struct ppp_layer_t *layer)
 		}
 		goto insert;
 	}
-	n1=malloc(sizeof(*n1));
+	n1=_malloc(sizeof(*n1));
 	memset(n1,0,sizeof(*n1));
 	n1->order=order;
 	INIT_LIST_HEAD(&n1->items);
@@ -455,10 +463,8 @@ static void init_layers(struct ppp_t *ppp)
 	struct ppp_layer_t *l;
 	struct ppp_layer_data_t *d;
 
-	INIT_LIST_HEAD(&ppp->layers);
-
 	list_for_each_entry(n,&layers,entry) {
-		n1 = (struct layer_node_t*)malloc(sizeof(*n1));
+		n1 = _malloc(sizeof(*n1));
 		memset(n1, 0, sizeof(*n1));
 		INIT_LIST_HEAD(&n1->items);
 		list_add_tail(&n1->entry, &ppp->layers);
@@ -472,7 +478,7 @@ static void init_layers(struct ppp_t *ppp)
 	}
 }
 
-static void free_layers(struct ppp_t *ppp)
+static void _free_layers(struct ppp_t *ppp)
 {
 	struct layer_node_t *n;
 	struct ppp_layer_data_t *d;
@@ -485,7 +491,7 @@ static void free_layers(struct ppp_t *ppp)
 			d->layer->free(d);
 		}
 		list_del(&n->entry);
-		free(n);
+		_free(n);
 	}
 }
 

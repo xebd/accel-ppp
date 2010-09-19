@@ -1,6 +1,8 @@
 #include "triton.h"
 #include "ipdb.h"
 
+#include "memdebug.h"
+
 static LIST_HEAD(ipdb_handlers);
 
 __export struct ipdb_item_t *ipdb_get(struct ppp_t *ppp)

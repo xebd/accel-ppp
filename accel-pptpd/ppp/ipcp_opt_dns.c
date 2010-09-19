@@ -7,6 +7,8 @@
 #include "log.h"
 #include "ipdb.h"
 
+#include "memdebug.h"
+
 static struct ipcp_option_t *dns1_init(struct ppp_ipcp_t *ipcp);
 static struct ipcp_option_t *dns2_init(struct ppp_ipcp_t *ipcp);
 static void dns_free(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt);
@@ -43,7 +45,7 @@ static struct ipcp_option_handler_t dns2_opt_hnd=
 
 static struct ipcp_option_t *dns1_init(struct ppp_ipcp_t *ipcp)
 {
-	struct dns_option_t *dns_opt=malloc(sizeof(*dns_opt));
+	struct dns_option_t *dns_opt=_malloc(sizeof(*dns_opt));
 	memset(dns_opt,0,sizeof(*dns_opt));
 	dns_opt->opt.id=CI_DNS1;
 	dns_opt->opt.len=6;
@@ -53,7 +55,7 @@ static struct ipcp_option_t *dns1_init(struct ppp_ipcp_t *ipcp)
 
 static struct ipcp_option_t *dns2_init(struct ppp_ipcp_t *ipcp)
 {
-	struct dns_option_t *dns_opt=malloc(sizeof(*dns_opt));
+	struct dns_option_t *dns_opt=_malloc(sizeof(*dns_opt));
 	memset(dns_opt,0,sizeof(*dns_opt));
 	dns_opt->opt.id=CI_DNS2;
 	dns_opt->opt.len=6;
@@ -65,7 +67,7 @@ static void dns_free(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt)
 {
 	struct dns_option_t *dns_opt=container_of(opt,typeof(*dns_opt),opt);
 
-	free(dns_opt);
+	_free(dns_opt);
 }
 
 static int dns_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt, uint8_t *ptr)

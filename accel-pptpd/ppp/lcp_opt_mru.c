@@ -11,6 +11,8 @@
 #include "ppp_lcp.h"
 #include "log.h"
 
+#include "memdebug.h"
+
 #define MAX_MTU 1436
 
 static struct lcp_option_t *mru_init(struct ppp_lcp_t *lcp);
@@ -41,7 +43,7 @@ static struct lcp_option_handler_t mru_opt_hnd=
 
 static struct lcp_option_t *mru_init(struct ppp_lcp_t *lcp)
 {
-	struct mru_option_t *mru_opt=malloc(sizeof(*mru_opt));
+	struct mru_option_t *mru_opt=_malloc(sizeof(*mru_opt));
 	memset(mru_opt,0,sizeof(*mru_opt));
 	mru_opt->mtu=0;
 	mru_opt->mru=MAX_MTU;
@@ -55,7 +57,7 @@ static void mru_free(struct ppp_lcp_t *lcp, struct lcp_option_t *opt)
 {
 	struct mru_option_t *mru_opt=container_of(opt,typeof(*mru_opt),opt);
 
-	free(mru_opt);
+	_free(mru_opt);
 }
 
 static int mru_send_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)

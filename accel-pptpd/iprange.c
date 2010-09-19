@@ -8,6 +8,8 @@
 
 #include "iprange.h"
 
+#include "memdebug.h"
+
 struct iprange_t
 {
 	struct list_head entry;
@@ -39,7 +41,7 @@ static struct iprange_t *parse1(const char *str)
 	if (m == 0 || m > 32)
 		return NULL;
 	
-	r = malloc(sizeof(*r));
+	r = _malloc(sizeof(*r));
 	r->prefix = (f4 << 24) | (f3 << 16) | (f2 << 8) | f1;
 	r->mask = 0;
 
@@ -69,7 +71,7 @@ static struct iprange_t *parse2(const char *str)
 	if (m < f4 || m > 255)
 		return NULL;
 	
-	r = malloc(sizeof(*r));
+	r = _malloc(sizeof(*r));
 	r->prefix = (f4 << 24) | (f3 << 16) | (f2 << 8) | f1;
 	r->end = (m << 24) | (f3 << 16) | (f2 << 8) | f1;
 	r->mask = 0;

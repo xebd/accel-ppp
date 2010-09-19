@@ -10,6 +10,8 @@
 #include "log.h"
 #include "radius_p.h"
 
+#include "memdebug.h"
+
 static int req_set_RA(struct rad_req_t *req, const char *secret)
 {
 	MD5_CTX ctx;
@@ -49,6 +51,9 @@ static int rad_acct_read(struct triton_md_handler_t *h)
 {
 	struct rad_req_t *req = container_of(h, typeof(*req), hnd);
 
+	if (req->reply)
+		rad_packet_free(req->reply);
+
 	req->reply = rad_packet_recv(h->fd, NULL);
 	if (!req->reply)
 		return 0;
@@ -63,7 +68,8 @@ static int rad_acct_read(struct triton_md_handler_t *h)
 		req->reply = NULL;
 	} else {
 		req->pack->id++;
-		triton_timer_del(&req->timeout);
+		if (req->timeout.tpd)
+			triton_timer_del(&req->timeout);
 	}
 
 	return 0;
@@ -159,6 +165,12 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 		req_set_stat(rpd->acct_req, rpd->ppp);
 		req_set_RA(rpd->acct_req, conf_acct_secret);
 		/// !!! rad_req_add_val(rpd->acct_req, "Acct-Terminate-Cause", "");
+		
+		if (rpd->acct_req->reply) {
+			rad_packet_free(rpd->acct_req->reply);
+			rpd->acct_req->reply = NULL;
+		}
+
 		for(i = 0; i < conf_max_try; i++) {
 			if (rad_req_send(rpd->acct_req))
 				break;

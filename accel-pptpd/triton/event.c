@@ -4,6 +4,8 @@
 
 #include "triton_p.h"
 
+#include "memdebug.h"
+
 static int max_events = 1024;
 static struct _triton_event_t **events;
 
@@ -76,7 +78,7 @@ int __export triton_event_register_handler(int ev_id, triton_event_func func)
 				h->func = NULL;
 			else {
 				list_del(&h->entry);
-				free(h);
+				_free(h);
 			}
 			return 0;
 		}

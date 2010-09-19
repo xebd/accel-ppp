@@ -4,6 +4,8 @@
 
 #include "pwdb.h"
 
+#include "memdebug.h"
+
 static LIST_HEAD(pwdb_handlers);
 
 int __export pwdb_check(struct ppp_t *ppp, const char *username, int type, ...)
