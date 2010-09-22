@@ -60,15 +60,9 @@ void *timer_thread(void *arg)
 	sigset_t set;
 
 	sigfillset(&set);
+	sigdelset(&set, SIGKILL);
+	sigdelset(&set, SIGSTOP);
 	pthread_sigmask(SIG_BLOCK, &set, NULL);
-
-	sigemptyset(&set);
-	sigaddset(&set, SIGQUIT);
-	sigaddset(&set, SIGSEGV);
-	sigaddset(&set, SIGFPE);
-	sigaddset(&set, SIGILL);
-	sigaddset(&set, SIGBUS);
-	pthread_sigmask(SIG_UNBLOCK, &set, NULL);
 
 	while(1) {
 		n = epoll_wait(epoll_fd, epoll_events, max_events, -1);

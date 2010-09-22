@@ -173,10 +173,11 @@ out_err:
 
 static void req_wakeup(struct rad_req_t *req)
 {
-	triton_context_wakeup(req->rpd->ppp->ctrl->ctx);
+	struct triton_context_t *ctx = req->rpd->ppp->ctrl->ctx;
 	triton_timer_del(&req->timeout);
 	triton_md_unregister_handler(&req->hnd);
 	triton_context_unregister(&req->ctx);
+	triton_context_wakeup(ctx);
 }
 static int rad_req_read(struct triton_md_handler_t *h)
 {
@@ -200,6 +201,8 @@ int rad_req_wait(struct rad_req_t *req, int timeout)
 	req->timeout.expire = rad_req_timeout;
 
 	triton_context_register(&req->ctx, req->rpd->ppp);
+	req->ctx.fname=__FILE__;
+	req->ctx.line=__LINE__;
 	triton_md_register_handler(&req->ctx, &req->hnd);
 	if (triton_md_enable_handler(&req->hnd, MD_MODE_READ))
 		return -1;

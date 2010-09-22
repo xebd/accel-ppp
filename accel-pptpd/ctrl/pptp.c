@@ -511,6 +511,8 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		conn->ppp.ctrl = &conn->ctrl;
 
 		triton_context_register(&conn->ctx, &conn->ppp);
+		conn->ctx.fname=__FILE__;
+		conn->ctx.line=__LINE__;
 		triton_md_register_handler(&conn->ctx, &conn->hnd);
 		triton_md_enable_handler(&conn->hnd,MD_MODE_READ);
 		triton_timer_add(&conn->ctx, &conn->timeout_timer, 0);
@@ -539,26 +541,26 @@ static void __init pptp_init(void)
 	
 	serv.hnd.fd = socket (PF_INET, SOCK_STREAM, 0);
   if (serv.hnd.fd < 0) {
-    log_error("pptp: failed to create server socket: %s\n", strerror(errno));
+    log_emerg("pptp: failed to create server socket: %s\n", strerror(errno));
     return;
   }
   addr.sin_family = AF_INET;
   addr.sin_port = htons (PPTP_PORT);
   addr.sin_addr.s_addr = htonl (INADDR_ANY);
   if (bind (serv.hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
-    log_error("pptp: failed to bind socket: %s\n", strerror(errno));
+    log_emerg("pptp: failed to bind socket: %s\n", strerror(errno));
 		close(serv.hnd.fd);
     return;
   }
 
   if (listen (serv.hnd.fd, 100) < 0) {
-    log_error("pptp: failed to listen socket: %s\n", strerror(errno));
+    log_emerg("pptp: failed to listen socket: %s\n", strerror(errno));
 		close(serv.hnd.fd);
     return;
   }
 
 	if (fcntl(serv.hnd.fd, F_SETFL, O_NONBLOCK)) {
-    log_error("pptp: failed to set nonblocking mode: %s\n", strerror(errno));
+    log_emerg("pptp: failed to set nonblocking mode: %s\n", strerror(errno));
 		close(serv.hnd.fd);
     return;
 	}

@@ -42,6 +42,7 @@ struct _triton_context_t
 	int sleeping:1;
 	int need_close:1;
 	int need_free:1;
+	int pending:1;
 
 	struct triton_context_t *ud;
 	void *bf_arg;

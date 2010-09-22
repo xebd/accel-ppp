@@ -34,7 +34,6 @@ struct _log_msg_t
 };
 
 static int log_level=10;
-static int conf_copy = 0;
 
 static LIST_HEAD(targets);
 static mempool_t msg_pool;
@@ -48,22 +47,16 @@ static __thread char stat_buf[LOG_MAX_SIZE+1];
 static FILE *emerg_file;
 static FILE *debug_file;
 
-static void *pd_key;
-
 static void _log_free_msg(struct _log_msg_t *msg);
 static struct log_msg_t *clone_msg(struct _log_msg_t *msg);
 static int add_msg(struct _log_msg_t *msg, const char *buf);
-static struct log_pd_t *find_pd(struct ppp_t *ppp);
+//static struct log_pd_t *find_pd(struct ppp_t *ppp);
 static void write_msg(FILE *f, struct _log_msg_t *msg, struct ppp_t *ppp);
 
 static void do_log(int level, const char *fmt, va_list ap, struct ppp_t *ppp)
 {
 	struct log_target_t *t;
 	struct log_msg_t *m;
-	struct log_pd_t *lpd;
-
-	if (list_empty(&targets))
-		return;
 
 	vsnprintf(stat_buf, LOG_MAX_SIZE, fmt, ap);
 
@@ -86,33 +79,15 @@ static void do_log(int level, const char *fmt, va_list ap, struct ppp_t *ppp)
 	if (debug_file)
 		write_msg(debug_file, cur_msg, ppp);
 
-	if (ppp && !ppp->username) {
-		lpd = find_pd(ppp);
-		list_add_tail(&cur_msg->entry, &lpd->msgs);
-	}
-
 	list_for_each_entry(t, &targets, entry) {
-		if (ppp && ppp->username) {
-			if (t->session_log) {
-				m = clone_msg(cur_msg);
-				if (!m)
-					break;
-				t->session_log(ppp, m);
-			}
-		}
-		if (!ppp || conf_copy) {
-			if (t->log) {
-				m = clone_msg(cur_msg);
-				if (!m)
-					break;
-				t->log(m);
-			}
-		}
+		m = clone_msg(cur_msg);
+		if (!m)
+			break;
+		t->log(m, ppp);
 	}
 
 out:
-	if (!ppp || ppp->username)
-		_log_free_msg(cur_msg);
+	_log_free_msg(cur_msg);
 	cur_msg = NULL;
 }
 
@@ -226,6 +201,8 @@ void __export log_free_msg(struct log_msg_t *m)
 {
 	struct _log_msg_t *msg = (struct _log_msg_t *)m->lpd;
 
+	//printf("free msg %p\n", m);
+	
 	mempool_free(m->hdr);
 	_log_free_msg(msg);
 
@@ -272,6 +249,7 @@ static struct log_msg_t *clone_msg(struct _log_msg_t *msg)
 
 	__sync_add_and_fetch(&msg->refs, 1);
 
+	//printf("clone msg %p\n", m);
 	return m;
 }
 
@@ -298,21 +276,6 @@ static int add_msg(struct _log_msg_t *msg, const char *buf)
 	return 0;
 }
 
-static struct log_pd_t *find_pd(struct ppp_t *ppp)
-{
-	struct ppp_pd_t *pd;
-	struct log_pd_t *lpd;
-
-	list_for_each_entry(pd, &ppp->pd_list, entry) {
-		if (pd->key == &pd_key) {
-			lpd = container_of(pd, typeof(*lpd), pd);
-			return lpd;
-		}
-	}
-	log_emerg("log:BUG: pd not found\n");
-	abort();
-}
-
 static void write_msg(FILE *f, struct _log_msg_t *msg, struct ppp_t *ppp)
 {
 	struct log_chunk_t *chunk;
@@ -327,6 +290,21 @@ static void write_msg(FILE *f, struct _log_msg_t *msg, struct ppp_t *ppp)
 	
 	fwrite(stat_buf, strlen(stat_buf), 1, f);
 	fflush(f);
+}
+
+/*static struct log_pd_t *find_pd(struct ppp_t *ppp)
+{
+	struct ppp_pd_t *pd;
+	struct log_pd_t *lpd;
+
+	list_for_each_entry(pd, &ppp->pd_list, entry) {
+		if (pd->key == &pd_key) {
+			lpd = container_of(pd, typeof(*lpd), pd);
+			return lpd;
+		}
+	}
+	log_emerg("log:BUG: pd not found\n");
+	abort();
 }
 
 static void ev_ctrl_starting(struct ppp_t *ppp)
@@ -414,7 +392,7 @@ static void ev_ppp_authorized(struct ppp_t *ppp)
 	}
 
 	lpd->authorized = 1;
-}
+}*/
 
 void __export log_switch(struct triton_context_t *ctx, void *arg)
 {
@@ -444,15 +422,7 @@ static void __init log_init(void)
 			fprintf(stderr, "log:open: %s\n", strerror(errno));
 	}
 
-	opt = conf_get_opt("log", "copy");
-	if (opt && atoi(opt) > 0)
-		conf_copy = 1;
-
 	msg_pool = mempool_create(sizeof(struct log_msg_t));
 	_msg_pool = mempool_create(sizeof(struct _log_msg_t));
 	chunk_pool = mempool_create(sizeof(struct log_chunk_t) + LOG_CHUNK_SIZE + 1);
-
-	triton_event_register_handler(EV_CTRL_STARTING, (triton_event_func)ev_ctrl_starting);
-	triton_event_register_handler(EV_CTRL_FINISHED, (triton_event_func)ev_ctrl_finished);
-	triton_event_register_handler(EV_PPP_AUTHORIZED, (triton_event_func)ev_ppp_authorized);
 }

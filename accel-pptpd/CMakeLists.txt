@@ -1,7 +1,7 @@
 PROJECT (pptpd)
 cmake_minimum_required(VERSION 2.6)
 
-SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fvisibility=hidden -D_GNU_SOURCE -DSPINLOCK_GCC -DMEMDEBUG")
+SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fvisibility=hidden -D_GNU_SOURCE -DGCC_SPINLOCK -DMEMDEBUG")
 
 INCLUDE_DIRECTORIES(include)
 

@@ -39,10 +39,7 @@ struct log_target_t
 {
 	struct list_head entry;
 
-	void (*log)(struct log_msg_t *);
-	void (*session_log)(struct ppp_t *ppp, struct log_msg_t *);
-	void (*session_start)(struct ppp_t *ppp);
-	void (*session_stop)(struct ppp_t *ppp);
+	void (*log)(struct log_msg_t *, struct ppp_t *ppp);
 };
 
 void log_free_msg(struct log_msg_t *msg);

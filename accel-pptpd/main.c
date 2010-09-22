@@ -14,10 +14,6 @@ static int goto_daemon;
 static char *pid_file;
 static char *conf_file;
 
-static void sigterm(int num)
-{
-}
-
 #define ARG_MAX 128
 static int parse_cmdline(char ***argv)
 {	
@@ -87,6 +83,7 @@ usage:
 int main(int argc, char **argv)
 {
 	sigset_t set;
+	int sig;
 
 	if (triton_load_modules("modules"))
 		return EXIT_FAILURE;
@@ -119,21 +116,34 @@ int main(int argc, char **argv)
 		}
 	}
 
-	signal(SIGTERM, sigterm);
-	signal(SIGPIPE, sigterm);
-	signal(SIGUSR1, sigterm);
-	
-	triton_run();
-	
-	sigfillset(&set);
-	sigdelset(&set, SIGINT);
-	sigdelset(&set, SIGTERM);
-	sigdelset(&set, SIGSEGV);
-	sigdelset(&set, SIGILL);
-	sigdelset(&set, SIGFPE);
-	sigdelset(&set, SIGBUS);
+	//signal(SIGTERM, sigterm);
+	//signal(SIGPIPE, sigterm);
 
-	sigsuspend(&set);
+	triton_run();
+
+	sigfillset(&set);
+	sigdelset(&set, SIGKILL);
+	sigdelset(&set, SIGSTOP);
+	sigdelset(&set, SIGSEGV);
+	sigdelset(&set, SIGFPE);
+	sigdelset(&set, SIGILL);
+	sigdelset(&set, SIGBUS);
+	sigdelset(&set, 35);
+	sigdelset(&set, 36);
+	sigdelset(&set, SIGIO);
+	sigdelset(&set, SIGINT);
+	pthread_sigmask(SIG_SETMASK, &set, NULL);
+
+	sigemptyset(&set);
+	//sigaddset(&set, SIGINT);
+	sigaddset(&set, SIGTERM);
+	sigaddset(&set, SIGSEGV);
+	sigaddset(&set, SIGILL);
+	sigaddset(&set, SIGFPE);
+	sigaddset(&set, SIGBUS);
+	
+	sigwait(&set, &sig);
+	printf("terminate, sig = %i\n", sig);
 	
 	triton_terminate();
 

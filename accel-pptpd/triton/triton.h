@@ -8,7 +8,9 @@
 
 struct triton_context_t
 {
-	const void *tpd; // triton private data, don't touch!
+	const void *tpd; // triton private data, don't touch
+	const char *fname;
+	int line;
 	void (*close)(struct triton_context_t*);
 	void (*free)(struct triton_context_t*);
 	void (*before_switch)(struct triton_context_t *ctx, void *arg);
@@ -69,7 +71,7 @@ extern struct triton_stat_t triton_stat;
 int triton_context_register(struct triton_context_t *, void *arg);
 void triton_context_unregister(struct triton_context_t *);
 void triton_context_schedule(struct triton_context_t *);
-void triton_context_wakeup(struct triton_context_t *);
+int triton_context_wakeup(struct triton_context_t *);
 int triton_context_call(struct triton_context_t *, void (*func)(void *), void *arg);
 
 #define MD_MODE_READ 1

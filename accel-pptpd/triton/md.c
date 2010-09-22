@@ -59,24 +59,16 @@ static void *md_thread(void *arg)
 	sigset_t set;
 
 	sigfillset(&set);
+	sigdelset(&set, SIGKILL);
+	sigdelset(&set, SIGSTOP);
 	pthread_sigmask(SIG_BLOCK, &set, NULL);
-
-	sigemptyset(&set);
-	sigaddset(&set, SIGQUIT);
-	sigaddset(&set, SIGSEGV);
-	sigaddset(&set, SIGFPE);
-	sigaddset(&set, SIGILL);
-	sigaddset(&set, SIGBUS);
-	sigdelset(&set, 35);
-	sigdelset(&set, 36);
-	pthread_sigmask(SIG_UNBLOCK, &set, NULL);
 
 	while(1) {
 		n = epoll_wait(epoll_fd, epoll_events, max_events, -1);
 		if (n < 0) {
 			if (errno == EINTR)
 				continue;
-			triton_log_error("md:epoll_wait: %s", strerror(errno));
+			triton_log_error("md:epoll_wait: %s\n", strerror(errno));
 			_exit(-1);
 		}
 		
@@ -152,8 +144,10 @@ int __export triton_md_enable_handler(struct triton_md_handler_t *ud, int mode)
 	else
 		r = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, h->ud->fd, &h->epoll_event);
 
-	if (r)
-		triton_log_error("md:epoll_ctl: %s",strerror(errno));
+	if (r) {
+		triton_log_error("md:epoll_ctl: %s\n",strerror(errno));
+		abort();
+	}
 
 	return r;
 }
@@ -177,8 +171,10 @@ int __export triton_md_disable_handler(struct triton_md_handler_t *ud,int mode)
 		r = epoll_ctl(epoll_fd, EPOLL_CTL_DEL, h->ud->fd, NULL);
 	}
 
-	if (r)
-		triton_log_error("md:epoll_ctl: %s",strerror(errno));
+	if (r) {
+		triton_log_error("md:epoll_ctl: %s\n",strerror(errno));
+		abort();
+	}
 
 	return r;
 }

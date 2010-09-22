@@ -161,13 +161,7 @@ static void queue_log(struct log_msg_t *msg)
 }
 
 
-static void general_log(struct log_msg_t *msg)
-{
-	set_hdr(msg, NULL);
-	queue_log(msg);
-}
-
-static void session_log(struct ppp_t *ppp, struct log_msg_t *msg)
+static void general_log(struct log_msg_t *msg, struct ppp_t *ppp)
 {
 	set_hdr(msg, ppp);
 	queue_log(msg);
@@ -238,7 +232,6 @@ static void start_connect_timer(struct triton_timer_t *t)
 
 static struct log_target_t target = {
 	.log = general_log,
-	.session_log = session_log,
 };
 
 static void __init init(void)

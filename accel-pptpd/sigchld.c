@@ -27,17 +27,9 @@ static void* sigchld_thread(void *arg)
 	int status, sig;
 
 	sigfillset(&set);
+	sigdelset(&set, SIGKILL);
+	sigdelset(&set, SIGSTOP);
 	pthread_sigmask(SIG_BLOCK, &set, NULL);
-
-	sigemptyset(&set);
-	sigaddset(&set, SIGUSR1);
-	sigaddset(&set, SIGQUIT);
-	sigaddset(&set, SIGSEGV);
-	sigaddset(&set, SIGFPE);
-	sigaddset(&set, SIGILL);
-	sigaddset(&set, SIGBUS);
-	sigaddset(&set, SIGCHLD);
-	pthread_sigmask(SIG_UNBLOCK, &set, NULL);
 
 	sigemptyset(&set);
 	sigaddset(&set, SIGCHLD);
