@@ -137,7 +137,8 @@ int __export triton_md_enable_handler(struct triton_md_handler_t *ud, int mode)
 	if (mode & MD_MODE_WRITE)
 		h->epoll_event.events |= EPOLLOUT;
 	
-	h->epoll_event.events |= EPOLLET;
+	if (!h->trig_level)
+		h->epoll_event.events |= EPOLLET;
 	
 	if (events)
 		r = epoll_ctl(epoll_fd, EPOLL_CTL_MOD, h->ud->fd, &h->epoll_event);
@@ -177,5 +178,11 @@ int __export triton_md_disable_handler(struct triton_md_handler_t *ud,int mode)
 	}
 
 	return r;
+}
+
+void __export triton_md_set_trig(struct triton_md_handler_t *ud, int mode)
+{
+	struct _triton_md_handler_t *h = (struct _triton_md_handler_t *)ud->tpd;
+	h->trig_level = mode;
 }
 

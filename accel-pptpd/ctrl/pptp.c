@@ -529,6 +529,7 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		triton_md_register_handler(&conn->ctx, &conn->hnd);
 		triton_md_enable_handler(&conn->hnd,MD_MODE_READ);
 		triton_timer_add(&conn->ctx, &conn->timeout_timer, 0);
+		triton_context_wakeup(&conn->ctx);
 
 		triton_event_fire(EV_CTRL_STARTING, &conn->ppp);
 	}
@@ -578,12 +579,6 @@ static void __init pptp_init(void)
     return;
 	}
 	
-	conn_pool = mempool_create(sizeof(struct pptp_conn_t));
-
-	triton_context_register(&serv.ctx, NULL);
-	triton_md_register_handler(&serv.ctx, &serv.hnd);
-	triton_md_enable_handler(&serv.hnd, MD_MODE_READ);
-
 	opt = conf_get_opt("pptp", "timeout");
 	if (opt && atoi(opt) > 0)
 		conf_timeout = atoi(opt);
@@ -591,5 +586,12 @@ static void __init pptp_init(void)
 	opt = conf_get_opt("pptp", "echo-interval");
 	if (opt && atoi(opt) > 0)
 		conf_echo_interval = atoi(opt);
+
+	conn_pool = mempool_create(sizeof(struct pptp_conn_t));
+
+	triton_context_register(&serv.ctx, NULL);
+	triton_md_register_handler(&serv.ctx, &serv.hnd);
+	triton_md_enable_handler(&serv.hnd, MD_MODE_READ);
+	triton_context_wakeup(&serv.ctx);
 }
 

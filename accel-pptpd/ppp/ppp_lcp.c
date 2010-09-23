@@ -267,6 +267,8 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 
 	lcp_hdr->len=htons((ptr-buf)-2);
 	ppp_chan_send(lcp->ppp,lcp_hdr,ptr-buf);
+
+	_free(buf);
 }
 
 static void send_conf_rej(struct ppp_fsm_t *fsm)
@@ -319,6 +321,7 @@ static int lcp_recv_conf_req(struct ppp_lcp_t *lcp,uint8_t *data,int size)
 		hdr=(struct lcp_opt_hdr_t *)data;
 
 		ropt=_malloc(sizeof(*ropt));
+		memset(ropt, 0, sizeof(*ropt));
 		if (hdr->len>size) ropt->len=size;
 		else ropt->len=hdr->len;
 		ropt->hdr=hdr;

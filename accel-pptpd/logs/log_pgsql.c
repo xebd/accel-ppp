@@ -74,31 +74,40 @@ static void write_next_msg(void)
 	const char *paramValues[4];
 	int paramFormats[4] = {0, 0, 0, 0};
 	char *ptr1, *ptr2;
+	int r;
 
 	spin_lock(&queue_lock);
-	if (!list_empty(&msg_queue)) {
-		msg = list_entry(msg_queue.next, typeof(*msg), entry);
-		list_del(&msg->entry);
-		--queue_size;
+	if (list_empty(&msg_queue)) {
+		sleeping = 1;
 		spin_unlock(&queue_lock);
-
-		unpack_msg(msg);
-
-		ptr1 = strchr(msg->hdr->msg, 0);
-		ptr2 = strchr(ptr1 + 1, 0);
-
-		paramValues[1] = ptr1[1] ? ptr1 + 1 : NULL;
-		paramValues[2] = ptr2[1] ? ptr2 + 1 : NULL;
-		paramValues[0] = msg->hdr->msg;
-		paramValues[3] = log_buf;
-
-		PQsendQueryParams(conn, conf_query, 4, NULL, paramValues, NULL, paramFormats, 0);
-		PQflush(conn);
-		log_free_msg(msg);
 		return;
 	}
-	sleeping = 1;
+
+	msg = list_entry(msg_queue.next, typeof(*msg), entry);
+	list_del(&msg->entry);
+	--queue_size;
 	spin_unlock(&queue_lock);
+
+	unpack_msg(msg);
+
+	ptr1 = strchr(msg->hdr->msg, 0);
+	ptr2 = strchr(ptr1 + 1, 0);
+
+	paramValues[1] = ptr1[1] ? ptr1 + 1 : NULL;
+	paramValues[2] = ptr2[1] ? ptr2 + 1 : NULL;
+	paramValues[0] = msg->hdr->msg;
+	paramValues[3] = log_buf;
+
+	if (!PQsendQueryParams(conn, conf_query, 4, NULL, paramValues, NULL, paramFormats, 0))
+		log_emerg("log_pgsql: %s\n", PQerrorMessage(conn));
+
+	log_free_msg(msg);
+
+	r = PQflush(conn);
+	if (r == -1)
+		log_emerg("log_pgsql: %s\n", PQerrorMessage(conn));
+	if (r == 0)
+		triton_md_enable_handler(&pgsql_hnd, MD_MODE_WRITE);
 }
 
 static int pgsql_check_ready(struct triton_md_handler_t *h)
@@ -132,7 +141,15 @@ static int pgsql_check_ready(struct triton_md_handler_t *h)
 
 static int pgsql_flush(struct triton_md_handler_t *h)
 {
-	PQflush(conn);
+	int r;
+
+	r = PQflush(conn);
+	if (r == -1)
+		log_emerg("log_pgsql: %s\n", PQerrorMessage(conn));
+	if (r == 1)
+		return 0;
+	
+	triton_md_disable_handler(&pgsql_hnd, MD_MODE_WRITE);
 	return 0;
 }
 
@@ -196,7 +213,7 @@ static int wait_connect(struct triton_md_handler_t *h)
 			PQsetnonblocking(conn, 1);
 			h->write = pgsql_flush;
 			h->read = pgsql_check_ready;
-			triton_md_enable_handler(&pgsql_hnd, MD_MODE_READ | MD_MODE_WRITE);
+			triton_md_enable_handler(&pgsql_hnd, MD_MODE_READ);
 			wakeup_log();
 			break;
 		default:
@@ -266,6 +283,8 @@ static void __init init(void)
 
 	triton_context_register(&pgsql_ctx, NULL);
 	triton_md_register_handler(&pgsql_ctx, &pgsql_hnd);
+	triton_md_set_trig(&pgsql_hnd, MD_TRIG_LEVEL);
+	triton_context_wakeup(&pgsql_ctx);
 
 	start_connect();
 

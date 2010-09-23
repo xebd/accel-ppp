@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sched.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -217,12 +218,12 @@ int rad_req_wait(struct rad_req_t *req, int timeout)
 	req->ctx.fname=__FILE__;
 	req->ctx.line=__LINE__;
 	triton_md_register_handler(&req->ctx, &req->hnd);
-	if (triton_md_enable_handler(&req->hnd, MD_MODE_READ))
-		return -1;
+	triton_md_enable_handler(&req->hnd, MD_MODE_READ);
 
 	req->timeout.period = timeout * 1000;
-	if (triton_timer_add(&req->ctx, &req->timeout, 0))
-		return -1;
+	triton_timer_add(&req->ctx, &req->timeout, 0);
+	
+	triton_context_wakeup(&req->ctx);
 
 	triton_context_schedule(req->rpd->ppp->ctrl->ctx);
 

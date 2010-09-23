@@ -273,4 +273,5 @@ static void __init init(void)
 	triton_context_register(&serv.ctx, NULL);
 	triton_md_register_handler(&serv.ctx, &serv.hnd);
 	triton_md_enable_handler(&serv.hnd, MD_MODE_READ);
+	triton_context_wakeup(&serv.ctx);
 }

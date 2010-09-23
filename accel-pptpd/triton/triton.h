@@ -76,10 +76,15 @@ int triton_context_call(struct triton_context_t *, void (*func)(void *), void *a
 
 #define MD_MODE_READ 1
 #define MD_MODE_WRITE 2
+
+#define MD_TRIG_EDGE 0
+#define MD_TRIG_LEVEL 1
+
 void triton_md_register_handler(struct triton_context_t *, struct triton_md_handler_t *);
 void triton_md_unregister_handler(struct triton_md_handler_t *h);
 int triton_md_enable_handler(struct triton_md_handler_t *h, int mode);
 int triton_md_disable_handler(struct triton_md_handler_t *h,int mode);
+void triton_md_set_trig(struct triton_md_handler_t *h, int mode);
 
 int triton_timer_add(struct triton_context_t *ctx, struct triton_timer_t*,int abs_time);
 int triton_timer_mod(struct triton_timer_t *,int abs_time);

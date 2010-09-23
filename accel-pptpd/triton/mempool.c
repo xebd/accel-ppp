@@ -7,6 +7,8 @@
 
 #include "memdebug.h"
 
+#define MAGIC1 0x2233445566778899llu
+
 struct _mempool_t
 {
 	struct list_head entry;
@@ -20,7 +22,8 @@ struct _item_t
 {
 	struct _mempool_t *owner;
 	struct list_head entry;
-	uint64_t magic;
+	uint64_t magic2;
+	uint64_t magic1;
 	char ptr[0];
 };
 
@@ -49,7 +52,7 @@ __export void *mempool_alloc(mempool_t *pool)
 {
 	struct _mempool_t *p = (struct _mempool_t *)pool;
 	struct _item_t *it;
-	uint32_t size = sizeof(*it) + p->size;
+	uint32_t size = sizeof(*it) + p->size + 8;
 
 	spin_lock(&p->lock);
 	if (!list_empty(&p->items)) {
@@ -59,6 +62,8 @@ __export void *mempool_alloc(mempool_t *pool)
 		
 		__sync_fetch_and_sub(&triton_stat.mempool_available, size);
 		
+		it->magic1 = MAGIC1;
+
 		return it->ptr;
 	}
 	spin_unlock(&p->lock);
@@ -69,7 +74,9 @@ __export void *mempool_alloc(mempool_t *pool)
 		return NULL;
 	}
 	it->owner = p;
-	it->magic = p->magic;
+	it->magic1 = MAGIC1;
+	it->magic2 = p->magic;
+	*(uint64_t*)(it->data + p->size) = it->magic2;
 
 	__sync_fetch_and_add(&triton_stat.mempool_allocated, size);
 
@@ -81,7 +88,7 @@ void __export *mempool_alloc_md(mempool_t *pool, const char *fname, int line)
 {
 	struct _mempool_t *p = (struct _mempool_t *)pool;
 	struct _item_t *it;
-	uint32_t size = sizeof(*it) + p->size;
+	uint32_t size = sizeof(*it) + p->size + 8;
 
 	spin_lock(&p->lock);
 	if (!list_empty(&p->items)) {
@@ -91,6 +98,8 @@ void __export *mempool_alloc_md(mempool_t *pool, const char *fname, int line)
 		
 		__sync_fetch_and_sub(&triton_stat.mempool_available, size);
 		
+		it->magic1 = MAGIC1;
+
 		return it->ptr;
 	}
 	spin_unlock(&p->lock);
@@ -101,7 +110,9 @@ void __export *mempool_alloc_md(mempool_t *pool, const char *fname, int line)
 		return NULL;
 	}
 	it->owner = p;
-	it->magic = p->magic;
+	it->magic2 = p->magic;
+	it->magic1 = MAGIC1;
+	*(uint64_t*)(it->ptr + p->size) = it->magic2;
 
 	__sync_fetch_and_add(&triton_stat.mempool_allocated, size);
 
@@ -112,12 +123,25 @@ void __export *mempool_alloc_md(mempool_t *pool, const char *fname, int line)
 __export void mempool_free(void *ptr)
 {
 	struct _item_t *it = container_of(ptr, typeof(*it), ptr);
-	uint32_t size = sizeof(*it) + it->owner->size;
+	uint32_t size = sizeof(*it) + it->owner->size + 8;
 
-	if (it->magic != it->owner->magic) {
+	if (it->magic1 != MAGIC1) {
 		triton_log_error("mempool: memory corruption detected");
 		abort();
 	}
+
+	if (it->magic2 != it->owner->magic) {
+		triton_log_error("mempool: memory corruption detected");
+		abort();
+	}
+
+	if (it->magic2 != *(uint64_t*)(it->ptr + it->owner->size)) {
+		triton_log_error("mempool: memory corruption detected");
+		abort();
+	}
+
+	it->magic1 = 0;
+
 	spin_lock(&it->owner->lock);
 	list_add_tail(&it->entry,&it->owner->items);
 	spin_unlock(&it->owner->lock);

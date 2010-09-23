@@ -70,7 +70,7 @@ static int rad_auth_send(struct rad_req_t *req)
 	else if (req->reply->code == CODE_ACCESS_ACCEPT) {
 		rad_proc_attrs(req);
 		return PWDB_SUCCESS;
-	}
+}
 
 out:
 	return PWDB_DENIED;

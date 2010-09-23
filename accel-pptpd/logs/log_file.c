@@ -109,12 +109,22 @@ static void sigio(int num, siginfo_t *si, void *uc)
 
 	spin_lock(&lf->lock);
 	lf->offset += n;
-	if (list_empty(&lf->msgs) && lf->need_free) {
+	if (list_empty(&lf->msgs)) {
+		if (lf->need_free) {
+			spin_unlock(&lf->lock);
+			close(lf->fd);
+			mempool_free(lf->lpd);
+		} else {
+			lf->queued = 0;
+			spin_unlock(&lf->lock);
+		}
+	} else {
 		spin_unlock(&lf->lock);
-		close(lf->fd);
-		mempool_free(lf->lpd);
-	} else
-		spin_unlock(&lf->lock);
+
+		spin_lock(&lf_queue_lock);
+		list_add_tail(&lf->entry, &lf_queue);
+		spin_unlock(&lf_queue_lock);
+	}
 	
 	send_next_chunk();
 }
@@ -128,7 +138,6 @@ static int dequeue_log(struct log_file_t *lf)
 	while (1) {
 		spin_lock(&lf->lock);
 		if (list_empty(&lf->msgs)) {
-			lf->queued = 0;
 			spin_unlock(&lf->lock);
 			return pos;
 		}
@@ -156,10 +165,6 @@ overrun:
 	spin_lock(&lf->lock);
 	list_add(&msg->entry, &lf->msgs);
 	spin_unlock(&lf->lock);
-
-	spin_lock(&lf_queue_lock);
-	list_add_tail(&lf->entry, &lf_queue);
-	spin_unlock(&lf_queue_lock);
 
 	return pos;
 }
@@ -317,6 +322,7 @@ static void free_lpd(struct log_file_pd_t *lpd)
 		}
 		if (lpd->lf.fd != -1)
 			close(lpd->lf.fd);
+		list_del(&lpd->pd.entry);
 		spin_unlock(&lpd->lf.lock);
 		mempool_free(lpd);
 	}

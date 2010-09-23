@@ -40,6 +40,7 @@ struct _triton_context_t
 
 	int queued:1;
 	int sleeping:1;
+	int wakeup:1;
 	int need_close:1;
 	int need_free:1;
 	int pending:1;
@@ -56,6 +57,7 @@ struct _triton_md_handler_t
 	struct epoll_event epoll_event;
 	uint32_t trig_epoll_events;
 	int pending:1;
+	int trig_level:1;
 	struct triton_md_handler_t *ud;
 };
 
