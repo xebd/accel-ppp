@@ -164,9 +164,9 @@ struct rad_packet_t *rad_packet_recv(int fd, struct sockaddr_in *addr)
 				ptr += 4;
 				id = *ptr; ptr++;
 				len = *ptr - 2; ptr++;
-				n -= 2 + len;
+				n -= 2 + 4;
 			} else
-				log_ppp_warn("radius:packet: vendor %s not found\n", id);
+				log_ppp_warn("radius:packet: vendor %i not found\n", id);
 		} else
 			vendor = NULL;
 		da = rad_dict_find_attr_id(vendor, id);
