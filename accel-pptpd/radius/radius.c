@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 
+#include "mempool.h"
 #include "events.h"
 #include "log.h"
 #include "ppp.h"
@@ -40,6 +41,8 @@ static pthread_rwlock_t sessions_lock = PTHREAD_RWLOCK_INITIALIZER;
 
 static void *pd_key;
 static struct ipdb_t ipdb;
+
+static mempool_t rpd_pool;
 
 void rad_proc_attrs(struct rad_req_t *req)
 {
@@ -104,16 +107,16 @@ static struct ipdb_item_t *get_ip(struct ppp_t *ppp)
 
 static void ppp_starting(struct ppp_t *ppp)
 {
-	struct radius_pd_t *pd = _malloc(sizeof(*pd));
+	struct radius_pd_t *rpd = mempool_alloc(rpd_pool);
 
-	memset(pd, 0, sizeof(*pd));
-	pd->pd.key = &pd_key;
-	pd->ppp = ppp;
-	pthread_mutex_init(&pd->lock, NULL);
-	list_add_tail(&pd->pd.entry, &ppp->pd_list);
+	memset(rpd, 0, sizeof(*rpd));
+	rpd->pd.key = &pd_key;
+	rpd->ppp = ppp;
+	pthread_mutex_init(&rpd->lock, NULL);
+	list_add_tail(&rpd->pd.entry, &ppp->pd_list);
 
 	pthread_rwlock_wrlock(&sessions_lock);
-	list_add_tail(&pd->entry, &sessions);
+	list_add_tail(&rpd->entry, &sessions);
 	pthread_rwlock_unlock(&sessions_lock);
 }
 
@@ -147,7 +150,8 @@ static void ppp_finished(struct ppp_t *ppp)
 		rad_packet_free(rpd->dm_coa_req);
 
 	list_del(&rpd->pd.entry);
-	_free(rpd);
+	
+	mempool_free(rpd);
 }
 
 struct radius_pd_t *find_pd(struct ppp_t *ppp)
@@ -166,7 +170,7 @@ struct radius_pd_t *find_pd(struct ppp_t *ppp)
 }
 
 
-struct radius_pd_t *rad_find_session(const char *sessionid, const char *username, int port_id, in_addr_t ipaddr)
+struct radius_pd_t *rad_find_session(const char *sessionid, const char *username, int port_id, in_addr_t ipaddr, const char *csid)
 {
 	struct radius_pd_t *rpd;
 	
@@ -179,6 +183,8 @@ struct radius_pd_t *rad_find_session(const char *sessionid, const char *username
 		if (port_id >= 0 && port_id != rpd->ppp->unit_idx)
 			continue;
 		if (ipaddr && ipaddr != rpd->ipaddr.peer_addr)
+			continue;
+		if (csid && rpd->ppp->ctrl->calling_station_id && strcmp(csid, rpd->ppp->ctrl->calling_station_id))
 			continue;
 		pthread_mutex_lock(&rpd->lock);
 		pthread_rwlock_unlock(&sessions_lock);
@@ -193,6 +199,7 @@ struct radius_pd_t *rad_find_session_pack(struct rad_packet_t *pack)
 	struct rad_attr_t *attr;
 	const char *sessionid = NULL;
 	const char *username = NULL;
+	const char *csid = NULL;
 	int port_id = -1;
 	in_addr_t ipaddr = 0;
 	
@@ -205,15 +212,17 @@ struct radius_pd_t *rad_find_session_pack(struct rad_packet_t *pack)
 			port_id = attr->val.integer;
 		else if (!strcmp(attr->attr->name, "Framed-IP-Address"))
 			ipaddr = attr->val.ipaddr;
+		else if (!strcmp(attr->attr->name, "Calling-Station-Id"))
+			csid = attr->val.string;
 	}
 
-	if (!sessionid && !username && port_id == -1 && ipaddr == 0)
+	if (!sessionid && !username && port_id == -1 && ipaddr == 0 && !csid)
 		return NULL;
 
 	if (username && !sessionid)
 		return NULL;
 	
-	return rad_find_session(sessionid, username, port_id, ipaddr);
+	return rad_find_session(sessionid, username, port_id, ipaddr, csid);
 }
 
 int rad_check_nas_pack(struct rad_packet_t *pack)
@@ -274,6 +283,8 @@ static int parse_server(const char *opt, char **name, int *port, char **secret)
 static void __init radius_init(void)
 {
 	char *opt;
+
+	rpd_pool = mempool_create(sizeof(struct radius_pd_t));
 
 	opt = conf_get_opt("radius", "max-try");
 	if (opt && atoi(opt) > 0)

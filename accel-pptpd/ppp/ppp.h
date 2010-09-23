@@ -51,6 +51,9 @@ struct ppp_t;
 struct ppp_ctrl_t
 {
 	struct triton_context_t *ctx;
+	int max_mtu;
+	char *calling_station_id;
+	char *called_station_id;
 	void (*started)(struct ppp_t*);
 	void (*finished)(struct ppp_t*);
 };

@@ -3,6 +3,8 @@
 
 #include <sys/types.h>
 
+#define PPTP_MAX_MTU 1436
+
 #define hton8(x)  (x)
 #define ntoh8(x)  (x)
 #define hton16(x) htons(x)

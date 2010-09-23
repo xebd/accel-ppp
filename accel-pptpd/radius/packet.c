@@ -231,7 +231,6 @@ void rad_packet_free(struct rad_packet_t *pack)
 
 	while(!list_empty(&pack->attrs)) {
 		attr = list_entry(pack->attrs.next, typeof(*attr), entry);
-		log_ppp_debug("free: %s\n", attr->attr->name);
 		list_del(&attr->entry);
 		if (attr->attr->type == ATTR_TYPE_STRING || attr->attr->type == ATTR_TYPE_OCTETS)
 			_free(attr->val.string);
@@ -497,6 +496,12 @@ int rad_packet_change_val(struct rad_packet_t *pack, const char *name, const cha
 	
 	return 0;
 }
+
+int rad_packet_add_ipaddr(struct rad_packet_t *pack, const char *name, in_addr_t ipaddr)
+{
+	return rad_packet_add_int(pack, name, ipaddr);
+}
+
 
 struct rad_attr_t *rad_packet_find_attr(struct rad_packet_t *pack, const char *name)
 {

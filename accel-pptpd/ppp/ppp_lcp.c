@@ -29,6 +29,7 @@ static LIST_HEAD(option_handlers);
 
 static void lcp_layer_up(struct ppp_fsm_t*);
 static void lcp_layer_down(struct ppp_fsm_t*);
+static void lcp_layer_finished(struct ppp_fsm_t*);
 static int send_conf_req(struct ppp_fsm_t*);
 static void send_conf_ack(struct ppp_fsm_t*);
 static void send_conf_nak(struct ppp_fsm_t*);
@@ -88,7 +89,8 @@ static struct ppp_layer_data_t *lcp_layer_init(struct ppp_t *ppp)
 	ppp_fsm_init(&lcp->fsm);
 
 	lcp->fsm.layer_up=lcp_layer_up;
-	lcp->fsm.layer_finished=lcp_layer_down;
+	lcp->fsm.layer_down=lcp_layer_down;
+	lcp->fsm.layer_finished=lcp_layer_finished;
 	lcp->fsm.send_conf_req=send_conf_req;
 	lcp->fsm.send_conf_ack=send_conf_ack;
 	lcp->fsm.send_conf_nak=send_conf_nak;
@@ -150,7 +152,14 @@ static void lcp_layer_up(struct ppp_fsm_t *fsm)
 static void lcp_layer_down(struct ppp_fsm_t *fsm)
 {
 	struct ppp_lcp_t *lcp=container_of(fsm,typeof(*lcp),fsm);
-	ppp_fsm_close(&lcp->fsm);
+	//ppp_fsm_close(&lcp->fsm);
+	stop_echo(lcp);
+	//ppp_layer_finished(lcp->ppp,&lcp->ld);
+}
+
+static void lcp_layer_finished(struct ppp_fsm_t *fsm)
+{
+	struct ppp_lcp_t *lcp=container_of(fsm,typeof(*lcp),fsm);
 	log_ppp_debug("lcp_layer_finished\n");
 	stop_echo(lcp);
 	ppp_layer_finished(lcp->ppp,&lcp->ld);

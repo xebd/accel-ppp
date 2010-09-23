@@ -52,6 +52,9 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 	if (conf_nas_identifier)
 		if (rad_packet_add_str(req->pack, "NAS-Identifier", conf_nas_identifier, strlen(conf_nas_identifier)))
 			goto out_err;
+	if (conf_nas_ip_address)
+		if (rad_packet_add_ipaddr(req->pack, "NAS-IP-Address", inet_addr(conf_nas_ip_address)))
+			goto out_err;
 	if (rad_packet_add_int(req->pack, "NAS-Port", rpd->ppp->unit_idx))
 		goto out_err;
 	if (rad_packet_add_val(req->pack, "NAS-Port-Type", "Virtual"))
@@ -60,6 +63,12 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 		goto out_err;
 	if (rad_packet_add_val(req->pack, "Framed-Protocol", "PPP"))
 		goto out_err;
+	if (rpd->ppp->ctrl->calling_station_id)
+		if (rad_packet_add_str(req->pack, "Calling-Station-Id", rpd->ppp->ctrl->calling_station_id, strlen(rpd->ppp->ctrl->calling_station_id)))
+			goto out_err;
+	if (rpd->ppp->ctrl->called_station_id)
+		if (rad_packet_add_str(req->pack, "Called-Station-Id", rpd->ppp->ctrl->called_station_id, strlen(rpd->ppp->ctrl->called_station_id)))
+			goto out_err;
 
 	return req;
 
@@ -90,6 +99,10 @@ int rad_req_acct_fill(struct rad_req_t *req)
 	if (rad_packet_add_int(req->pack, "Acct-Input-Packets", 0))
 		return -1;
 	if (rad_packet_add_int(req->pack, "Acct-Output-Packets", 0))
+		return -1;
+	if (rad_packet_add_int(req->pack, "Acct-Input-Gigawords", 0))
+		return -1;
+	if (rad_packet_add_int(req->pack, "Acct-Output-Gigawords", 0))
 		return -1;
 
 	return 0;

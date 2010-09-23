@@ -18,6 +18,10 @@ struct radius_pd_t
 
 	struct rad_req_t *acct_req;
 	struct triton_timer_t acct_interim_timer;
+	uint32_t acct_input_octets;
+	uint32_t acct_output_octets;
+	uint32_t acct_input_gigawords;
+	uint32_t acct_output_gigawords;
 
 	struct rad_packet_t *dm_coa_req;
 	struct sockaddr_in dm_coa_addr;
@@ -55,7 +59,7 @@ extern int conf_acct_server_port;
 extern char *conf_dm_coa_secret;
 
 int rad_check_nas_pack(struct rad_packet_t *pack);
-struct radius_pd_t *rad_find_session(const char *sessionid, const char *username, int port_id, in_addr_t ipaddr);
+struct radius_pd_t *rad_find_session(const char *sessionid, const char *username, int port_id, in_addr_t ipaddr, const char *csid);
 struct radius_pd_t *rad_find_session_pack(struct rad_packet_t *pack);
 
 int rad_dict_load(const char *fname);

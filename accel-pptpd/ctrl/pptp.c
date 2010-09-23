@@ -18,7 +18,9 @@
 #include "triton.h"
 #include "log.h"
 #include "ppp.h"
+#include "mempool.h"
 #include "iprange.h"
+#include "utils.h"
 
 #include "memdebug.h"
 
@@ -49,6 +51,8 @@ struct pptp_conn_t
 
 static int conf_timeout = 3;
 static int conf_echo_interval = 0;
+
+static mempool_t conn_pool;
 
 static int pptp_read(struct triton_md_handler_t *h);
 static int pptp_write(struct triton_md_handler_t *h);
@@ -81,7 +85,9 @@ static void disconnect(struct pptp_conn_t *conn)
 	
 	_free(conn->in_buf);
 	_free(conn->out_buf);
-	_free(conn);
+	_free(conn->ctrl.calling_station_id);
+	_free(conn->ctrl.called_station_id);
+	mempool_free(conn);
 }
 
 static int post_msg(struct pptp_conn_t *conn, void *buf, int size)
@@ -491,7 +497,7 @@ static int pptp_connect(struct triton_md_handler_t *h)
 			continue;
 		}
 
-		conn = _malloc(sizeof(*conn));
+		conn = mempool_alloc(conn_pool);
 		memset(conn, 0, sizeof(*conn));
 		conn->hnd.fd = sock;
 		conn->hnd.read = pptp_read;
@@ -506,6 +512,13 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		conn->ctrl.ctx = &conn->ctx;
 		conn->ctrl.started = ppp_started;
 		conn->ctrl.finished = ppp_finished;
+		conn->ctrl.max_mtu = PPTP_MAX_MTU;
+		
+		conn->ctrl.calling_station_id = _malloc(17);
+		conn->ctrl.called_station_id = _malloc(17);
+		u_inet_ntoa(addr.sin_addr.s_addr, conn->ctrl.calling_station_id);
+		getsockname(sock, &addr, &size);
+		u_inet_ntoa(addr.sin_addr.s_addr, conn->ctrl.called_station_id);
 	
 		ppp_init(&conn->ppp);
 		conn->ppp.ctrl = &conn->ctrl;
@@ -565,6 +578,8 @@ static void __init pptp_init(void)
     return;
 	}
 	
+	conn_pool = mempool_create(sizeof(struct pptp_conn_t));
+
 	triton_context_register(&serv.ctx, NULL);
 	triton_md_register_handler(&serv.ctx, &serv.hnd);
 	triton_md_enable_handler(&serv.hnd, MD_MODE_READ);

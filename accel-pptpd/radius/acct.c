@@ -12,6 +12,8 @@
 
 #include "memdebug.h"
 
+#define STAT_UPDATE_INTERVAL (10 * 60 * 1000)
+
 static int req_set_RA(struct rad_req_t *req, const char *secret)
 {
 	MD5_CTX ctx;
@@ -40,10 +42,20 @@ static void req_set_stat(struct rad_req_t *req, struct ppp_t *ppp)
 		return;
 	}
 
+	if (ifreq.stats.p.ppp_ibytes < req->rpd->acct_input_octets)
+		req->rpd->acct_input_gigawords++;
+	req->rpd->acct_input_octets = ifreq.stats.p.ppp_ibytes;
+
+	if (ifreq.stats.p.ppp_obytes < req->rpd->acct_output_octets)
+		req->rpd->acct_output_gigawords++;
+	req->rpd->acct_output_octets = ifreq.stats.p.ppp_obytes;
+
 	rad_packet_change_int(req->pack, "Acct-Input-Octets", ifreq.stats.p.ppp_ibytes);
 	rad_packet_change_int(req->pack, "Acct-Output-Octets", ifreq.stats.p.ppp_obytes);
 	rad_packet_change_int(req->pack, "Acct-Input-Packets", ifreq.stats.p.ppp_ipackets);
 	rad_packet_change_int(req->pack, "Acct-Output-Packets", ifreq.stats.p.ppp_opackets);
+	rad_packet_change_int(req->pack, "Acct-Input-Gigawords", req->rpd->acct_input_gigawords);
+	rad_packet_change_int(req->pack, "Acct-Output-Gigawords", req->rpd->acct_output_gigawords);
 	rad_packet_change_int(req->pack, "Acct-Session-Time", time(NULL) - ppp->start_time);
 }
 
@@ -89,8 +101,11 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 	if (rpd->acct_req->timeout.tpd)
 		return;
 
-	rad_packet_change_val(rpd->acct_req->pack, "Acct-Status-Type", "Interim-Update");
 	req_set_stat(rpd->acct_req, rpd->ppp);
+	if (!rpd->acct_interim_interval)
+		return;
+
+	rad_packet_change_val(rpd->acct_req->pack, "Acct-Status-Type", "Interim-Update");
 	req_set_RA(rpd->acct_req, conf_acct_secret);
 	rad_req_send(rpd->acct_req);
 	rpd->acct_req->timeout.period = conf_timeout * 1000;
@@ -135,7 +150,7 @@ int rad_acct_start(struct radius_pd_t *rpd)
 	}
 	
 	rpd->acct_interim_timer.expire = rad_acct_interim_update;
-	rpd->acct_interim_timer.period = rpd->acct_interim_interval * 1000;
+	rpd->acct_interim_timer.period = rpd->acct_interim_interval ? rpd->acct_interim_interval * 1000 : STAT_UPDATE_INTERVAL;
 	if (rpd->acct_interim_interval && triton_timer_add(rpd->ppp->ctrl->ctx, &rpd->acct_interim_timer, 0)) {
 		triton_md_unregister_handler(&rpd->acct_req->hnd);
 		triton_timer_del(&rpd->acct_req->timeout);

@@ -99,6 +99,7 @@ int rad_packet_add_str(struct rad_packet_t *pack, const char *name, const char *
 int rad_packet_add_octets(struct rad_packet_t *pack, const char *name, uint8_t *val, int len);
 int rad_packet_change_int(struct rad_packet_t *pack, const char *name, int val);
 int rad_packet_change_val(struct rad_packet_t *pack, const char *name, const char *val);
+int rad_packet_add_ipaddr(struct rad_packet_t *pack, const char *name, in_addr_t ipaddr);
 int rad_packet_add_vendor_octets(struct rad_packet_t *pack, const char *vendor_name, const char *name, const uint8_t *val, int len);
 struct rad_attr_t *rad_packet_find_vendor_attr(struct rad_packet_t *pack, const char *vendor_name, const char *name);
 

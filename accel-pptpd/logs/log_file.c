@@ -437,6 +437,8 @@ static void ev_ppp_starting(struct ppp_t *ppp)
 	if (rename(fname1, fname2))
 		log_emerg("log_file: rename '%s' to '%s': %s\n", fname1, fname2, strerror(errno));
 
+	lpd->tmp = 0;
+
 	_free(fname1);
 	_free(fname2);
 }
