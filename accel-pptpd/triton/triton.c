@@ -74,6 +74,9 @@ static void* triton_thread(struct _triton_thread_t *thread)
 			sigwait(&set, &sig);
 			//printf("thread %p: exit sigwait\n", thread);
 			__sync_fetch_and_add(&triton_stat.thread_active, 1);
+
+			if (!thread->ctx)
+				continue;
 		}
 
 cont:

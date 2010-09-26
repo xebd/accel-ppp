@@ -147,7 +147,34 @@ static void siginfo(int num)
 	printf("total = %lu\n", total);
 }
 
+static void siginfo2(int num)
+{
+	struct mem_t *mem;
+
+	spin_lock(&mem_list_lock);
+	list_for_each_entry(mem, &mem_list, entry) {
+		if (mem->magic1 != MAGIC1 || mem->magic2 != *(uint64_t*)(mem->data + mem->size))
+			printf("%s:%i %lu\n", mem->fname, mem->line, mem->size);
+	}
+	spin_unlock(&mem_list_lock);
+}
+
+void __export md_check(void *ptr)
+{
+	struct mem_t *mem = container_of(ptr, typeof(*mem), data);
+
+	if (!ptr)
+		abort();
+	
+	if (mem->magic1 != MAGIC1)
+		abort();
+
+	if (mem->magic2 != *(uint64_t*)(mem->data + mem->size))
+		abort();
+}
+
 static void __init init(void)
 {
 	signal(36, siginfo);
+	signal(37, siginfo2);
 }

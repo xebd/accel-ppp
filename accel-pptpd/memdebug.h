@@ -16,6 +16,7 @@ void *md_realloc(void *ptr, size_t size, const char *fname, int line);
 void md_free(void *ptr, const char *fname, int line);
 char* md_strdup(const char *ptr, const char *fname, int line);
 char* md_strndup(const char *ptr, size_t size, const char *fname, int line);
+void md_check(void *ptr);
 
 #else
 #define _malloc(size) malloc(size)

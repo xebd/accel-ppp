@@ -117,7 +117,7 @@ static void ev_ppp_started(struct ppp_t *ppp)
 		sigchld_unlock();
 	} else if (pid == 0) {
 		execv(conf_ip_up, argv);
-		log_error("pppd_compat: exec '%s': %s\n", conf_ip_up, strerror(errno));
+		log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_up, strerror(errno));
 		_exit(EXIT_FAILURE);
 	} else
 		log_error("pppd_compat: fork: %s\n", strerror(errno));
@@ -159,9 +159,11 @@ static void ev_ppp_finished(struct ppp_t *ppp)
 			log_ppp_debug("pppd_compat: ip-down started (pid %i)\n", pid);
 		sigchld_unlock();
 		triton_context_schedule(pd->ppp->ctrl->ctx);
+		pthread_mutex_lock(&pd->ip_down_hnd.lock);
+		pthread_mutex_unlock(&pd->ip_down_hnd.lock);
 	} else if (pid == 0) {
 		execv(conf_ip_down, argv);
-		log_error("pppd_compat: exec '%s': %s\n", conf_ip_change, strerror(errno));
+		log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_change, strerror(errno));
 		_exit(EXIT_FAILURE);
 	} else
 		log_error("pppd_compat: fork: %s\n", strerror(errno));
@@ -222,7 +224,7 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 			ev->res = pd->ip_change_res;
 	} else if (pid == 0) {
 		execv(conf_ip_change, argv);
-		log_error("pppd_compat: exec '%s': %s\n", conf_ip_change, strerror(errno));
+		log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_change, strerror(errno));
 		_exit(EXIT_FAILURE);
 	} else
 		log_error("pppd_compat: fork: %s\n", strerror(errno));

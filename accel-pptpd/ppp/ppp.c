@@ -296,6 +296,7 @@ cont:
 			return 0;
 		}
 
+		md_check(ppp->unit_buf);
 		//printf("ppp_unit_read: ");
 		//print_buf(ppp->unit_buf,ppp->unit_buf_size);
 

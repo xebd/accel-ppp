@@ -10,7 +10,8 @@
 #define EV_CTRL_STARTED     7
 #define EV_CTRL_FINISHED    8
 #define EV_IP_CHANGED       100
-#define EV_SHAPE_CHANGED    101 
+#define EV_SHAPE_CHANGED    101
+#define EV_MPPE_KEYS        102
 #define EV_RADIUS_ACCESS_ACCEPT 200
 #define EV_RADIUS_COA           201
 
@@ -22,6 +23,13 @@ struct ev_radius_t
 	struct rad_packet_t *request;
 	struct rad_packet_t *reply;
 	int res;
+};
+
+struct ev_mppe_keys_t
+{
+	struct ppp_t *ppp;
+	uint8_t *recv_key;
+	uint8_t *send_key;
 };
 
 #endif

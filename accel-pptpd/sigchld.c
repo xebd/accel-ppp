@@ -64,8 +64,8 @@ static void* sigchld_thread(void *arg)
 		}
 		pthread_mutex_unlock(&handlers_lock);
 		if (h0) {
-			h0->handler(h0, WEXITSTATUS(status));
 			list_del(&h0->entry);
+			h0->handler(h0, WEXITSTATUS(status));
 			h0->pid = 0;
 			pthread_mutex_unlock(&h0->lock);
 		}

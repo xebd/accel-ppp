@@ -42,7 +42,7 @@ static mempool_t chunk_pool;
 
 static __thread struct ppp_t *cur_ppp;
 static __thread struct _log_msg_t *cur_msg;
-static __thread char stat_buf[LOG_MAX_SIZE+1];
+static __thread char *stat_buf;
 
 static FILE *emerg_file;
 static FILE *debug_file;
@@ -57,6 +57,9 @@ static void do_log(int level, const char *fmt, va_list ap, struct ppp_t *ppp)
 {
 	struct log_target_t *t;
 	struct log_msg_t *m;
+
+	if (!stat_buf)
+		stat_buf = _malloc(LOG_MAX_SIZE + 1);
 
 	vsnprintf(stat_buf, LOG_MAX_SIZE, fmt, ap);
 

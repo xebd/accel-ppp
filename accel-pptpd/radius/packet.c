@@ -7,16 +7,20 @@
 #include <fcntl.h>
 
 #include "log.h"
+#include "mempool.h"
 
 #include "radius_p.h"
 
 #include "memdebug.h"
 
+static mempool_t packet_pool;
+static mempool_t attr_pool;
+
 struct rad_packet_t *rad_packet_alloc(int code)
 {
 	struct rad_packet_t *pack;
 
-	pack = _malloc(sizeof(*pack));
+	pack = mempool_alloc(packet_pool);
 	if (!pack) {
 		log_emerg("radius:packet: out of memory\n");
 		return NULL;
@@ -171,7 +175,7 @@ struct rad_packet_t *rad_packet_recv(int fd, struct sockaddr_in *addr)
 			vendor = NULL;
 		da = rad_dict_find_attr_id(vendor, id);
 		if (da) {
-			attr = _malloc(sizeof(*attr));
+			attr = mempool_alloc(attr_pool);
 			if (!attr) {
 				log_emerg("radius:packet: out of memory\n");
 				goto out_err;
@@ -234,10 +238,10 @@ void rad_packet_free(struct rad_packet_t *pack)
 		list_del(&attr->entry);
 		if (attr->attr->type == ATTR_TYPE_STRING || attr->attr->type == ATTR_TYPE_OCTETS)
 			_free(attr->val.string);
-		_free(attr);
+		mempool_free(attr);
 	}
 
-	_free(pack);
+	mempool_free(pack);
 }
 
 void rad_packet_print(struct rad_packet_t *pack, void (*print)(const char *fmt, ...))
@@ -325,7 +329,7 @@ int rad_packet_add_int(struct rad_packet_t *pack, const char *name, int val)
 	if (!attr)
 		return -1;
 	
-	ra = _malloc(sizeof(*ra));
+	ra = mempool_alloc(attr_pool);
 	if (!ra)
 		return -1;
 
@@ -364,7 +368,7 @@ int rad_packet_add_octets(struct rad_packet_t *pack, const char *name, uint8_t *
 	if (!attr)
 		return -1;
 	
-	ra = _malloc(sizeof(*ra));
+	ra = mempool_alloc(attr_pool);
 	if (!ra) {
 		log_emerg("radius: out of memory\n");
 		return -1;
@@ -397,7 +401,7 @@ int rad_packet_add_str(struct rad_packet_t *pack, const char *name, const char *
 	if (!attr)
 		return -1;
 	
-	ra = _malloc(sizeof(*ra));
+	ra = mempool_alloc(attr_pool);
 	if (!ra) {
 		log_emerg("radius: out of memory\n");
 		return -1;
@@ -465,7 +469,7 @@ int rad_packet_add_val(struct rad_packet_t *pack, const char *name, const char *
 	if (!v)
 		return -1;
 	
-	ra = _malloc(sizeof(*ra));
+	ra = mempool_alloc(attr_pool);
 	if (!ra)
 		return -1;
 
@@ -555,7 +559,7 @@ int rad_packet_add_vendor_octets(struct rad_packet_t *pack, const char *vendor_n
 	if (!attr)
 		return -1;
 	
-	ra = _malloc(sizeof(*ra));
+	ra = mempool_alloc(attr_pool);
 	if (!ra) {
 		log_emerg("radius: out of memory\n");
 		return -1;
@@ -594,4 +598,10 @@ struct rad_attr_t *rad_packet_find_vendor_attr(struct rad_packet_t *pack, const 
 	}
 
 	return NULL;
+}
+
+static void __init init(void)
+{
+	attr_pool = mempool_create(sizeof(struct rad_attr_t));
+	packet_pool = mempool_create(sizeof(struct rad_packet_t));
 }

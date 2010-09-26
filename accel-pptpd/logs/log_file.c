@@ -35,6 +35,8 @@ struct log_file_t
 
 	int fd;
 	off_t offset;
+	int cnt;
+	uint64_t magic;
 };
 
 struct log_file_pd_t
@@ -74,11 +76,14 @@ static uint64_t temp_seq;
 
 static void send_next_chunk();
 
+#define MAGIC 0x9988776655443322llu
+
 static void log_file_init(struct log_file_t *lf)
 {
 	spinlock_init(&lf->lock);
 	INIT_LIST_HEAD(&lf->msgs);
 	lf->fd = -1;
+	lf->magic = MAGIC;
 }
 
 static int log_file_open(struct log_file_t *lf, const char *fname)
@@ -99,13 +104,22 @@ static void sigio(int num, siginfo_t *si, void *uc)
 	struct log_file_t *lf;
 	int n;
 
+	if (si->si_signo != SIGIO)
+		return;
+
+	if (si->si_code != SI_ASYNCIO) {
+		if (aio_write(&aiocb))
+			log_emerg("log_file: aio_write: %s\n", strerror(errno));
+		return;
+	}
+
 	lf = (struct log_file_t *)si->si_ptr;
 
 	n = aio_return(&aiocb);
 	if (n < 0)
 		log_emerg("log_file: %s\n", strerror(aio_error(&aiocb)));
-	else if (n < aiocb.aio_nbytes)
-		log_emerg("log_file: short write %i %lu\n", n, aiocb.aio_nbytes);
+	else if (n != aiocb.aio_nbytes)
+		log_emerg("log_file: short write %p %i %lu\n", lf, n, aiocb.aio_nbytes);
 
 	spin_lock(&lf->lock);
 	lf->offset += n;
@@ -145,16 +159,16 @@ static int dequeue_log(struct log_file_t *lf)
 		list_del(&msg->entry);
 		spin_unlock(&lf->lock);
 
+		if (pos + msg->hdr->len > LOG_BUF_SIZE)
+			goto overrun;
 		memcpy(log_buf + pos, msg->hdr->msg, msg->hdr->len);
 		n = msg->hdr->len;
-		if (pos + n > LOG_BUF_SIZE)
-			goto overrun;
 
 		list_for_each_entry(chunk, msg->chunks, entry) {
+			if (pos + n + chunk->len > LOG_BUF_SIZE)
+				goto overrun;
 			memcpy(log_buf + pos + n, chunk->msg, chunk->len);
 			n += chunk->len;
-			if (pos + n > LOG_BUF_SIZE)
-				goto overrun;
 		}
 
 		log_free_msg(msg);
@@ -172,6 +186,7 @@ overrun:
 static void send_next_chunk(void)
 {
 	struct log_file_t *lf;
+	int n;
 
 	spin_lock(&lf_queue_lock);
 	if (list_empty(&lf_queue)) {
@@ -180,13 +195,17 @@ static void send_next_chunk(void)
 		return;
 	}
 	lf = list_entry(lf_queue.next, typeof(*lf), entry);
+	
+	n = log_file->entry.next == NULL;
 	list_del(&lf->entry);
+
 	spin_unlock(&lf_queue_lock);
 
 	aiocb.aio_fildes = lf->fd;
 	aiocb.aio_offset = lf->offset;
 	aiocb.aio_sigevent.sigev_value.sival_ptr = lf;
 	aiocb.aio_nbytes = dequeue_log(lf);
+	__sync_add_and_fetch(&lf->cnt, 1);
 
 	if (aio_write(&aiocb))
 		log_emerg("log_file: aio_write: %s\n", strerror(errno));
@@ -261,8 +280,6 @@ static struct log_file_pd_t *find_pd(struct ppp_t *ppp, void *pd_key)
 			return lpd;
 		}
 	}
-	//log_emerg("log:BUG: pd not found\n");
-	//abort();
 	return NULL;
 }
 
@@ -311,6 +328,7 @@ static void free_lpd(struct log_file_pd_t *lpd)
 	struct log_msg_t *msg;
 
 	spin_lock(&lpd->lf.lock);
+	list_del(&lpd->pd.entry);
 	lpd->lf.need_free = 1;
 	if (lpd->lf.queued)
 		spin_unlock(&lpd->lf.lock);
@@ -322,7 +340,6 @@ static void free_lpd(struct log_file_pd_t *lpd)
 		}
 		if (lpd->lf.fd != -1)
 			close(lpd->lf.fd);
-		list_del(&lpd->pd.entry);
 		spin_unlock(&lpd->lf.lock);
 		mempool_free(lpd);
 	}
@@ -513,9 +530,15 @@ static struct log_target_t per_session_target =
 static void __init init(void)
 {
 	char *opt;
+	
+	sigset_t set;
+	sigemptyset(&set);
+	sigaddset(&set, SIGIO);
+
 	struct sigaction sa = {
 		.sa_sigaction = sigio,
 		.sa_flags = SA_SIGINFO,
+		.sa_mask = set,
 	};
 
 	lpd_pool = mempool_create(sizeof(struct log_file_pd_t));
