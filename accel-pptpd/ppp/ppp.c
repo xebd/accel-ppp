@@ -274,7 +274,8 @@ cont:
 			}
 		}
 
-		log_ppp_warn("ppp_chan_read: discarding unknown packet %x\n", proto);
+		lcp_send_proto_rej(ppp, proto);
+		//log_ppp_warn("ppp_chan_read: discarding unknown packet %x\n", proto);
 	}
 }
 
@@ -316,8 +317,8 @@ cont:
 				goto cont;
 			}
 		}
-
-		log_ppp_warn("ppp_unit_read: discarding unknown packet %x\n",proto);
+		lcp_send_proto_rej(ppp, proto);
+		//log_ppp_warn("ppp_unit_read: discarding unknown packet %x\n", proto);
 	}
 }
 

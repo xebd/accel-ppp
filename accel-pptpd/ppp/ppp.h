@@ -136,6 +136,7 @@ void ppp_init(struct ppp_t *ppp);
 int establish_ppp(struct ppp_t *ppp);
 int ppp_chan_send(struct ppp_t *ppp, void *data, int size);
 int ppp_unit_send(struct ppp_t *ppp, void *data, int size);
+void lcp_send_proto_rej(struct ppp_t *ppp, uint16_t proto);
 
 struct ppp_fsm_t* ppp_lcp_init(struct ppp_t *ppp);
 void ppp_layer_started(struct ppp_t *ppp,struct ppp_layer_data_t*);

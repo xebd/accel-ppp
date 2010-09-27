@@ -26,6 +26,7 @@ static int conf_echo_interval = 0;
 static int conf_echo_failure = 3;
 
 static LIST_HEAD(option_handlers);
+static struct ppp_layer_t lcp_layer;
 
 static void lcp_layer_up(struct ppp_fsm_t*);
 static void lcp_layer_down(struct ppp_fsm_t*);
@@ -615,6 +616,27 @@ static void send_term_ack(struct ppp_fsm_t *fsm)
 	
 	ppp_chan_send(lcp->ppp, &hdr, 6);
 }
+
+void lcp_send_proto_rej(struct ppp_t *ppp, uint16_t proto)
+{
+	struct ppp_lcp_t *lcp = container_of(ppp_find_layer_data(ppp, &lcp_layer), typeof(*lcp), ld);
+	struct rej_msg_t
+	{
+		struct lcp_hdr_t hdr;
+		uint16_t proto;
+	} __attribute__((packed)) msg = {
+		.hdr.proto = htons(PPP_LCP),
+		.hdr.code = PROTOREJ,
+		.hdr.id = ++lcp->fsm.id,
+		.hdr.len = htons(6),
+		.proto = proto,
+	};
+
+	log_ppp_debug("send [LCP ProtoRej id=%i <%x>]\n", msg.hdr.id, proto);
+
+	ppp_chan_send(lcp->ppp, &msg, sizeof(msg));
+}
+
 
 static void lcp_recv(struct ppp_handler_t*h)
 {
