@@ -85,7 +85,8 @@ static struct ppp_layer_data_t *lcp_layer_init(struct ppp_t *ppp)
 	lcp->hnd.recv=lcp_recv;
 	
 	ppp_register_chan_handler(ppp,&lcp->hnd);
-	
+
+	lcp->fsm.proto = PPP_LCP;
 	ppp_fsm_init(&lcp->fsm);
 
 	lcp->fsm.layer_up=lcp_layer_up;

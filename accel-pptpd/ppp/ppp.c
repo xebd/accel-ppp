@@ -373,6 +373,14 @@ void __export ppp_terminate(struct ppp_t *ppp, int hard)
 	struct ppp_layer_data_t *d;
 	int s = 0;
 
+	if (ppp->terminating) {
+		if (hard)
+			destablish_ppp(ppp);
+		return;
+	}
+	
+	ppp->terminating = 1;
+
 	log_ppp_debug("ppp_terminate\n");
 
 	triton_event_fire(EV_PPP_FINISHING, ppp);

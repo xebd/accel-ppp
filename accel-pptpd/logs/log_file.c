@@ -34,8 +34,8 @@ struct log_file_t
 	struct log_file_pd_t *lpd;
 
 	int fd;
+	int new_fd;
 	off_t offset;
-	int cnt;
 	uint64_t magic;
 };
 
@@ -76,14 +76,13 @@ static uint64_t temp_seq;
 
 static void send_next_chunk();
 
-#define MAGIC 0x9988776655443322llu
 
 static void log_file_init(struct log_file_t *lf)
 {
 	spinlock_init(&lf->lock);
 	INIT_LIST_HEAD(&lf->msgs);
 	lf->fd = -1;
-	lf->magic = MAGIC;
+	lf->new_fd = -1;
 }
 
 static int log_file_open(struct log_file_t *lf, const char *fname)
@@ -201,11 +200,16 @@ static void send_next_chunk(void)
 
 	spin_unlock(&lf_queue_lock);
 
+	if (lf->new_fd != -1) {
+		close(lf->fd);
+		lf->fd = lf->new_fd;
+		lf->new_fd = -1;
+	}
+
 	aiocb.aio_fildes = lf->fd;
 	aiocb.aio_offset = lf->offset;
 	aiocb.aio_sigevent.sigev_value.sival_ptr = lf;
 	aiocb.aio_nbytes = dequeue_log(lf);
-	__sync_add_and_fetch(&lf->cnt, 1);
 
 	if (aio_write(&aiocb))
 		log_emerg("log_file: aio_write: %s\n", strerror(errno));
@@ -321,6 +325,17 @@ static void per_session_log(struct log_msg_t *msg, struct ppp_t *ppp)
 
 	set_hdr(msg, ppp);
 	queue_log(&lpd->lf, msg);
+}
+
+static void general_reopen(void)
+{
+	char *fname = conf_get_opt("log", "log-file");
+ 	int fd = open(fname, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
+	if (fd < 0) {
+		log_emerg("log_file: open '%s': %s\n", fname, strerror(errno));
+		return;
+	}
+	log_file->new_fd = fd;
 }
 
 static void free_lpd(struct log_file_pd_t *lpd)
@@ -515,6 +530,7 @@ out_err:
 static struct log_target_t general_target = 
 {
 	.log = general_log,
+	.reopen = general_reopen,
 };
 
 static struct log_target_t per_user_target = 

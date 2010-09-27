@@ -86,6 +86,7 @@ struct ppp_t
 	struct ppp_ctrl_t *ctrl;
 
 	int log:1;
+	int terminating:1;
 
 	void *chan_buf;
 	int chan_buf_size;

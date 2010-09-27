@@ -20,8 +20,8 @@ static LIST_HEAD(ctx_queue);
 static spinlock_t ctx_list_lock = SPINLOCK_INITIALIZER;
 static LIST_HEAD(ctx_list);
 
-struct triton_context_t *default_ctx;
 static int terminate;
+static int need_terminate;
 
 static mempool_t *ctx_pool;
 static mempool_t *call_pool;
@@ -268,7 +268,7 @@ int __export triton_context_register(struct triton_context_t *ud, void *bf_arg)
 	return 0;
 }
 
-int __export triton_context_print()
+void __export triton_context_print()
 {
 	struct _triton_context_t *ctx;
 
@@ -281,6 +281,7 @@ void __export triton_context_unregister(struct triton_context_t *ud)
 {
 	struct _triton_context_t *ctx = (struct _triton_context_t *)ud->tpd;
 	struct _triton_ctx_call_t *call;
+	struct _triton_thread_t *t;
 
 	while (!list_empty(&ctx->pending_calls)) {
 		call = list_entry(ctx->pending_calls.next, typeof(*call), entry);
@@ -290,6 +291,12 @@ void __export triton_context_unregister(struct triton_context_t *ud)
 
 	if (!list_empty(&ctx->handlers)) {
 		triton_log_error("BUG:ctx:triton_unregister_ctx: handlers is not empty");
+		{
+			struct _triton_md_handler_t *h;
+			list_for_each_entry(h, &ctx->handlers, entry)
+				if (h->ud)
+					printf("%p\n", h->ud);
+		}
 		abort();
 	}
 	if (!list_empty(&ctx->pending_handlers)) {
@@ -308,9 +315,16 @@ void __export triton_context_unregister(struct triton_context_t *ud)
 	ctx->need_free = 1;
 	spin_lock(&ctx_list_lock);
 	list_del(&ctx->entry);
+	if (need_terminate && list_empty(&ctx_list))
+		terminate = 1;
 	spin_unlock(&ctx_list_lock);
 	
 	__sync_fetch_and_sub(&triton_stat.context_count, 1);
+
+	if (terminate) {
+		list_for_each_entry(t, &threads, entry)
+			triton_thread_wakeup(t);
+	}
 }
 void __export triton_context_schedule(struct triton_context_t *ud)
 {
@@ -391,9 +405,6 @@ int __export triton_init(const char *conf_file)
 	call_pool = mempool_create(sizeof(struct _triton_ctx_call_t));
 	ctx_stack_pool = mempool_create(CTX_STACK_SIZE);
 
-	default_ctx = _malloc(sizeof(*default_ctx));
-	triton_context_register(default_ctx, NULL);	
-
 	if (conf_load(conf_file))
 		return -1;
 
@@ -446,27 +457,25 @@ void __export triton_terminate()
 {
 	struct _triton_context_t *ctx;
 	struct _triton_thread_t *t;
-	
-	md_terminate();
-	timer_terminate();
-	
+	int r;
+
+	need_terminate = 1;
+
 	spin_lock(&ctx_list_lock);
 	list_for_each_entry(ctx, &ctx_list, entry) {
 		spin_lock(&ctx->lock);
 		ctx->need_close = 1;
-		triton_queue_ctx(ctx);
+		r = triton_queue_ctx(ctx);
+		if (r)
+			triton_thread_wakeup(ctx->thread);
 		spin_unlock(&ctx->lock);
 	}
 	spin_unlock(&ctx_list_lock);
 
-	spin_lock(&threads_lock);
-	terminate = 1;
-	spin_unlock(&threads_lock);
-	
-	list_for_each_entry(t, &threads, entry)
-		triton_thread_wakeup(t);
-	
 	list_for_each_entry(t, &threads, entry)
 		pthread_join(t->thread, NULL);
+	
+	md_terminate();
+	timer_terminate();
 }
 

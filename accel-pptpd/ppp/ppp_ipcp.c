@@ -77,7 +77,8 @@ static struct ppp_layer_data_t *ipcp_layer_init(struct ppp_t *ppp)
 	ipcp->hnd.recv=ipcp_recv;
 	
 	ppp_register_unit_handler(ppp,&ipcp->hnd);
-	
+
+	ipcp->fsm.proto = PPP_IPCP;
 	ppp_fsm_init(&ipcp->fsm);
 
 	ipcp->fsm.layer_up=ipcp_layer_up;
@@ -541,14 +542,14 @@ static void ipcp_recv(struct ppp_handler_t*h)
 				ppp_fsm_recv_conf_rej(&ipcp->fsm);
 			break;
 		case TERMREQ:
-			term_msg=_strndup((char*)(hdr+1),ntohs(hdr->len));
+			term_msg=_strndup((char*)(hdr+1),ntohs(hdr->len) - 4);
 			log_ppp_debug("recv [IPCP TermReq id=%x \"%s\"]\n",hdr->id,term_msg);
 			_free(term_msg);
 			ppp_fsm_recv_term_req(&ipcp->fsm);
 			ppp_terminate(ipcp->ppp, 0);
 			break;
 		case TERMACK:
-			term_msg=_strndup((char*)(hdr+1),ntohs(hdr->len));
+			term_msg=_strndup((char*)(hdr+1),ntohs(hdr->len) - 4);
 			log_ppp_debug("recv [IPCP TermAck id=%x \"%s\"]\n",hdr->id,term_msg);
 			_free(term_msg);
 			ppp_fsm_recv_term_ack(&ipcp->fsm);

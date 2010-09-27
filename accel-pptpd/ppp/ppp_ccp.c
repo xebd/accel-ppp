@@ -78,6 +78,7 @@ static struct ppp_layer_data_t *ccp_layer_init(struct ppp_t *ppp)
 	
 	ppp_register_unit_handler(ppp,&ccp->hnd);
 	
+	ccp->fsm.proto = PPP_CCP;
 	ppp_fsm_init(&ccp->fsm);
 
 	ccp->fsm.layer_up=ccp_layer_up;
@@ -544,14 +545,13 @@ static void ccp_recv(struct ppp_handler_t*h)
 				ppp_fsm_recv_conf_rej(&ccp->fsm);
 			break;
 		case TERMREQ:
-			term_msg=_strndup((char*)(hdr+1),ntohs(hdr->len));
+			term_msg=_strndup((char*)(hdr+1),ntohs(hdr->len) - 4);
 			log_ppp_debug("recv [CCP TermReq id=%x \"%s\"]\n",hdr->id,term_msg);
 			_free(term_msg);
 			ppp_fsm_recv_term_req(&ccp->fsm);
-			ppp_terminate(ccp->ppp, 0);
 			break;
 		case TERMACK:
-			term_msg=_strndup((char*)(hdr+1),ntohs(hdr->len));
+			term_msg=_strndup((char*)(hdr+1),ntohs(hdr->len) - 4);
 			log_ppp_debug("recv [CCP TermAck id=%x \"%s\"]\n",hdr->id,term_msg);
 			_free(term_msg);
 			ppp_fsm_recv_term_ack(&ccp->fsm);

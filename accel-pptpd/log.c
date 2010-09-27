@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <string.h>
 #include <stdint.h>
+#include <signal.h>
 #include <sys/time.h>
 
 #include "triton/mempool.h"
@@ -402,14 +403,27 @@ void __export log_switch(struct triton_context_t *ctx, void *arg)
 	cur_ppp = (struct ppp_t *)arg;
 }
 
+
 void __export log_register_target(struct log_target_t *t)
 {
 	list_add_tail(&t->entry, &targets);
 }
 
+static void sighup(int n)
+{
+	struct log_target_t *t;
+
+	list_for_each_entry(t, &targets, entry)
+		if (t->reopen)
+			t->reopen();
+}
+
 static void __init log_init(void)
 {
 	char *opt;
+	struct sigaction sa = {
+		.sa_handler = sighup,
+	};
 
 	opt = conf_get_opt("log", "log-emerg");
 	if (opt) {
@@ -428,4 +442,7 @@ static void __init log_init(void)
 	msg_pool = mempool_create(sizeof(struct log_msg_t));
 	_msg_pool = mempool_create(sizeof(struct _log_msg_t));
 	chunk_pool = mempool_create(sizeof(struct log_chunk_t) + LOG_CHUNK_SIZE + 1);
+
+	sigaction(SIGHUP, &sa, NULL);
 }
+

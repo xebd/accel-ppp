@@ -109,7 +109,7 @@ int main(int argc, char **argv)
 	}
 
 	if (pid_file) {
-		FILE *f = fopen("pid_file", "w");
+		FILE *f = fopen(pid_file, "w");
 		if (f) {
 			fprintf(f, "%i", getpid());
 			fclose(f);
@@ -128,10 +128,11 @@ int main(int argc, char **argv)
 	sigdelset(&set, SIGFPE);
 	sigdelset(&set, SIGILL);
 	sigdelset(&set, SIGBUS);
-	sigdelset(&set, 35);
-	sigdelset(&set, 36);
+	sigdelset(&set, SIGHUP);
 	sigdelset(&set, SIGIO);
 	sigdelset(&set, SIGINT);
+	sigdelset(&set, 35);
+	sigdelset(&set, 36);
 	pthread_sigmask(SIG_SETMASK, &set, NULL);
 
 	sigemptyset(&set);

@@ -477,7 +477,7 @@ void send_term_req(struct ppp_fsm_t *layer)
 void send_term_ack(struct ppp_fsm_t *layer)
 {
 	struct lcp_hdr_t hdr = {
-		.proto = htons(PPP_LCP),
+		.proto = htons(layer->proto),
 		.code = TERMACK,
 		.id = layer->recv_id,
 		.len = htons(4),
