@@ -9,6 +9,9 @@
 
 #include "memdebug.h"
 
+static in_addr_t conf_dns1;
+static in_addr_t conf_dns2;
+
 static struct ipcp_option_t *dns1_init(struct ppp_ipcp_t *ipcp);
 static struct ipcp_option_t *dns2_init(struct ppp_ipcp_t *ipcp);
 static void dns_free(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt);
@@ -100,8 +103,8 @@ static int dns_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt,
 
 	if (!dns_opt->addr)
 	{
-		if (dns_opt->opt.id==CI_DNS1) dns_opt->addr=inet_addr("10.0.0.1");
-		else dns_opt->addr=inet_addr("10.0.0.2");
+		if (dns_opt->opt.id == CI_DNS1 && conf_dns1) dns_opt->addr=conf_dns1;
+		else if (dns_opt->opt.id == CI_DNS2 && conf_dns2) dns_opt->addr=conf_dns2;
 		
 		if (!dns_opt->addr)
 		{
@@ -142,7 +145,16 @@ static void dns2_print(void (*print)(const char *fmt,...),struct ipcp_option_t *
 
 static void __init dns_opt_init()
 {
+	char *opt;
+	
+	opt = conf_get_opt("dns", "dns1");
+	if (opt)
+		conf_dns1 = inet_addr(opt);
+	
+	opt = conf_get_opt("dns", "dns2");
+	if (opt)
+		conf_dns2 = inet_addr(opt);
+	
 	ipcp_option_register(&dns1_opt_hnd);
 	ipcp_option_register(&dns2_opt_hnd);
 }
-

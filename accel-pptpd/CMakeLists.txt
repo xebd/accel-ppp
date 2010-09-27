@@ -12,7 +12,7 @@ ADD_SUBDIRECTORY(radius)
 ADD_SUBDIRECTORY(logs)
 ADD_SUBDIRECTORY(extra)
 
-ADD_EXECUTABLE(pptpd
+ADD_EXECUTABLE(accel-pptpd
 	ppp/ppp.c
 	ppp/ppp_fsm.c
 	ppp/ppp_lcp.c
@@ -39,5 +39,5 @@ ADD_EXECUTABLE(pptpd
 	main.c
 	memdebug.c
 )
-TARGET_LINK_LIBRARIES(pptpd triton rt pthread ssl)
+TARGET_LINK_LIBRARIES(accel-pptpd triton rt pthread ssl)
 

@@ -117,12 +117,11 @@ static int post_msg(struct pptp_conn_t *conn, void *buf, int size)
 	return 0;
 }
 
-static int send_pptp_stop_ctrl_conn_rqst(struct pptp_conn_t *conn, int reason, int err_code)
+static int send_pptp_stop_ctrl_conn_rqst(struct pptp_conn_t *conn, int reason)
 {
 	struct pptp_stop_ctrl_conn msg = {
 		.header = PPTP_HEADER_CTRL(PPTP_STOP_CTRL_CONN_RQST),
 		.reason_result = hton8(reason),
-		.error_code = hton8(err_code),
 	};
 
 	return post_msg(conn, &msg, sizeof(msg));
@@ -143,12 +142,13 @@ static int pptp_stop_ctrl_conn_rqst(struct pptp_conn_t *conn)
 	struct pptp_stop_ctrl_conn *msg = (struct pptp_stop_ctrl_conn *)conn->in_buf;
 	log_ppp_info("PPTP_STOP_CTRL_CONN_RQST reason=%i error_code=%i\n",msg->reason_result, msg->error_code);
 
-	if (conn->state == STATE_PPP) {
-		conn->state = STATE_FIN;
-		ppp_terminate(&conn->ppp, 0);
-	}
-
 	send_pptp_stop_ctrl_conn_rply(conn, PPTP_CONN_STOP_OK, 0);
+
+	return -1;
+}
+
+static int pptp_stop_ctrl_conn_rply(struct pptp_conn_t *conn)
+{
 	return -1;
 }
 
@@ -173,6 +173,7 @@ static int send_pptp_start_ctrl_conn_rply(struct pptp_conn_t *conn, int res_code
 
 	return post_msg(conn, &msg, sizeof(msg));
 }
+
 static int pptp_start_ctrl_conn_rqst(struct pptp_conn_t *conn)
 {
 	struct pptp_start_ctrl_conn *msg = (struct pptp_start_ctrl_conn *)conn->in_buf;
@@ -190,12 +191,12 @@ static int pptp_start_ctrl_conn_rqst(struct pptp_conn_t *conn)
 			return -1;
 		return 0;
 	}
-	if (!(ntohl(msg->framing_cap) & PPTP_FRAME_SYNC)) {
+	/*if (!(ntohl(msg->framing_cap) & PPTP_FRAME_SYNC)) {
 		log_ppp_warn("connection does not supports sync mode\n");
 		if (send_pptp_start_ctrl_conn_rply(conn, PPTP_CONN_RES_GE, 0))
 			return -1;
 		return 0;
-	}
+	}*/
 	if (send_pptp_start_ctrl_conn_rply(conn, PPTP_CONN_RES_SUCCESS, 0))
 		return -1;
 
@@ -350,6 +351,8 @@ static int process_packet(struct pptp_conn_t *conn)
 			return pptp_start_ctrl_conn_rqst(conn);
 		case PPTP_STOP_CTRL_CONN_RQST:
 			return pptp_stop_ctrl_conn_rqst(conn);
+		case PPTP_STOP_CTRL_CONN_RPLY:
+			return pptp_stop_ctrl_conn_rply(conn);
 		case PPTP_OUT_CALL_RQST:
 			return pptp_out_call_rqst(conn);
 		case PPTP_ECHO_RQST:
@@ -438,10 +441,18 @@ static void pptp_close(struct triton_context_t *ctx)
 {
 	struct pptp_conn_t *conn = container_of(ctx, typeof(*conn), ctx);
 	if (conn->state == STATE_PPP) {
-		conn->state = STATE_FIN;
+		conn->state = STATE_CLOSE;
 		ppp_terminate(&conn->ppp, 0);
-	} else
-		disconnect(conn);
+	} else {
+		if (send_pptp_stop_ctrl_conn_rqst(conn, 0))
+			triton_context_call(&conn->ctx, (void (*)(void*))disconnect, conn);
+		else {
+			if (conn->timeout_timer.tpd)
+				triton_timer_mod(&conn->timeout_timer, 0);
+			else
+				triton_timer_add(ctx, &conn->timeout_timer, 0);
+		}
+	}
 }
 static void ppp_started(struct ppp_t *ppp)
 {
@@ -451,11 +462,18 @@ static void ppp_finished(struct ppp_t *ppp)
 {
 	struct pptp_conn_t *conn = container_of(ppp, typeof(*conn), ppp);
 
-	//send_pptp_stop_ctrl_conn_rqst(conn, 0, 0);
 	if (conn->state != STATE_CLOSE) {
 		log_ppp_debug("ppp_finished\n");
 		conn->state = STATE_CLOSE;
-		triton_context_call(&conn->ctx, (void (*)(void*))disconnect, conn);
+
+		if (send_pptp_stop_ctrl_conn_rqst(conn, 0))
+			triton_context_call(&conn->ctx, (void (*)(void*))disconnect, conn);
+		else {
+			if (conn->timeout_timer.tpd)
+				triton_timer_mod(&conn->timeout_timer, 0);
+			else
+				triton_timer_add(&conn->ctx, &conn->timeout_timer, 0);
+		}
 	}
 }
 
@@ -540,6 +558,7 @@ static void pptp_serv_close(struct triton_context_t *ctx)
 	struct pptp_serv_t *s=container_of(ctx,typeof(*s),ctx);
 	triton_md_unregister_handler(&s->hnd);
 	close(s->hnd.fd);
+	triton_context_unregister(ctx);
 }
 
 static struct pptp_serv_t serv=
@@ -561,6 +580,8 @@ static void __init pptp_init(void)
   addr.sin_family = AF_INET;
   addr.sin_port = htons (PPTP_PORT);
   addr.sin_addr.s_addr = htonl (INADDR_ANY);
+  
+  setsockopt(serv.hnd.fd, SOL_SOCKET, SO_REUSEADDR, &serv.hnd.fd, 4);  
   if (bind (serv.hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
     log_emerg("pptp: failed to bind socket: %s\n", strerror(errno));
 		close(serv.hnd.fd);

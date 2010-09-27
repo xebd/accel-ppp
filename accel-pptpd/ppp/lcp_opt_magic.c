@@ -64,6 +64,9 @@ static int magic_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, 
 	struct magic_option_t *magic_opt=container_of(opt,typeof(*magic_opt),opt);
 	struct lcp_opt32_t *opt32=(struct lcp_opt32_t*)ptr;
 
+	if (!ptr)
+		return LCP_OPT_NAK;
+
 	if (magic_opt->magic==ntohl(opt32->val))
 	{
 		log_ppp_error("loop detected");

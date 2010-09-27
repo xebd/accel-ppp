@@ -19,8 +19,11 @@ static char *conf_query;
 
 static void start_connect(void);
 static void start_connect_timer(struct triton_timer_t *);
+static void pgsql_close(struct triton_context_t *ctx);
 
-static struct triton_context_t pgsql_ctx;
+static struct triton_context_t pgsql_ctx = {
+	.close = pgsql_close,
+};
 static struct triton_md_handler_t pgsql_hnd;
 static struct triton_timer_t connect_timer = {
 	.period = 5000,
@@ -34,6 +37,7 @@ static int queue_size;
 static int sleeping = 0;
 static spinlock_t queue_lock = SPINLOCK_INITIALIZER;
 static char *log_buf;
+static int need_close;
 
 static void unpack_msg(struct log_msg_t *msg)
 {
@@ -80,6 +84,12 @@ static void write_next_msg(void)
 	if (list_empty(&msg_queue)) {
 		sleeping = 1;
 		spin_unlock(&queue_lock);
+		if (need_close) {
+			triton_md_unregister_handler(&pgsql_hnd);
+			PQfinish(conn);
+			conn = NULL;
+			triton_context_unregister(&pgsql_ctx);
+		}
 		return;
 	}
 
@@ -162,6 +172,11 @@ static void queue_log(struct log_msg_t *msg)
 {
 	int r = 0, f = 0;
 	spin_lock(&queue_lock);
+	if (!conn) {
+		log_free_msg(msg);
+		spin_unlock(&queue_lock);
+		return;
+	}
 	if (queue_size < conf_queue_max) {
 		list_add_tail(&msg->entry, &msg_queue);
 		++queue_size;
@@ -245,6 +260,19 @@ static void start_connect_timer(struct triton_timer_t *t)
 {
 	triton_timer_del(t);
 	start_connect();
+}
+
+static void pgsql_close(struct triton_context_t *ctx)
+{
+	spin_lock(&queue_lock);
+	if (sleeping) {
+		triton_md_unregister_handler(&pgsql_hnd);
+		PQfinish(conn);
+		conn = NULL;
+		triton_context_unregister(&pgsql_ctx);
+	} else
+		need_close = 1;	
+	spin_unlock(&queue_lock);
 }
 
 static struct log_target_t target = {

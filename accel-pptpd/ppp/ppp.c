@@ -351,15 +351,15 @@ void __export ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 void __export ppp_layer_finished(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 {
 	struct layer_node_t *n=d->node;
-	
-	d->starting=0;
-	d->started=0;
+
+	d->finished = 1;
+	d->starting = 0;
 
 	list_for_each_entry(n,&ppp->layers,entry)
 	{
 		list_for_each_entry(d,&n->items,entry)
 		{
-			if (d->starting)
+			if (!d->finished)
 				return;
 		}
 	}
@@ -372,6 +372,14 @@ void __export ppp_terminate(struct ppp_t *ppp, int hard)
 	struct layer_node_t *n;
 	struct ppp_layer_data_t *d;
 	int s = 0;
+
+	if (ppp->terminating) {
+		if (hard)
+			destablish_ppp(ppp);
+		return;
+	}
+	
+	ppp->terminating = 1;
 
 	log_ppp_debug("ppp_terminate\n");
 

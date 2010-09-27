@@ -12,6 +12,7 @@ typedef enum {FSM_Initial=0,FSM_Starting,FSM_Closed,FSM_Stopped,FSM_Closing,FSM_
 #define TERMREQ		5	/* Termination Request */
 #define TERMACK		6	/* Termination Ack */
 #define CODEREJ		7	/* Code Reject */
+#define PROTOREJ	8	/* Code Reject */
 #define ECHOREQ		9	/* Echo Request */
 #define ECHOREP		10	/* Echo Reply */
 
@@ -21,6 +22,7 @@ struct ppp_fsm_t
 {
 	struct ppp_t *ppp;
 	FSM_STATE fsm_state;
+	uint16_t proto;
 	
 	struct triton_timer_t restart_timer;
 	int restart_counter;
@@ -28,6 +30,7 @@ struct ppp_fsm_t
 	int max_configure;
 	int max_failure;
 	int timeout;
+	int conf_failure;
 
 	int id;
 	int recv_id;
@@ -41,6 +44,9 @@ struct ppp_fsm_t
 	void (*send_conf_ack)(struct ppp_fsm_t*);
 	void (*send_conf_nak)(struct ppp_fsm_t*);
 	void (*send_conf_rej)(struct ppp_fsm_t*);
+	void (*send_code_rej)(struct ppp_fsm_t*);
+	void (*send_term_req)(struct ppp_fsm_t*);
+	void (*send_term_ack)(struct ppp_fsm_t*);
 };
 
 void ppp_fsm_init(struct ppp_fsm_t*);

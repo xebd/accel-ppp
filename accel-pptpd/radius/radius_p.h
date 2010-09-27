@@ -23,6 +23,8 @@ struct radius_pd_t
 	uint32_t acct_input_gigawords;
 	uint32_t acct_output_gigawords;
 
+	struct triton_timer_t session_timeout;
+
 	struct rad_packet_t *dm_coa_req;
 	struct sockaddr_in dm_coa_addr;
 

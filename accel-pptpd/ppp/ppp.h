@@ -86,6 +86,7 @@ struct ppp_t
 	struct ppp_ctrl_t *ctrl;
 
 	int log:1;
+	int terminating:1;
 
 	void *chan_buf;
 	int chan_buf_size;
@@ -111,6 +112,7 @@ struct ppp_layer_data_t
 	struct layer_node_t *node;
 	int starting:1;
 	int started:1;
+	int finished:1;
 };
 
 struct ppp_layer_t

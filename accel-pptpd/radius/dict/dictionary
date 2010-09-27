@@ -74,3 +74,5 @@ $INCLUDE dictionary.rfc5176
 
 
 $INCLUDE dictionary.microsoft
+
+ATTRIBUTE Traffic-Shape-in 231 integer

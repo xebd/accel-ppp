@@ -235,6 +235,7 @@ static void dm_coa_close(struct triton_context_t *ctx)
 	struct dm_coa_serv_t *serv = container_of(ctx, typeof(*serv), ctx);
 	triton_md_unregister_handler(&serv->hnd);
 	close(serv->hnd.fd);
+	triton_context_unregister(ctx);
 }
 
 static struct dm_coa_serv_t serv = {

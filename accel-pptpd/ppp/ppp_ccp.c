@@ -30,6 +30,8 @@ static int send_conf_req(struct ppp_fsm_t*);
 static void send_conf_ack(struct ppp_fsm_t*);
 static void send_conf_nak(struct ppp_fsm_t*);
 static void send_conf_rej(struct ppp_fsm_t*);
+static void send_term_req(struct ppp_fsm_t *fsm);
+static void send_term_ack(struct ppp_fsm_t *fsm);
 static void ccp_recv(struct ppp_handler_t*);
 
 static void ccp_options_init(struct ppp_ccp_t *ccp)
@@ -78,6 +80,7 @@ static struct ppp_layer_data_t *ccp_layer_init(struct ppp_t *ppp)
 	
 	ppp_register_unit_handler(ppp,&ccp->hnd);
 	
+	ccp->fsm.proto = PPP_CCP;
 	ppp_fsm_init(&ccp->fsm);
 
 	ccp->fsm.layer_up=ccp_layer_up;
@@ -86,6 +89,8 @@ static struct ppp_layer_data_t *ccp_layer_init(struct ppp_t *ppp)
 	ccp->fsm.send_conf_ack=send_conf_ack;
 	ccp->fsm.send_conf_nak=send_conf_nak;
 	ccp->fsm.send_conf_rej=send_conf_rej;
+	ccp->fsm.send_term_req=send_term_req;
+	ccp->fsm.send_term_ack=send_term_ack;
 
 	INIT_LIST_HEAD(&ccp->options);
 	INIT_LIST_HEAD(&ccp->ropt_list);
@@ -134,6 +139,7 @@ static void ccp_layer_up(struct ppp_fsm_t *fsm)
 {
 	struct ppp_ccp_t *ccp=container_of(fsm,typeof(*ccp),fsm);
 	log_ppp_debug("ccp_layer_started\n");
+	ccp->started = 1;
 	ppp_layer_started(ccp->ppp,&ccp->ld);
 }
 
@@ -141,6 +147,9 @@ static void ccp_layer_down(struct ppp_fsm_t *fsm)
 {
 	struct ppp_ccp_t *ccp=container_of(fsm,typeof(*ccp),fsm);
 	log_ppp_debug("ccp_layer_finished\n");
+	if (!ccp->started)
+		ppp_layer_started(ccp->ppp, &ccp->ld);
+	ccp->started = 0;
 	ppp_layer_finished(ccp->ppp,&ccp->ld);
 }
 
@@ -480,6 +489,36 @@ static int ccp_recv_conf_ack(struct ppp_ccp_t *ccp,uint8_t *data,int size)
 	return res;
 }
 
+static void send_term_req(struct ppp_fsm_t *fsm)
+{
+	struct ppp_ccp_t *ccp=container_of(fsm,typeof(*ccp),fsm);
+	struct ccp_hdr_t hdr = {
+		.proto = htons(PPP_CCP),
+		.code = TERMREQ,
+		.id = ++ccp->fsm.id,
+		.len = htons(4),
+	};
+
+	log_ppp_debug("send [CCP TermReq id=%i \"\"]\n",hdr.id);
+
+	ppp_chan_send(ccp->ppp, &hdr, 6);
+}
+
+static void send_term_ack(struct ppp_fsm_t *fsm)
+{
+	struct ppp_ccp_t *ccp=container_of(fsm,typeof(*ccp),fsm);
+	struct ccp_hdr_t hdr = {
+		.proto = htons(PPP_CCP),
+		.code = TERMACK,
+		.id = ccp->fsm.recv_id,
+		.len = htons(4),
+	};
+
+	log_ppp_debug("send [CCP TermAck id=%i \"\"]\n", hdr.id);
+	
+	ppp_chan_send(ccp->ppp, &hdr, 6);
+}
+
 static void ccp_recv(struct ppp_handler_t*h)
 {
 	struct ccp_hdr_t *hdr;
@@ -544,14 +583,14 @@ static void ccp_recv(struct ppp_handler_t*h)
 				ppp_fsm_recv_conf_rej(&ccp->fsm);
 			break;
 		case TERMREQ:
-			term_msg=_strndup((char*)(hdr+1),ntohs(hdr->len));
+			term_msg=_strndup((char*)(hdr+1),ntohs(hdr->len) - 4);
 			log_ppp_debug("recv [CCP TermReq id=%x \"%s\"]\n",hdr->id,term_msg);
 			_free(term_msg);
 			ppp_fsm_recv_term_req(&ccp->fsm);
-			ppp_terminate(ccp->ppp, 0);
+			ppp_fsm_close(&ccp->fsm);
 			break;
 		case TERMACK:
-			term_msg=_strndup((char*)(hdr+1),ntohs(hdr->len));
+			term_msg=_strndup((char*)(hdr+1),ntohs(hdr->len) - 4);
 			log_ppp_debug("recv [CCP TermAck id=%x \"%s\"]\n",hdr->id,term_msg);
 			_free(term_msg);
 			ppp_fsm_recv_term_ack(&ccp->fsm);
