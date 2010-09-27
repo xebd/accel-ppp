@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <dlfcn.h>
+#include <limits.h>
 
 #include "triton_p.h"
 
@@ -13,6 +14,8 @@ int load_modules(const char *name)
 {
 	struct conf_sect_t *sect;
 	struct conf_option_t *opt;
+	char *fname;
+	char *path=".";
 
 	sect = conf_get_section(name);
 	if (!sect) {
@@ -20,29 +23,40 @@ int load_modules(const char *name)
 		return -1;
 	}
 
-	char *cwd = getcwd(NULL,0);
+	fname = _malloc(PATH_MAX);
 
 	list_for_each_entry(opt, &sect->items, entry) {
 		if (!strcmp(opt->name,"path") && opt->val) {
-			if (chdir(opt->val)) {
-				fprintf(stderr,"loader: chdir '%s': %s\n", opt->val, strerror(errno));
-				goto out_err;
-			}
+			path = opt->val;
 			continue;
 		}
-		if (!dlopen(opt->name, RTLD_NOW | RTLD_GLOBAL)) {
-			fprintf(stderr,"loader: failed to load module '%s': %s\n",opt->name, dlerror());
-			goto out_err;
+
+		strcpy(fname, path);
+		strcat(fname, "/");
+		strcat(fname, opt->name);
+		if (access(fname, F_OK)) {
+			strcpy(fname, path);
+			strcat(fname, "/lib");
+			strcat(fname, opt->name);
+			strcat(fname, ".so");
+			if (access(fname, F_OK)) {
+				strcpy(fname, opt->name);
+				if (access(opt->name, F_OK)) {
+					triton_log_error("loader: '%s' not found\n", opt->name);
+					continue;
+				}
+			}
+		}
+
+		if (!dlopen(fname, RTLD_NOW | RTLD_GLOBAL)) {
+			triton_log_error("loader: failed to load '%s': %s\n", opt->name, dlerror());
+			_free(fname);
+			return -1;
 		}
 	}
 
-	chdir(cwd);
-	free(cwd);
-	return 0;
+	_free(fname);
 
-out_err:
-	chdir(cwd);
-	_free(cwd);
-	return -1;
+	return 0;
 }
 
