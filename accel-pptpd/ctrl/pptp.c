@@ -317,7 +317,7 @@ static int pptp_echo_rply(struct pptp_conn_t *conn)
 	struct pptp_echo_rply *msg = (struct pptp_echo_rply *)conn->in_buf;
 	if (msg->identifier != conn->echo_sent) {
 		log_ppp_warn("pptp:echo: identifier mismatch\n");
-		return -1;
+		//return -1;
 	}
 	conn->echo_sent = 0;
 	return 0;

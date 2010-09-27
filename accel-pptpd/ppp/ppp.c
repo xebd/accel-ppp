@@ -325,7 +325,10 @@ cont:
 void __export ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 {
 	struct layer_node_t *n=d->node;
-	
+
+	if (d->started)
+		return;
+
 	d->started=1;
 
 	list_for_each_entry(d,&n->items,entry)

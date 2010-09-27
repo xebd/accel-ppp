@@ -277,11 +277,19 @@ void ppp_fsm_recv_conf_req_rej(struct ppp_fsm_t *layer)
 			--layer->restart_counter;
 			if (layer->send_conf_req) layer->send_conf_req(layer);
 		case FSM_Ack_Sent:
+			if (++layer->conf_failure == layer->max_failure) {
+				if (layer->layer_down) layer->layer_down(layer);
+				return;
+			}
 			if (layer->send_conf_rej) layer->send_conf_rej(layer);
 			layer->fsm_state=FSM_Req_Sent;
 			break;
 		case FSM_Req_Sent:
 		case FSM_Ack_Rcvd:
+			if (++layer->conf_failure == layer->max_failure) {
+				if (layer->layer_down) layer->layer_down(layer);
+				return;
+			}
 			if (layer->send_conf_rej) layer->send_conf_rej(layer);
 			break;
 		case FSM_Opened:
@@ -342,7 +350,7 @@ void ppp_fsm_recv_conf_rej(struct ppp_fsm_t *layer)
 			break;
 		case FSM_Req_Sent:
 			if (++layer->conf_failure == layer->max_failure) {
-				ppp_terminate(layer->ppp, 0); 
+				if (layer->layer_down) layer->layer_down(layer);
 				return;
 			}
 			//if (layer->init_req_cnt) layer->init_req_cnt(layer);

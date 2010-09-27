@@ -379,7 +379,7 @@ static int lcp_recv_conf_req(struct ppp_lcp_t *lcp,uint8_t *data,int size)
 	}
 	log_ppp_debug("]\n");
 
-	list_for_each_entry(lopt,&lcp->options,entry)
+	/*list_for_each_entry(lopt,&lcp->options,entry)
 	{
 		if (lopt->state==LCP_OPT_NONE)
 		{
@@ -387,7 +387,7 @@ static int lcp_recv_conf_req(struct ppp_lcp_t *lcp,uint8_t *data,int size)
 			lopt->state=r;
 			if (r<ret) ret=r;
 		}
-	}
+	}*/
 
 	return ret;
 }
@@ -719,6 +719,7 @@ static void lcp_recv(struct ppp_handler_t*h)
 			ppp_fsm_recv_code_rej_bad(&lcp->fsm);
 			break;
 		case ECHOREQ:
+			log_ppp_debug("recv [LCP EchoReq id=%x <magic %x>]\n",hdr->id, *(uint32_t*)(hdr + 1));
 			send_echo_reply(lcp);
 			break;
 		case ECHOREP:
