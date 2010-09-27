@@ -580,6 +580,8 @@ static void __init pptp_init(void)
   addr.sin_family = AF_INET;
   addr.sin_port = htons (PPTP_PORT);
   addr.sin_addr.s_addr = htonl (INADDR_ANY);
+  
+  setsockopt(serv.hnd.fd, SOL_SOCKET, SO_REUSEADDR, &serv.hnd.fd, 4);  
   if (bind (serv.hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
     log_emerg("pptp: failed to bind socket: %s\n", strerror(errno));
 		close(serv.hnd.fd);

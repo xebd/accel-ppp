@@ -143,7 +143,7 @@ void ppp_fsm_close(struct ppp_fsm_t *layer)
 		case FSM_Ack_Sent:
 			//if (layer->init_req_cnt) layer->init_req_cnt(layer);
 			init_req_counter(layer,layer->max_terminate);
-			send_term_req(layer);
+			layer->send_term_req(layer);
 			layer->fsm_state=FSM_Closing;
 			break;
 		default:
@@ -157,7 +157,7 @@ void ppp_fsm_timeout0(struct ppp_fsm_t *layer)
 	{
 		case FSM_Closing:
 		case FSM_Stopping:
-			send_term_req(layer);
+			layer->send_term_req(layer);
 			break;
 		case FSM_Ack_Rcvd:
 			layer->fsm_state=FSM_Req_Sent;
@@ -202,7 +202,7 @@ void ppp_fsm_recv_conf_req_ack(struct ppp_fsm_t *layer)
 	switch(layer->fsm_state)
 	{
 		case FSM_Closed:
-			send_term_ack(layer);
+			layer->send_term_ack(layer);
 			break;
 		case FSM_Stopped:
 			//if (layer->init_req_cnt) layer->init_req_cnt(layer);
@@ -237,7 +237,7 @@ void ppp_fsm_recv_conf_req_nak(struct ppp_fsm_t *layer)
 	switch(layer->fsm_state)
 	{
 		case FSM_Closed:
-			send_term_ack(layer);
+			layer->send_term_ack(layer);
 			break;
 		case FSM_Stopped:
 			//if (layer->init_req_cnt) layer->init_req_cnt(layer);
@@ -269,7 +269,7 @@ void ppp_fsm_recv_conf_req_rej(struct ppp_fsm_t *layer)
 	switch(layer->fsm_state)
 	{
 		case FSM_Closed:
-			send_term_ack(layer);
+			layer->send_term_ack(layer);
 			break;
 		case FSM_Stopped:
 			//if (layer->init_req_cnt) layer->init_req_cnt(layer);
@@ -302,7 +302,7 @@ void ppp_fsm_recv_conf_ack(struct ppp_fsm_t *layer)
 	{
 		case FSM_Closed:
 		case FSM_Stopped:
-			send_term_ack(layer);
+			layer->send_term_ack(layer);
 			break;
 		case FSM_Req_Sent:
 			//if (layer->init_req_cnt) layer->init_req_cnt(layer);
@@ -338,9 +338,13 @@ void ppp_fsm_recv_conf_rej(struct ppp_fsm_t *layer)
 	{
 		case FSM_Closed:
 		case FSM_Stopped:
-			send_term_ack(layer);
+			layer->send_term_ack(layer);
 			break;
 		case FSM_Req_Sent:
+			if (++layer->conf_failure == layer->max_failure) {
+				ppp_terminate(layer->ppp, 0); 
+				return;
+			}
 			//if (layer->init_req_cnt) layer->init_req_cnt(layer);
 			init_req_counter(layer,layer->max_failure);
 			--layer->restart_counter;
@@ -375,7 +379,7 @@ void ppp_fsm_recv_term_req(struct ppp_fsm_t *layer)
 		case FSM_Opened:
 			if (layer->layer_down) layer->layer_down(layer);
 			//send_term_req(layer);
-			send_term_ack(layer);
+			layer->send_term_ack(layer);
 			//if (layer->zero_req_cnt) layer->zero_req_cnt(layer);
 			zero_req_counter(layer);
 			layer->fsm_state=FSM_Stopping;
@@ -383,17 +387,18 @@ void ppp_fsm_recv_term_req(struct ppp_fsm_t *layer)
 		case FSM_Req_Sent:
 		case FSM_Ack_Rcvd:
 		case FSM_Ack_Sent:
-			send_term_ack(layer);
+			layer->send_term_ack(layer);
 			layer->fsm_state=FSM_Req_Sent;
 			break;
 		default:
-			send_term_req(layer);
+			layer->send_term_req(layer);
 			break;
 	}
 }
 
 void ppp_fsm_recv_term_ack(struct ppp_fsm_t *layer)
 {
+	stop_timer(layer);
 	switch(layer->fsm_state)
 	{
 		case FSM_Closing:
@@ -420,7 +425,7 @@ void ppp_fsm_recv_term_ack(struct ppp_fsm_t *layer)
 
 void ppp_fsm_recv_unk(struct ppp_fsm_t *layer)
 {
-	if (layer->send_conf_rej) layer->send_conf_rej(layer);
+	if (layer->send_code_rej) layer->send_code_rej(layer);
 }
 
 void ppp_fsm_recv_code_rej_perm(struct ppp_fsm_t *layer)
@@ -441,7 +446,7 @@ void ppp_fsm_recv_code_rej_bad(struct ppp_fsm_t *layer)
 	{
 		case FSM_Opened:
 			if (layer->layer_down) layer->layer_down(layer);
-			send_term_req(layer);
+			layer->send_term_req(layer);
 			layer->fsm_state=FSM_Stopping;
 			break;
 		case FSM_Closing:
@@ -458,34 +463,6 @@ void ppp_fsm_recv_code_rej_bad(struct ppp_fsm_t *layer)
 		default:
 			break;
 	}
-}
-
-void send_term_req(struct ppp_fsm_t *layer)
-{
-	struct lcp_hdr_t hdr = {
-		.proto = htons(PPP_LCP),
-		.code = TERMREQ,
-		.id = ++layer->id,
-		.len = htons(4),
-	};
-
-	log_ppp_debug("send [LCP TermReq id=%i \"\"]\n",hdr.id);
-
-	--layer->restart_counter;
-	ppp_chan_send(layer->ppp, &hdr, 6);
-}
-void send_term_ack(struct ppp_fsm_t *layer)
-{
-	struct lcp_hdr_t hdr = {
-		.proto = htons(layer->proto),
-		.code = TERMACK,
-		.id = layer->recv_id,
-		.len = htons(4),
-	};
-
-	log_ppp_debug("send [LCP TermAck id=%i \"\"]\n", hdr.id);
-	
-	ppp_chan_send(layer->ppp, &hdr, 6);
 }
 
 static void stop_timer(struct ppp_fsm_t *fsm)
@@ -509,6 +486,8 @@ static void zero_req_counter(struct ppp_fsm_t *layer)
 static void restart_timer_func(struct triton_timer_t *t)
 {
 	struct ppp_fsm_t *layer = container_of(t, typeof(*layer), restart_timer);
+
+	log_ppp_debug("fsm timeout\n");
 
 	if (layer->restart_counter>0)
 		ppp_fsm_timeout0(layer);

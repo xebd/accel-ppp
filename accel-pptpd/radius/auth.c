@@ -173,7 +173,7 @@ int rad_auth_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list ar
 	const uint8_t *nt_response = va_arg(args, const uint8_t *);
 	int flags = va_arg(args, int);
 
-	req = rad_req_alloc(rpd, CODE_ACCESS_ACCEPT, username);
+	req = rad_req_alloc(rpd, CODE_ACCESS_REQUEST, username);
 	if (!req)
 		return PWDB_DENIED;
 	

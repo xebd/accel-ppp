@@ -137,6 +137,10 @@ static int auth_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, u
 
 	if (list_empty(&auth_opt->auth_list))
 		return LCP_OPT_REJ;
+		
+	if (!ptr)
+		return LCP_OPT_ACK;
+
 
 	list_for_each_entry(d,&auth_opt->auth_list,entry)
 	{

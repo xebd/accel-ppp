@@ -86,6 +86,7 @@ struct ppp_ccp_t
 	int ropt_len;
 	
 	int conf_req_len;
+	int started:1;
 };
 
 int ccp_option_register(struct ccp_option_handler_t *h);

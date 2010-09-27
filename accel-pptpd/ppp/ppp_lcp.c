@@ -34,9 +34,12 @@ static int send_conf_req(struct ppp_fsm_t*);
 static void send_conf_ack(struct ppp_fsm_t*);
 static void send_conf_nak(struct ppp_fsm_t*);
 static void send_conf_rej(struct ppp_fsm_t*);
-static void lcp_recv(struct ppp_handler_t*);
+static void send_code_rej(struct ppp_fsm_t*);
 static void start_echo(struct ppp_lcp_t *lcp);
 static void stop_echo(struct ppp_lcp_t *lcp);
+static void send_term_req(struct ppp_fsm_t *fsm);
+static void send_term_ack(struct ppp_fsm_t *fsm);
+static void lcp_recv(struct ppp_handler_t*);
 
 static void lcp_options_init(struct ppp_lcp_t *lcp)
 {
@@ -96,6 +99,9 @@ static struct ppp_layer_data_t *lcp_layer_init(struct ppp_t *ppp)
 	lcp->fsm.send_conf_ack=send_conf_ack;
 	lcp->fsm.send_conf_nak=send_conf_nak;
 	lcp->fsm.send_conf_rej=send_conf_rej;
+	lcp->fsm.send_code_rej=send_code_rej;
+	lcp->fsm.send_term_req=send_term_req;
+	lcp->fsm.send_term_ack=send_term_ack;
 
 	INIT_LIST_HEAD(&lcp->ropt_list);
 
@@ -238,12 +244,23 @@ static void send_conf_ack(struct ppp_fsm_t *fsm)
 	ppp_chan_send(lcp->ppp,hdr,ntohs(hdr->len)+2);
 }
 
+static void send_code_rej(struct ppp_fsm_t *fsm)
+{
+	struct ppp_lcp_t *lcp=container_of(fsm,typeof(*lcp),fsm);
+	struct lcp_hdr_t *hdr=(struct lcp_hdr_t*)lcp->ppp->chan_buf;
+
+	hdr->code=CONFACK;
+	log_ppp_debug("send [LCP CodeRej %x id=%x ]\n",hdr->code, lcp->fsm.recv_id);
+
+	ppp_chan_send(lcp->ppp,hdr,ntohs(hdr->len)+2);
+}
+
 static void send_conf_nak(struct ppp_fsm_t *fsm)
 {
 	struct ppp_lcp_t *lcp=container_of(fsm,typeof(*lcp),fsm);
 	uint8_t *buf=_malloc(lcp->conf_req_len), *ptr=buf;
 	struct lcp_hdr_t *lcp_hdr=(struct lcp_hdr_t*)ptr;
-	struct recv_opt_t *ropt;
+	struct lcp_option_t *lopt;
 
 	log_ppp_debug("send [LCP ConfNak id=%x",lcp->fsm.recv_id);
 
@@ -254,13 +271,11 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 	
 	ptr+=sizeof(*lcp_hdr);
 
-	list_for_each_entry(ropt,&lcp->ropt_list,entry)
-	{
-		if (ropt->state==LCP_OPT_NAK)
-		{
+	list_for_each_entry(lopt, &lcp->options, entry) {
+		if (lopt->state == LCP_OPT_NAK) {
 			log_ppp_debug(" ");
-			ropt->lopt->h->print(log_ppp_debug,ropt->lopt,NULL);
-			ptr+=ropt->lopt->h->send_conf_nak(lcp,ropt->lopt,ptr);
+			lopt->h->print(log_ppp_debug,lopt,NULL);
+			ptr+=lopt->h->send_conf_nak(lcp,lopt,ptr);
 		}
 	}
 	
@@ -363,7 +378,7 @@ static int lcp_recv_conf_req(struct ppp_lcp_t *lcp,uint8_t *data,int size)
 	}
 	log_ppp_debug("]\n");
 
-	/*list_for_each_entry(lopt,&lcp->options,entry)
+	list_for_each_entry(lopt,&lcp->options,entry)
 	{
 		if (lopt->state==LCP_OPT_NONE)
 		{
@@ -371,7 +386,7 @@ static int lcp_recv_conf_req(struct ppp_lcp_t *lcp,uint8_t *data,int size)
 			lopt->state=r;
 			if (r<ret) ret=r;
 		}
-	}*/
+	}
 
 	return ret;
 }
@@ -571,6 +586,36 @@ static void stop_echo(struct ppp_lcp_t *lcp)
 		triton_timer_del(&lcp->echo_timer);
 }
 
+static void send_term_req(struct ppp_fsm_t *fsm)
+{
+	struct ppp_lcp_t *lcp=container_of(fsm,typeof(*lcp),fsm);
+	struct lcp_hdr_t hdr = {
+		.proto = htons(PPP_LCP),
+		.code = TERMREQ,
+		.id = ++lcp->fsm.id,
+		.len = htons(4),
+	};
+
+	log_ppp_debug("send [LCP TermReq id=%i \"\"]\n",hdr.id);
+
+	ppp_chan_send(lcp->ppp, &hdr, 6);
+}
+
+static void send_term_ack(struct ppp_fsm_t *fsm)
+{
+	struct ppp_lcp_t *lcp=container_of(fsm,typeof(*lcp),fsm);
+	struct lcp_hdr_t hdr = {
+		.proto = htons(PPP_LCP),
+		.code = TERMACK,
+		.id = lcp->fsm.recv_id,
+		.len = htons(4),
+	};
+
+	log_ppp_debug("send [LCP TermAck id=%i \"\"]\n", hdr.id);
+	
+	ppp_chan_send(lcp->ppp, &hdr, 6);
+}
+
 static void lcp_recv(struct ppp_handler_t*h)
 {
 	struct lcp_hdr_t *hdr;
@@ -657,7 +702,11 @@ static void lcp_recv(struct ppp_handler_t*h)
 		case ECHOREP:
 			lcp_recv_echo_repl(lcp,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN);
 			break;
+		case PROTOREJ:
+			log_ppp_debug("recv [LCP ProtoRej id=%x <%x>]\n",hdr->code, hdr->id, *(uint16_t*)(hdr + 1));
+			break;
 		default:
+			log_ppp_debug("recv [LCP Unknown %x]\n",hdr->code);
 			ppp_fsm_recv_unk(&lcp->fsm);
 			break;
 	}

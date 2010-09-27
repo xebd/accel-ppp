@@ -31,6 +31,8 @@ static void send_conf_ack(struct ppp_fsm_t*);
 static void send_conf_nak(struct ppp_fsm_t*);
 static void send_conf_rej(struct ppp_fsm_t*);
 static void ipcp_recv(struct ppp_handler_t*);
+static void send_term_req(struct ppp_fsm_t *fsm);
+static void send_term_ack(struct ppp_fsm_t *fsm);
 
 static void ipcp_options_init(struct ppp_ipcp_t *ipcp)
 {
@@ -87,6 +89,8 @@ static struct ppp_layer_data_t *ipcp_layer_init(struct ppp_t *ppp)
 	ipcp->fsm.send_conf_ack=send_conf_ack;
 	ipcp->fsm.send_conf_nak=send_conf_nak;
 	ipcp->fsm.send_conf_rej=send_conf_rej;
+	ipcp->fsm.send_term_req=send_term_req;
+	ipcp->fsm.send_term_ack=send_term_ack;
 
 	INIT_LIST_HEAD(&ipcp->options);
 	INIT_LIST_HEAD(&ipcp->ropt_list);
@@ -478,6 +482,36 @@ static int ipcp_recv_conf_ack(struct ppp_ipcp_t *ipcp,uint8_t *data,int size)
 	return res;
 }
 
+static void send_term_req(struct ppp_fsm_t *fsm)
+{
+	struct ppp_ipcp_t *ipcp=container_of(fsm,typeof(*ipcp),fsm);
+	struct ipcp_hdr_t hdr = {
+		.proto = htons(PPP_IPCP),
+		.code = TERMREQ,
+		.id = ++ipcp->fsm.id,
+		.len = htons(4),
+	};
+
+	log_ppp_debug("send [IPCP TermReq id=%i \"\"]\n",hdr.id);
+
+	ppp_unit_send(ipcp->ppp, &hdr, 6);
+}
+
+static void send_term_ack(struct ppp_fsm_t *fsm)
+{
+	struct ppp_ipcp_t *ipcp=container_of(fsm,typeof(*ipcp),fsm);
+	struct ipcp_hdr_t hdr = {
+		.proto = htons(PPP_IPCP),
+		.code = TERMACK,
+		.id = ipcp->fsm.recv_id,
+		.len = htons(4),
+	};
+
+	log_ppp_debug("send [IPCP TermAck id=%i \"\"]\n", hdr.id);
+	
+	ppp_unit_send(ipcp->ppp, &hdr, 6);
+}
+
 static void ipcp_recv(struct ppp_handler_t*h)
 {
 	struct ipcp_hdr_t *hdr;
@@ -553,6 +587,7 @@ static void ipcp_recv(struct ppp_handler_t*h)
 			log_ppp_debug("recv [IPCP TermAck id=%x \"%s\"]\n",hdr->id,term_msg);
 			_free(term_msg);
 			ppp_fsm_recv_term_ack(&ipcp->fsm);
+			ppp_terminate(ipcp->ppp, 0);
 			break;
 		case CODEREJ:
 			log_ppp_debug("recv [IPCP CodeRej id=%x]\n",hdr->id);

@@ -19,6 +19,7 @@ struct accomp_option_t
 {
 	struct lcp_option_t opt;
 	int accomp; // 0 - disabled, 1 - enabled, 2 - allow,disabled, 3 - allow,enabled
+	int require;
 };
 
 static struct lcp_option_handler_t accomp_opt_hnd=
@@ -74,6 +75,13 @@ static int accomp_send_conf_nak(struct ppp_lcp_t *lcp, struct lcp_option_t *opt,
 static int accomp_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)
 {
 	struct accomp_option_t *accomp_opt=container_of(opt,typeof(*accomp_opt),opt);
+
+	if (!ptr) {
+		if (accomp_opt->require)
+			return LCP_OPT_NAK;
+		accomp_opt->accomp=0;
+		return LCP_OPT_ACK;
+	}
 
 	if (accomp_opt->accomp>0)
 	{
