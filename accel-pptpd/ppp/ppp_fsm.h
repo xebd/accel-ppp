@@ -15,6 +15,7 @@ typedef enum {FSM_Initial=0,FSM_Starting,FSM_Closed,FSM_Stopped,FSM_Closing,FSM_
 #define PROTOREJ	8	/* Code Reject */
 #define ECHOREQ		9	/* Echo Request */
 #define ECHOREP		10	/* Echo Reply */
+#define	IDENT		  12	/* Identification */
 
 struct ppp_t;
 

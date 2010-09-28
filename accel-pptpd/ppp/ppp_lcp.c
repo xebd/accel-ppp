@@ -637,7 +637,6 @@ void lcp_send_proto_rej(struct ppp_t *ppp, uint16_t proto)
 	ppp_chan_send(lcp->ppp, &msg, sizeof(msg));
 }
 
-
 static void lcp_recv(struct ppp_handler_t*h)
 {
 	struct lcp_hdr_t *hdr;
@@ -727,6 +726,11 @@ static void lcp_recv(struct ppp_handler_t*h)
 			break;
 		case PROTOREJ:
 			log_ppp_debug("recv [LCP ProtoRej id=%x <%x>]\n",hdr->code, hdr->id, *(uint16_t*)(hdr + 1));
+			break;
+		case IDENT:
+			term_msg = _strndup((char*)(hdr + 1) + 4, ntohs(hdr->len) - 4 - 4);
+			log_ppp_debug("recv [LCP Ident id=%x <%s>]\n", hdr->id, term_msg);
+			_free(term_msg);
 			break;
 		default:
 			log_ppp_debug("recv [LCP Unknown %x]\n",hdr->code);
