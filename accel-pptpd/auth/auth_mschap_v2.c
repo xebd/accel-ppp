@@ -35,7 +35,12 @@
 
 #define HDR_LEN (sizeof(struct chap_hdr_t)-2)
 
+static int conf_timeout = 3;
+static int conf_interval = 0;
+static int conf_max_failure = 2;
+
 static int urandom_fd;
+
 static uint8_t magic1[39] =
          {0x4D, 0x61, 0x67, 0x69, 0x63, 0x20, 0x73, 0x65, 0x72, 0x76,
           0x65, 0x72, 0x20, 0x74, 0x6F, 0x20, 0x63, 0x6C, 0x69, 0x65,
@@ -95,11 +100,17 @@ struct chap_auth_data_t
 	struct ppp_t *ppp;
 	int id;
 	uint8_t val[VALUE_SIZE];
+	struct triton_timer_t timeout;
+	struct triton_timer_t interval;
+	int failure;
+	int started:1;
 };
 
 static void chap_send_challenge(struct chap_auth_data_t *ad);
 static void chap_recv(struct ppp_handler_t *h);
 static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response_t *msg, const char *name);
+static void chap_timeout(struct triton_timer_t *t);
+static void chap_restart(struct triton_timer_t *t);
 
 static void print_buf(const uint8_t *buf,int size)
 {
@@ -140,6 +151,10 @@ static int chap_start(struct ppp_t *ppp, struct auth_data_t *auth)
 
 	d->h.proto=PPP_CHAP;
 	d->h.recv=chap_recv;
+	d->timeout.expire = chap_timeout;
+	d->timeout.expire_tv.tv_sec = conf_timeout;
+	d->interval.expire = chap_restart;
+	d->interval.expire_tv.tv_sec = conf_interval;
 
 	ppp_register_chan_handler(ppp,&d->h);
 
@@ -152,9 +167,39 @@ static int chap_finish(struct ppp_t *ppp, struct auth_data_t *auth)
 {
 	struct chap_auth_data_t *d=container_of(auth,typeof(*d),auth);
 
+	if (d->timeout.tpd)
+		triton_timer_del(&d->timeout);
+
+	if (d->interval.tpd)
+		triton_timer_del(&d->interval);
+
 	ppp_unregister_handler(ppp,&d->h);
 
 	return 0;
+}
+
+static void chap_timeout(struct triton_timer_t *t)
+{
+	struct chap_auth_data_t *d = container_of(t, typeof(*d), timeout);
+
+	log_ppp_warn("mschap-v2: timeout\n");
+
+	if (++d->failure == conf_max_failure) {
+		if (d->started)
+			ppp_terminate(d->ppp, 0);
+		else
+			auth_failed(d->ppp);
+	} else {
+		--d->id;
+		chap_send_challenge(d);
+	}
+}
+
+static void chap_restart(struct triton_timer_t *t)
+{
+	struct chap_auth_data_t *d = container_of(t, typeof(*d), interval);
+	
+	chap_send_challenge(d);
 }
 
 static int lcp_send_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *ptr)
@@ -280,6 +325,9 @@ static void chap_send_challenge(struct chap_auth_data_t *ad)
 	log_ppp_debug(">]\n");
 
 	ppp_chan_send(ad->ppp,&msg,ntohs(msg.hdr.len)+2);
+
+	if (conf_timeout && !ad->timeout.tpd)
+		triton_timer_add(ad->ppp->ctrl->ctx, &ad->timeout, 0);
 }
 
 static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *hdr)
@@ -288,6 +336,9 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	char *name;
 	char authenticator[40];
 	int r;
+
+	if (ad->timeout.tpd)
+		triton_timer_del(&ad->timeout);
 
 	log_ppp_debug("recv [MSCHAP-v2 Response id=%x <", msg->hdr.id);
 	print_buf(msg->peer_challenge,16);
@@ -301,20 +352,29 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	{
 		log_ppp_error("mschap-v2: id mismatch\n");
 		chap_send_failure(ad);
-		ppp_terminate(ad->ppp, 0);
+		if (ad->started)
+			ppp_terminate(ad->ppp, 0);
+		else
+			auth_failed(ad->ppp);
 	}
 
 	if (msg->val_size!=RESPONSE_VALUE_SIZE)
 	{
 		log_ppp_error("mschap-v2: value-size should be %i, expected %i\n",RESPONSE_VALUE_SIZE,msg->val_size);
 		chap_send_failure(ad);
-		ppp_terminate(ad->ppp, 0);
+		if (ad->started)
+			ppp_terminate(ad->ppp, 0);
+		else
+			auth_failed(ad->ppp);
 	}
 
 	name=_strndup(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
 	if (!name) {
 		log_emerg("mschap-v2: out of memory\n");
-		auth_failed(ad->ppp);
+		if (ad->started)
+			ppp_terminate(ad->ppp, 0);
+		else
+			auth_failed(ad->ppp);
 		return;
 	}
 	
@@ -328,11 +388,19 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 
 	if (r == PWDB_DENIED) {
 		chap_send_failure(ad);
-		auth_failed(ad->ppp);
+		if (ad->started)
+			ppp_terminate(ad->ppp, 0);
+		else
+			auth_failed(ad->ppp);
 		_free(name);
 	} else {
 		chap_send_success(ad, msg, authenticator);
-		auth_successed(ad->ppp, name);
+		if (!ad->started) {
+			ad->started = 1;
+			if (conf_interval)
+				triton_timer_add(ad->ppp->ctrl->ctx, &ad->interval, 0);
+			auth_successed(ad->ppp, name);
+		}
 	}
 }
 

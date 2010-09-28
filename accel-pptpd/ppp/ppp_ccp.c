@@ -105,6 +105,12 @@ int ccp_layer_start(struct ppp_layer_data_t *ld)
 	log_ppp_debug("ccp_layer_start\n");
 
 	ccp_options_init(ccp);
+	
+	if (list_empty(&ccp->options)) {
+		ppp_layer_started(ccp->ppp, &ccp->ld);
+		return 0;
+	}
+	
 	ppp_fsm_lower_up(&ccp->fsm);
 	if (ppp_fsm_open(&ccp->fsm))
 		return -1;
@@ -529,6 +535,7 @@ static void ccp_recv(struct ppp_handler_t*h)
 	if (ccp->fsm.fsm_state==FSM_Initial || ccp->fsm.fsm_state==FSM_Closed)
 	{
 		log_ppp_warn("CCP: discaring packet\n");
+		lcp_send_proto_rej(ccp->ppp, htons(PPP_CCP));
 		return;
 	}
 

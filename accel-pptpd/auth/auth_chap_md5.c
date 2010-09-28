@@ -31,6 +31,10 @@
 
 #define HDR_LEN (sizeof(struct chap_hdr_t)-2)
 
+static int conf_timeout = 3;
+static int conf_interval = 0;
+static int conf_max_failure = 2;
+
 static int urandom_fd;
 
 struct chap_hdr_t
@@ -69,10 +73,16 @@ struct chap_auth_data_t
 	struct ppp_t *ppp;
 	int id;
 	uint8_t val[VALUE_SIZE];
+	struct triton_timer_t timeout;
+	struct triton_timer_t interval;
+	int failure;
+	int started:1;
 };
 
 static void chap_send_challenge(struct chap_auth_data_t *ad);
 static void chap_recv(struct ppp_handler_t *h);
+static void chap_timeout(struct triton_timer_t *t);
+static void chap_restart(struct triton_timer_t *t);
 
 static void print_buf(const uint8_t *buf,int size)
 {
@@ -86,8 +96,6 @@ static void print_str(const char *buf,int size)
 	for(i=0;i<size;i++)
 		log_ppp_debug("%c",buf[i]);
 }
-
-
 
 static struct auth_data_t* auth_data_init(struct ppp_t *ppp)
 {
@@ -113,6 +121,10 @@ static int chap_start(struct ppp_t *ppp, struct auth_data_t *auth)
 
 	d->h.proto=PPP_CHAP;
 	d->h.recv=chap_recv;
+	d->timeout.expire = chap_timeout;
+	d->timeout.expire_tv.tv_sec = conf_timeout;
+	d->interval.expire = chap_restart;
+	d->interval.expire_tv.tv_sec = conf_interval;
 
 	ppp_register_chan_handler(ppp,&d->h);
 
@@ -125,9 +137,39 @@ static int chap_finish(struct ppp_t *ppp, struct auth_data_t *auth)
 {
 	struct chap_auth_data_t *d=container_of(auth,typeof(*d),auth);
 
+	if (d->timeout.tpd)
+		triton_timer_del(&d->timeout);
+
+	if (d->interval.tpd)
+		triton_timer_del(&d->interval);
+
 	ppp_unregister_handler(ppp,&d->h);
 
 	return 0;
+}
+
+static void chap_timeout(struct triton_timer_t *t)
+{
+	struct chap_auth_data_t *d = container_of(t, typeof(*d), timeout);
+
+	log_ppp_warn("chap-md5: timeout\n");
+
+	if (++d->failure == conf_max_failure) {
+		if (d->started)
+			ppp_terminate(d->ppp, 0);
+		else
+			auth_failed(d->ppp);
+	} else {
+		--d->id;
+		chap_send_challenge(d);
+	}
+}
+
+static void chap_restart(struct triton_timer_t *t)
+{
+	struct chap_auth_data_t *d = container_of(t, typeof(*d), interval);
+	
+	chap_send_challenge(d);
 }
 
 static int lcp_send_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *ptr)
@@ -194,6 +236,9 @@ static void chap_send_challenge(struct chap_auth_data_t *ad)
 	log_ppp_debug(">]\n");
 
 	ppp_chan_send(ad->ppp,&msg,ntohs(msg.hdr.len)+2);
+
+	if (conf_timeout && !ad->timeout.tpd)
+		triton_timer_add(ad->ppp->ctrl->ctx, &ad->timeout, 0);
 }
 
 static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *hdr)
@@ -204,6 +249,9 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	char *name;
 	int r;
 	struct chap_challenge_t *msg=(struct chap_challenge_t*)hdr;
+
+	if (ad->timeout.tpd)
+		triton_timer_del(&ad->timeout);
 
 	log_ppp_debug("recv [CHAP Response id=%x <", msg->hdr.id);
 	print_buf(msg->val,msg->val_size);
@@ -249,20 +297,37 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		{
 			log_ppp_debug("chap-md5: challenge response mismatch\n");
 			chap_send_failure(ad);
-			auth_failed(ad->ppp);
+			if (ad->started)
+				ppp_terminate(ad->ppp, 0);
+			else
+				auth_failed(ad->ppp);
 		}else
 		{
 			chap_send_success(ad);
-			auth_successed(ad->ppp, name);
+			if (!ad->started) {
+				ad->started = 1;
+				if (conf_interval)
+					triton_timer_add(ad->ppp->ctrl->ctx, &ad->interval, 0);
+				auth_successed(ad->ppp, name);
+			}
 		}
+		_free(name);
 		_free(passwd);
 	} else if (r == PWDB_DENIED) {
 		chap_send_failure(ad);
-		auth_failed(ad->ppp);
 		_free(name);
+		if (ad->started)
+			ppp_terminate(ad->ppp, 0);
+		else
+			auth_failed(ad->ppp);
 	} else {
 		chap_send_success(ad);
-		auth_successed(ad->ppp, name);
+		if (!ad->started) {
+			ad->started = 1;
+			if (conf_interval)
+				triton_timer_add(ad->ppp->ctrl->ctx, &ad->interval, 0);
+			auth_successed(ad->ppp, name);
+		}
 	}
 }
 
@@ -297,12 +362,27 @@ static void chap_recv(struct ppp_handler_t *h)
 
 static void __init auth_chap_md5_init()
 {
-	urandom_fd=open("/dev/urandom",O_RDONLY);
-	if (urandom_fd<0)
-	{
-		log_error("chap-md5: failed to open /dev/urandom: %s\n",strerror(errno));
+	char *opt;
+
+	opt = conf_get_opt("auth", "timeout");
+	if (opt && atoi(opt) > 0)
+		conf_timeout = atoi(opt);
+
+	opt = conf_get_opt("auth", "interval");
+	if (opt && atoi(opt) > 0)
+		conf_interval = atoi(opt);
+
+	opt = conf_get_opt("auth", "max-failure");
+	if (opt && atoi(opt) > 0)
+		conf_max_failure = atoi(opt);
+
+	urandom_fd=open("/dev/urandom", O_RDONLY);
+
+	if (urandom_fd < 0) {
+		log_emerg("chap-md5: failed to open /dev/urandom: %s\n", strerror(errno));
 		return;
 	}
+
 	if (ppp_auth_register_handler(&chap))
 		log_error("chap-md5: failed to register handler\n");
 }

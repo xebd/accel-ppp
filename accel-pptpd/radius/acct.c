@@ -71,7 +71,7 @@ static int rad_acct_read(struct triton_md_handler_t *h)
 		return 0;
 
 	if (conf_verbose) {
-		log_ppp_debug("send ");
+		log_ppp_debug("recv ");
 		rad_packet_print(req->reply, log_ppp_debug);
 	}
 

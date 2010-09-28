@@ -20,7 +20,7 @@
 #define PAP_ACK 2
 #define PAP_NAK 3
 
-char *strndup(const char *s, size_t n);
+static int conf_timeout = 3;
 
 static struct auth_data_t* auth_data_init(struct ppp_t *ppp);
 static void auth_data_free(struct ppp_t*, struct auth_data_t*);
@@ -29,12 +29,15 @@ static int lcp_recv_conf_req(struct ppp_t*, struct auth_data_t*, uint8_t*);
 static int pap_start(struct ppp_t*, struct auth_data_t*);
 static int pap_finish(struct ppp_t*, struct auth_data_t*);
 static void pap_recv(struct ppp_handler_t*h);
+static void pap_timeout(struct triton_timer_t *t);
 
 struct pap_auth_data_t
 {
 	struct auth_data_t auth;
 	struct ppp_handler_t h;
 	struct ppp_t *ppp;
+	int started:1;
+	struct triton_timer_t timeout;
 };
 
 struct pap_hdr_t
@@ -85,8 +88,12 @@ static int pap_start(struct ppp_t *ppp, struct auth_data_t *auth)
 {
 	struct pap_auth_data_t *d=container_of(auth,typeof(*d),auth);
 
-	d->h.proto=PPP_PAP;
-	d->h.recv=pap_recv;
+	d->h.proto = PPP_PAP;
+	d->h.recv = pap_recv;
+	d->timeout.expire = pap_timeout;
+	d->timeout.expire_tv.tv_sec = conf_timeout;
+
+	triton_timer_add(ppp->ctrl->ctx, &d->timeout, 0);
 
 	ppp_register_chan_handler(ppp,&d->h);
 
@@ -95,10 +102,21 @@ static int pap_start(struct ppp_t *ppp, struct auth_data_t *auth)
 static int pap_finish(struct ppp_t *ppp, struct auth_data_t *auth)
 {
 	struct pap_auth_data_t *d=container_of(auth,typeof(*d),auth);
+	
+	if (d->timeout.tpd)
+		triton_timer_del(&d->timeout);
 
 	ppp_unregister_handler(ppp,&d->h);
 
 	return 0;
+}
+
+static void pap_timeout(struct triton_timer_t *t)
+{
+	struct pap_auth_data_t *d = container_of(t, typeof(*d), timeout);
+
+	log_ppp_warn("pap: timeout\n");
+	auth_failed(d->ppp);
 }
 
 static int lcp_send_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *ptr)
@@ -153,6 +171,9 @@ static int pap_recv_req(struct pap_auth_data_t *p,struct pap_hdr_t *hdr)
 	int passwd_len;
 	uint8_t *ptr=(uint8_t*)(hdr+1);
 
+	if (p->timeout.tpd)
+		triton_timer_del(&p->timeout);
+
 	log_ppp_debug("recv [PAP AuthReq id=%x]\n",hdr->id);
 
 	peer_id_len=*(uint8_t*)ptr; ptr++;
@@ -184,12 +205,18 @@ static int pap_recv_req(struct pap_auth_data_t *p,struct pap_hdr_t *hdr)
 	if (r == PWDB_DENIED) {
 		log_ppp_warn("PAP: authentication error\n");
 		pap_send_nak(p, hdr->id);
-		auth_failed(p->ppp);
+		if (p->started)
+			ppp_terminate(p->ppp, 0);
+		else
+			auth_failed(p->ppp);
 		ret=-1;
 		_free(peer_id);
 	} else {
 		pap_send_ack(p, hdr->id);
-		auth_successed(p->ppp, peer_id);
+		if (!p->started) {
+			p->started = 1;
+			auth_successed(p->ppp, peer_id);
+		}
 		ret = 0;
 	}
 
@@ -218,6 +245,12 @@ static void pap_recv(struct ppp_handler_t *h)
 
 static void __init auth_pap_init()
 {
+	char *opt;
+
+	opt = conf_get_opt("auth", "timeout");
+	if (opt && atoi(opt) > 0)
+		conf_timeout = atoi(opt);
+
 	ppp_auth_register_handler(&pap);
 }
 

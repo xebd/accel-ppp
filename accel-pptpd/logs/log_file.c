@@ -36,14 +36,14 @@ struct log_file_t
 	int fd;
 	int new_fd;
 	off_t offset;
-	uint64_t magic;
+	unsigned long magic;
 };
 
 struct log_file_pd_t
 {
 	struct ppp_pd_t pd;
 	struct log_file_t lf;
-	uint64_t tmp;
+	unsigned long tmp;
 };
 
 static int conf_color;
@@ -72,7 +72,7 @@ static LIST_HEAD(lf_queue);
 static spinlock_t lf_queue_lock = SPINLOCK_INITIALIZER;
 static int lf_queue_sleeping = 1;
 
-static uint64_t temp_seq;
+static unsigned long temp_seq;
 
 static void send_next_chunk();
 

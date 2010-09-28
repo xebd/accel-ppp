@@ -274,7 +274,8 @@ cont:
 			}
 		}
 
-		log_ppp_warn("ppp_chan_read: discarding unknown packet %x\n", proto);
+		lcp_send_proto_rej(ppp, proto);
+		//log_ppp_warn("ppp_chan_read: discarding unknown packet %x\n", proto);
 	}
 }
 
@@ -316,15 +317,18 @@ cont:
 				goto cont;
 			}
 		}
-
-		log_ppp_warn("ppp_unit_read: discarding unknown packet %x\n",proto);
+		lcp_send_proto_rej(ppp, proto);
+		//log_ppp_warn("ppp_unit_read: discarding unknown packet %x\n", proto);
 	}
 }
 
 void __export ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 {
 	struct layer_node_t *n=d->node;
-	
+
+	if (d->started)
+		return;
+
 	d->started=1;
 
 	list_for_each_entry(d,&n->items,entry)
@@ -351,15 +355,15 @@ void __export ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 void __export ppp_layer_finished(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 {
 	struct layer_node_t *n=d->node;
-	
-	d->starting=0;
-	d->started=0;
+
+	d->finished = 1;
+	d->starting = 0;
 
 	list_for_each_entry(n,&ppp->layers,entry)
 	{
 		list_for_each_entry(d,&n->items,entry)
 		{
-			if (d->starting)
+			if (!d->finished)
 				return;
 		}
 	}

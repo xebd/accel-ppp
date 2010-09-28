@@ -59,6 +59,8 @@ void rad_proc_attrs(struct rad_req_t *req)
 			}
 		} else if (!strcmp(attr->attr->name, "Acct-Interim-Interval"))
 			req->rpd->acct_interim_interval = attr->val.integer;
+		else if (!strcmp(attr->attr->name, "Session-Timeout"))
+			req->rpd->session_timeout.expire_tv.tv_sec = attr->val.integer;
 	}
 }
 
@@ -105,6 +107,14 @@ static struct ipdb_item_t *get_ip(struct ppp_t *ppp)
 	return NULL;
 }
 
+static void session_timeout(struct triton_timer_t *t)
+{
+	struct radius_pd_t *rpd = container_of(t, typeof(*rpd), session_timeout);
+
+	log_ppp_msg("radius: session timed out\n");
+	ppp_terminate(rpd->ppp, 0);
+}
+
 static void ppp_starting(struct ppp_t *ppp)
 {
 	struct radius_pd_t *rpd = mempool_alloc(rpd_pool);
@@ -126,6 +136,11 @@ static void ppp_started(struct ppp_t *ppp)
 
 	if (rad_acct_start(rpd))
 		ppp_terminate(rpd->ppp, 0);
+	
+	if (rpd->session_timeout.expire_tv.tv_sec) {
+		rpd->session_timeout.expire = session_timeout;
+		triton_timer_add(ppp->ctrl->ctx, &rpd->session_timeout, 0);
+	}
 }
 static void ppp_finishing(struct ppp_t *ppp)
 {
@@ -148,6 +163,9 @@ static void ppp_finished(struct ppp_t *ppp)
 
 	if (rpd->dm_coa_req)
 		rad_packet_free(rpd->dm_coa_req);
+
+	if (rpd->session_timeout.tpd)
+		triton_timer_del(&rpd->session_timeout);
 
 	list_del(&rpd->pd.entry);
 	
@@ -301,6 +319,10 @@ static void __init radius_init(void)
 	opt = conf_get_opt("radius", "nas-ip-address");
 	if (opt)
 		conf_nas_ip_address = opt;
+	
+	opt = conf_get_opt("radius", "nas-identifier");
+	if (opt)
+		conf_nas_identifier = opt;
 	
 	opt = conf_get_opt("radius", "gw-ip-address");
 	if (opt)

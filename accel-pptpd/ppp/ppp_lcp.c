@@ -26,6 +26,7 @@ static int conf_echo_interval = 0;
 static int conf_echo_failure = 3;
 
 static LIST_HEAD(option_handlers);
+static struct ppp_layer_t lcp_layer;
 
 static void lcp_layer_up(struct ppp_fsm_t*);
 static void lcp_layer_down(struct ppp_fsm_t*);
@@ -378,7 +379,7 @@ static int lcp_recv_conf_req(struct ppp_lcp_t *lcp,uint8_t *data,int size)
 	}
 	log_ppp_debug("]\n");
 
-	list_for_each_entry(lopt,&lcp->options,entry)
+	/*list_for_each_entry(lopt,&lcp->options,entry)
 	{
 		if (lopt->state==LCP_OPT_NONE)
 		{
@@ -386,7 +387,7 @@ static int lcp_recv_conf_req(struct ppp_lcp_t *lcp,uint8_t *data,int size)
 			lopt->state=r;
 			if (r<ret) ret=r;
 		}
-	}
+	}*/
 
 	return ret;
 }
@@ -616,6 +617,27 @@ static void send_term_ack(struct ppp_fsm_t *fsm)
 	ppp_chan_send(lcp->ppp, &hdr, 6);
 }
 
+void lcp_send_proto_rej(struct ppp_t *ppp, uint16_t proto)
+{
+	struct ppp_lcp_t *lcp = container_of(ppp_find_layer_data(ppp, &lcp_layer), typeof(*lcp), ld);
+	struct rej_msg_t
+	{
+		struct lcp_hdr_t hdr;
+		uint16_t proto;
+	} __attribute__((packed)) msg = {
+		.hdr.proto = htons(PPP_LCP),
+		.hdr.code = PROTOREJ,
+		.hdr.id = ++lcp->fsm.id,
+		.hdr.len = htons(6),
+		.proto = proto,
+	};
+
+	log_ppp_debug("send [LCP ProtoRej id=%i <%x>]\n", msg.hdr.id, proto);
+
+	ppp_chan_send(lcp->ppp, &msg, sizeof(msg));
+}
+
+
 static void lcp_recv(struct ppp_handler_t*h)
 {
 	struct lcp_hdr_t *hdr;
@@ -697,6 +719,7 @@ static void lcp_recv(struct ppp_handler_t*h)
 			ppp_fsm_recv_code_rej_bad(&lcp->fsm);
 			break;
 		case ECHOREQ:
+			log_ppp_debug("recv [LCP EchoReq id=%x <magic %x>]\n",hdr->id, *(uint32_t*)(hdr + 1));
 			send_echo_reply(lcp);
 			break;
 		case ECHOREP:
