@@ -30,6 +30,8 @@ struct ev_mppe_keys_t
 	struct ppp_t *ppp;
 	uint8_t *recv_key;
 	uint8_t *send_key;
+	int policy;
+	int type;
 };
 
 #endif

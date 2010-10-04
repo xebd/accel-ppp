@@ -86,8 +86,11 @@ static int mru_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, ui
 	struct mru_option_t *mru_opt = container_of(opt,typeof(*mru_opt),opt);
 	struct lcp_opt16_t *opt16 = (struct lcp_opt16_t*)ptr;
 
-	if (!ptr)
-		return LCP_OPT_NAK;
+	/*if (!ptr)
+		return LCP_OPT_NAK;*/
+	
+	if (opt16->hdr.len != 4)
+		return LCP_OPT_REJ;
 
 	if (ntohs(opt16->val) < conf_min_mtu || ntohs(opt16->val) > lcp->ppp->ctrl->max_mtu)
 		return LCP_OPT_NAK;

@@ -1,8 +1,9 @@
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <linux/ppp_defs.h>
 #include <linux/if_ppp.h>
-#include <arpa/inet.h>
+#include <sys/ioctl.h>
 
 #include "triton.h"
 
@@ -22,6 +23,7 @@ struct recv_opt_t
 	struct ccp_option_t *lopt;
 };
 
+static struct ppp_layer_t ccp_layer;
 static LIST_HEAD(option_handlers);
 
 static void ccp_layer_up(struct ppp_fsm_t*);
@@ -65,6 +67,26 @@ static void ccp_options_free(struct ppp_ccp_t *ccp)
 	}
 }
 
+static int ccp_set_flags(int fd, int isopen, int isup)
+{
+	int flags;
+
+	if (ioctl(fd, PPPIOCGFLAGS, &flags)) {
+		log_ppp_error("ccp: failed to get flags: %s\n", strerror(errno));
+		return -1;
+	}
+	
+	flags &= ~(SC_CCP_OPEN | SC_CCP_UP);
+	flags |= (isopen ? SC_CCP_OPEN : 0) | (isup ? SC_CCP_UP : 0);
+
+	if (ioctl(fd, PPPIOCSFLAGS, &flags)) {
+		log_ppp_error("ccp: failed to set flags: %s\n", strerror(errno));
+		return -1;
+	}
+	
+	return 0;
+}
+
 static struct ppp_layer_data_t *ccp_layer_init(struct ppp_t *ppp)
 {
 	struct ppp_ccp_t *ccp=_malloc(sizeof(*ccp));
@@ -80,6 +102,11 @@ static struct ppp_layer_data_t *ccp_layer_init(struct ppp_t *ppp)
 	
 	ppp_register_unit_handler(ppp,&ccp->hnd);
 	
+	INIT_LIST_HEAD(&ccp->options);
+	ccp_options_init(ccp);
+
+	ccp->passive = 1;
+	
 	ccp->fsm.proto = PPP_CCP;
 	ppp_fsm_init(&ccp->fsm);
 
@@ -92,7 +119,6 @@ static struct ppp_layer_data_t *ccp_layer_init(struct ppp_t *ppp)
 	ccp->fsm.send_term_req=send_term_req;
 	ccp->fsm.send_term_ack=send_term_ack;
 
-	INIT_LIST_HEAD(&ccp->options);
 	INIT_LIST_HEAD(&ccp->ropt_list);
 
 	return &ccp->ld;
@@ -104,8 +130,6 @@ int ccp_layer_start(struct ppp_layer_data_t *ld)
 	
 	log_ppp_debug("ccp_layer_start\n");
 
-	ccp_options_init(ccp);
-	
 	if (list_empty(&ccp->options)) {
 		ppp_layer_started(ccp->ppp, &ccp->ld);
 		return 0;
@@ -115,6 +139,11 @@ int ccp_layer_start(struct ppp_layer_data_t *ld)
 	if (ppp_fsm_open(&ccp->fsm))
 		return -1;
 	
+	if (ccp_set_flags(ccp->ppp->unit_fd, 1, 0)) {
+		ppp_fsm_close(&ccp->fsm);
+		return -1;
+	}
+	
 	return 0;
 }
 
@@ -123,6 +152,8 @@ void ccp_layer_finish(struct ppp_layer_data_t *ld)
 	struct ppp_ccp_t *ccp=container_of(ld,typeof(*ccp),ld);
 	
 	log_ppp_debug("ccp_layer_finish\n");
+	
+	ccp_set_flags(ccp->ppp->unit_fd, 0, 0);
 
 	ccp->fsm.fsm_state = FSM_Closed;
 	ppp_layer_finished(ccp->ppp,&ccp->ld);
@@ -146,6 +177,10 @@ static void ccp_layer_up(struct ppp_fsm_t *fsm)
 	struct ppp_ccp_t *ccp=container_of(fsm,typeof(*ccp),fsm);
 	log_ppp_debug("ccp_layer_started\n");
 	ccp->started = 1;
+	if (ccp_set_flags(ccp->ppp->unit_fd, 1, 1)) {
+		ppp_terminate(ccp->ppp, 0);
+		return;
+	}
 	ppp_layer_started(ccp->ppp,&ccp->ld);
 }
 
@@ -174,38 +209,45 @@ static void print_ropt(struct recv_opt_t *ropt)
 
 static int send_conf_req(struct ppp_fsm_t *fsm)
 {
-	struct ppp_ccp_t *ccp=container_of(fsm,typeof(*ccp),fsm);
-	uint8_t *buf=_malloc(ccp->conf_req_len), *ptr=buf;
-	struct ccp_hdr_t *ccp_hdr=(struct ccp_hdr_t*)ptr;
+	struct ppp_ccp_t *ccp = container_of(fsm, typeof(*ccp), fsm);
+	uint8_t *buf, *ptr;
+	struct ccp_hdr_t *ccp_hdr;
 	struct ccp_option_t *lopt;
 	int n;
 
-	log_ppp_debug("send [CCP ConfReq");
-	ccp_hdr->proto=htons(PPP_CCP);
-	ccp_hdr->code=CONFREQ;
-	ccp_hdr->id=++ccp->fsm.id;
-	ccp_hdr->len=0;
-	log_ppp_debug(" id=%x",ccp_hdr->id);
-	
-	ptr+=sizeof(*ccp_hdr);
+	ccp->need_req = 0;
 
-	list_for_each_entry(lopt,&ccp->options,entry)
-	{
-		n=lopt->h->send_conf_req(ccp,lopt,ptr);
+	if (ccp->passive)
+		return 0;
+
+	buf = _malloc(ccp->conf_req_len);
+	ccp_hdr = (struct ccp_hdr_t*)buf;
+
+	ccp_hdr->proto = htons(PPP_CCP);
+	ccp_hdr->code = CONFREQ;
+	ccp_hdr->id = ++ccp->fsm.id;
+	ccp_hdr->len = 0;
+	
+	ptr = (uint8_t*)(ccp_hdr + 1);
+
+	log_ppp_debug("send [CCP ConfReq id=%x", ccp_hdr->id);
+	
+	list_for_each_entry(lopt,&ccp->options,entry) {
+		n = lopt->h->send_conf_req(ccp,lopt,ptr);
 		if (n < 0)
 			return -1;
-		if (n)
-		{
+		if (n) {
 			log_ppp_debug(" ");
-			lopt->h->print(log_ppp_debug,lopt,NULL);
-			ptr+=n;
+			lopt->h->print(log_ppp_debug, lopt, NULL);
+			lopt->state = CCP_OPT_ACK;
 		}
+		ptr += n;
 	}
 	
 	log_ppp_debug("]\n");
-
-	ccp_hdr->len=htons((ptr-buf)-2);
-	ppp_unit_send(ccp->ppp,ccp_hdr,ptr-buf);
+	
+	ccp_hdr->len = htons((ptr-buf)-2);
+	ppp_unit_send(ccp->ppp, ccp_hdr, ptr-buf);
 
 	_free(buf);
 
@@ -298,9 +340,10 @@ static int ccp_recv_conf_req(struct ppp_ccp_t *ccp,uint8_t *data,int size)
 	struct ccp_opt_hdr_t *hdr;
 	struct recv_opt_t *ropt;
 	struct ccp_option_t *lopt;
-	int r,ret=1,ack=0;
+	int r, ret = 1, ack = 0;
 
-	ccp->ropt_len=size;
+	ccp->need_req = 0;
+	ccp->ropt_len = size;
 
 	while(size>0)
 	{
@@ -318,41 +361,37 @@ static int ccp_recv_conf_req(struct ppp_ccp_t *ccp,uint8_t *data,int size)
 		size-=ropt->len;
 	}
 	
-	list_for_each_entry(lopt,&ccp->options,entry)
-		lopt->state=CCP_OPT_NONE;
-
-	log_ppp_debug("recv [CCP ConfReq id=%x",ccp->fsm.recv_id);
-	list_for_each_entry(ropt,&ccp->ropt_list,entry)
+	log_ppp_debug("recv [CCP ConfReq id=%x", ccp->fsm.recv_id);
+	list_for_each_entry(ropt, &ccp->ropt_list, entry)
 	{
-		list_for_each_entry(lopt,&ccp->options,entry)
+		list_for_each_entry(lopt, &ccp->options, entry)
 		{
-			if (lopt->id==ropt->hdr->id)
-			{
+			if (lopt->id == ropt->hdr->id) {
 				log_ppp_debug(" ");
-				lopt->h->print(log_ppp_debug,lopt,(uint8_t*)ropt->hdr);
-				r=lopt->h->recv_conf_req(ccp,lopt,(uint8_t*)ropt->hdr);
-				if (ack)
-				{
-					lopt->state=CCP_OPT_REJ;
-					ropt->state=CCP_OPT_REJ;
-				}else
-				{
-					lopt->state=r;
-					ropt->state=r;
+				lopt->h->print(log_ppp_debug, lopt, (uint8_t*)ropt->hdr);
+				r = lopt->h->recv_conf_req(ccp, lopt, (uint8_t*)ropt->hdr);
+				if (ack) {
+					lopt->state = CCP_OPT_REJ;
+					ropt->state = CCP_OPT_REJ;
+				} else	{
+					if (lopt->state == CCP_OPT_NAK && r == CCP_OPT_ACK)
+						ccp->need_req = 1;
+					lopt->state = r;
+					ropt->state = r;
 				}
-				ropt->lopt=lopt;
-				if (r<ret) ret=r;
+				ropt->lopt = lopt;
+				if (r < ret)
+					ret = r;
 				break;
 			}
 		}
-		if (ropt->state==CCP_OPT_ACK || ropt->state==CCP_OPT_NAK)
-			ack=1;
-		else if (!ropt->lopt)
-		{
+		if (ropt->state == CCP_OPT_ACK || ropt->state == CCP_OPT_NAK)
+			ack = 1;
+		else if (!ropt->lopt) {
 			log_ppp_debug(" ");
 			print_ropt(ropt);
-			ropt->state=CCP_OPT_REJ;
-			ret=CCP_OPT_REJ;
+			ropt->state = CCP_OPT_REJ;
+			ret = CCP_OPT_REJ;
 		}
 	}
 	log_ppp_debug("]\n");
@@ -570,14 +609,22 @@ static void ccp_recv(struct ppp_handler_t*h)
 					break;
 			}
 			ccp_free_conf_req(ccp);
-			if (r==CCP_OPT_FAIL)
+			
+			if (r == CCP_OPT_ACK && ccp->passive) {
+				ccp->passive = 0;
+				send_conf_req(&ccp->fsm);
+			}
+			if (r == CCP_OPT_FAIL)
 				ppp_terminate(ccp->ppp, 0);
 			break;
 		case CONFACK:
 			if (ccp_recv_conf_ack(ccp,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN))
 				ppp_terminate(ccp->ppp, 0);
-			else
+			else {
 				ppp_fsm_recv_conf_ack(&ccp->fsm);
+				if (ccp->need_req)
+					send_conf_req(&ccp->fsm);
+			}
 			break;
 		case CONFNAK:
 			ccp_recv_conf_nak(ccp,(uint8_t*)(hdr+1),ntohs(hdr->len)-PPP_HDRLEN);
@@ -623,6 +670,19 @@ int ccp_option_register(struct ccp_option_handler_t *h)
 	list_add_tail(&h->entry,&option_handlers);
 
 	return 0;
+}
+
+struct ccp_option_t *ccp_find_option(struct ppp_t *ppp, struct ccp_option_handler_t *h)
+{
+	struct ppp_ccp_t *ccp = container_of(ppp_find_layer_data(ppp, &ccp_layer), typeof(*ccp), ld);
+	struct ccp_option_t *opt;
+	
+	list_for_each_entry(opt, &ccp->options, entry)
+		if (opt->h == h)
+			return opt;
+	
+	log_emerg("ccp: BUG: option not found\n");
+	abort();
 }
 
 static struct ppp_layer_t ccp_layer=

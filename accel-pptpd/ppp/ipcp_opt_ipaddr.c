@@ -104,6 +104,9 @@ static int ipaddr_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 	struct sockaddr_in addr;
 	struct npioctl np;
 
+	if (opt32->hdr.len != 6)
+		return IPCP_OPT_REJ;
+
 	if (ipaddr_opt->ip->peer_addr == opt32->val)
 		goto ack;
 		

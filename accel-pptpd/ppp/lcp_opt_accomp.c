@@ -75,13 +75,17 @@ static int accomp_send_conf_nak(struct ppp_lcp_t *lcp, struct lcp_option_t *opt,
 static int accomp_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)
 {
 	struct accomp_option_t *accomp_opt=container_of(opt,typeof(*accomp_opt),opt);
+	struct lcp_opt_hdr_t *opt0=(struct lcp_opt_hdr_t*)ptr;
 
-	if (!ptr) {
+	/*if (!ptr) {
 		if (accomp_opt->require)
 			return LCP_OPT_NAK;
 		accomp_opt->accomp=0;
 		return LCP_OPT_ACK;
-	}
+	}*/
+
+	if (opt0->len != 2)
+		return LCP_OPT_REJ;
 
 	if (accomp_opt->accomp>0)
 	{

@@ -8,10 +8,8 @@
 /*
  * Options.
  */
-#define CI_COMP	2	  /* IP-Compress-Protocol */
-#define CI_ADDR 3   /* IP-Address */
-#define CI_DNS1 129 /* Primary-DNS-Address */
-#define CI_DNS2 131 /* Secondary-DNS-Address */
+
+#define CI_MPPE	18	  /* MPPE */
 
 struct ccp_hdr_t
 {
@@ -87,9 +85,12 @@ struct ppp_ccp_t
 	
 	int conf_req_len;
 	int started:1;
+	int passive:1;
+	int need_req:1;
 };
 
 int ccp_option_register(struct ccp_option_handler_t *h);
+struct ccp_option_t *ccp_find_option(struct ppp_t *ppp, struct ccp_option_handler_t *h);
 
 #endif
 

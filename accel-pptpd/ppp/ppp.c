@@ -424,8 +424,8 @@ static int get_layer_order(const char *name)
 {
 	if (!strcmp(name,"lcp")) return 0;
 	if (!strcmp(name,"auth")) return 1;
-	if (!strcmp(name,"ipcp")) return 2;
 	if (!strcmp(name,"ccp")) return 2;
+	if (!strcmp(name,"ipcp")) return 3;
 	return -1;
 }
 

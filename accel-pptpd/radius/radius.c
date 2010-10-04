@@ -13,6 +13,7 @@
 #include "ipdb.h"
 
 #include "radius_p.h"
+#include "attr_defs.h"
 
 #include "memdebug.h"
 
@@ -49,18 +50,23 @@ void rad_proc_attrs(struct rad_req_t *req)
 	struct rad_attr_t *attr;
 
 	list_for_each_entry(attr, &req->reply->attrs, entry) {
-		if (!strcmp(attr->attr->name, "Framed-IP-Address")) {
-			if (!conf_gw_ip_address)
-				log_ppp_warn("radius: gw-ip-address not specified, cann't assign IP address...\n");
-			else {
-				req->rpd->ipaddr.owner = &ipdb;
-				req->rpd->ipaddr.peer_addr = attr->val.ipaddr;
-				req->rpd->ipaddr.addr = inet_addr(conf_gw_ip_address);
-			}
-		} else if (!strcmp(attr->attr->name, "Acct-Interim-Interval"))
-			req->rpd->acct_interim_interval = attr->val.integer;
-		else if (!strcmp(attr->attr->name, "Session-Timeout"))
-			req->rpd->session_timeout.expire_tv.tv_sec = attr->val.integer;
+		switch(attr->attr->id) {
+			case Framed_IP_Address:
+				if (!conf_gw_ip_address)
+					log_ppp_warn("radius: gw-ip-address not specified, cann't assign IP address...\n");
+				else {
+					req->rpd->ipaddr.owner = &ipdb;
+					req->rpd->ipaddr.peer_addr = attr->val.ipaddr;
+					req->rpd->ipaddr.addr = inet_addr(conf_gw_ip_address);
+				}
+				break;
+			case Acct_Interim_Interval:
+				req->rpd->acct_interim_interval = attr->val.integer;
+				break;
+			case Session_Timeout:
+				req->rpd->session_timeout.expire_tv.tv_sec = attr->val.integer;
+				break;
+		}
 	}
 }
 

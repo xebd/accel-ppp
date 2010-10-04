@@ -101,6 +101,9 @@ static int dns_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt,
 	struct dns_option_t *dns_opt=container_of(opt,typeof(*dns_opt),opt);
 	struct ipcp_opt32_t *opt32=(struct ipcp_opt32_t*)ptr;
 
+	if (opt32->hdr.len != 6)
+		return IPCP_OPT_REJ;
+
 	if (!dns_opt->addr)
 	{
 		if (dns_opt->opt.id == CI_DNS1 && conf_dns1) dns_opt->addr=conf_dns1;
