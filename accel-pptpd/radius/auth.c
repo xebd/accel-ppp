@@ -17,7 +17,8 @@ static int decrypt_chap_mppe_keys(struct rad_req_t *req, struct rad_attr_t *attr
 {
 	MD5_CTX md5_ctx;
 	SHA_CTX sha1_ctx;
-	uint8_t md5[16];
+	uint8_t md5[MD5_DIGEST_LENGTH];
+	uint8_t sha1[SHA_DIGEST_LENGTH];
 	uint8_t plain[32];
 	int i;
 	
@@ -48,7 +49,9 @@ static int decrypt_chap_mppe_keys(struct rad_req_t *req, struct rad_attr_t *attr
 	SHA1_Update(&sha1_ctx, plain + 8, 16);
 	SHA1_Update(&sha1_ctx, plain + 8, 16);
 	SHA1_Update(&sha1_ctx, challenge, 8);
-	SHA1_Final(key, &sha1_ctx);
+	SHA1_Final(sha1, &sha1_ctx);
+
+	memcpy(key, sha1, 16);
 
 	return 0;
 }
