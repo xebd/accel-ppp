@@ -31,7 +31,6 @@ ADD_EXECUTABLE(accel-pptpd
 	ipdb.c
 
 	iprange.c
-	ippool.c
 
 	utils.c
 	sigchld.c
@@ -41,4 +40,6 @@ ADD_EXECUTABLE(accel-pptpd
 	memdebug.c
 )
 TARGET_LINK_LIBRARIES(accel-pptpd triton rt pthread ssl)
+
+ADD_LIBRARY(ippool SHARED ippool.c)
 

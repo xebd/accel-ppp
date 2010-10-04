@@ -50,6 +50,8 @@ void rad_proc_attrs(struct rad_req_t *req)
 	struct rad_attr_t *attr;
 
 	list_for_each_entry(attr, &req->reply->attrs, entry) {
+		if (attr->vendor)
+			continue;
 		switch(attr->attr->id) {
 			case Framed_IP_Address:
 				if (!conf_gw_ip_address)

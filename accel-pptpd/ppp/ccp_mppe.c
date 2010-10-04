@@ -155,7 +155,8 @@ static int mppe_recv_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, u
 			return CCP_OPT_NAK;
 		} else
 			mppe_opt->mppe = 0;
-	}
+	} else
+		return CCP_OPT_REJ;
 	
 	if (setup_mppe_key(ccp->ppp->unit_fd, 1, mppe_opt->send_key))
 		return CCP_OPT_REJ;
@@ -193,7 +194,7 @@ static void ev_mppe_keys(struct ev_mppe_keys_t *ev)
 {
 	struct mppe_option_t *mppe_opt = container_of(ccp_find_option(ev->ppp, &mppe_opt_hnd), typeof(*mppe_opt), opt);
 
-	if ((ev->type & 0x02) == 0) {
+	if ((ev->type & 0x04) == 0) {
 		log_ppp_warn("mppe: 128-bit session keys not allowed, disabling mppe ...\n");
 		return;
 	}
