@@ -152,9 +152,13 @@ static void lcp_layer_up(struct ppp_fsm_t *fsm)
 {
 	struct ppp_lcp_t *lcp=container_of(fsm,typeof(*lcp),fsm);
 	log_ppp_debug("lcp_layer_started\n");
-	ppp_layer_started(lcp->ppp,&lcp->ld);
 
-	start_echo(lcp);
+	if (!lcp->started) {
+		lcp->started = 1;
+		ppp_layer_started(lcp->ppp,&lcp->ld);
+
+		start_echo(lcp);
+	}
 }
 
 static void lcp_layer_down(struct ppp_fsm_t *fsm)
@@ -171,6 +175,10 @@ static void lcp_layer_finished(struct ppp_fsm_t *fsm)
 	log_ppp_debug("lcp_layer_finished\n");
 	stop_echo(lcp);
 	ppp_layer_finished(lcp->ppp,&lcp->ld);
+	if (lcp->started)
+		lcp->started = 0;
+	else
+		ppp_terminate(lcp->ppp, 1);
 }
 
 static void print_ropt(struct recv_opt_t *ropt)

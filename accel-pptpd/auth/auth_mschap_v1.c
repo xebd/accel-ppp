@@ -34,9 +34,9 @@
 
 #define HDR_LEN (sizeof(struct chap_hdr_t)-2)
 
-static int conf_timeout = 3;
+static int conf_timeout = 5;
 static int conf_interval = 0;
-static int conf_max_failure = 2;
+static int conf_max_failure = 3;
 
 static int urandom_fd;
 
@@ -136,9 +136,9 @@ static int chap_start(struct ppp_t *ppp, struct auth_data_t *auth)
 	d->h.proto=PPP_CHAP;
 	d->h.recv=chap_recv;
 	d->timeout.expire = chap_timeout;
-	d->timeout.expire_tv.tv_sec = conf_timeout;
+	d->timeout.period = conf_timeout * 1000;
 	d->interval.expire = chap_restart;
-	d->interval.expire_tv.tv_sec = conf_interval;
+	d->interval.period = conf_interval * 1000;
 
 	ppp_register_chan_handler(ppp,&d->h);
 
@@ -294,7 +294,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 
 	name = _strndup(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
 	if (!name) {
-		log_emerg("mschap-v2: out of memory\n");
+		log_emerg("mschap-v1: out of memory\n");
 		if (ad->started)
 			ppp_terminate(ad->ppp, 0);
 		else

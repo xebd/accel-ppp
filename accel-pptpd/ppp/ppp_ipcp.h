@@ -87,6 +87,7 @@ struct ppp_ipcp_t
 	int ropt_len;
 	
 	int conf_req_len;
+	int started:1;
 };
 
 int ipcp_option_register(struct ipcp_option_handler_t *h);

@@ -176,12 +176,15 @@ static void ccp_layer_up(struct ppp_fsm_t *fsm)
 {
 	struct ppp_ccp_t *ccp=container_of(fsm,typeof(*ccp),fsm);
 	log_ppp_debug("ccp_layer_started\n");
-	ccp->started = 1;
-	if (ccp_set_flags(ccp->ppp->unit_fd, 1, 1)) {
-		ppp_terminate(ccp->ppp, 0);
-		return;
+
+	if (!ccp->started) {
+		ccp->started = 1;
+		if (ccp_set_flags(ccp->ppp->unit_fd, 1, 1)) {
+			ppp_terminate(ccp->ppp, 0);
+			return;
+		}
+		ppp_layer_started(ccp->ppp,&ccp->ld);
 	}
-	ppp_layer_started(ccp->ppp,&ccp->ld);
 }
 
 static void ccp_layer_down(struct ppp_fsm_t *fsm)

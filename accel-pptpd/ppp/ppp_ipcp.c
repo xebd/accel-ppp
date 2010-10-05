@@ -139,7 +139,10 @@ static void ipcp_layer_up(struct ppp_fsm_t *fsm)
 {
 	struct ppp_ipcp_t *ipcp=container_of(fsm,typeof(*ipcp),fsm);
 	log_ppp_debug("ipcp_layer_started\n");
-	ppp_layer_started(ipcp->ppp,&ipcp->ld);
+	if (!ipcp->started) {
+		ipcp->started = 1;
+		ppp_layer_started(ipcp->ppp,&ipcp->ld);
+	}
 }
 
 static void ipcp_layer_down(struct ppp_fsm_t *fsm)
@@ -147,6 +150,10 @@ static void ipcp_layer_down(struct ppp_fsm_t *fsm)
 	struct ppp_ipcp_t *ipcp=container_of(fsm,typeof(*ipcp),fsm);
 	log_ppp_debug("ipcp_layer_finished\n");
 	ppp_layer_finished(ipcp->ppp,&ipcp->ld);
+	if (ipcp->started)
+		ipcp->started = 0;
+	else
+		ppp_terminate(ipcp->ppp, 1);
 }
 
 static void print_ropt(struct recv_opt_t *ropt)

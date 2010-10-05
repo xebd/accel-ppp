@@ -51,7 +51,7 @@ struct pptp_conn_t
 	struct ppp_t ppp;
 };
 
-static int conf_timeout = 3;
+static int conf_timeout = 5;
 static int conf_echo_interval = 0;
 static int conf_echo_failure = 3;
 static int conf_verbose = 0;
@@ -460,8 +460,10 @@ static int pptp_read(struct triton_md_handler_t *h)
 			log_ppp_error("pptp: read: %s\n",strerror(errno));
 			goto drop;
 		}
-		if (n == 0)
+		if (n == 0) {
+			log_ppp_debug("pptp: disconnect by peer\n");
 			goto drop;
+		}
 		conn->in_size += n;
 		if (conn->in_size >= sizeof(*hdr)) {
 			if (hdr->magic != htonl(PPTP_MAGIC)) {

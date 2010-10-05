@@ -20,7 +20,7 @@
 #define PAP_ACK 2
 #define PAP_NAK 3
 
-static int conf_timeout = 3;
+static int conf_timeout = 5;
 
 static struct auth_data_t* auth_data_init(struct ppp_t *ppp);
 static void auth_data_free(struct ppp_t*, struct auth_data_t*);
@@ -91,7 +91,7 @@ static int pap_start(struct ppp_t *ppp, struct auth_data_t *auth)
 	d->h.proto = PPP_PAP;
 	d->h.recv = pap_recv;
 	d->timeout.expire = pap_timeout;
-	d->timeout.expire_tv.tv_sec = conf_timeout;
+	d->timeout.period = conf_timeout * 1000;
 
 	triton_timer_add(ppp->ctrl->ctx, &d->timeout, 0);
 

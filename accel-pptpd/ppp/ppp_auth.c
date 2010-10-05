@@ -41,6 +41,7 @@ struct auth_layer_data_t
 	struct ppp_layer_data_t ld;
 	struct auth_option_t auth_opt;
 	struct ppp_t *ppp;
+	int started:1;
 };
 
 static struct lcp_option_handler_t auth_opt_hnd=
@@ -269,14 +270,15 @@ static int auth_layer_start(struct ppp_layer_data_t *ld)
 	
 	log_ppp_debug("auth_layer_start\n");
 	
+	ad->started = 1;
+	
 	if (ad->auth_opt.auth)
 		ad->auth_opt.auth->h->start(ad->ppp,ad->auth_opt.auth);
-	else
-	{
+	else {
 		log_ppp_debug("auth_layer_started\n");
 		ppp_layer_started(ad->ppp,ld);
 	}
-
+	
 	return 0;
 }
 
@@ -289,6 +291,8 @@ static void auth_layer_finish(struct ppp_layer_data_t *ld)
 	if (ad->auth_opt.auth)
 		ad->auth_opt.auth->h->finish(ad->ppp,ad->auth_opt.auth);
 	
+	ad->started = 0;
+
 	log_ppp_debug("auth_layer_finished\n");
 	ppp_layer_finished(ad->ppp,ld);
 }
@@ -298,6 +302,9 @@ static void auth_layer_free(struct ppp_layer_data_t *ld)
 	struct auth_layer_data_t *ad=container_of(ld,typeof(*ad),ld);
 
 	log_ppp_debug("auth_layer_free\n");
+
+	if (ad->started && ad->auth_opt.auth)
+		ad->auth_opt.auth->h->finish(ad->ppp,ad->auth_opt.auth);
 	
 	_free(ad);
 }
@@ -307,8 +314,8 @@ void __export auth_successed(struct ppp_t *ppp, char *username)
 	struct auth_layer_data_t *ad=container_of(ppp_find_layer_data(ppp,&auth_layer),typeof(*ad),ld);
 	log_ppp_debug("auth_layer_started\n");
 	ppp->username = username;
-	triton_event_fire(EV_PPP_AUTHORIZED, ppp);
 	ppp_layer_started(ppp,&ad->ld);
+	triton_event_fire(EV_PPP_AUTHORIZED, ppp);
 }
 
 void __export auth_failed(struct ppp_t *ppp)

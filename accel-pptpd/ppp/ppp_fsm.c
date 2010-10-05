@@ -13,7 +13,7 @@
 static int conf_max_terminate = 2;
 static int conf_max_configure = 5;
 static int conf_max_failure = 5;
-static int conf_timeout = 3;
+static int conf_timeout = 5;
 
 void send_term_req(struct ppp_fsm_t *layer);
 void send_term_ack(struct ppp_fsm_t *layer);
