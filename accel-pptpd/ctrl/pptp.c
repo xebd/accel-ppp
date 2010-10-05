@@ -330,7 +330,7 @@ static int pptp_out_call_rqst(struct pptp_conn_t *conn)
 	return 0;
 }
 
-static int send_pptp_call_clear_notify(struct pptp_conn_t *conn, int result)
+static int send_pptp_call_disconnect_notify(struct pptp_conn_t *conn, int result)
 {
 	struct pptp_call_clear_ntfy msg = {
 		.header = PPTP_HEADER_CTRL(PPTP_CALL_CLEAR_NTFY),
@@ -341,7 +341,7 @@ static int send_pptp_call_clear_notify(struct pptp_conn_t *conn, int result)
 	};
 
 	if (conf_verbose)
-		log_ppp_info("send [PPTP Call-Clear-Notify <Call-ID %x> <Result %i> <Error %i> <Cause %i>]\n", ntohs(msg.call_id), msg.result_code, msg.error_code, msg.cause_code);
+		log_ppp_info("send [PPTP Call-Disconnect-Notify <Call-ID %x> <Result %i> <Error %i> <Cause %i>]\n", ntohs(msg.call_id), msg.result_code, msg.error_code, msg.cause_code);
 	
 	return post_msg(conn, &msg, sizeof(msg));
 }
@@ -358,7 +358,7 @@ static int pptp_call_clear_rqst(struct pptp_conn_t *conn)
 		ppp_terminate(&conn->ppp, 1);
 	}
 
-	return send_pptp_call_clear_notify(conn, 4);
+	return send_pptp_call_disconnect_notify(conn, 4);
 }
 
 static int pptp_echo_rqst(struct pptp_conn_t *conn)
@@ -531,17 +531,22 @@ static void pptp_close(struct triton_context_t *ctx)
 	struct pptp_conn_t *conn = container_of(ctx, typeof(*conn), ctx);
 	if (conn->state == STATE_PPP) {
 		conn->state = STATE_CLOSE;
-		ppp_terminate(&conn->ppp, 0);
-	} else {
-		if (send_pptp_stop_ctrl_conn_rqst(conn, 0))
+		ppp_terminate(&conn->ppp, 1);
+		if (send_pptp_call_disconnect_notify(conn, 3)) {
 			triton_context_call(&conn->ctx, (void (*)(void*))disconnect, conn);
-		else {
-			if (conn->timeout_timer.tpd)
-				triton_timer_mod(&conn->timeout_timer, 0);
-			else
-				triton_timer_add(ctx, &conn->timeout_timer, 0);
+			return;
+		}
+	} else {
+		if (send_pptp_stop_ctrl_conn_rqst(conn, 0)) {
+			triton_context_call(&conn->ctx, (void (*)(void*))disconnect, conn);
+			return;
 		}
 	}
+
+	if (conn->timeout_timer.tpd)
+		triton_timer_mod(&conn->timeout_timer, 0);
+	else
+		triton_timer_add(ctx, &conn->timeout_timer, 0);
 }
 static void ppp_started(struct ppp_t *ppp)
 {
@@ -555,7 +560,7 @@ static void ppp_finished(struct ppp_t *ppp)
 		log_ppp_debug("ppp_finished\n");
 		conn->state = STATE_CLOSE;
 
-		if (send_pptp_call_clear_notify(conn, 3))
+		if (send_pptp_call_disconnect_notify(conn, 3))
 			triton_context_call(&conn->ctx, (void (*)(void*))disconnect, conn);
 		else if (send_pptp_stop_ctrl_conn_rqst(conn, 0))
 			triton_context_call(&conn->ctx, (void (*)(void*))disconnect, conn);
