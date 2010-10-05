@@ -425,6 +425,10 @@ static void __init log_init(void)
 		.sa_handler = sighup,
 	};
 
+	opt = conf_get_opt("log", "level");
+	if (opt && atoi(opt) >= 0)
+		log_level = atoi(opt);
+
 	opt = conf_get_opt("log", "log-emerg");
 	if (opt) {
 		emerg_file = fopen(opt, "a");

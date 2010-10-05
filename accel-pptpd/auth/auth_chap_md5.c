@@ -84,49 +84,49 @@ static void chap_recv(struct ppp_handler_t *h);
 static void chap_timeout(struct triton_timer_t *t);
 static void chap_restart(struct triton_timer_t *t);
 
-static void print_buf(const uint8_t *buf,int size)
+static void print_buf(const uint8_t *buf, int size)
 {
 	int i;
-	for(i=0;i<size;i++)
-		log_ppp_debug("%x",buf[i]);
+	for (i=0; i < size; i++)
+		log_ppp_info("%x", buf[i]);
 }
-static void print_str(const char *buf,int size)
+static void print_str(const char *buf, int size)
 {
 	int i;
-	for(i=0;i<size;i++)
-		log_ppp_debug("%c",buf[i]);
+	for (i = 0; i < size; i++)
+		log_ppp_info("%c", buf[i]);
 }
 
 static struct auth_data_t* auth_data_init(struct ppp_t *ppp)
 {
-	struct chap_auth_data_t *d=_malloc(sizeof(*d));
+	struct chap_auth_data_t *d = _malloc(sizeof(*d));
 
-	memset(d,0,sizeof(*d));
-	d->auth.proto=PPP_CHAP;
-	d->ppp=ppp;
+	memset(d, 0, sizeof(*d));
+	d->auth.proto = PPP_CHAP;
+	d->ppp = ppp;
 
 	return &d->auth;
 }
 
-static void auth_data_free(struct ppp_t *ppp,struct auth_data_t *auth)
+static void auth_data_free(struct ppp_t *ppp, struct auth_data_t *auth)
 {
-	struct chap_auth_data_t *d=container_of(auth,typeof(*d),auth);
+	struct chap_auth_data_t *d = container_of(auth, typeof(*d), auth);
 
 	_free(d);
 }
 
 static int chap_start(struct ppp_t *ppp, struct auth_data_t *auth)
 {
-	struct chap_auth_data_t *d=container_of(auth,typeof(*d),auth);
+	struct chap_auth_data_t *d = container_of(auth, typeof(*d), auth);
 
-	d->h.proto=PPP_CHAP;
-	d->h.recv=chap_recv;
+	d->h.proto = PPP_CHAP;
+	d->h.recv = chap_recv;
 	d->timeout.expire = chap_timeout;
 	d->timeout.period = conf_timeout * 1000;
 	d->interval.expire = chap_restart;
 	d->interval.period = conf_interval * 1000;
 
-	ppp_register_chan_handler(ppp,&d->h);
+	ppp_register_chan_handler(ppp, &d->h);
 
 	chap_send_challenge(d);
 
@@ -135,7 +135,7 @@ static int chap_start(struct ppp_t *ppp, struct auth_data_t *auth)
 
 static int chap_finish(struct ppp_t *ppp, struct auth_data_t *auth)
 {
-	struct chap_auth_data_t *d=container_of(auth,typeof(*d),auth);
+	struct chap_auth_data_t *d = container_of(auth, typeof(*d), auth);
 
 	if (d->timeout.tpd)
 		triton_timer_del(&d->timeout);
@@ -143,7 +143,7 @@ static int chap_finish(struct ppp_t *ppp, struct auth_data_t *auth)
 	if (d->interval.tpd)
 		triton_timer_del(&d->interval);
 
-	ppp_unregister_handler(ppp,&d->h);
+	ppp_unregister_handler(ppp, &d->h);
 
 	return 0;
 }
@@ -152,7 +152,8 @@ static void chap_timeout(struct triton_timer_t *t)
 {
 	struct chap_auth_data_t *d = container_of(t, typeof(*d), timeout);
 
-	log_ppp_warn("chap-md5: timeout\n");
+	if (conf_ppp_verbose)
+		log_ppp_warn("chap-md5: timeout\n");
 
 	if (++d->failure == conf_max_failure) {
 		if (d->started)
@@ -187,55 +188,56 @@ static int lcp_recv_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *
 
 static void chap_send_failure(struct chap_auth_data_t *ad)
 {
-	struct chap_failure_t msg=
-	{
-		.hdr.proto=htons(PPP_CHAP),
-		.hdr.code=CHAP_FAILURE,
-		.hdr.id=ad->id,
-		.hdr.len=htons(sizeof(msg)-1-2),
-		.message=MSG_FAILURE,
+	struct chap_failure_t msg = {
+		.hdr.proto = htons(PPP_CHAP),
+		.hdr.code = CHAP_FAILURE,
+		.hdr.id = ad->id,
+		.hdr.len = htons(sizeof(msg) - 1 - 2),
+		.message = MSG_FAILURE,
 	};
 	
-	log_ppp_debug("send [CHAP Failure id=%x \"%s\"]\n",msg.hdr.id,MSG_FAILURE);
+	if (conf_ppp_verbose)
+		log_ppp_info("send [CHAP Failure id=%x \"%s\"]\n", msg.hdr.id, MSG_FAILURE);
 
-	ppp_chan_send(ad->ppp,&msg,ntohs(msg.hdr.len)+2);
+	ppp_chan_send(ad->ppp, &msg, ntohs(msg.hdr.len) + 2);
 }
 
 static void chap_send_success(struct chap_auth_data_t *ad)
 {
-	struct chap_success_t msg=
-	{
-		.hdr.proto=htons(PPP_CHAP),
-		.hdr.code=CHAP_SUCCESS,
-		.hdr.id=ad->id,
-		.hdr.len=htons(sizeof(msg)-1-2),
-		.message=MSG_SUCCESS,
+	struct chap_success_t msg =	{
+		.hdr.proto = htons(PPP_CHAP),
+		.hdr.code = CHAP_SUCCESS,
+		.hdr.id = ad->id,
+		.hdr.len = htons(sizeof(msg)-1-2),
+		.message = MSG_SUCCESS,
 	};
 	
-	log_ppp_debug("send [CHAP Success id=%x \"%s\"]\n",msg.hdr.id,MSG_SUCCESS);
+	if (conf_ppp_verbose)
+		log_ppp_info("send [CHAP Success id=%x \"%s\"]\n", msg.hdr.id, MSG_SUCCESS);
 
-	ppp_chan_send(ad->ppp,&msg,ntohs(msg.hdr.len)+2);
+	ppp_chan_send(ad->ppp, &msg, ntohs(msg.hdr.len) + 2);
 }
 
 static void chap_send_challenge(struct chap_auth_data_t *ad)
 {
-	struct chap_challenge_t msg=
-	{
-		.hdr.proto=htons(PPP_CHAP),
-		.hdr.code=CHAP_CHALLENGE,
-		.hdr.id=++ad->id,
-		.hdr.len=htons(sizeof(msg)-2),
-		.val_size=VALUE_SIZE,
+	struct chap_challenge_t msg =	{
+		.hdr.proto = htons(PPP_CHAP),
+		.hdr.code = CHAP_CHALLENGE,
+		.hdr.id = ++ad->id,
+		.hdr.len = htons(sizeof(msg) - 2),
+		.val_size = VALUE_SIZE,
 	};
 
-	read(urandom_fd,ad->val,VALUE_SIZE);
-	memcpy(msg.val,ad->val,VALUE_SIZE);
+	read(urandom_fd, ad->val, VALUE_SIZE);
+	memcpy(msg.val, ad->val, VALUE_SIZE);
 
-	log_ppp_debug("send [CHAP Challenge id=%x <",msg.hdr.id);
-	print_buf(msg.val,VALUE_SIZE);
-	log_ppp_debug(">]\n");
+	if (conf_ppp_verbose) {
+		log_ppp_info("send [CHAP Challenge id=%x <", msg.hdr.id);
+		print_buf(msg.val, VALUE_SIZE);
+		log_ppp_info(">]\n");
+	}
 
-	ppp_chan_send(ad->ppp,&msg,ntohs(msg.hdr.len)+2);
+	ppp_chan_send(ad->ppp, &msg, ntohs(msg.hdr.len) + 2);
 
 	if (conf_timeout && !ad->timeout.tpd)
 		triton_timer_add(ad->ppp->ctrl->ctx, &ad->timeout, 0);
@@ -248,32 +250,33 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	char *passwd;
 	char *name;
 	int r;
-	struct chap_challenge_t *msg=(struct chap_challenge_t*)hdr;
+	struct chap_challenge_t *msg = (struct chap_challenge_t*)hdr;
 
 	if (ad->timeout.tpd)
 		triton_timer_del(&ad->timeout);
 
-	log_ppp_debug("recv [CHAP Response id=%x <", msg->hdr.id);
-	print_buf(msg->val,msg->val_size);
-	log_ppp_debug(">, name=\"");
-	print_str(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
-	log_ppp_debug("\"]\n");
+	if (conf_ppp_verbose) {
+		log_ppp_info("recv [CHAP Response id=%x <", msg->hdr.id);
+		print_buf(msg->val, msg->val_size);
+		log_ppp_info(">, name=\"");
+		print_str(msg->name, ntohs(msg->hdr.len) - sizeof(*msg) + 2);
+		log_ppp_info("\"]\n");
+	}
 
-	if (msg->hdr.id!=ad->id)
-	{
-		log_ppp_error("chap-md5: id mismatch\n");
+	if (msg->hdr.id != ad->id) {
+		if (conf_ppp_verbose)
+			log_ppp_error("chap-md5: id mismatch\n");
 		chap_send_failure(ad);
 		ppp_terminate(ad->ppp, 0);
 	}
 
-	if (msg->val_size!=VALUE_SIZE)
-	{
-		log_ppp_error("chap-md5: value-size should be %i, expected %i\n",VALUE_SIZE,msg->val_size);
+	if (msg->val_size != VALUE_SIZE) {
+		log_ppp_error("chap-md5: incorrect value-size (%i)\n", msg->val_size);
 		chap_send_failure(ad);
 		ppp_terminate(ad->ppp, 0);
 	}
 
-	name = _strndup(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
+	name = _strndup(msg->name,ntohs(msg->hdr.len) - sizeof(*msg) + 2);
 
 	r = pwdb_check(ad->ppp, name, PPP_CHAP, CHAP_MD5, ad->id, ad->val, VALUE_SIZE, msg->val);
 
@@ -282,7 +285,8 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		if (!passwd)
 		{
 			_free(name);
-			log_ppp_debug("chap-md5: user not found\n");
+			if (conf_ppp_verbose)
+				log_ppp_warn("chap-md5: user not found\n");
 			chap_send_failure(ad);
 			return;
 		}
@@ -295,7 +299,8 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		
 		if (memcmp(md5,msg->val,sizeof(md5)))
 		{
-			log_ppp_debug("chap-md5: challenge response mismatch\n");
+			if (conf_ppp_verbose)
+				log_ppp_warn("chap-md5: challenge response mismatch\n");
 			chap_send_failure(ad);
 			if (ad->started)
 				ppp_terminate(ad->ppp, 0);
@@ -331,33 +336,37 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	}
 }
 
+static int chap_check(uint8_t *ptr)
+{
+	return *ptr == CHAP_MD5;
+}
+
 static struct ppp_auth_handler_t chap=
 {
-	.name="CHAP-md5",
-	.init=auth_data_init,
-	.free=auth_data_free,
-	.send_conf_req=lcp_send_conf_req,
-	.recv_conf_req=lcp_recv_conf_req,
-	.start=chap_start,
-	.finish=chap_finish,
+	.name          = "CHAP-md5",
+	.init          = auth_data_init,
+	.free          = auth_data_free,
+	.send_conf_req = lcp_send_conf_req,
+	.recv_conf_req = lcp_recv_conf_req,
+	.start         = chap_start,
+	.finish        = chap_finish,
+	.check         = chap_check,
 };
 
 static void chap_recv(struct ppp_handler_t *h)
 {
-	struct chap_auth_data_t *d=container_of(h,typeof(*d),h);
-	struct chap_hdr_t *hdr=(struct chap_hdr_t *)d->ppp->chan_buf;
+	struct chap_auth_data_t *d = container_of(h, typeof(*d), h);
+	struct chap_hdr_t *hdr = (struct chap_hdr_t *)d->ppp->chan_buf;
 
-	if (d->ppp->chan_buf_size<sizeof(*hdr) || ntohs(hdr->len)<HDR_LEN || ntohs(hdr->len)<d->ppp->chan_buf_size-2)
-	{
-		log_ppp_warn("CHAP: short packet received\n");
+	if (d->ppp->chan_buf_size < sizeof(*hdr) || ntohs(hdr->len) < HDR_LEN || ntohs(hdr->len) < d->ppp->chan_buf_size - 2)	{
+		log_ppp_warn("chap-md5: short packet received\n");
 		return;
 	}
 
-	if (hdr->code==CHAP_RESPONSE) chap_recv_response(d,hdr);
+	if (hdr->code == CHAP_RESPONSE)
+		chap_recv_response(d, hdr);
 	else
-	{
-		log_ppp_warn("CHAP: unknown code received %x\n",hdr->code);
-	}
+		log_ppp_warn("chap-md5: unknown code received %x\n", hdr->code);
 }
 
 static void __init auth_chap_md5_init()
@@ -384,6 +393,6 @@ static void __init auth_chap_md5_init()
 	}
 
 	if (ppp_auth_register_handler(&chap))
-		log_error("chap-md5: failed to register handler\n");
+		log_emerg("chap-md5: failed to register handler\n");
 }
 

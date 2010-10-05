@@ -23,6 +23,7 @@ struct ppp_auth_handler_t
 	int (*start)(struct ppp_t*, struct auth_data_t*);
 	int (*finish)(struct ppp_t*, struct auth_data_t*);
 	void (*free)(struct ppp_t*,struct auth_data_t*);
+	int (*check)(uint8_t *);
 };
 
 int ppp_auth_register_handler(struct ppp_auth_handler_t*);

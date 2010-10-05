@@ -67,7 +67,7 @@ static int ipaddr_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 	if (!ipaddr_opt->ip) {
 		ipaddr_opt->ip = ipdb_get(ipcp->ppp);
 		if (!ipaddr_opt->ip) {
-			log_ppp_warn("ppp:ipcp: no _free IP address\n");
+			log_ppp_warn("ppp:ipcp: no free IP address\n");
 			return -1;
 		}
 	}

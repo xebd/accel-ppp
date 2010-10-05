@@ -171,8 +171,8 @@ int rad_req_send(struct rad_req_t *req)
 		goto out_err;
 	
 	if (conf_verbose) {
-		log_ppp_debug("send ");
-		rad_packet_print(req->pack, log_ppp_debug);
+		log_ppp_info("send ");
+		rad_packet_print(req->pack, log_ppp_info);
 	}
 
 	rad_packet_send(req->pack, req->hnd.fd, NULL);
@@ -215,8 +215,6 @@ int rad_req_wait(struct rad_req_t *req, int timeout)
 	req->timeout.expire = rad_req_timeout;
 
 	triton_context_register(&req->ctx, req->rpd->ppp);
-	req->ctx.fname=__FILE__;
-	req->ctx.line=__LINE__;
 	triton_md_register_handler(&req->ctx, &req->hnd);
 	triton_md_enable_handler(&req->hnd, MD_MODE_READ);
 
@@ -228,8 +226,8 @@ int rad_req_wait(struct rad_req_t *req, int timeout)
 	triton_context_schedule(req->rpd->ppp->ctrl->ctx);
 
 	if (conf_verbose && req->reply) {
-		log_ppp_debug("recv ");
-		rad_packet_print(req->reply, log_ppp_debug);
+		log_ppp_info("recv ");
+		rad_packet_print(req->reply, log_ppp_info);
 	}
 	return 0;
 }

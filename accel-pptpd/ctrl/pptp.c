@@ -84,6 +84,9 @@ static void disconnect(struct pptp_conn_t *conn)
 
 	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp);
 	
+	if (conf_verbose)
+		log_ppp_info("disconnected\n");
+
 	triton_context_unregister(&conn->ctx);
 
 	if (conn->ppp.chan_name)
@@ -109,9 +112,11 @@ static int post_msg(struct pptp_conn_t *conn, void *buf, int size)
 		if (errno == EINTR || errno == EAGAIN)
 			n = 0;
 		else {
-			if (errno != EPIPE)
-			log_ppp_debug("pptp: write: %s\n", strerror(errno));
-			return -1;
+			if (errno != EPIPE) {
+				if (conf_verbose)
+					log_ppp_info("pptp: write: %s\n", strerror(errno));
+				return -1;
+			}
 		}
 	}
 
@@ -461,7 +466,8 @@ static int pptp_read(struct triton_md_handler_t *h)
 			goto drop;
 		}
 		if (n == 0) {
-			log_ppp_debug("pptp: disconnect by peer\n");
+			if (conf_verbose)
+				log_ppp_info("pptp: disconnect by peer\n");
 			goto drop;
 		}
 		conn->in_size += n;
@@ -507,8 +513,10 @@ static int pptp_write(struct triton_md_handler_t *h)
 			if (errno == EAGAIN)
 				n = 0;
 			else {
-				if (errno != EPIPE)
-					log_ppp_error("pptp:post_msg: %s\n", strerror(errno));
+				if (errno != EPIPE) {
+					if (conf_verbose)
+						log_ppp_info("pptp: post_msg: %s\n", strerror(errno));
+				}
 				disconnect(conn);
 				return 1;
 			}
@@ -552,14 +560,14 @@ static void pptp_close(struct triton_context_t *ctx)
 }
 static void ppp_started(struct ppp_t *ppp)
 {
-	log_ppp_debug("ppp_started\n");
+	log_ppp_debug("pptp: ppp started\n");
 }
 static void ppp_finished(struct ppp_t *ppp)
 {
 	struct pptp_conn_t *conn = container_of(ppp, typeof(*conn), ppp);
 
 	if (conn->state != STATE_CLOSE) {
-		log_ppp_debug("ppp_finished\n");
+		log_ppp_debug("pptp: ppp finished\n");
 		conn->state = STATE_CLOSE;
 
 		if (send_pptp_call_disconnect_notify(conn, 3))
@@ -629,6 +637,7 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		conn->ctrl.started = ppp_started;
 		conn->ctrl.finished = ppp_finished;
 		conn->ctrl.max_mtu = PPTP_MAX_MTU;
+		conn->ctrl.name = "pptp";
 		
 		conn->ctrl.calling_station_id = _malloc(17);
 		conn->ctrl.called_station_id = _malloc(17);
@@ -640,8 +649,6 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		conn->ppp.ctrl = &conn->ctrl;
 
 		triton_context_register(&conn->ctx, &conn->ppp);
-		conn->ctx.fname=__FILE__;
-		conn->ctx.line=__LINE__;
 		triton_md_register_handler(&conn->ctx, &conn->hnd);
 		triton_md_enable_handler(&conn->hnd,MD_MODE_READ);
 		triton_timer_add(&conn->ctx, &conn->timeout_timer, 0);

@@ -112,51 +112,50 @@ static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response
 static void chap_timeout(struct triton_timer_t *t);
 static void chap_restart(struct triton_timer_t *t);
 
-static void print_buf(const uint8_t *buf,int size)
+static void print_buf(const uint8_t *buf, int size)
 {
 	int i;
-	for(i=0;i<size;i++)
-		log_ppp_debug("%x",buf[i]);
+	for (i = 0; i < size; i++)
+		log_ppp_info("%x", buf[i]);
 }
-static void print_str(const char *buf,int size)
+
+static void print_str(const char *buf, int size)
 {
 	int i;
-	for(i=0;i<size;i++)
-		log_ppp_debug("%c",buf[i]);
+	for (i = 0; i < size; i++)
+		log_ppp_info("%c", buf[i]);
 }
-
-
 
 static struct auth_data_t* auth_data_init(struct ppp_t *ppp)
 {
-	struct chap_auth_data_t *d=_malloc(sizeof(*d));
+	struct chap_auth_data_t *d = _malloc(sizeof(*d));
 
-	memset(d,0,sizeof(*d));
-	d->auth.proto=PPP_CHAP;
-	d->ppp=ppp;
+	memset(d, 0, sizeof(*d));
+	d->auth.proto = PPP_CHAP;
+	d->ppp = ppp;
 
 	return &d->auth;
 }
 
-static void auth_data_free(struct ppp_t *ppp,struct auth_data_t *auth)
+static void auth_data_free(struct ppp_t *ppp, struct auth_data_t *auth)
 {
-	struct chap_auth_data_t *d=container_of(auth,typeof(*d),auth);
+	struct chap_auth_data_t *d = container_of(auth, typeof(*d), auth);
 
 	_free(d);
 }
 
 static int chap_start(struct ppp_t *ppp, struct auth_data_t *auth)
 {
-	struct chap_auth_data_t *d=container_of(auth,typeof(*d),auth);
+	struct chap_auth_data_t *d = container_of(auth, typeof(*d), auth);
 
-	d->h.proto=PPP_CHAP;
-	d->h.recv=chap_recv;
+	d->h.proto = PPP_CHAP;
+	d->h.recv = chap_recv;
 	d->timeout.expire = chap_timeout;
 	d->timeout.period = conf_timeout * 1000;
 	d->interval.expire = chap_restart;
 	d->interval.period = conf_interval * 1000;
 
-	ppp_register_chan_handler(ppp,&d->h);
+	ppp_register_chan_handler(ppp, &d->h);
 
 	chap_send_challenge(d);
 
@@ -165,7 +164,7 @@ static int chap_start(struct ppp_t *ppp, struct auth_data_t *auth)
 
 static int chap_finish(struct ppp_t *ppp, struct auth_data_t *auth)
 {
-	struct chap_auth_data_t *d=container_of(auth,typeof(*d),auth);
+	struct chap_auth_data_t *d = container_of(auth, typeof(*d), auth);
 
 	if (d->timeout.tpd)
 		triton_timer_del(&d->timeout);
@@ -182,7 +181,8 @@ static void chap_timeout(struct triton_timer_t *t)
 {
 	struct chap_auth_data_t *d = container_of(t, typeof(*d), timeout);
 
-	log_ppp_warn("mschap-v2: timeout\n");
+	if (conf_ppp_verbose)
+		log_ppp_warn("mschap-v2: timeout\n");
 
 	if (++d->failure == conf_max_failure) {
 		if (d->started)
@@ -217,18 +217,18 @@ static int lcp_recv_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *
 
 static void chap_send_failure(struct chap_auth_data_t *ad)
 {
-	struct chap_failure_t msg=
-	{
-		.hdr.proto=htons(PPP_CHAP),
-		.hdr.code=CHAP_FAILURE,
-		.hdr.id=ad->id,
-		.hdr.len=htons(sizeof(msg)-1-2),
-		.message=MSG_FAILURE,
+	struct chap_failure_t msg = {
+		.hdr.proto = htons(PPP_CHAP),
+		.hdr.code = CHAP_FAILURE,
+		.hdr.id = ad->id,
+		.hdr.len = htons(sizeof(msg) - 1 - 2),
+		.message = MSG_FAILURE,
 	};
 	
-	log_ppp_debug("send [MSCHAP-v2 Failure id=%x \"%s\"]\n",msg.hdr.id,MSG_FAILURE);
+	if (conf_ppp_verbose)
+		log_ppp_info("send [MSCHAP-v2 Failure id=%x \"%s\"]\n", msg.hdr.id, MSG_FAILURE);
 
-	ppp_chan_send(ad->ppp,&msg,ntohs(msg.hdr.len)+2);
+	ppp_chan_send(ad->ppp, &msg, ntohs(msg.hdr.len) + 2);
 }
 
 static int generate_response(struct chap_auth_data_t *ad, struct chap_response_t *msg, const char *name, char *authenticator)
@@ -290,41 +290,42 @@ static int generate_response(struct chap_auth_data_t *ad, struct chap_response_t
 
 static void chap_send_success(struct chap_auth_data_t *ad, struct chap_response_t *res_msg, const char *authenticator)
 {
-	struct chap_success_t msg=
-	{
-		.hdr.proto=htons(PPP_CHAP),
-		.hdr.code=CHAP_SUCCESS,
-		.hdr.id=ad->id,
-		.hdr.len=htons(sizeof(msg)-1-2),
-		.message=MSG_SUCCESS,
+	struct chap_success_t msg = {
+		.hdr.proto = htons(PPP_CHAP),
+		.hdr.code = CHAP_SUCCESS,
+		.hdr.id = ad->id,
+		.hdr.len = htons(sizeof(msg) - 1 - 2),
+		.message = MSG_SUCCESS,
 	};
 
 	memcpy(msg.message + 2, authenticator, 40);
 
-	log_ppp_debug("send [MSCHAP-v2 Success id=%x \"%s\"]\n",msg.hdr.id,msg.message);
+	if (conf_ppp_verbose)
+		log_ppp_info("send [MSCHAP-v2 Success id=%x \"%s\"]\n", msg.hdr.id, msg.message);
 
-	ppp_chan_send(ad->ppp,&msg,ntohs(msg.hdr.len)+2);
+	ppp_chan_send(ad->ppp, &msg, ntohs(msg.hdr.len) + 2);
 }
 
 static void chap_send_challenge(struct chap_auth_data_t *ad)
 {
-	struct chap_challenge_t msg=
-	{
-		.hdr.proto=htons(PPP_CHAP),
-		.hdr.code=CHAP_CHALLENGE,
-		.hdr.id=++ad->id,
-		.hdr.len=htons(sizeof(msg)-2),
-		.val_size=VALUE_SIZE,
+	struct chap_challenge_t msg =	{
+		.hdr.proto = htons(PPP_CHAP),
+		.hdr.code = CHAP_CHALLENGE,
+		.hdr.id = ++ad->id,
+		.hdr.len = htons(sizeof(msg) - 2),
+		.val_size = VALUE_SIZE,
 	};
 
-	read(urandom_fd,ad->val,VALUE_SIZE);
-	memcpy(msg.val,ad->val,VALUE_SIZE);
+	read(urandom_fd, ad->val, VALUE_SIZE);
+	memcpy(msg.val, ad->val, VALUE_SIZE);
 
-	log_ppp_debug("send [MSCHAP-v2 Challenge id=%x <",msg.hdr.id);
-	print_buf(msg.val,VALUE_SIZE);
-	log_ppp_debug(">]\n");
+	if (conf_ppp_verbose) {
+		log_ppp_info("send [MSCHAP-v2 Challenge id=%x <", msg.hdr.id);
+		print_buf(msg.val, VALUE_SIZE);
+		log_ppp_info(">]\n");
+	}
 
-	ppp_chan_send(ad->ppp,&msg,ntohs(msg.hdr.len)+2);
+	ppp_chan_send(ad->ppp, &msg, ntohs(msg.hdr.len) + 2);
 
 	if (conf_timeout && !ad->timeout.tpd)
 		triton_timer_add(ad->ppp->ctrl->ctx, &ad->timeout, 0);
@@ -332,7 +333,7 @@ static void chap_send_challenge(struct chap_auth_data_t *ad)
 
 static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *hdr)
 {
-	struct chap_response_t *msg=(struct chap_response_t*)hdr;
+	struct chap_response_t *msg = (struct chap_response_t*)hdr;
 	char *name;
 	char authenticator[40];
 	int r;
@@ -340,17 +341,19 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	if (ad->timeout.tpd)
 		triton_timer_del(&ad->timeout);
 
-	log_ppp_debug("recv [MSCHAP-v2 Response id=%x <", msg->hdr.id);
-	print_buf(msg->peer_challenge,16);
-	log_ppp_debug(">, <");
-	print_buf(msg->nt_hash,24);
-	log_ppp_debug(">, F=%i, name=\"",msg->flags);
-	print_str(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
-	log_ppp_debug("\"]\n");
+	if (conf_ppp_verbose) {
+		log_ppp_info("recv [MSCHAP-v2 Response id=%x <", msg->hdr.id);
+		print_buf(msg->peer_challenge,16);
+		log_ppp_info(">, <");
+		print_buf(msg->nt_hash, 24);
+		log_ppp_info(">, F=%i, name=\"", msg->flags);
+		print_str(msg->name, ntohs(msg->hdr.len) - sizeof(*msg) + 2);
+		log_ppp_info("\"]\n");
+	}
 
-	if (msg->hdr.id!=ad->id)
-	{
-		log_ppp_error("mschap-v2: id mismatch\n");
+	if (msg->hdr.id != ad->id) {
+		if (conf_ppp_verbose)
+			log_ppp_error("mschap-v2: id mismatch\n");
 		chap_send_failure(ad);
 		if (ad->started)
 			ppp_terminate(ad->ppp, 0);
@@ -358,9 +361,8 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 			auth_failed(ad->ppp);
 	}
 
-	if (msg->val_size!=RESPONSE_VALUE_SIZE)
-	{
-		log_ppp_error("mschap-v2: value-size should be %i, expected %i\n",RESPONSE_VALUE_SIZE,msg->val_size);
+	if (msg->val_size != RESPONSE_VALUE_SIZE) {
+		log_ppp_error("mschap-v2: incorrect value-size (%i)\n", msg->val_size);
 		chap_send_failure(ad);
 		if (ad->started)
 			ppp_terminate(ad->ppp, 0);
@@ -368,7 +370,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 			auth_failed(ad->ppp);
 	}
 
-	name=_strndup(msg->name,ntohs(msg->hdr.len)-sizeof(*msg)+2);
+	name = _strndup(msg->name, ntohs(msg->hdr.len) - sizeof(*msg) + 2);
 	if (!name) {
 		log_emerg("mschap-v2: out of memory\n");
 		if (ad->started)
@@ -444,10 +446,10 @@ static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response
 	char *u_passwd;
 	int i;
 	
-	passwd=pwdb_get_passwd(ad->ppp,name);
-	if (!passwd)
-	{
-		log_ppp_debug("mschap-v2: user not found\n");
+	passwd = pwdb_get_passwd(ad->ppp, name);
+	if (!passwd) {
+		if (conf_ppp_verbose)
+			log_ppp_warn("mschap-v2: user not found\n");
 		chap_send_failure(ad);
 		return -1;
 	}
@@ -480,44 +482,48 @@ static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response
 	return memcmp(nt_hash,msg->nt_hash,24);
 }
 
+static int chap_check(uint8_t *ptr)
+{
+	return *ptr == MSCHAP_V2;
+}
+
 static struct ppp_auth_handler_t chap=
 {
-	.name="MSCHAP-v2",
-	.init=auth_data_init,
-	.free=auth_data_free,
-	.send_conf_req=lcp_send_conf_req,
-	.recv_conf_req=lcp_recv_conf_req,
-	.start=chap_start,
-	.finish=chap_finish,
+	.name          = "MSCHAP-v2",
+	.init          = auth_data_init,
+	.free          = auth_data_free,
+	.send_conf_req = lcp_send_conf_req,
+	.recv_conf_req = lcp_recv_conf_req,
+	.start         = chap_start,
+	.finish        = chap_finish,
+	.check         = chap_check,
 };
 
 static void chap_recv(struct ppp_handler_t *h)
 {
-	struct chap_auth_data_t *d=container_of(h,typeof(*d),h);
-	struct chap_hdr_t *hdr=(struct chap_hdr_t *)d->ppp->chan_buf;
+	struct chap_auth_data_t *d = container_of(h, typeof(*d), h);
+	struct chap_hdr_t *hdr = (struct chap_hdr_t *)d->ppp->chan_buf;
 
-	if (d->ppp->chan_buf_size<sizeof(*hdr) || ntohs(hdr->len)<HDR_LEN || ntohs(hdr->len)<d->ppp->chan_buf_size-2)
-	{
+	if (d->ppp->chan_buf_size < sizeof(*hdr) || ntohs(hdr->len) < HDR_LEN || ntohs(hdr->len) < d->ppp->chan_buf_size - 2) {
 		log_ppp_warn("mschap-v2: short packet received\n");
 		return;
 	}
 
-	if (hdr->code==CHAP_RESPONSE) chap_recv_response(d,hdr);
+	if (hdr->code == CHAP_RESPONSE)
+		chap_recv_response(d, hdr);
 	else
-	{
 		log_ppp_warn("mschap-v2: unknown code received %x\n",hdr->code);
-	}
 }
 
 static void __init auth_mschap_v2_init()
 {
-	urandom_fd=open("/dev/urandom",O_RDONLY);
-	if (urandom_fd<0)
-	{
-		log_error("mschap-v2: failed to open /dev/urandom: %s\n",strerror(errno));
+	urandom_fd = open("/dev/urandom", O_RDONLY);
+	if (urandom_fd < 0) {
+		log_emerg("mschap-v2: failed to open /dev/urandom: %s\n", strerror(errno));
 		return;
 	}
+
 	if (ppp_auth_register_handler(&chap))
-		log_error("mschap-v2: failed to register handler\n");
+		log_emerg("mschap-v2: failed to register handler\n");
 }
 

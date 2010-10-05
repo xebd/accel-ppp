@@ -268,15 +268,6 @@ int __export triton_context_register(struct triton_context_t *ud, void *bf_arg)
 	return 0;
 }
 
-void __export triton_context_print()
-{
-	struct _triton_context_t *ctx;
-
-	list_for_each_entry(ctx, &ctx_list, entry)
-		if (ctx->ud)
-			printf("%s:%i\n", ctx->ud->fname, ctx->ud->line);
-}
-
 void __export triton_context_unregister(struct triton_context_t *ud)
 {
 	struct _triton_context_t *ctx = (struct _triton_context_t *)ud->tpd;

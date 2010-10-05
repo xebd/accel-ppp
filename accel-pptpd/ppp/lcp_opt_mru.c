@@ -14,7 +14,9 @@
 #include "memdebug.h"
 
 static int conf_mtu;
+static int conf_mru;
 static int conf_min_mtu = 100;
+static int conf_max_mtu = 1500;
 
 static struct lcp_option_t *mru_init(struct ppp_lcp_t *lcp);
 static void mru_free(struct ppp_lcp_t *lcp, struct lcp_option_t *opt);
@@ -46,8 +48,12 @@ static struct lcp_option_t *mru_init(struct ppp_lcp_t *lcp)
 {
 	struct mru_option_t *mru_opt=_malloc(sizeof(*mru_opt));
 	memset(mru_opt, 0, sizeof(*mru_opt));
-	mru_opt->mtu = 0;
-	mru_opt->mru = (conf_mtu && conf_mtu <= lcp->ppp->ctrl->max_mtu) ? conf_mtu : lcp->ppp->ctrl->max_mtu;
+	mru_opt->mru = (conf_mru && conf_mru <= lcp->ppp->ctrl->max_mtu) ? conf_mru : lcp->ppp->ctrl->max_mtu;
+	if (mru_opt->mru > conf_max_mtu)
+		mru_opt->mru = conf_max_mtu;
+	mru_opt->mtu = (conf_mtu && conf_mtu <= lcp->ppp->ctrl->max_mtu) ? conf_mtu : lcp->ppp->ctrl->max_mtu;
+	if (mru_opt->mtu > conf_max_mtu)
+		mru_opt->mtu = conf_max_mtu;
 	mru_opt->opt.id = CI_MRU;
 	mru_opt->opt.len = 4;
 
@@ -77,7 +83,7 @@ static int mru_send_conf_nak(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, ui
 	struct lcp_opt16_t *opt16 = (struct lcp_opt16_t*)ptr;
 	opt16->hdr.id = CI_MRU;
 	opt16->hdr.len = 4;
-	opt16->val = htons(mru_opt->mtu ? mru_opt->mtu : lcp->ppp->ctrl->max_mtu);
+	opt16->val = htons(mru_opt->mtu);
 	return 4;
 }
 
@@ -92,7 +98,7 @@ static int mru_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, ui
 	if (opt16->hdr.len != 4)
 		return LCP_OPT_REJ;
 
-	if (ntohs(opt16->val) < conf_min_mtu || ntohs(opt16->val) > lcp->ppp->ctrl->max_mtu)
+	if (ntohs(opt16->val) < conf_min_mtu || ntohs(opt16->val) > lcp->ppp->ctrl->max_mtu || ntohs(opt16->val) > conf_max_mtu)
 		return LCP_OPT_NAK;
 
 	mru_opt->mtu = ntohs(opt16->val);
@@ -136,9 +142,17 @@ static void __init mru_opt_init()
 	if (opt && atoi(opt) > 0)
 		conf_mtu = atoi(opt);
 
+	opt = conf_get_opt("ppp", "mru");
+	if (opt && atoi(opt) > 0)
+		conf_mru = atoi(opt);
+
 	opt = conf_get_opt("ppp", "min-mtu");
 	if (opt && atoi(opt) > 0)
 		conf_min_mtu = atoi(opt);
+	
+	opt = conf_get_opt("ppp", "max-mtu");
+	if (opt && atoi(opt) > 0)
+		conf_max_mtu = atoi(opt);
 
 	lcp_option_register(&mru_opt_hnd);
 }

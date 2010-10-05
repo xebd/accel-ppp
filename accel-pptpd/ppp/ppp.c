@@ -21,7 +21,7 @@
 
 #include "memdebug.h"
 
-int conf_ppp_verbose;
+int __export conf_ppp_verbose;
 
 static LIST_HEAD(layers);
 int __export sock_fd;
@@ -79,59 +79,36 @@ static void generate_sessionid(struct ppp_t *ppp)
 int __export establish_ppp(struct ppp_t *ppp)
 {
 	/* Open an instance of /dev/ppp and connect the channel to it */
-	if (ioctl(ppp->fd, PPPIOCGCHAN, &ppp->chan_idx)==-1)
-	{
-	    log_ppp_error("Couldn't get channel number\n");
-	    return -1;
+	if (ioctl(ppp->fd, PPPIOCGCHAN, &ppp->chan_idx) == -1) {
+		log_ppp_error("Couldn't get channel number\n");
+		return -1;
 	}
 
-	ppp->chan_fd=open("/dev/ppp", O_RDWR);
-	if (ppp->chan_fd<0)
-	{
-	    log_ppp_error("Couldn't reopen /dev/ppp\n");
-	    return -1;
+	ppp->chan_fd = open("/dev/ppp", O_RDWR);
+	if (ppp->chan_fd < 0) {
+		log_ppp_error("Couldn't reopen /dev/ppp\n");
+		return -1;
 	}
 
-	if (ioctl(ppp->chan_fd, PPPIOCATTCHAN, &ppp->chan_idx)<0)
-	{
-	    log_ppp_error("Couldn't attach to channel %d\n", ppp->chan_idx);
-	    goto exit_close_chan;
+	if (ioctl(ppp->chan_fd, PPPIOCATTCHAN, &ppp->chan_idx) < 0) {
+		log_ppp_error("Couldn't attach to channel %d\n", ppp->chan_idx);
+		goto exit_close_chan;
 	}
 
-	ppp->unit_fd=open("/dev/ppp", O_RDWR);
-	if (ppp->unit_fd<0)
-	{
-	    log_ppp_error("Couldn't reopen /dev/ppp\n");
-	    goto exit_close_chan;
+	ppp->unit_fd = open("/dev/ppp", O_RDWR);
+	if (ppp->unit_fd < 0) {
+		log_ppp_error("Couldn't reopen /dev/ppp\n");
+		goto exit_close_chan;
 	}
 
-	ppp->unit_idx=-1;
-	if (ioctl(ppp->unit_fd, PPPIOCNEWUNIT, &ppp->unit_idx)<0)
-	{
+	ppp->unit_idx = -1;
+	if (ioctl(ppp->unit_fd, PPPIOCNEWUNIT, &ppp->unit_idx) < 0) {
 		log_ppp_error("Couldn't create new ppp unit\n");
 		goto exit_close_unit;
 	}
 
-  if (ioctl(ppp->chan_fd, PPPIOCCONNECT, &ppp->unit_idx)<0)
-  {
+  if (ioctl(ppp->chan_fd, PPPIOCCONNECT, &ppp->unit_idx) < 0) {
 		log_ppp_error("Couldn't attach to PPP unit %d\n", ppp->unit_idx);
-		goto exit_close_unit;
-	}
-
-	ppp->start_time = time(NULL);
-	generate_sessionid(ppp);
-	sprintf(ppp->ifname, "ppp%i", ppp->unit_idx);
-
-	log_ppp_info("connect: ppp%i <--> pptp(%s)\n",ppp->unit_idx,ppp->chan_name);
-	
-	ppp->chan_buf=_malloc(PPP_MRU);
-	ppp->unit_buf=_malloc(PPP_MRU);
-
-	init_layers(ppp);
-
-	if (list_empty(&ppp->layers))
-	{
-		log_ppp_error("no layers to start\n");
 		goto exit_close_unit;
 	}
 
@@ -145,21 +122,37 @@ int __export establish_ppp(struct ppp_t *ppp)
 		goto exit_close_unit;
 	}
 
-	ppp->chan_hnd.fd=ppp->chan_fd;
-	ppp->chan_hnd.read=ppp_chan_read;
-	//ppp->chan_hnd.twait=-1;
-	ppp->unit_hnd.fd=ppp->unit_fd;
-	ppp->unit_hnd.read=ppp_unit_read;
-	//ppp->unit_hnd.twait=-1;
+	ppp->start_time = time(NULL);
+	generate_sessionid(ppp);
+	sprintf(ppp->ifname, "ppp%i", ppp->unit_idx);
+
+	if (conf_ppp_verbose)
+		log_ppp_info("connect: %s <--> %s(%s)\n", ppp->ifname, ppp->ctrl->name, ppp->chan_name);
+	
+	init_layers(ppp);
+
+	if (list_empty(&ppp->layers)) {
+		log_ppp_error("no layers to start\n");
+		goto exit_close_unit;
+	}
+
+	ppp->chan_buf = _malloc(PPP_MRU);
+	ppp->unit_buf = _malloc(PPP_MRU);
+
+	ppp->chan_hnd.fd = ppp->chan_fd;
+	ppp->chan_hnd.read = ppp_chan_read;
+	ppp->unit_hnd.fd = ppp->unit_fd;
+	ppp->unit_hnd.read = ppp_unit_read;
 	triton_md_register_handler(ppp->ctrl->ctx, &ppp->chan_hnd);
 	triton_md_register_handler(ppp->ctrl->ctx, &ppp->unit_hnd);
 	
-	triton_md_enable_handler(&ppp->chan_hnd,MD_MODE_READ);
-	triton_md_enable_handler(&ppp->unit_hnd,MD_MODE_READ);
+	triton_md_enable_handler(&ppp->chan_hnd, MD_MODE_READ);
+	triton_md_enable_handler(&ppp->unit_hnd, MD_MODE_READ);
 
 	log_ppp_debug("ppp established\n");
 
 	triton_event_fire(EV_PPP_STARTING, ppp);
+	
 	start_first_layer(ppp);
 
 	return 0;
@@ -202,13 +195,13 @@ static void destablish_ppp(struct ppp_t *ppp)
 	}
 }
 
-void print_buf(uint8_t *buf,int size)
+/*void print_buf(uint8_t *buf, int size)
 {
 	int i;
 	for(i=0;i<size;i++)
 		printf("%x ",buf[i]);
 	printf("\n");
-}
+}*/
 
 int __export ppp_chan_send(struct ppp_t *ppp, void *data, int size)
 {
@@ -217,9 +210,9 @@ int __export ppp_chan_send(struct ppp_t *ppp, void *data, int size)
 	//printf("ppp_chan_send: ");
 	//print_buf((uint8_t*)data,size);
 	
-	n=write(ppp->chan_fd,data,size);
-	if (n<size)
-		log_ppp_error("ppp_chan_send: short write %i, excpected %i\n",n,size);
+	n = write(ppp->chan_fd,data,size);
+	if (n < size)
+		log_ppp_error("ppp_chan_send: short write %i, excpected %i\n", n, size);
 	return n;
 }
 
@@ -230,8 +223,8 @@ int __export ppp_unit_send(struct ppp_t *ppp, void *data, int size)
 	//printf("ppp_unit_send: ");
 	//print_buf((uint8_t*)data,size);
 	
-	n=write(ppp->unit_fd,data,size);
-	if (n<size)
+	n=write(ppp->unit_fd, data, size);
+	if (n < size)
 		log_ppp_error("ppp_unit_send: short write %i, excpected %i\n",n,size);
 	return n;
 }
@@ -246,11 +239,9 @@ static int ppp_chan_read(struct triton_md_handler_t *h)
 cont:
 		ppp->chan_buf_size = read(h->fd, ppp->chan_buf, PPP_MRU);
 		if (ppp->chan_buf_size < 0) {
-			if (errno == EINTR)
-				continue;
 			if (errno == EAGAIN)
 				return 0;
-			log_ppp_error("ppp_chan_read: %s\n",strerror(errno));
+			log_ppp_error("ppp_chan_read: %s\n", strerror(errno));
 			return 0;
 		}
 
@@ -289,8 +280,6 @@ static int ppp_unit_read(struct triton_md_handler_t *h)
 cont:
 		ppp->unit_buf_size = read(h->fd, ppp->unit_buf, PPP_MRU);
 		if (ppp->unit_buf_size < 0) {
-			if (errno == EINTR)
-				continue;
 			if (errno == EAGAIN)
 				return 0;
 			log_ppp_error("ppp_chan_read: %s\n",strerror(errno));
@@ -324,26 +313,23 @@ cont:
 
 void __export ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 {
-	struct layer_node_t *n=d->node;
+	struct layer_node_t *n = d->node;
 
 	if (d->started)
 		return;
 
-	d->started=1;
+	d->started = 1;
 
-	list_for_each_entry(d,&n->items,entry)
+	list_for_each_entry(d, &n->items, entry)
 		if (!d->started) return;
 
-	if (n->entry.next==&ppp->layers)
-	{
+	if (n->entry.next == &ppp->layers) {
 		ppp->ctrl->started(ppp);
 		triton_event_fire(EV_PPP_STARTED, ppp);
-	}else
-	{
-		n=list_entry(n->entry.next,typeof(*n),entry);
-		list_for_each_entry(d,&n->items,entry)
-		{
-			d->starting=1;
+	} else {
+		n = list_entry(n->entry.next, typeof(*n), entry);
+		list_for_each_entry(d, &n->items, entry) {
+			d->starting = 1;
 			if (d->layer->start(d)) {
 				ppp_terminate(ppp, 0);
 				return;
@@ -354,15 +340,13 @@ void __export ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 
 void __export ppp_layer_finished(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 {
-	struct layer_node_t *n=d->node;
+	struct layer_node_t *n = d->node;
 
 	d->finished = 1;
 	d->starting = 0;
 
-	list_for_each_entry(n,&ppp->layers,entry)
-	{
-		list_for_each_entry(d,&n->items,entry)
-		{
+	list_for_each_entry(n, &ppp->layers, entry) {
+		list_for_each_entry(d, &n->items, entry) {
 			if (!d->finished)
 				return;
 		}
@@ -434,34 +418,32 @@ int __export ppp_register_layer(const char *name, struct ppp_layer_t *layer)
 	int order;
 	struct layer_node_t *n,*n1;
 
-	order=get_layer_order(name);
+	order = get_layer_order(name);
 
-	if (order<0)
+	if (order < 0)
 		return order;
 
-	list_for_each_entry(n,&layers,entry)
-	{
-		if (order>n->order)
+	list_for_each_entry(n, &layers, entry) {
+		if (order > n->order)
 			continue;
-		if (order<n->order)
-		{
-			n1=_malloc(sizeof(*n1));
-			memset(n1,0,sizeof(*n1));
-			n1->order=order;
+		if (order < n->order) {
+			n1 = _malloc(sizeof(*n1));
+			memset(n1, 0, sizeof(*n1));
+			n1->order = order;
 			INIT_LIST_HEAD(&n1->items);
-			list_add_tail(&n1->entry,&n->entry);
-			n=n1;
+			list_add_tail(&n1->entry, &n->entry);
+			n = n1;
 		}
 		goto insert;
 	}
-	n1=_malloc(sizeof(*n1));
-	memset(n1,0,sizeof(*n1));
-	n1->order=order;
+	n1 = _malloc(sizeof(*n1));
+	memset(n1, 0, sizeof(*n1));
+	n1->order = order;
 	INIT_LIST_HEAD(&n1->items);
-	list_add_tail(&n1->entry,&layers);
-	n=n1;
+	list_add_tail(&n1->entry, &layers);
+	n = n1;
 insert:
-	list_add_tail(&layer->entry,&n->items);
+	list_add_tail(&layer->entry, &n->items);
 
 	return 0;
 }
@@ -513,10 +495,9 @@ static void start_first_layer(struct ppp_t *ppp)
 	struct layer_node_t *n;
 	struct ppp_layer_data_t *d;
 
-	n=list_entry(ppp->layers.next,typeof(*n),entry);
-	list_for_each_entry(d,&n->items,entry)
-	{
-		d->starting=1;
+	n = list_entry(ppp->layers.next, typeof(*n), entry);
+	list_for_each_entry(d, &n->items, entry) {
+		d->starting = 1;
 		if (d->layer->start(d)) {
 			ppp_terminate(ppp, 0);
 			return;
@@ -529,11 +510,9 @@ struct ppp_layer_data_t *ppp_find_layer_data(struct ppp_t *ppp, struct ppp_layer
 	struct layer_node_t *n;
 	struct ppp_layer_data_t *d;
 
-	list_for_each_entry(n,&ppp->layers,entry)
-	{
-		list_for_each_entry(d,&n->items,entry)
-		{
-			if (d->layer==layer)
+	list_for_each_entry(n,&ppp->layers,entry) {
+		list_for_each_entry(d,&n->items,entry) {
+			if (d->layer == layer)
 				return d;
 		}
 	}

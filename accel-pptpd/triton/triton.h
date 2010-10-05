@@ -9,8 +9,6 @@
 struct triton_context_t
 {
 	const void *tpd; // triton private data, don't touch
-	const char *fname;
-	int line;
 	void (*close)(struct triton_context_t*);
 	void (*free)(struct triton_context_t*);
 	void (*before_switch)(struct triton_context_t *ctx, void *arg);
