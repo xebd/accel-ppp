@@ -6,6 +6,7 @@ ACCEL-PPTP uses kernel module to increase performance and decrease system usage.
 It is not fully tested yet so not recomended to use in production.
 Also v1.0 is oriented for servers and does not containes client part, if you need client please use v0.8.x
 
+
 Features
 --------
 1.  Modular architecture
@@ -20,21 +21,25 @@ Features
 10. Extensible IP pool, implemented Radius and static pools
 11. Supported pppd compatible ip-up/ip-down scripts
 
+
 Requirment
 ----------
 1. modern linux distribution
 2. kernel-2.6.15 or later with PPPoX support
 3. cmake-2.6 or later
 
-Compilation
------------
-Make sure you have configured kernel headers in /usr/src/linux or /lib/modules/`uname -r`/build,
-or specify other location via KDIR environment variable
-make - full compilation
 
-Insallation
+Compilation and instalation
 -----------
-Do make install for installing pptp server.
+Make sure you have configured kernel headers in /usr/src/linux,
+or specify other location via KDIR.
+1. cd /path/to/accel-pptp-1.0
+2. mkdir build
+3. cd build
+4. cmake -D BUILD_DRIVER=TRUE [ -D KDIR=/usr/src/linux ] [ -D CMAKE_INSTALL_PREFIX=/usr/local ] [ -D CMAKE_BUILD_TYPE=Debug ] ..
+5. make
+6. make install
+KDIR, CMAKE_INSTALL_PREFIX, CMAKE_BUILD_TYPE are optional.
 
 
 Configuration
@@ -56,6 +61,7 @@ Kernel module
 Kernel module is available as separated module and as patch for kernel.
 You can use either separated module or patch for kernel.
 There is only patch for 2.6.18 kernel now. If you wish patch for other kernels please mail me.
+
 
 Thanks
 ------
