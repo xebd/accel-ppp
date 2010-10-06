@@ -1,4 +1,3 @@
-SET(target triton)
 SET(sources_c 
 	md.c
 	timer.c
@@ -9,7 +8,13 @@ SET(sources_c
 	mempool.c
 	event.c
 )
+
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
 
-ADD_LIBRARY(${target} SHARED ${sources_c})
+ADD_DEFINITIONS(-DMODULE_PATH="${CMAKE_INSTALL_PREFIX}/usr/lib/accel-pptp")
 
+ADD_LIBRARY(triton SHARED ${sources_c})
+
+INSTALL(TARGETS triton
+	LIBRARY DESTINATION usr/lib/accel-pptp
+)

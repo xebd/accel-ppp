@@ -677,14 +677,19 @@ static void __init pptp_init(void)
   struct sockaddr_in addr;
 	char *opt;
 	
-	serv.hnd.fd = socket (PF_INET, SOCK_STREAM, 0);
+	serv.hnd.fd = socket(PF_INET, SOCK_STREAM, 0);
   if (serv.hnd.fd < 0) {
     log_emerg("pptp: failed to create server socket: %s\n", strerror(errno));
     return;
   }
   addr.sin_family = AF_INET;
-  addr.sin_port = htons (PPTP_PORT);
-  addr.sin_addr.s_addr = htonl (INADDR_ANY);
+  addr.sin_port = htons(PPTP_PORT);
+
+	opt = conf_get_opt("pptp", "bind");
+	if (opt)
+		addr.sin_addr.s_addr = inet_addr(opt);
+	else
+		addr.sin_addr.s_addr = htonl(INADDR_ANY);
   
   setsockopt(serv.hnd.fd, SOL_SOCKET, SO_REUSEADDR, &serv.hnd.fd, 4);  
   if (bind (serv.hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {

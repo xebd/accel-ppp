@@ -46,6 +46,8 @@ static void do_log(FILE *f, const char *fmt, va_list ap)
 	fprintf(f, "[%s.%i]", date, (int)tv.tv_usec / 1000);
 	vfprintf(f, fmt,ap);
 	pthread_mutex_unlock(&lock);
+
+	fflush(f);
 }
 void triton_log_error(const char *fmt,...)
 {

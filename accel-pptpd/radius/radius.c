@@ -309,6 +309,7 @@ static int parse_server(const char *opt, char **name, int *port, char **secret)
 static void __init radius_init(void)
 {
 	char *opt;
+	char *dict = DICT_PATH;
 
 	rpd_pool = mempool_create(sizeof(struct radius_pd_t));
 
@@ -338,16 +339,16 @@ static void __init radius_init(void)
 
 	opt = conf_get_opt("radius", "auth_server");
 	if (!opt) {
-		log_error("radius: auth_server not specified\n");
+		log_emerg("radius: auth_server not specified\n");
 		_exit(EXIT_FAILURE);
 	} else if (parse_server(opt, &conf_auth_server, &conf_auth_server_port, &conf_auth_secret)) {
-		log_error("radius: failed to parse auth_server\n");
+		log_emerg("radius: failed to parse auth_server\n");
 		_exit(EXIT_FAILURE);
 	}
 
 	opt = conf_get_opt("radius", "acct_server");
 	if (opt && parse_server(opt, &conf_acct_server, &conf_acct_server_port, &conf_acct_secret)) {
-		log_error("radius: failed to parse acct_server\n");
+		log_emerg("radius: failed to parse acct_server\n");
 		_exit(EXIT_FAILURE);
 	}
 
@@ -356,11 +357,10 @@ static void __init radius_init(void)
 		conf_dm_coa_secret = opt;
 
 	opt = conf_get_opt("radius", "dictionary");
-	if (!opt) {
-		fprintf(stderr, "radius: dictionary not specified\n");
-		_exit(EXIT_FAILURE);
-	}
-	if (rad_dict_load(opt))
+	if (opt)
+		dict = opt;
+
+	if (rad_dict_load(dict))
 		_exit(EXIT_FAILURE);
 
 	pwdb_register(&pwdb);
@@ -371,4 +371,3 @@ static void __init radius_init(void)
 	triton_event_register_handler(EV_PPP_FINISHING, (triton_event_func)ppp_finishing);
 	triton_event_register_handler(EV_PPP_FINISHED, (triton_event_func)ppp_finished);
 }
-

@@ -177,4 +177,3 @@ static void __init init(void)
 {
 	signal(35, sigclean);
 }
-

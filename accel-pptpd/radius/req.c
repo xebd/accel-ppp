@@ -236,7 +236,7 @@ void __init req_init(void)
 {
 	urandom_fd = open("/dev/urandom", O_RDONLY);
 	if (!urandom_fd) {
-		perror("radius:req: open /dev/urandom");
+		log_emerg("radius:req: open /dev/urandom: %s\n", strerror(errno));
 		_exit(EXIT_FAILURE);
 	}
 }

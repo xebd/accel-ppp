@@ -7,7 +7,7 @@
 
 #include "ipdb.h"
 #include "list.h"
-#include "triton/spinlock.h"
+#include "spinlock.h"
 
 #include "memdebug.h"
 

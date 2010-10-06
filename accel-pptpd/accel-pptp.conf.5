@@ -1,0 +1,272 @@
+.TH ACCEL-PPTP.CONF 5 "6 October 2010"
+.SH NAME
+.B accel-pptp.conf
+- ACCEL-PPTP VPN daemon configuration
+.SH DESCRIPTION
+.BR accel-pptpd (8)
+reads options from this file, usually
+.IR /etc/accel-pptp.conf
+.TP
+Configuration file consists of sections in form:
+.TP
+[section1]
+.br
+name1=val1
+.br
+name2=val2
+.br
+name3
+.TP
+[section2]
+.br
+ ....
+.br
+.SH SECTIONS
+.TP
+.SH [modules]
+containes list of modules to load
+.TP
+.BI log_file
+This is logging target which logs messages to files. It support per-session/per-user features.
+.TP
+.BI log_pgsql
+This is logging target which logs messages to PostgreSQL.
+.TP
+.BI pptp
+.br
+PPTP controlling connection handling module.
+.TP
+.BI auth_pap
+PAP authentication module.
+.TP
+.BI auth_chap
+CHAP (md5) authentication module.
+.TP
+.BI auth_mschap_v1
+Microsoft CHAP (version 1) authentication module.
+.TP
+.BI auth_mschap_v2
+Microsoft CHAP (version 2) authentication module.
+.TP
+.BI radius
+.br
+RADIUS interaction module.
+.TP
+.BI ippool
+.br
+IP address assigning module.
+.TP
+.BI sigchld
+Helper module to manage child processes, required by pppd_compat
+.TP
+.BI pppd_compat
+This module starts pppd compatible ip-up/ip-down scripts and ip-change to handle RADIUS CoA request.
+.TP
+.SH [core]
+Configuration of core module
+.TP
+.BI "log-error=" path
+Path to file for core module error logging.
+.TP
+.BI "thread-count=" n
+number of working threads, optimal - number of processors/cores
+.TP
+.SH [ppp]
+.br
+PPP module configuration.
+.TP
+.BI "verbose=" n
+If n is not zero ppp module will produce verbose logging.
+.TP
+.BI "min-mtu=" n
+Minimum acceptable MTU. If client will try to negotiate less then specified MTU then it will be NAKed or disconnected if rejects greater MTU.
+.TP
+.BI "mtu=" n
+MTU which will be negotiated if client's MRU will be not acceptable.
+.TP
+.BI "mru=" n
+Prefered MRU.
+.TP
+.SH [lcp]
+.br
+PPP LCP module configuration
+.TP
+.BI "echo-interval=" n
+If this option is given and greater then 0 then lcp module will send echo-request every 
+.B n
+seconds.
+.TP
+.BI "echo-failure=" n
+Specifies maximum number of echo-requests may be sent without valid echo-reply, if exceeds connection will be terminated.
+.TP
+.SH [dns]
+.TP
+.BI "dns1=" x.x.x.x
+Specifies primary DNS to be sent to peer.
+.TP
+.BI "dns2=" x.x.x.x
+Specifies secondary DNS to be sent to peer.
+.TP
+.SH [client-ip-range]
+You have to explicitly specify range of ip address from which clients can connect to server in form:
+.br
+.B x.x.x.x/mask
+(for example 10.0.0.0/8)
+.br
+.B x.x.x.x-y
+(for example 10.0.0.1-254)
+.TP
+.SH [pptp]
+.br
+Configuration of PPTP module.
+.TP
+.BI "bind=" x.x.x.x
+If this option is given then pptp server will bind to specified IP address.
+.TP
+.BI "verbose=" n
+If this option is given and 
+.B n
+is greater of zero then pptp module will produce verbose logging.
+.TP
+.BI "echo-interval=" n
+If this option is given and greater then zero then pptp module will send echo-request every 
+.B n
+seconds.
+.TP
+.BI "echo-failure=" n
+Specifies maximum number of echo-requests may be sent without valid echo-reply, if exceeds connection will be terminated.
+.TP
+.BI "timeout=" n
+Timeout waiting reply from client in seconds (default 5).
+.TP
+.SH [radius]
+.br
+Configuration of RADIUS module.
+.TP
+.BI "nas-identifier=" identifier
+Specifies value to send to RADIUS server in NAS-Identifier attribute and to be matched in DM/CoA requests.
+.TP
+.BI "nas-ip-address=" x.x.x.x
+Specifies value to send to RADIUS server in NAS-IP-Address attribute and to be matched in DM/CoA requests.
+Also DM/CoA server will bind to that address.
+.TP
+.BI "gw-ip-address=" x.x.x.x
+Specifies address to use as local address of ppp interfaces if Framed-IP-Address received from RADIUS server.
+.TP
+.BI "auth_server=" x.x.x.x:port,secret
+Specifies IP address, port and secret of authentication RADIUS server.
+.TP
+.BI "acct_server=" x.x.x.x:port,secret
+Specifies IP address, port and secret of accounting RADIUS server.
+.TP
+.BI "dm_coa_secret=" secret
+Specifies secret to use in DM/CoA communication.
+.TP
+.SH [log]
+.br
+Configuration of log and log_file modules.
+.TP
+.BI "log-file=" file
+Path to file to write general log.
+.TP
+.BI "log-emerg=" file
+Path to file to write emergency messages.
+.TP
+.BI "copy=" n
+If this options is given and greater then zero logging engine will duplicate session log in general log.
+(Useful when per-session/per-user logs are not used)
+.TP
+.BI "per-session-dir=" dir
+Directory for session logs. If specified each session will be logged separately to file which name is unique session identifier.
+.TP
+.BI "per-user-dir=" dir
+Directory for user logs. If specified all sessions of same user will be logged to file which name is user name.
+.TP
+.BI "per-session=" n
+If specified and n is greater then zero each session of same user will be logger separately to directory specified by "per-user-dir" 
+and subdirectory which name is user name and to file which name os unique session identifier.
+.TP
+.BI "level=" n
+Specifies log level which values are:
+.br
+.B 0
+turn off all logging
+.br
+.B 1
+log only error messages
+.br
+.B 2
+log error and warning messages
+.br
+.B 3
+log error, warning and information messages (use this level in conjuction with verbose option of other modules if you need verbose logging)
+.br
+.B 4
+log all messages including debug messages
+.TP
+.SH [log-pgsql]
+.br
+Configuration of log_pgsql module.
+.TP
+.BI "conninfo=" conninfo
+Conninfo to connect to PostgreSQL server.
+.TP
+.BI "log-table=" table
+Table to send log messages. Table must contain following field:
+.br
+.B timestamp
+timestamp
+.br
+.B username
+text
+.br
+.B sessionid
+text
+.br
+.B msg
+text
+.TP
+.SH [pppd_compat]
+.br
+Configuration of pppd_compat module.
+.TP
+.BI "ip-up=" file
+Path to ip-up script which is executed when ppp interfaces is completly configured and started.
+.TP
+.BI "ip-down=" file
+Path to ip-down script which is executed when session is about to terminate.
+.TP
+.BI "ip-change=" file
+Path to ip-change script which is executed for RADIUS CoA handling.
+.TP
+.BI "radattr=" prefix
+Prefix of radattr files (for example /var/run/radattr, resulting files will be /var/run/radattr.pppX)
+.TP
+.BI "verbose=" n
+If specified and greated then zero pppd_module will produce verbose logging.
+.TP
+.SH [ip-pool]
+.br
+Configuration of ippool module.
+.TP
+.BI "gw-ip-address=" x.x.x.x
+Specifies single IP address to be used as local address of ppp interfaces.
+.TP
+.BI "gw=" range
+Specifies range of local address of ppp interfaces if form:
+.br
+.B x.x.x.x/mask
+(for example 10.0.0.0/8)
+.br
+.B x.x.x.x-y
+(for example 10.0.0.1-254)
+.TP
+.BI "tunnel=" range
+Specifies range of remote address of ppp interfaces if form:
+.br
+.B x.x.x.x/mask
+.br
+.B x.x.x.x-y
+.TP
+.BI "x.x.x.x/mask or x.x.x.x-y"
+Also specifies range of remote address of ppp interfaces.

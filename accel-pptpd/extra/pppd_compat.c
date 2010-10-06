@@ -48,7 +48,7 @@ static void ip_up_handler(struct sigchld_handler_t *h, int status)
 	struct pppd_compat_pd_t *pd = container_of(h, typeof(*pd), ip_up_hnd);
 	if (conf_verbose) {
 		log_switch(NULL, pd->ppp);
-		log_ppp_debug("pppd_compat: ip-up finished (%i)\n", status);
+		log_ppp_info("pppd_compat: ip-up finished (%i)\n", status);
 	}
 }
 
@@ -57,7 +57,7 @@ static void ip_down_handler(struct sigchld_handler_t *h, int status)
 	struct pppd_compat_pd_t *pd = container_of(h, typeof(*pd), ip_down_hnd);
 	if (conf_verbose) {
 		log_switch(NULL, pd->ppp);
-		log_ppp_debug("pppd_compat: ip-down finished (%i)\n", status);
+		log_ppp_info("pppd_compat: ip-down finished (%i)\n", status);
 	}
 	sched_yield();
 	triton_context_wakeup(pd->ppp->ctrl->ctx);
@@ -68,7 +68,7 @@ static void ip_change_handler(struct sigchld_handler_t *h, int status)
 	struct pppd_compat_pd_t *pd = container_of(h, typeof(*pd), ip_change_hnd);
 	if (conf_verbose) {
 		log_switch(NULL, pd->ppp);
-		log_ppp_debug("pppd_compat: ip-change finished (%i)\n", status);
+		log_ppp_info("pppd_compat: ip-change finished (%i)\n", status);
 	}
 	sched_yield();
 	pd->ip_change_res = status;
@@ -113,7 +113,7 @@ static void ev_ppp_started(struct ppp_t *ppp)
 		pd->ip_up_hnd.pid = pid;
 		sigchld_register_handler(&pd->ip_up_hnd);
 		if (conf_verbose)
-			log_ppp_debug("pppd_compat: ip-up started (pid %i)\n", pid);
+			log_ppp_info("pppd_compat: ip-up started (pid %i)\n", pid);
 		sigchld_unlock();
 	} else if (pid == 0) {
 		execv(conf_ip_up, argv);
@@ -156,7 +156,7 @@ static void ev_ppp_finished(struct ppp_t *ppp)
 		pd->ip_down_hnd.pid = pid;
 		sigchld_register_handler(&pd->ip_down_hnd);
 		if (conf_verbose)
-			log_ppp_debug("pppd_compat: ip-down started (pid %i)\n", pid);
+			log_ppp_info("pppd_compat: ip-down started (pid %i)\n", pid);
 		sigchld_unlock();
 		triton_context_schedule(pd->ppp->ctrl->ctx);
 		pthread_mutex_lock(&pd->ip_down_hnd.lock);

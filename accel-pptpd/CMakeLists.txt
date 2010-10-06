@@ -1,6 +1,3 @@
-PROJECT (pptpd)
-cmake_minimum_required(VERSION 2.6)
-
 SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fvisibility=hidden -D_GNU_SOURCE -DGCC_SPINLOCK -DMEMDEBUG")
 
 INCLUDE_DIRECTORIES(include)
@@ -33,13 +30,27 @@ ADD_EXECUTABLE(accel-pptpd
 	iprange.c
 
 	utils.c
-	sigchld.c
 
 	log.c
 	main.c
 	memdebug.c
 )
-TARGET_LINK_LIBRARIES(accel-pptpd triton rt pthread ssl)
 
-ADD_LIBRARY(ippool SHARED ippool.c)
+SET(  FALSE)
+SET(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE) 
+
+TARGET_LINK_LIBRARIES(accel-pptpd triton rt pthread ssl)
+set_property(TARGET accel-pptpd PROPERTY CMAKE_SKIP_BUILD_RPATH FALSE)
+set_property(TARGET accel-pptpd PROPERTY CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
+set_property(TARGET accel-pptpd PROPERTY INSTALL_RPATH_USE_LINK_PATH FALSE)
+set_property(TARGET accel-pptpd PROPERTY INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/usr/lib/accel-pptp)
+
+INSTALL(TARGETS accel-pptpd
+	RUNTIME DESTINATION usr/sbin
+)
+
+INSTALL(FILES accel-pptp.conf DESTINATION /etc)
+INSTALL(FILES accel-pptp.conf.5 DESTINATION usr/share/man/man5)
+
+INSTALL(CODE "EXECUTE_PROCESS(COMMAND mkdir -p /var/log/accel-pptp)")
 

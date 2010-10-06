@@ -15,7 +15,7 @@ int load_modules(const char *name)
 	struct conf_sect_t *sect;
 	struct conf_option_t *opt;
 	char *fname;
-	char *path=".";
+	char *path = MODULE_PATH;
 
 	sect = conf_get_section(name);
 	if (!sect) {

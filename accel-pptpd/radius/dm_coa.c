@@ -246,11 +246,11 @@ static struct dm_coa_serv_t serv = {
 
 static void __init init(void)
 {
-  struct sockaddr_in addr;
+	struct sockaddr_in addr;
 
 	serv.hnd.fd = socket (PF_INET, SOCK_DGRAM, 0);
   if (serv.hnd.fd < 0) {
-    log_error("radius:dm_coa: socket: %s\n", strerror(errno));
+    log_emerg("radius:dm_coa: socket: %s\n", strerror(errno));
     return;
   }
   addr.sin_family = AF_INET;
@@ -260,13 +260,13 @@ static void __init init(void)
 	else
 		addr.sin_addr.s_addr = htonl (INADDR_ANY);
   if (bind (serv.hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
-    log_error("radius:dm_coa: bind: %s\n", strerror(errno));
+    log_emerg("radius:dm_coa: bind: %s\n", strerror(errno));
 		close(serv.hnd.fd);
     return;
   }
 
 	if (fcntl(serv.hnd.fd, F_SETFL, O_NONBLOCK)) {
-    log_error("radius:dm_coa: failed to set nonblocking mode: %s\n", strerror(errno));
+    log_emerg("radius:dm_coa: failed to set nonblocking mode: %s\n", strerror(errno));
 		close(serv.hnd.fd);
     return;
 	}

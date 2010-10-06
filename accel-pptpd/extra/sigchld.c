@@ -113,5 +113,5 @@ void __export sigchld_unlock()
 static void __init init(void)
 {
 	if (pthread_create(&sigchld_thr, NULL, sigchld_thread, NULL))
-		fprintf(stderr, "sigchld: pthread_create: %s\n", strerror(errno));
+		log_emerg("sigchld: pthread_create: %s\n", strerror(errno));
 }

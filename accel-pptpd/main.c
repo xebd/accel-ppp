@@ -9,6 +9,7 @@
 #include "triton/triton.h"
 
 #include "memdebug.h"
+#include "log.h"
 
 static int goto_daemon;
 static char *pid_file;
@@ -85,11 +86,8 @@ int main(int argc, char **argv)
 	sigset_t set;
 	int sig;
 
-	if (triton_load_modules("modules"))
-		return EXIT_FAILURE;
-
 	if (goto_daemon) {
-		pid_t pid = fork();
+		/*pid_t pid = fork();
 		if (pid > 0)
 			_exit(EXIT_SUCCESS);
 		if (pid < 0) {
@@ -105,7 +103,8 @@ int main(int argc, char **argv)
 		chdir("/");
 		close(STDIN_FILENO);
 		close(STDOUT_FILENO);
-		close(STDERR_FILENO);
+		close(STDERR_FILENO);*/
+		daemon(0, 0);
 	}
 
 	if (pid_file) {
@@ -118,6 +117,9 @@ int main(int argc, char **argv)
 
 	//signal(SIGTERM, sigterm);
 	//signal(SIGPIPE, sigterm);
+
+	if (triton_load_modules("modules"))
+		return EXIT_FAILURE;
 
 	triton_run();
 
@@ -144,7 +146,7 @@ int main(int argc, char **argv)
 	sigaddset(&set, SIGBUS);
 	
 	sigwait(&set, &sig);
-	printf("terminate, sig = %i\n", sig);
+	log_info("terminate, sig = %i\n", sig);
 	
 	triton_terminate();
 
