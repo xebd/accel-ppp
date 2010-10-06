@@ -50,7 +50,7 @@
 #include "gre.h"
 #endif
 
-#define PPTP_DRIVER_VERSION "0.8.5-rc1"
+#define PPTP_DRIVER_VERSION "0.8.5"
 
 static int log_level=0;
 static int log_packets=10;
@@ -274,7 +274,13 @@ static int lookup_chan_dst(u16 call_id, __be32 d_addr)
 #endif
 	for(i = find_next_bit(callid_bitmap,MAX_CALLID,1); i < MAX_CALLID; 
 	                i = find_next_bit(callid_bitmap, MAX_CALLID, i + 1)){
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
+	    sock = rcu_dereference(callid_sock[i]);
+#else
 	    sock = callid_sock[i];
+#endif
+	    if (!sock)
+		continue;
 	    opt = &sock->proto.pptp;
 	    if (opt->dst_addr.call_id == call_id && opt->dst_addr.sin_addr.s_addr == d_addr) break;
 	}
@@ -308,12 +314,12 @@ static int add_chan(struct pppox_sock *sock)
 	else if (test_bit(sock->proto.pptp.src_addr.call_id,callid_bitmap))
 		goto exit;
 	
-	set_bit(sock->proto.pptp.src_addr.call_id,callid_bitmap);
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 	rcu_assign_pointer(callid_sock[sock->proto.pptp.src_addr.call_id],sock);
 #else
 	callid_sock[sock->proto.pptp.src_addr.call_id] = sock;
 #endif
+	set_bit(sock->proto.pptp.src_addr.call_id,callid_bitmap);
 	res=0;
 
 exit:	
