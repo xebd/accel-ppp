@@ -1,0 +1,397 @@
+#include <stdlib.h>
+#include <string.h>
+#include <openssl/md5.h>
+#include <openssl/sha.h>
+
+#include "triton.h"
+#include "events.h"
+#include "log.h"
+#include "pwdb.h"
+
+#include "radius_p.h"
+#include "attr_defs.h"
+
+#include "memdebug.h"
+
+static int decrypt_chap_mppe_keys(struct rad_req_t *req, struct rad_attr_t *attr, const uint8_t *challenge, uint8_t *key)
+{
+	MD5_CTX md5_ctx;
+	SHA_CTX sha1_ctx;
+	uint8_t md5[MD5_DIGEST_LENGTH];
+	uint8_t sha1[SHA_DIGEST_LENGTH];
+	uint8_t plain[32];
+	int i;
+	
+	if (attr->len != 32) {
+		log_ppp_warn("radius: %s: incorrect attribute length (%i)\n", attr->attr->name, attr->len);
+		return -1;
+	}
+
+	memcpy(plain, attr->val.octets, 32);
+
+	MD5_Init(&md5_ctx);
+	MD5_Update(&md5_ctx, conf_auth_secret, strlen(conf_auth_secret));
+	MD5_Update(&md5_ctx, req->pack->buf + 4, 16);
+	MD5_Final(md5, &md5_ctx);
+
+	for (i = 0; i < 16; i++)
+		plain[i] ^= md5[i];
+	
+	MD5_Init(&md5_ctx);
+	MD5_Update(&md5_ctx, conf_auth_secret, strlen(conf_auth_secret));
+	MD5_Update(&md5_ctx, attr->val.octets, 16);
+	MD5_Final(md5, &md5_ctx);
+
+	for (i = 0; i < 16; i++)
+		plain[i + 16] ^= md5[i];
+	
+	SHA1_Init(&sha1_ctx);
+	SHA1_Update(&sha1_ctx, plain + 8, 16);
+	SHA1_Update(&sha1_ctx, plain + 8, 16);
+	SHA1_Update(&sha1_ctx, challenge, 8);
+	SHA1_Final(sha1, &sha1_ctx);
+
+	memcpy(key, sha1, 16);
+
+	return 0;
+}
+
+static int decrypt_mppe_key(struct rad_req_t *req, struct rad_attr_t *attr, uint8_t *key)
+{
+	MD5_CTX md5_ctx;
+	uint8_t md5[16];
+	uint8_t plain[32];
+	int i;
+	
+	if (attr->len != 34) {
+		log_ppp_warn("radius: %s: incorrect attribute length (%i)\n", attr->attr->name, attr->len);
+		return -1;
+	}
+
+	if ((attr->val.octets[0] & 0x80) == 0) {
+		log_ppp_warn("radius: %s: incorrect salt value (%x)\n", attr->attr->name, attr->len);
+		return -1;
+	}
+
+	MD5_Init(&md5_ctx);
+	MD5_Update(&md5_ctx, conf_auth_secret, strlen(conf_auth_secret));
+	MD5_Update(&md5_ctx, req->pack->buf + 4, 16);
+	MD5_Update(&md5_ctx, attr->val.octets, 2);
+	MD5_Final(md5, &md5_ctx);
+
+	memcpy(plain, attr->val.octets + 2, 32);
+
+	for (i = 0; i < 16; i++)
+		plain[i] ^= md5[i];
+	
+	if (plain[0] != 16) {
+		log_ppp_warn("radius: %s: incorrect key length (%i)\n", attr->attr->name, plain[0]);
+		return -1;
+	}
+
+	MD5_Init(&md5_ctx);
+	MD5_Update(&md5_ctx, conf_auth_secret, strlen(conf_auth_secret));
+	MD5_Update(&md5_ctx, attr->val.octets + 2, 16);
+	MD5_Final(md5, &md5_ctx);
+
+	plain[16] ^= md5[0];
+
+	memcpy(key, plain + 1, 16);
+
+	return 0;
+}
+
+
+static uint8_t* encrypt_password(const char *passwd, const char *secret, const uint8_t *RA, int *epasswd_len)
+{
+	uint8_t *epasswd;
+	int i, j, chunk_cnt;
+	uint8_t b[16], c[16];
+	MD5_CTX ctx;
+	
+	chunk_cnt = (strlen(passwd) - 1) / 16 + 1;
+	
+	epasswd = _malloc(chunk_cnt * 16);
+	if (!epasswd) {
+		log_emerg("radius: out of memory\n");
+		return NULL;
+	}
+
+	memset(epasswd, 0, chunk_cnt * 16);
+	memcpy(epasswd, passwd, strlen(passwd));
+	memcpy(c, RA, 16);
+
+	for (i = 0; i < chunk_cnt; i++) {
+		MD5_Init(&ctx);
+		MD5_Update(&ctx, secret, strlen(secret));
+		MD5_Update(&ctx, c, 16);
+		MD5_Final(b, &ctx);
+	
+		for(j = 0; j < 16; j++)
+			epasswd[i * 16 + j] ^= b[j];
+
+		memcpy(c, epasswd + i * 16, 16);
+	}
+
+	*epasswd_len = chunk_cnt * 16;
+	return epasswd;
+}
+
+static int rad_auth_send(struct rad_req_t *req)
+{
+	int i;
+
+	for(i = 0; i < conf_max_try; i++) {
+		if (rad_req_send(req))
+			goto out;
+
+		rad_req_wait(req, conf_timeout);
+
+		if (req->reply) {
+			if (req->reply->id != req->pack->id) {
+				rad_packet_free(req->reply);
+				req->reply = NULL;
+			} else
+				break;
+		}
+	}
+
+	if (!req->reply)
+		log_ppp_warn("radius:auth: no response\n");
+	else if (req->reply->code == CODE_ACCESS_ACCEPT) {
+		rad_proc_attrs(req);
+		return PWDB_SUCCESS;
+}
+
+out:
+	return PWDB_DENIED;
+}
+
+int rad_auth_pap(struct radius_pd_t *rpd, const char *username, va_list args)
+{
+	struct rad_req_t *req;
+	int r = PWDB_DENIED;
+	//int id = va_arg(args, int);
+	const char *passwd = va_arg(args, const char *);
+	uint8_t *epasswd;
+	int epasswd_len;
+
+	req = rad_req_alloc(rpd, CODE_ACCESS_REQUEST, username);
+	if (!req)
+		return PWDB_DENIED;
+	
+	epasswd = encrypt_password(passwd, conf_auth_secret, req->RA, &epasswd_len);
+	if (!epasswd)
+		goto out;
+
+	if (rad_packet_add_octets(req->pack, "User-Password", epasswd, epasswd_len)) {
+		_free(epasswd);
+		goto out;
+	}
+
+	_free(epasswd);
+
+	r = rad_auth_send(req);
+	if (r == PWDB_SUCCESS) {
+		struct ev_radius_t ev = {
+			.ppp = rpd->ppp,
+			.request = req->pack,
+			.reply = req->reply,
+		};
+		triton_event_fire(EV_RADIUS_ACCESS_ACCEPT, &ev);
+	}
+
+out:
+	rad_req_free(req);
+
+	return r;
+}
+
+int rad_auth_chap_md5(struct radius_pd_t *rpd, const char *username, va_list args)
+{
+	struct rad_req_t *req;
+	int r = PWDB_DENIED;
+	uint8_t chap_password[17];
+	
+	int id = va_arg(args, int);
+	uint8_t *challenge = va_arg(args, uint8_t *);
+	int challenge_len = va_arg(args, int);
+	uint8_t *response = va_arg(args, uint8_t *);
+
+	chap_password[0] = id;
+	memcpy(chap_password + 1, response, 16);
+
+	req = rad_req_alloc(rpd, CODE_ACCESS_REQUEST, username);
+	if (!req)
+		return PWDB_DENIED;
+	
+	if (challenge_len == 16)
+		memcpy(req->RA, challenge, 16);
+	else {
+		if (rad_packet_add_octets(req->pack, "CHAP-Challenge", challenge, challenge_len))
+			goto out;
+	}
+
+	if (rad_packet_add_octets(req->pack, "CHAP-Password", chap_password, 17))
+		goto out;
+
+	r = rad_auth_send(req);
+	if (r == PWDB_SUCCESS) {
+		struct ev_radius_t ev = {
+			.ppp = rpd->ppp,
+			.request = req->pack,
+			.reply = req->reply,
+		};
+		triton_event_fire(EV_RADIUS_ACCESS_ACCEPT, &ev);
+	}
+
+out:
+	rad_req_free(req);
+
+	return r;
+}
+
+static void setup_mppe(struct rad_req_t *req, const uint8_t *challenge)
+{
+	struct rad_attr_t *attr;
+	uint8_t mppe_recv_key[16];
+	uint8_t mppe_send_key[16];
+	struct ev_mppe_keys_t ev_mppe = {
+		.ppp = req->rpd->ppp,
+	};
+
+	list_for_each_entry(attr, &req->reply->attrs, entry) {
+		if (attr->vendor && attr->vendor->id == Vendor_Microsoft) {
+			switch (attr->attr->id) {
+				case MS_CHAP_MPPE_Keys:
+					if (decrypt_chap_mppe_keys(req, attr, challenge, mppe_recv_key))
+						continue;
+					ev_mppe.recv_key = mppe_recv_key;
+					ev_mppe.send_key = mppe_recv_key;
+					break;
+				case MS_MPPE_Recv_Key:
+					if (decrypt_mppe_key(req, attr, mppe_recv_key))
+						continue;
+					ev_mppe.recv_key = mppe_recv_key;
+					break;
+				case MS_MPPE_Send_Key:
+					if (decrypt_mppe_key(req, attr, mppe_send_key))
+						continue;
+					ev_mppe.send_key = mppe_send_key;
+					break;
+				case MS_MPPE_Encryption_Policy:
+					ev_mppe.policy = attr->val.integer;
+					break;
+				case MS_MPPE_Encryption_Type:
+					ev_mppe.type = attr->val.integer;
+					break;
+			}
+		}
+	}
+
+	if (ev_mppe.recv_key && ev_mppe.send_key)
+		triton_event_fire(EV_MPPE_KEYS, &ev_mppe);
+}
+
+int rad_auth_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list args)
+{
+	int r;
+	struct rad_req_t *req;
+	uint8_t response[50];
+
+	int id = va_arg(args, int);
+	const uint8_t *challenge = va_arg(args, const uint8_t *);
+	int challenge_len = va_arg(args, int);
+	const uint8_t *lm_response = va_arg(args, const uint8_t *);
+	const uint8_t *nt_response = va_arg(args, const uint8_t *);
+	int flags = va_arg(args, int);
+
+	req = rad_req_alloc(rpd, CODE_ACCESS_REQUEST, username);
+	if (!req)
+		return PWDB_DENIED;
+	
+	response[0] = id;
+	response[1] = flags;
+	memcpy(response + 2, lm_response, 24);
+	memcpy(response + 2 + 24, nt_response, 24);
+
+	if (rad_packet_add_vendor_octets(req->pack, "Microsoft", "MS-CHAP-Challenge", challenge, challenge_len))
+		goto out;
+	
+	if (rad_packet_add_vendor_octets(req->pack, "Microsoft", "MS-CHAP-Response", response, sizeof(response)))
+		goto out;
+
+	r = rad_auth_send(req);
+	if (r == PWDB_SUCCESS) {
+		struct ev_radius_t ev = {
+			.ppp = rpd->ppp,
+			.request = req->pack,
+			.reply = req->reply,
+		};
+		triton_event_fire(EV_RADIUS_ACCESS_ACCEPT, &ev);
+		setup_mppe(req, challenge);
+	}
+
+out:
+	rad_req_free(req);
+
+	return r;
+}
+
+int rad_auth_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list args)
+{
+	int r;
+	struct rad_req_t *req;
+	struct rad_attr_t *ra;
+	uint8_t mschap_response[50];
+
+	int id = va_arg(args, int);
+	const uint8_t *challenge = va_arg(args, const uint8_t *);
+	const uint8_t *peer_challenge = va_arg(args, const uint8_t *);
+	const uint8_t *reserved = va_arg(args, const uint8_t *);
+	const uint8_t *response = va_arg(args, const uint8_t *);
+	int flags = va_arg(args, int);
+	uint8_t *authenticator = va_arg(args, uint8_t *);
+
+	req = rad_req_alloc(rpd, CODE_ACCESS_REQUEST, username);
+	if (!req)
+		return PWDB_DENIED;
+	
+	mschap_response[0] = id;
+	mschap_response[1] = flags;
+	memcpy(mschap_response + 2, peer_challenge, 16);
+	memcpy(mschap_response + 2 + 16, reserved, 8);
+	memcpy(mschap_response + 2 + 16 + 8, response, 24);
+
+	if (rad_packet_add_vendor_octets(req->pack, "Microsoft", "MS-CHAP-Challenge", challenge, 16))
+		goto out;
+	
+	if (rad_packet_add_vendor_octets(req->pack, "Microsoft", "MS-CHAP2-Response", mschap_response, sizeof(mschap_response)))
+		goto out;
+
+	r = rad_auth_send(req);
+	if (r == PWDB_SUCCESS) {
+		ra = rad_packet_find_vendor_attr(req->reply, "Microsoft", "MS-CHAP2-Success");
+		if (!ra) {
+			log_error("radius:auth:mschap-v2: 'MS-CHAP-Success' not found in radius response\n");
+			r = PWDB_DENIED;
+		} else
+			memcpy(authenticator, ra->val.octets + 3, 40);
+	}
+	if (r == PWDB_SUCCESS) {
+		struct ev_radius_t ev = {
+			.ppp = rpd->ppp,
+			.request = req->pack,
+			.reply = req->reply,
+		};
+		triton_event_fire(EV_RADIUS_ACCESS_ACCEPT, &ev);
+		setup_mppe(req, NULL);
+	}
+
+out:
+	rad_req_free(req);
+
+	return r;
+}
+
+

@@ -1,0 +1,8 @@
+# -*- text -*-
+#
+#	Attributes and values defined in RFC 4849.
+#	http://www.ietf.org/rfc/rfc4849.txt
+#
+#	$Id: dictionary.rfc4849,v 1.2 2007/06/15 13:08:03 aland Exp $
+#
+ATTRIBUTE	NAS-Filter-Rule				92	string

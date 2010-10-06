@@ -1,49 +1,45 @@
 Overview
 --------
-The ACCEL-PPTP is PPTP client/server based on POPTOP (http://www.poptop.org) and PPTPCLIENT (http://pptpclient.sourceforge.net).
+The ACCEL-PPTP v1.0 is completly new implementation of PPTP which was written from null.
+Userspace daemon has its own PPP implementation, so it does not uses pppd and one process (multi-threaded) manages all connections.
 ACCEL-PPTP uses kernel module to increase performance and decrease system usage.
-For more documentation about PPTP visit POPTOP web site.
-ACCEL-PPTP was successfully tested on about 1200 connections and system usage has been decreased by ~50% on comparisons with the
-original poptop server.
+It is not fully tested yet so not recomended to use in production.
+Also v1.0 is oriented for servers and does not containes client part, if you need client please use v0.8.x
 
+Features
+--------
+1.  Modular architecture
+2.  PPP controlling connection (PPTP) implemented as module and its possible to implement PPPoE/L2TP as modules too in the future
+3.  High-performance multi-threaded IO core
+4.  Radius authentication/accounting
+5.  Radius DM/CoA extention
+6.  Supported authentication types: PAP, CHAP (md5), Microsoft CHAP Extentions (including version 2), not supported - EAP
+7.  Supported MPPE, other compression types are not supported
+8.  Extensible logging engine with per session logging support, implemented log to file and log to PostgreSQL targets
+9.  Extensible user/password database, implemented only Radius target
+10. Extensible IP pool, implemented Radius and static pools
+11. Supported pppd compatible ip-up/ip-down scripts
 
 Requirment
 ----------
 1. modern linux distribution
-1. kernel-2.6.15 or later with PPPoX support or kernel-2.4.x patched for PPPoX support (2.4.x not fully tested)
-2. pppd-2.4.2 or later
+2. kernel-2.6.15 or later with PPPoX support
+3. cmake-2.6 or later
 
 Compilation
 -----------
 Make sure you have configured kernel headers in /usr/src/linux or /lib/modules/`uname -r`/build,
 or specify other location via KDIR environment variable
-make client - compiles only client's part of package
-make server - full compilation
+make - full compilation
 
 Insallation
 -----------
-Do make client_install for installing pptp client.
-Do make server_install for installing pptp server.
+Do make install for installing pptp server.
 
 
 Configuration
 -------------
-If you are beginner in PPTP please read documentation available on POPTOP web site.
-Configuration is same as original pptpd and pptp.
-Exception in configuration of client is:
-replace line in peer config file (for instance, /etc/ppp/peers/my_vpn):
-  pty "pptp x.x.x.x ...." 
-to 
-  plugin "pptp.so"
-  pptp_server x.x.x.x
-  pptp_phone xxxx (optional)
-  pptp_window xxx (optional) - this is sliding window size (at current time automatic algorithm is not implemented),
-                               set it to  3-10 for low-speed connections,
-                                      to   >10 for hi-speed connections. 
-  
-Remove lock option in /etc/ppp/options.pptp, /etc/ppp/options.pptpd or similar if it exists.
-
-See configuration example in example directory.
+read man accel-pptp.conf
 
 
 Warning !!!
@@ -61,58 +57,14 @@ Kernel module is available as separated module and as patch for kernel.
 You can use either separated module or patch for kernel.
 There is only patch for 2.6.18 kernel now. If you wish patch for other kernels please mail me.
 
-ppp_generic_smp
----------------
-This driver is replacement of kernel's ppp_generic for better smp performance.
-It is disables by default, to enable you should uncomment "#obj-m      += ppp_generic_smp.o" in kernel/driver/Makefile.
-
-
 Thanks
 ------
 Thanks to Kirill Yushkov for debug support and donations.
 
 
+Contacts
+--------
 http://accel-pptp.sourceforge.net/
-mail: xeb@mail.ru, xeb@linux.vsi.ru
+mail: xeb@mail.ru
 ICQ: 337258064
-Jabber: xeb@city.veganet.ru, xeb@linux.vsi.ru
-MDIR = extra
-
-KDIR ?= $(shell sh find_kernel_headers)
-
-obj-m      += pptp.o
-
-CURRENT = $(shell uname -r)
-
-
-ifndef MAKING_MODULES
-all: kernel_headers
-	make -C $(KDIR) SUBDIRS=$(PWD) modules
-endif
-
-ifneq (,$(findstring 2.4.,$(CURRENT)))
-install:
-	@if test ! -d /lib/modules/$(CURRENT)/extra; then \
-	    mkdir /lib/modules/$(CURRENT)/extra; \
-	fi; \
-	cp -v $(TARGET).o /lib/modules/$(CURRENT)/extra/$(TARGET).o && /sbin/depmod -a
-else
-install:	
-	make -C $(KDIR) SUBDIRS=$(PWD) modules_install
-endif
-
-kernel_headers:
-	@if test -z "$(KDIR)"; then \
-	    echo "kernel headers not found"; \
-	    exit 1; \
-	else \
-	    echo "using \"$(KDIR)\" kernel headers"; \
-	fi
-
-
-clean:
-	-rm -f *.o *.ko .*.cmd .*.flags *.mod.c
-
-ifneq (,$(findstring 2.4.,$(CURRENT)))
-include $(KDIR)/Rules.make
-endif
+Jabber: xeb@xeb.homelinux.net

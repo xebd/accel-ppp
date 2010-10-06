@@ -1,0 +1,35 @@
+#ifndef PPP_AUTH_H
+#define PPP_AUTH_H
+
+#include "list.h"
+
+struct ppp_auth_handler_t;
+
+struct auth_data_t
+{
+	struct list_head entry;
+	int proto;
+	int state; 
+	struct ppp_auth_handler_t *h;
+};
+
+struct ppp_auth_handler_t
+{
+	struct list_head entry;
+	const char *name;
+	struct auth_data_t* (*init)(struct ppp_t*);
+	int (*send_conf_req)(struct ppp_t*, struct auth_data_t*, uint8_t*);
+	int (*recv_conf_req)(struct ppp_t*, struct auth_data_t*, uint8_t*);
+	int (*start)(struct ppp_t*, struct auth_data_t*);
+	int (*finish)(struct ppp_t*, struct auth_data_t*);
+	void (*free)(struct ppp_t*,struct auth_data_t*);
+	int (*check)(uint8_t *);
+};
+
+int ppp_auth_register_handler(struct ppp_auth_handler_t*);
+
+void auth_successed(struct ppp_t *ppp, char *username);
+void auth_failed(struct ppp_t *ppp);
+
+#endif
+
