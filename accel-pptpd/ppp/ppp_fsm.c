@@ -399,7 +399,7 @@ void ppp_fsm_recv_term_req(struct ppp_fsm_t *layer)
 			layer->fsm_state=FSM_Req_Sent;
 			break;
 		default:
-			layer->send_term_req(layer);
+			layer->send_term_ack(layer);
 			break;
 	}
 }
@@ -487,8 +487,10 @@ static void init_req_counter(struct ppp_fsm_t *layer,int timeout)
 }
 static void zero_req_counter(struct ppp_fsm_t *layer)
 {
-	layer->restart_timer.expire_tv.tv_sec=0;
 	layer->restart_counter=0;
+	
+	if (!layer->restart_timer.tpd)
+		triton_timer_add(layer->ppp->ctrl->ctx, &layer->restart_timer, 0);
 }
 
 static void restart_timer_func(struct triton_timer_t *t)

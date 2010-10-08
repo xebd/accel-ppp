@@ -20,11 +20,11 @@
 #include <asm/types.h>
 #include <asm/byteorder.h>
 #include <linux/version.h>
+#include <linux/if.h>
+#include <linux/if_ether.h>
 
 #ifdef  __KERNEL__
 #include <linux/in.h>
-#include <linux/if_ether.h>
-#include <linux/if.h>
 #include <linux/netdevice.h>
 #include <linux/ppp_channel.h>
 #endif /* __KERNEL__ */
@@ -37,7 +37,13 @@
 #define PF_PPPOX	AF_PPPOX
 #endif /* !(AF_PPPOX) */
 
-struct pptp_addr{
+struct pppoe_addr {
+	__be16 sid;
+	unsigned char remote[ETH_ALEN];
+	char dev[IFNAMSIZ];
+};
+
+struct pptp_addr {
        __u16           call_id;
        struct in_addr  sin_addr;
 };
@@ -57,6 +63,7 @@ struct sockaddr_pppox {
        sa_family_t     sa_family;            /* address family, AF_PPPOX */
        unsigned int    sa_protocol;          /* protocol identifier */
        union{
+	       			 struct pppoe_addr       pppoe;
 	       			 struct pptp_addr        pptp;
        }sa_addr;
 }__attribute__ ((packed));

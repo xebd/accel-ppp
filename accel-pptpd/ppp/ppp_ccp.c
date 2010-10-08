@@ -153,6 +153,8 @@ void ccp_layer_finish(struct ppp_layer_data_t *ld)
 	ccp_set_flags(ccp->ppp->unit_fd, 0, 0);
 
 	ccp->fsm.fsm_state = FSM_Closed;
+	
+	log_ppp_debug("ccp_layer_finished\n");
 	ppp_layer_finished(ccp->ppp, &ccp->ld);
 }
 

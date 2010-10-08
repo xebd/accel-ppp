@@ -80,7 +80,7 @@ int __export establish_ppp(struct ppp_t *ppp)
 {
 	/* Open an instance of /dev/ppp and connect the channel to it */
 	if (ioctl(ppp->fd, PPPIOCGCHAN, &ppp->chan_idx) == -1) {
-		log_ppp_error("Couldn't get channel number\n");
+		log_ppp_error("ioctl(PPPIOCGCHAN): %s\n", strerror(errno));
 		return -1;
 	}
 

@@ -116,6 +116,8 @@ void ipcp_layer_finish(struct ppp_layer_data_t *ld)
 	log_ppp_debug("ipcp_layer_finish\n");
 
 	ipcp->fsm.fsm_state = FSM_Closed;
+	
+	log_ppp_debug("ipcp_layer_finished\n");
 	ppp_layer_finished(ipcp->ppp, &ipcp->ld);
 }
 
