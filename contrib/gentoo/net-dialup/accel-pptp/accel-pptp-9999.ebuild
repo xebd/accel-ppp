@@ -27,30 +27,39 @@ BUILD_PARAMS="KDIR=${KERNEL_DIR}"
 CONFIG_CHECK="PPP PPPOE"
 MODULESD_PPTP_ALIASES=("net-pf-24 pptp")
 PREFIX="/"
+MODULE_NAMES="pptp(extra:${S}/driver/)"
 
 src_unpack() {
 	git_src_unpack
 	sed -i -e "/mkdir/d" "${S}/accel-pptpd/CMakeLists.txt"
 	sed -i -e "/INSTALL/d" "${S}/driver/CMakeLists.txt"
+	
+	convert_to_m ${S}/driver/Makefile
 }
 
 src_configure() {
-    mycmakeargs+=( "-DBUILD_DRIVER=TRUE" )
-    if use debug; then
-	mycmakeargs+=( "-DCMAKE_BUILD_TYPE=Debug" )
-    fi
-    
-    if  use postgres; then
-	mycmakeargs+=( "-DLOG_PGSQL=TRUE" )
-    fi
+	if use debug; then
+		mycmakeargs+=( "-DCMAKE_BUILD_TYPE=Debug" )
+	fi
+
+	if  use postgres; then
+		mycmakeargs+=( "-DLOG_PGSQL=TRUE" )
+	fi
+
+	cmake-utils_src_configure
+}
+
+src_compile() {
+	cmake-utils_src_compile
 	
-    cmake-utils_src_configure
+	cd ${S}/driver
+	linux-mod_src_compile || die "failed to build driver"
 }
 
 src_install() {
 	cmake-utils_src_install
 
-	MODULE_NAMES="pptp(extra:${CMAKE_BUILD_DIR}/driver/driver)"
+	cd ${S}/driver
 	linux-mod_src_install
 
 	exeinto /etc/init.d
