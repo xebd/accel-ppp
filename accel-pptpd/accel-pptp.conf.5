@@ -36,6 +36,10 @@ This is logging target which logs messages to PostgreSQL.
 .br
 PPTP controlling connection handling module.
 .TP
+.BI pppoe
+.br
+PPPoE discovery stage handling module.
+.TP
 .BI auth_pap
 PAP authentication module.
 .TP
@@ -139,6 +143,19 @@ Specifies maximum number of echo-requests may be sent without valid echo-reply, 
 .BI "timeout=" n
 Timeout waiting reply from client in seconds (default 5).
 .TP
+.SH [pppoe]
+.br
+Configuration of PPPoE module.
+.TP
+.BI "interface=" ethX
+Specifies interface name to listen/send discovery packets. You may specify multiple
+.B interface
+options.
+.TP
+.BI "verbose=" n
+If this option is given and 
+.B n
+is greater of zero then pppoe module will produce verbose logging.
 .SH [radius]
 .br
 Configuration of RADIUS module.

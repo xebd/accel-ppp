@@ -336,7 +336,7 @@ static void print_packet(uint8_t *pack)
 	log_info("]\n");
 }
 
-static void generate_cookie(const uint8_t *src, const uint8_t *dst, const struct pppoe_tag *host_uniq, uint8_t *cookie)
+static void generate_cookie(const uint8_t *src, const uint8_t *dst, uint8_t *cookie)
 {
 	MD5_CTX ctx;
 
@@ -344,8 +344,6 @@ static void generate_cookie(const uint8_t *src, const uint8_t *dst, const struct
 	MD5_Update(&ctx, secret, SECRET_SIZE);
 	MD5_Update(&ctx, src, ETH_ALEN);
 	MD5_Update(&ctx, dst, ETH_ALEN);
-	if (host_uniq)
-		MD5_Update(&ctx, host_uniq->tag_data, ntohs(host_uniq->tag_len));
 	MD5_Update(&ctx, conf_ac_name, strlen(conf_ac_name));
 	MD5_Update(&ctx, secret, SECRET_SIZE);
 	MD5_Final(cookie, &ctx);
@@ -413,7 +411,7 @@ static void pppoe_send_PADO(struct pppoe_serv_t *serv, const uint8_t *addr, cons
 	add_tag(pack, TAG_AC_NAME, (uint8_t *)conf_ac_name, strlen(conf_ac_name));
 	add_tag(pack, TAG_SERVICE_NAME, (uint8_t *)conf_service_name, strlen(conf_service_name));
 
-	generate_cookie(serv->hwaddr, addr, host_uniq, cookie);
+	generate_cookie(serv->hwaddr, addr, cookie);
 	add_tag(pack, TAG_AC_COOKIE, cookie, MD5_DIGEST_LENGTH);
 
 	if (host_uniq)
@@ -621,7 +619,7 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 		return;
 	}
 
-	generate_cookie(serv->hwaddr, ethhdr->h_source, host_uniq_tag, cookie);
+	generate_cookie(serv->hwaddr, ethhdr->h_source, cookie);
 
 	if (memcmp(cookie, ac_cookie_tag->tag_data, MD5_DIGEST_LENGTH)) {
 		if (conf_verbose)
