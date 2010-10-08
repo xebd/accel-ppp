@@ -39,7 +39,7 @@ ADD_EXECUTABLE(accel-pptpd
 SET(  FALSE)
 SET(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE) 
 
-TARGET_LINK_LIBRARIES(accel-pptpd triton rt pthread ssl)
+TARGET_LINK_LIBRARIES(accel-pptpd triton rt pthread ssl crypto)
 set_property(TARGET accel-pptpd PROPERTY CMAKE_SKIP_BUILD_RPATH FALSE)
 set_property(TARGET accel-pptpd PROPERTY CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
 set_property(TARGET accel-pptpd PROPERTY INSTALL_RPATH_USE_LINK_PATH FALSE)

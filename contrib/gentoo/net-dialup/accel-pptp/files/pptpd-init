@@ -5,17 +5,17 @@ depend() {
 }
 
 start() {
-	ebegin "Starting pptpd"
+	ebegin "Starting accel-pptpd"
 	modprobe pptp
-	start-stop-daemon --start --quiet --exec /usr/sbin/pptpd -- ${PPTPD_OPTS}
+	start-stop-daemon --start --quiet --exec /usr/sbin/accel-pptpd -- -p /var/run/pptpd.pid ${PPTPD_OPTS}
 	eend $?
 }
 
 stop() {
-	ebegin "Stopping pptpd"
+	ebegin "Stopping accel-pptpd"
 	start-stop-daemon --stop --quiet --pidfile /var/run/pptpd.pid
 	result=$?
-	start-stop-daemon --stop --quiet --oknodo --exec /usr/sbin/pptpctrl
+	start-stop-daemon --stop --quiet --oknodo --exec /usr/sbin/accel-pptpd
 	result=$(( $result + $? ))
 	eend $result
 }

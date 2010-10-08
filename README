@@ -17,7 +17,7 @@ Features
 6.  Radius DM/CoA extention
 7.  Supported authentication types: PAP, CHAP (md5), Microsoft CHAP Extentions (including version 2), not supported - EAP
 8.  Supported MPPE
-9.  Compression types are not supported
+9.  Compression is not supported
 10. Extensible logging engine with per session logging support, implemented log to file and log to PostgreSQL targets
 11. Extensible user/password database, implemented only Radius source
 12. Extensible IP pool, implemented Radius and static pools
@@ -40,9 +40,10 @@ or specify other location via KDIR.
 1. cd /path/to/accel-pptp-1.0
 2. mkdir build
 3. cd build
-4. cmake [ -D BUILD_DRIVER=TRUE ] [ -D KDIR=/usr/src/linux ] [ -D CMAKE_INSTALL_PREFIX=/usr/local ] [ -D CMAKE_BUILD_TYPE=Debug ] ..
+4. cmake [ -D BUILD_DRIVER=TRUE ] [ -D KDIR=/usr/src/linux ] [ -D CMAKE_INSTALL_PREFIX=/usr/local ] [ -D CMAKE_BUILD_TYPE=Debug ] [ -DLOG_PGSQL=TRUE ] ..
    Please note that the double dot record in the end of the command is essential. You'll get error if you miss it.
-   BUILD_DRIVER, KDIR, CMAKE_INSTALL_PREFIX, CMAKE_BUILD_TYPE are optional, but while pptp is not present in mainline kernel you probably need BUILD_DRIVER.
+   BUILD_DRIVER, KDIR, CMAKE_INSTALL_PREFIX, CMAKE_BUILD_TYPE, LOG_PGSQL  are optional,
+   but while pptp is not present in mainline kernel you probably need BUILD_DRIVER.
 5. make
 6. make install
 
@@ -57,15 +58,6 @@ Warning !!!
 1. This driver conflicts with ip_gre driver (in kernel), so make sure that ip_gre is not built-in or loaded at run time.
 2. Never mix connections of accel-pptp and original pptpd, before starting accel-pptp make sure that no connections
    of original pptpd exists.
-3. If you are switching from <2.6.23 to >=2.6.23 kernel or vi”e-versa then rebuild and reinstall entire package, 
-   not just kernel module.
-
-
-Kernel module
--------------
-Kernel module is available as separated module and as patch for kernel.
-You can use either separated module or patch for kernel.
-There is only patch for 2.6.18 kernel now. If you wish patch for other kernels please mail me.
 
 
 Thanks
