@@ -63,10 +63,10 @@ src_install() {
 	linux-mod_src_install
 
 	exeinto /etc/init.d
-	newexe "${S}/contrib/gentoo/net-dialup/accel-pptp/files/pptpd-init" pptpd
+	newexe "${S}/contrib/gentoo/net-dialup/accel-pptp/files/pptpd-init" accel-pptpd
 
 	insinto /etc/conf.d
-	newins "${S}/contrib/gentoo/net-dialup/accel-pptp/files/pptpd-confd" pptpd
+	newins "${S}/contrib/gentoo/net-dialup/accel-pptp/files/pptpd-confd" accel-pptpd
 
 	dodir /var/log/accel-pptp
 	dodir /var/run/radattr

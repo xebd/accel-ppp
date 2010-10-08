@@ -1,4 +1,4 @@
-# Config file for /etc/init.d/pptpd
+# Config file for /etc/init.d/accel-pptpd
 
 # Any extra options you want to pass to pptpd
 # on start-up should be put here.
