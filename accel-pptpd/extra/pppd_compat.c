@@ -218,7 +218,7 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 		sigchld_register_handler(&pd->ip_change_hnd);
 		sigchld_unlock();
 		if (conf_verbose)
-			log_ppp_debug("pppd_compat: ip-change started (pid %i)\n", pid);
+			log_ppp_info("pppd_compat: ip-change started (pid %i)\n", pid);
 		triton_context_schedule(pd->ppp->ctrl->ctx);
 		if (!ev->res)
 			ev->res = pd->ip_change_res;
