@@ -95,8 +95,10 @@ static void change_limits(void)
 		fscanf(f, "%d", &file_max);
 		fclose(f);
 
+		lim.rlim_cur = file_max;
+		lim.rlim_max = file_max;
 		if (setrlimit(RLIMIT_NOFILE, &lim))
-			log_emerg("main: setrlimit: %s", strerror(errno));
+			log_emerg("main: setrlimit: %s\n", strerror(errno));
 	} else
 		log_emerg("main: failed to open '/proc/sys/fs/file-max': %s\n", strerror(errno));
 }
