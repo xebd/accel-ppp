@@ -3,8 +3,10 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <errno.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 
 #include "triton/triton.h"
 
@@ -81,6 +83,24 @@ usage:
 		-c - config file\n");
 	_exit(EXIT_FAILURE);
 }
+
+static void change_limits(void)
+{
+	FILE *f;
+	struct rlimit lim;
+	unsigned int file_max;
+
+	f = fopen("/proc/sys/fs/file-max", "r");
+	if (f) {
+		fscanf(f, "%d", &file_max);
+		fclose(f);
+
+		if (setrlimit(RLIMIT_NOFILE, &lim))
+			log_emerg("main: setrlimit: %s", strerror(errno));
+	} else
+		log_emerg("main: failed to open '/proc/sys/fs/file-max': %s\n", strerror(errno));
+}
+
 int main(int argc, char **argv)
 {
 	sigset_t set;
@@ -117,6 +137,8 @@ int main(int argc, char **argv)
 
 	//signal(SIGTERM, sigterm);
 	//signal(SIGPIPE, sigterm);
+
+	change_limits();
 
 	if (triton_load_modules("modules"))
 		return EXIT_FAILURE;
