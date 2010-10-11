@@ -202,7 +202,7 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 		list_for_each_entry(lopt,&ipcp->options,entry) {
 			if (lopt->print) {
 				log_ppp_info(" ");
-				lopt->h->print(log_ppp_debug, lopt, NULL);
+				lopt->h->print(log_ppp_info, lopt, NULL);
 			}
 		}
 		log_ppp_info("]\n");
@@ -357,7 +357,7 @@ static int ipcp_recv_conf_req(struct ppp_ipcp_t *ipcp, uint8_t *data, int size)
 		if (!ropt->lopt)
 		{
 			if (conf_ppp_verbose) {
-				log_ppp_debug(" ");
+				log_ppp_info(" ");
 				print_ropt(ropt);
 			}
 			ropt->state = IPCP_OPT_REJ;

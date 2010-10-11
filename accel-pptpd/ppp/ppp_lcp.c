@@ -186,11 +186,11 @@ static void print_ropt(struct recv_opt_t *ropt)
 	int i;
 	uint8_t *ptr = (uint8_t*)ropt->hdr;
 
-	log_ppp_debug("<");
+	log_ppp_info("<");
 	for (i = 0; i < ropt->len; i++) {
 		log_ppp_info(" %x", ptr[i]);
 	}
-	log_ppp_debug(" >");
+	log_ppp_info(" >");
 }
 
 static int send_conf_req(struct ppp_fsm_t *fsm)
@@ -223,11 +223,11 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 		log_ppp_info("send [LCP ConfReq id=%x", lcp_hdr->id);
 		list_for_each_entry(lopt,&lcp->options,entry) {
 			if (lopt->print) {
-				log_ppp_debug(" ");
-				lopt->h->print(log_ppp_debug, lopt, NULL);
+				log_ppp_info(" ");
+				lopt->h->print(log_ppp_info, lopt, NULL);
 			}
 		}
-		log_ppp_debug("]\n");
+		log_ppp_info("]\n");
 	}
 
 	lcp_hdr->len = htons(ptr - buf - 2);
@@ -272,7 +272,7 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 	struct lcp_option_t *lopt;
 
 	if (conf_ppp_verbose)
-		log_ppp_debug("send [LCP ConfNak id=%x", lcp->fsm.recv_id);
+		log_ppp_info("send [LCP ConfNak id=%x", lcp->fsm.recv_id);
 
 	lcp_hdr->proto = htons(PPP_LCP);
 	lcp_hdr->code = CONFNAK;
@@ -286,7 +286,7 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 			ptr+=lopt->h->send_conf_nak(lcp,lopt,ptr);
 			
 			if (conf_ppp_verbose) {
-				log_ppp_debug(" ");
+				log_ppp_info(" ");
 				lopt->h->print(log_ppp_info, lopt, NULL);
 			}
 		}

@@ -102,7 +102,7 @@ static struct ppp_layer_data_t *ccp_layer_init(struct ppp_t *ppp)
 	INIT_LIST_HEAD(&ccp->options);
 	ccp_options_init(ccp);
 
-	ccp->passive = 1;
+	ccp->passive = 0;
 	
 	ccp->fsm.proto = PPP_CCP;
 	ppp_fsm_init(&ccp->fsm);
