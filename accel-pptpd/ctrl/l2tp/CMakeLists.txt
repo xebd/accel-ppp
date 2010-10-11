@@ -1,0 +1,11 @@
+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
+
+ADD_DEFINITIONS(-DDICTIONARY="${CMAKE_INSTALL_PREFIX}/usr/share/accel-pptp/l2tp/dictionary")
+
+ADD_LIBRARY(l2tp SHARED
+	l2tp.c
+	dict.c
+	packet.c
+)
+
+INSTALL(TARGETS l2tp LIBRARY DESTINATION usr/lib/accel-pptp)

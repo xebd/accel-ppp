@@ -4,6 +4,8 @@
 #include <errno.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <netinet/in.h>
+#include <linux/if.h>
 #include <linux/if_ppp.h>
 #include <openssl/md5.h>
 

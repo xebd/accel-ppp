@@ -1,0 +1,15 @@
+ATTRIBUTE     Message-Digest               59      octets     M=1 H=0
+ATTRIBUTE     Router-ID                    60      int32      H=0
+ATTRIBUTE     Assigned-Connection-ID       61      int32
+ATTRIBUTE     Pseudowire-Capabilities      62      octets
+ATTRIBUTE     Prefered-Language            72      octets
+ATTRIBUTE     Local-Session-ID             63      int32
+ATTRIBUTE     Remote-Session-ID            64      int32
+ATTRIBUTE     Assigned-Cookie              65      octets
+ATTRIBUTE     Remote-End-ID                66      octets
+ATTRIBUTE     Pseudowire-Type              68      int16
+ATTRIBUTE     L2-Specific-Sublayer         69      int16
+ATTRIBUTE     Data-Sequencing              70      int16
+ATTRIBUTE     TX-Connect-Speeed            74      int64
+ATTRIBUTE     RX-Connect-Speeed            75      int64
+ATTRIBUTE     Circuit-Status               71      int16

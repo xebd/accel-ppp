@@ -309,7 +309,7 @@ static int parse_server(const char *opt, char **name, int *port, char **secret)
 static void __init radius_init(void)
 {
 	char *opt;
-	char *dict = DICT_PATH;
+	char *dict = DICTIONARY;
 
 	rpd_pool = mempool_create(sizeof(struct radius_pd_t));
 

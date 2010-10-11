@@ -1,0 +1,55 @@
+ATTRIBUTE     Message-Type                0     int16     H=0
+ATTRIBUTE     Random-Vector              36     octets    M=1 H=0
+ATTRIBUTE     Result-Code                 1     octets    M=1 H=0
+ATTRIBUTE     Protocol-Version            2     int16     M=1 H=0
+ATTRIBUTE     Framing-Capabilities        3     int32     M=1
+ATTRIBUTE     Bearer-Capabilities         4     int32     M=1
+ATTRIBUTE     Tie-Breaker                 5     int64     M=1
+ATTRIBUTE     Firmware-Revision           6     int16     M=0
+ATTRIBUTE     Host-Name                   7     string    M=1
+ATTRIBUTE     Vendor-Name                 8     string    M=0
+ATTRIBUTE     Assigned-Tunnel-ID          9     int16     M=1
+ATTRIBUTE     Recv-Window-Size           10     int16     M=1
+ATTRIBUTE     Challenge                  11		  octets    M=1
+ATTRIBUTE     Challenge-Response         13     octets    M=1
+ATTRIBUTE     Cause-Code                 12     int32     M=1 H=0
+ATTRIBUTE     Assigned-Session-ID        14     int16     M=1
+ATTRIBUTE     Call-Serial-Number         15     int32     M=1
+ATTRIBUTE     Minimum-BPS                16     int32     M=1
+ATTRIBUTE     Maximum-BPS                17     int32     M=1
+ATTRIBUTE     Bearer-Type                18     int32     M=1
+ATTRIBUTE     Framing-Type               19     int32     M=1
+ATTRIBUTE     Called-Number              21     string    M=1
+ATTRIBUTE     Calling-Number             22     string    M=1
+ATTRIBUTE     Sub-Address                23     string    M=1
+ATTRIBUTE     TX-Speed                   24     int32     M=1
+ATTRIBUTE     RX-Speed                   38     int32     M=1
+ATTRIBUTE     Physical-Channel-ID        25     int32     M=0
+ATTRIBUTE     Private-Group-ID           37     int32     M=0
+ATTRIBUTE     Sequencing-Required        39     none      M=1 H=0
+ATTRIBUTE     Init-Recv-LCP              26     octets    M=0
+ATTRIBUTE     Last-Sent-LCP              27     octets    M=0
+ATTRIBUTE     Last-Recv-LCP              28     octets    M=0
+ATTRIBUTE     Proxy-Authen-Type          29     int16     M=0
+ATTRIBUTE     Proxy-Authen-Name          30     string    M=0
+ATTRIBUTE     Proxy-Authen-Challenge     31     octets    M=0
+ATTRIBUTE     Proxy-Authen-ID            32     int16     M=0
+ATTRIBUTE     Proxy-Authen-Response      33     octets    M=0
+ATTRIBUTE     Call-Errors                34     octets    M=1
+ATTRIBUTE     ACCM                       35     octets    M=1
+
+VALUE     Message-Type     Start-Ctrl-Conn-Request     1
+VALUE     Message-Type     Start-Ctrl-Conn-Reply       2
+VALUE     Message-Type     Start-Ctrl-Conn-Connected   3
+VALUE     Message-Type     Stop-Ctrl-Conn-Notify       4
+VALUE     Message-Type     Hello                       6
+VALUE     Message-Type     Outgoing-Call-Request       7
+VALUE     Message-Type     Outgoing-Call-Reply         8
+VALUE     Message-Type     Outgoing-Call-Connected     9
+VALUE     Message-Type     Incoming-Call-Request      10
+VALUE     Message-Type     Incoming-Call-Reply        11
+VALUE     Message-Type     Incoming-Call-Connected    12
+VALUE     Message-Type     Call-Disconnect-Notify     14
+VALUE     Message-Type     WAN-Error-Notify           15
+VALUE     Message-Type     Set-Link-Info              16
+

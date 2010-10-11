@@ -79,7 +79,7 @@ static int dict_load(const char *fname)
 
 	f = fopen(fname, "r");
 	if (!f) {
-		log_error("radius: open dictioanary '%s': %s\n", fname, strerror(errno));
+		log_emerg("radius: open dictioanary '%s': %s\n", fname, strerror(errno));
 		return -1;
 	}
 	
@@ -94,7 +94,7 @@ static int dict_load(const char *fname)
 			if (!strcmp(buf, "BEGIN-VENDOR")) {
 				vendor = rad_dict_find_vendor_name(ptr[0]);
 				if (!vendor) {
-					log_error("radius:%s:%i: vendor not found\n", fname, n);
+					log_emerg("radius:%s:%i: vendor not found\n", fname, n);
 					goto out_err;
 				}
 				items = &vendor->items;
@@ -156,13 +156,13 @@ static int dict_load(const char *fname)
 				else if (!strcmp(ptr[2], "octets"))
 					attr->type = ATTR_TYPE_OCTETS;
 				else {
-					log_error("radius:%s:%i: unknown attribute type\n", fname, n);
+					log_emerg("radius:%s:%i: unknown attribute type\n", fname, n);
 					goto out_err;
 				}
 			} else if (!strcmp(buf, "VALUE")) {
 				attr = find_attr(items, ptr[0]);
 				if (!attr) {
-					log_error("radius:%s:%i: unknown attribute\n", fname, n);
+					log_emerg("radius:%s:%i: unknown attribute\n", fname, n);
 					goto out_err;
 				}
 				val = malloc(sizeof(*val));
@@ -200,7 +200,7 @@ static int dict_load(const char *fname)
 	return 0;
 
 out_err_syntax:
-	log_error("radius:%s:%i: syntaxis error\n", fname, n);
+	log_emerg("radius:%s:%i: syntaxis error\n", fname, n);
 out_err:
 	fclose(f);
 	return -1;

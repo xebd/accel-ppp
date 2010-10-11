@@ -678,62 +678,65 @@ static int pppoe_serv_read(struct triton_md_handler_t *h)
 	struct pppoe_hdr *hdr = (struct pppoe_hdr *)(pack + ETH_HLEN);
 	int n;
 
-	n = read(h->fd, pack, sizeof(pack));
-	if (n < 0) {
-		log_error("pppoe: read: %s\n", strerror(errno));
-		return 0;
-	}
+	while (1) {
+		n = read(h->fd, pack, sizeof(pack));
+		if (n < 0) {
+			if (errno == EAGAIN)
+				break;
+			log_error("pppoe: read: %s\n", strerror(errno));
+			return 0;
+		}
 
-	if (n < ETH_HLEN + sizeof(*hdr)) {
-		if (conf_verbose)
-			log_warn("pppoe: short packet received (%i)\n", n);
-		return 0;
-	}
+		if (n < ETH_HLEN + sizeof(*hdr)) {
+			if (conf_verbose)
+				log_warn("pppoe: short packet received (%i)\n", n);
+			return 0;
+		}
 
-	if (memcmp(ethhdr->h_dest, bc_addr, ETH_ALEN) && memcmp(ethhdr->h_dest, serv->hwaddr, ETH_ALEN))
-		return 0;
+		if (memcmp(ethhdr->h_dest, bc_addr, ETH_ALEN) && memcmp(ethhdr->h_dest, serv->hwaddr, ETH_ALEN))
+			return 0;
 
-	if (!memcmp(ethhdr->h_source, bc_addr, ETH_ALEN)) {
-		if (conf_verbose)
-			log_warn("pppoe: discarding packet (host address is broadcast)\n");
-		return 0;
-	}
+		if (!memcmp(ethhdr->h_source, bc_addr, ETH_ALEN)) {
+			if (conf_verbose)
+				log_warn("pppoe: discarding packet (host address is broadcast)\n");
+			return 0;
+		}
 
-	if ((ethhdr->h_source[0] & 1) != 0) {
-		if (conf_verbose)
-			log_warn("pppoe: discarding packet (host address is not unicast)\n");
-		return 0;
-	}
+		if ((ethhdr->h_source[0] & 1) != 0) {
+			if (conf_verbose)
+				log_warn("pppoe: discarding packet (host address is not unicast)\n");
+			return 0;
+		}
 
-	if (n < ETH_HLEN + sizeof(*hdr) + ntohs(hdr->length)) {
-		if (conf_verbose)
-			log_warn("pppoe: short packet received\n");
-		return 0;
-	}
+		if (n < ETH_HLEN + sizeof(*hdr) + ntohs(hdr->length)) {
+			if (conf_verbose)
+				log_warn("pppoe: short packet received\n");
+			return 0;
+		}
 
-	if (hdr->ver != 1) {
-		if (conf_verbose)
-			log_warn("pppoe: discarding packet (unsupported version %i)\n", hdr->ver);
-		return 0;
-	}
-	
-	if (hdr->type != 1) {
-		if (conf_verbose)
-			log_warn("pppoe: discarding packet (unsupported type %i)\n", hdr->type);
-	}
+		if (hdr->ver != 1) {
+			if (conf_verbose)
+				log_warn("pppoe: discarding packet (unsupported version %i)\n", hdr->ver);
+			return 0;
+		}
+		
+		if (hdr->type != 1) {
+			if (conf_verbose)
+				log_warn("pppoe: discarding packet (unsupported type %i)\n", hdr->type);
+		}
 
-	switch (hdr->code) {
-		case CODE_PADI:
-			pppoe_recv_PADI(serv, pack, n);
-			break;
-		case CODE_PADR:
-			pppoe_recv_PADR(serv, pack, n);
-			break;
-		case CODE_PADT:
-			pppoe_recv_PADT(serv, pack);
-			break;
+		switch (hdr->code) {
+			case CODE_PADI:
+				pppoe_recv_PADI(serv, pack, n);
+				break;
+			case CODE_PADR:
+				pppoe_recv_PADR(serv, pack, n);
+				break;
+			case CODE_PADT:
+				pppoe_recv_PADT(serv, pack);
+				break;
+		}
 	}
-
 	return 0;
 }
 
@@ -808,6 +811,11 @@ static void pppoe_start_server(const char *ifname)
 
 	if (bind(sock, (struct sockaddr *)&sa, sizeof(sa))) {
 		log_emerg("pppoe: bind: %s\n", strerror(errno));
+		goto out_err;
+	}
+
+	if (fcntl(sock, F_SETFL, O_NONBLOCK)) {
+    log_emerg("pppoe: failed to set nonblocking mode: %s\n", strerror(errno));
 		goto out_err;
 	}
 
