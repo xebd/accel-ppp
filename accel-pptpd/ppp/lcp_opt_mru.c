@@ -2,6 +2,7 @@
 #include <string.h>
 #include <errno.h>
 #include <stdio.h>
+#include <sys/socket.h>
 #include <arpa/inet.h>
 #include <net/if.h>
 #include <linux/if_ppp.h>

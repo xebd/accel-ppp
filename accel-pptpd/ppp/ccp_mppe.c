@@ -1,9 +1,10 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/socket.h>
 #include <sys/ioctl.h>
-#include <linux/if_ppp.h>
 #include <net/if.h>
+#include <linux/if_ppp.h>
 
 #include "ppp.h"
 #include "ppp_ccp.h"

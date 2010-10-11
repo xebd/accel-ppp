@@ -1,6 +1,8 @@
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <linux/ppp_defs.h>
+#include <linux/if.h>
 #include <linux/if_ppp.h>
 #include <arpa/inet.h>
 

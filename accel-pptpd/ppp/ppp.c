@@ -9,6 +9,7 @@
 #include <sys/ioctl.h>
 #include <arpa/inet.h>
 #include <linux/ppp_defs.h>
+#include <linux/if.h>
 #include <linux/if_ppp.h>
 #include <openssl/md5.h>
 
