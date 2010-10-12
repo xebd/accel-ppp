@@ -18,9 +18,11 @@ IUSE="postgres debug"
 
 DEPEND="dev-libs/openssl
 	dev-libs/libaio
+	dev-libs/libnl
 	postgres? ( >=dev-db/postgresql-base-8.1 )"
 
-RDEPEND="virtual/modutils"
+RDEPEND="$DEPEND
+         virtual/modutils"
 
 BUILD_TARGETS="default"
 BUILD_PARAMS="KDIR=${KERNEL_DIR}"

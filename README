@@ -1,6 +1,6 @@
 Overview
 --------
-The ACCEL-PPTP v1.0 is completly new implementation of PPTP which was written from null.
+The ACCEL-PPTP v1.0 is completly new implementation of PPTP/PPPoE/L2TP which was written from null.
 Userspace daemon has its own PPP implementation, so it does not uses pppd and one process (multi-threaded) manages all connections.
 ACCEL-PPTP uses kernel module to increase performance and decrease system usage.
 It is not fully tested yet so not recomended to use in production.
@@ -13,6 +13,7 @@ Features
 2.  High-performance multi-threaded I/O core
 3.  Supported PPTP
 4.  Supported PPPoE
+5.  Supported L2TPv2 (without IPsec)
 5.  Radius authentication/accounting
 6.  Radius DM/CoA extention
 7.  Supported authentication types: PAP, CHAP (md5), Microsoft CHAP Extentions (including version 2), not supported - EAP
@@ -31,6 +32,7 @@ Requirment
 2. kernel-2.6.25 or later
 3. glibc-2.8 or later
 4. cmake-2.6 or later
+5. libnl-1.1 or probably later
 
 
 Compilation and instalation

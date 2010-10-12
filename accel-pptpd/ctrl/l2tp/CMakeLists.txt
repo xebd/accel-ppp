@@ -6,6 +6,8 @@ ADD_LIBRARY(l2tp SHARED
 	l2tp.c
 	dict.c
 	packet.c
+	netlink.c
 )
+TARGET_LINK_LIBRARIES(l2tp nl)
 
 INSTALL(TARGETS l2tp LIBRARY DESTINATION usr/lib/accel-pptp)

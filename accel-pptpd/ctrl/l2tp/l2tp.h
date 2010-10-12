@@ -76,9 +76,13 @@ void l2tp_packet_free(struct l2tp_packet_t *);
 void l2tp_packet_print(struct l2tp_packet_t *);
 struct l2tp_packet_t *l2tp_packet_alloc(int ver, int msg_type, struct sockaddr_in *addr);
 int l2tp_packet_send(int sock, struct l2tp_packet_t *);
-int l2tp_packet_add_int16(struct l2tp_packet_t *pack, int id, int16_t val);
-int l2tp_packet_add_int32(struct l2tp_packet_t *pack, int id, int32_t val);
-int l2tp_packet_add_string(struct l2tp_packet_t *pack, int id, const char *val);
-int l2tp_packet_add_octets(struct l2tp_packet_t *pack, int id, const uint8_t *val, int size);
+int l2tp_packet_add_int16(struct l2tp_packet_t *pack, int id, int16_t val, int M);
+int l2tp_packet_add_int32(struct l2tp_packet_t *pack, int id, int32_t val, int M);
+int l2tp_packet_add_string(struct l2tp_packet_t *pack, int id, const char *val, int M);
+int l2tp_packet_add_octets(struct l2tp_packet_t *pack, int id, const uint8_t *val, int size, int M);
+
+void l2tp_nl_create_tunnel(int fd, int tid, int peer_tid);
+void l2tp_nl_create_session(int tid, int sid, int peer_sid);
+void l2tp_nl_delete_tunnel(int tid);
 
 #endif

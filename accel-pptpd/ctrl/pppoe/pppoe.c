@@ -170,6 +170,7 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 		memcpy(conn->relay_sid, relay_sid, sizeof(*relay_sid) + ntohs(relay_sid->tag_len));
 	}
 
+	conn->ctx.before_switch = log_switch;
 	conn->ctx.close = pppoe_conn_close;
 	conn->ctrl.ctx = &conn->ctx;
 	conn->ctrl.started = ppp_started;

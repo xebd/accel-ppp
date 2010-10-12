@@ -176,10 +176,10 @@ static void lcp_layer_finished(struct ppp_fsm_t *fsm)
 	log_ppp_debug("lcp_layer_finished\n");
 
 	stop_echo(lcp);
-	ppp_layer_finished(lcp->ppp, &lcp->ld);
-	if (lcp->started)
+	if (lcp->started) {
 		lcp->started = 0;
-	else
+		ppp_layer_finished(lcp->ppp, &lcp->ld);
+	} else
 		ppp_terminate(lcp->ppp, 1);
 }
 

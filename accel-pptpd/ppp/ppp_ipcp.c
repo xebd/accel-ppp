@@ -154,10 +154,10 @@ static void ipcp_layer_down(struct ppp_fsm_t *fsm)
 
 	log_ppp_debug("ipcp_layer_finished\n");
 
-	ppp_layer_finished(ipcp->ppp, &ipcp->ld);
-	if (ipcp->started)
+	if (ipcp->started) {
 		ipcp->started = 0;
-	else
+	  ppp_layer_finished(ipcp->ppp, &ipcp->ld);
+	} else
 		ppp_terminate(ipcp->ppp, 1);
 }
 

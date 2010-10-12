@@ -26,7 +26,7 @@ void l2tp_packet_print(struct l2tp_packet_t *pack)
 
 	if (pack->hdr.ver == 2)
 		log_ppp_info("[L2TP tid=%i sid=%i Ns=%i Nr=%i",
-			pack->hdr.tid, pack->hdr.sid, pack->hdr.Ns, pack->hdr.Nr);
+			ntohs(pack->hdr.tid), ntohs(pack->hdr.sid), ntohs(pack->hdr.Ns), ntohs(pack->hdr.Nr));
 	else
 		log_ppp_info("[L2TP cid=%u Ns=%i Nr=%i",
 			pack->hdr.cid, pack->hdr.Ns, pack->hdr.Nr);
@@ -70,7 +70,7 @@ struct l2tp_packet_t *l2tp_packet_alloc(int ver, int msg_type, struct sockaddr_i
 	memcpy(&pack->addr, addr, sizeof(*addr));
 
 	if (msg_type) {
-		if (l2tp_packet_add_int16(pack, Message_Type, msg_type)) {
+		if (l2tp_packet_add_int16(pack, Message_Type, msg_type, 1)) {
 			mempool_free(pack);
 			return NULL;
 		}
@@ -115,8 +115,10 @@ int l2tp_recv(int fd, struct l2tp_packet_t **p)
 	n = recvfrom(fd, buf, L2TP_MAX_PACKET_SIZE, 0, &addr, &len);
 
 	if (n < 0) {
-		if (errno == EAGAIN)
+		if (errno == EAGAIN) {
+			mempool_free(buf);
 			return -1;
+		}
 		log_error("l2tp: recv: %s\n", strerror(errno));
 		return 0;
 	}
@@ -332,7 +334,7 @@ int l2tp_packet_send(int sock, struct l2tp_packet_t *pack)
 	pack->hdr.length = htons(len);
 	memcpy(buf, &pack->hdr, sizeof(pack->hdr));
 
-	n = sendto(sock, buf, ntohs(pack->hdr.length), 0, &pack->addr, sizeof(pack->addr));
+	n = write(sock, buf, ntohs(pack->hdr.length));
 	
 	mempool_free(buf);
 
@@ -355,7 +357,7 @@ int l2tp_packet_send(int sock, struct l2tp_packet_t *pack)
 	return 0;
 }
 
-static struct l2tp_attr_t *attr_alloc(int id)
+static struct l2tp_attr_t *attr_alloc(int id, int M)
 {
 	struct l2tp_attr_t *attr;
 	struct l2tp_dict_attr_t *da;
@@ -376,15 +378,18 @@ static struct l2tp_attr_t *attr_alloc(int id)
 
 	if (da->M != -1)
 		attr->M = da->M;
-	if (da->H != -1)
-		attr->H = da->H;
+	else
+		attr->M = M;
+
+	//if (da->H != -1)
+	//attr->H = da->H;
 
 	return attr;
 }
 
-int l2tp_packet_add_int16(struct l2tp_packet_t *pack, int id, int16_t val)
+int l2tp_packet_add_int16(struct l2tp_packet_t *pack, int id, int16_t val, int M)
 {
-	struct l2tp_attr_t *attr = attr_alloc(id);
+	struct l2tp_attr_t *attr = attr_alloc(id, M);
 
 	if (!attr)
 		return -1;
@@ -395,9 +400,9 @@ int l2tp_packet_add_int16(struct l2tp_packet_t *pack, int id, int16_t val)
 
 	return 0;
 }
-int l2tp_packet_add_int32(struct l2tp_packet_t *pack, int id, int32_t val)
+int l2tp_packet_add_int32(struct l2tp_packet_t *pack, int id, int32_t val, int M)
 {
-	struct l2tp_attr_t *attr = attr_alloc(id);
+	struct l2tp_attr_t *attr = attr_alloc(id, M);
 
 	if (!attr)
 		return -1;
@@ -408,9 +413,9 @@ int l2tp_packet_add_int32(struct l2tp_packet_t *pack, int id, int32_t val)
 
 	return 0;
 }
-int l2tp_packet_add_string(struct l2tp_packet_t *pack, int id, const char *val)
+int l2tp_packet_add_string(struct l2tp_packet_t *pack, int id, const char *val, int M)
 {
-	struct l2tp_attr_t *attr = attr_alloc(id);
+	struct l2tp_attr_t *attr = attr_alloc(id, M);
 
 	if (!attr)
 		return -1;
@@ -428,9 +433,9 @@ int l2tp_packet_add_string(struct l2tp_packet_t *pack, int id, const char *val)
 	return 0;
 }
 
-int l2tp_packet_add_octets(struct l2tp_packet_t *pack, int id, const uint8_t *val, int size)
+int l2tp_packet_add_octets(struct l2tp_packet_t *pack, int id, const uint8_t *val, int size, int M)
 {
-	struct l2tp_attr_t *attr = attr_alloc(id);
+	struct l2tp_attr_t *attr = attr_alloc(id, M);
 
 	if (!attr)
 		return -1;

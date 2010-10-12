@@ -156,6 +156,34 @@ options.
 If this option is given and 
 .B n
 is greater of zero then pppoe module will produce verbose logging.
+.TP
+.SH [l2tp]
+.br
+Configuration of L2TP module.
+.TP
+.BI "bind=" x.x.x.x
+Specifies IP address to bind.
+.TP
+.BI "host-name=" string
+This name will be sent to clients in Host-Name attribute.
+.TP
+.BI "hello-interval=" n
+Specifies interval (in seconds) to send Hello control message. Its used for keep alive connection. If peer will not respond to Hello connection will be terminated.
+.TP
+.BI "timeout=" n
+Specifies timeout (in seconds) to wait peer completes tunnel and session negotiation.
+.TP
+.BI "rtimeout=" n
+Specifies timeout (in seconds) to wait message acknowledge, if elapsed message retransmition will be performed.
+.TP
+.BI "retransmit=" n
+Specifies maximum number of message retransmission, if exceeds connection will be terminated.
+.TP
+.BI "verbose=" n
+If this option is given and 
+.B n
+is greater of zero then l2tp module will produce verbose logging.
+.TP
 .SH [radius]
 .br
 Configuration of RADIUS module.
