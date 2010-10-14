@@ -105,6 +105,8 @@ int rad_req_acct_fill(struct rad_req_t *req)
 		return -1;
 	if (rad_packet_add_int(req->pack, "Acct-Output-Gigawords", 0))
 		return -1;
+	if (rad_packet_add_ipaddr(req->pack, "Framed-IP-Address", req->rpd->ppp->peer_ipaddr))
+		return -1;
 
 	return 0;
 }

@@ -2,7 +2,7 @@
 #define __TRITON_SPINLOCK_H
 
 #ifdef GCC_SPINLOCK
-typedef volatile unsigned char spinlock_t;
+typedef volatile unsigned int spinlock_t;
 #define spin_lock(l) {while(__sync_lock_test_and_set(l,1));}
 #define spin_unlock(l) __sync_lock_release(l)
 #define SPINLOCK_INITIALIZER 0

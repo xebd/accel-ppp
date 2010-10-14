@@ -554,7 +554,7 @@ static void ipcp_recv(struct ppp_handler_t*h)
 
 	if (ipcp->fsm.fsm_state == FSM_Initial || ipcp->fsm.fsm_state == FSM_Closed) {
 		if (conf_ppp_verbose)
-			log_ppp_warn("IPCP: discaring packet\n");
+			log_ppp_warn("IPCP: discarding packet\n");
 		return;
 	}
 

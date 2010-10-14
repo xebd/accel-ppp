@@ -511,19 +511,20 @@ void __init fsm_init(void)
 {
 	char *opt;
 
-	opt = conf_get_opt("lcp", "max-terminate");
+	opt = conf_get_opt("ppp", "max-terminate");
 	if (opt && atoi(opt) > 0)
 		conf_max_terminate = atoi(opt);
 
-	opt = conf_get_opt("lcp", "max-configure");
+	opt = conf_get_opt("ppp", "max-configure");
 	if (opt && atoi(opt) > 0)
 		conf_max_configure = atoi(opt);
 
-	opt = conf_get_opt("lcp", "max-failure");
+	opt = conf_get_opt("ppp", "max-failure");
 	if (opt && atoi(opt) > 0)
 		conf_max_failure = atoi(opt);
 
-	opt = conf_get_opt("lcp", "timeout");
+	opt = conf_get_opt("ppp", "timeout");
 	if (opt && atoi(opt) > 0)
 		conf_timeout = atoi(opt);
 }
+

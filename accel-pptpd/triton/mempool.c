@@ -230,6 +230,14 @@ void sigclean(int num)
 
 static void __init init(void)
 {
-	signal(35, sigclean);
+	sigset_t set;
+	sigfillset(&set);
+	
+	struct sigaction sa = {
+		.sa_handler = sigclean,
+		.sa_mask = set,
+	};
+
+	sigaction(35, &sa, NULL);
 }
 

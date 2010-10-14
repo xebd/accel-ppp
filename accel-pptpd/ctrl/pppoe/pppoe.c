@@ -508,7 +508,7 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	int n, service_match = 0;
 
 	if (hdr->sid) {
-		log_warn("pppoe: discaring PADI packet (sid is not zero)\n");
+		log_warn("pppoe: discarding PADI packet (sid is not zero)\n");
 		return;
 	}
 
@@ -571,7 +571,7 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	
 	if (hdr->sid) {
 		if (conf_verbose)
-			log_warn("pppoe: discaring PADR packet (sid is not zero)\n");
+			log_warn("pppoe: discarding PADR packet (sid is not zero)\n");
 		return;
 	}
 

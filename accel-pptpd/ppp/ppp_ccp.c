@@ -606,7 +606,7 @@ static void ccp_recv(struct ppp_handler_t*h)
 
 	if (ccp->fsm.fsm_state == FSM_Initial || ccp->fsm.fsm_state == FSM_Closed) {
 		if (conf_ppp_verbose)
-			log_ppp_warn("CCP: discaring packet\n");
+			log_ppp_warn("CCP: discarding packet\n");
 		if (ccp->fsm.fsm_state == FSM_Closed)
 			lcp_send_proto_rej(ccp->ppp, htons(PPP_CCP));
 		return;
