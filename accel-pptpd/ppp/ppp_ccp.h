@@ -84,8 +84,8 @@ struct ppp_ccp_t
 	int ropt_len;
 	
 	int conf_req_len;
+	int passive;
 	int started:1;
-	int passive:1;
 	int need_req:1;
 };
 

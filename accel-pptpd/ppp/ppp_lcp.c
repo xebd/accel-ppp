@@ -674,7 +674,7 @@ void lcp_send_proto_rej(struct ppp_t *ppp, uint16_t proto)
 		.hdr.code = PROTOREJ,
 		.hdr.id = ++lcp->fsm.id,
 		.hdr.len = htons(6),
-		.proto = proto,
+		.proto = ntohs(proto),
 	};
 
 	if (conf_ppp_verbose)
@@ -775,7 +775,8 @@ static void lcp_recv(struct ppp_handler_t*h)
 			break;
 		case PROTOREJ:
 			if (conf_ppp_verbose)
-				log_ppp_info("recv [LCP ProtoRej id=%x <%x>]\n", hdr->code, hdr->id, *(uint16_t*)(hdr + 1));
+				log_ppp_info("recv [LCP ProtoRej id=%x <%04x>]\n", hdr->code, hdr->id, ntohs(*(uint16_t*)(hdr + 1)));
+			ppp_recv_proto_rej(lcp->ppp, ntohs(*(uint16_t *)(hdr + 1)));
 			break;
 		case IDENT:
 			if (conf_ppp_verbose) {

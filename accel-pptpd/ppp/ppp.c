@@ -312,6 +312,27 @@ cont:
 	}
 }
 
+void ppp_recv_proto_rej(struct ppp_t *ppp, uint16_t proto)
+{
+	struct ppp_handler_t *ppp_h;
+
+	list_for_each_entry(ppp_h, &ppp->chan_handlers, entry) {
+		if (ppp_h->proto == proto) {
+			if (ppp_h->recv_proto_rej)
+				ppp_h->recv_proto_rej(ppp_h);
+			return;
+		}
+	}
+	
+	list_for_each_entry(ppp_h, &ppp->unit_handlers, entry) {
+		if (ppp_h->proto == proto) {
+			if (ppp_h->recv_proto_rej)
+				ppp_h->recv_proto_rej(ppp_h);
+			return;
+		}
+	}
+}
+
 void __export ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 {
 	struct layer_node_t *n = d->node;
@@ -410,7 +431,7 @@ static int get_layer_order(const char *name)
 	if (!strcmp(name,"lcp")) return 0;
 	if (!strcmp(name,"auth")) return 1;
 	if (!strcmp(name,"ccp")) return 2;
-	if (!strcmp(name,"ipcp")) return 3;
+	if (!strcmp(name,"ipcp")) return 2;
 	return -1;
 }
 

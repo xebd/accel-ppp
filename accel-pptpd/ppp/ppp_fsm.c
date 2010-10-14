@@ -127,11 +127,13 @@ void ppp_fsm_close(struct ppp_fsm_t *layer)
 	switch(layer->fsm_state)
 	{
 		case FSM_Starting:
-			if (layer->layer_finished) layer->layer_finished(layer);
+			stop_timer(layer);
 			layer->fsm_state=FSM_Initial;
+			if (layer->layer_finished) layer->layer_finished(layer);
 			break;
 		case FSM_Stopped:
 			layer->fsm_state=FSM_Closed;
+			stop_timer(layer);
 			break;
 		case FSM_Stopping:
 			layer->fsm_state=FSM_Closing;

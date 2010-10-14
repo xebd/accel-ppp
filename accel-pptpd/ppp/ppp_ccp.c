@@ -37,6 +37,7 @@ static void send_conf_rej(struct ppp_fsm_t*);
 static void send_term_req(struct ppp_fsm_t *fsm);
 static void send_term_ack(struct ppp_fsm_t *fsm);
 static void ccp_recv(struct ppp_handler_t*);
+static void ccp_recv_proto_rej(struct ppp_handler_t*);
 
 static void ccp_options_init(struct ppp_ccp_t *ccp)
 {
@@ -98,6 +99,7 @@ static struct ppp_layer_data_t *ccp_layer_init(struct ppp_t *ppp)
 	
 	ccp->hnd.proto = PPP_CCP;
 	ccp->hnd.recv = ccp_recv;
+	ccp->hnd.recv_proto_rej = ccp_recv_proto_rej;
 	
 	ppp_register_unit_handler(ppp, &ccp->hnd);
 	
@@ -223,8 +225,10 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 
 	ccp->need_req = 0;
 
-	if (ccp->passive)
+	if (ccp->passive) {
+		ccp->passive--;
 		return 0;
+	}
 
 	buf = _malloc(ccp->conf_req_len);
 	ccp_hdr = (struct ccp_hdr_t*)buf;
@@ -508,8 +512,9 @@ static int ccp_recv_conf_nak(struct ppp_ccp_t *ccp, uint8_t *data, int size)
 					log_ppp_info(" ");
 					lopt->h->print(log_ppp_info, lopt, data);
 				}
-				if (lopt->h->recv_conf_nak(ccp, lopt, data))
+				if (lopt->h->recv_conf_nak && lopt->h->recv_conf_nak(ccp, lopt, data))
 					res = -1;
+				lopt->state = CCP_OPT_NAK;
 				break;
 			}
 		}
@@ -686,6 +691,17 @@ static void ccp_recv(struct ppp_handler_t*h)
 			ppp_fsm_recv_unk(&ccp->fsm);
 			break;
 	}
+}
+
+static void ccp_recv_proto_rej(struct ppp_handler_t *h)
+{
+	struct ppp_ccp_t *ccp = container_of(h, typeof(*ccp), hnd);
+
+	if (ccp->fsm.fsm_state == FSM_Initial || ccp->fsm.fsm_state == FSM_Closed)
+		return;
+	
+	ppp_fsm_lower_down(&ccp->fsm);
+	ppp_fsm_close(&ccp->fsm);
 }
 
 int ccp_option_register(struct ccp_option_handler_t *h)

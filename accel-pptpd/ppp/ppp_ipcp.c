@@ -613,8 +613,8 @@ static void ipcp_recv(struct ppp_handler_t*h)
 		case TERMACK:
 			if (conf_ppp_verbose)
 				log_ppp_info("recv [IPCP TermAck id=%x]\n", hdr->id);
-			ppp_fsm_recv_term_ack(&ipcp->fsm);
-			ppp_terminate(ipcp->ppp, 0);
+			//ppp_fsm_recv_term_ack(&ipcp->fsm);
+			//ppp_terminate(ipcp->ppp, 0);
 			break;
 		case CODEREJ:
 			if (conf_ppp_verbose)
