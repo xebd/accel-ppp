@@ -690,6 +690,13 @@ static void lcp_recv(struct ppp_handler_t*h)
 	int r;
 	char *term_msg;
 	
+	if (lcp->fsm.fsm_state == FSM_Initial || lcp->fsm.fsm_state == FSM_Closed) {
+		/*if (conf_ppp_verbose)
+			log_ppp_warn("LCP: discaring packet\n");
+		lcp_send_proto_rej(ccp->ppp, htons(PPP_CCP));*/
+		return;
+	}
+
 	if (lcp->ppp->chan_buf_size < PPP_HEADERLEN + 2) {
 		log_ppp_warn("LCP: short packet received\n");
 		return;

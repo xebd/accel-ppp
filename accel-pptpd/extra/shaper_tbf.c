@@ -92,7 +92,7 @@ static void tc_calc_rtable(struct tc_ratespec *r, uint32_t *rtab, int cell_log, 
 	r->cell_log=cell_log;
 }
 
-static int install_tbf(struct nl_handle *h, int ifindex, int speed)
+static int install_tbf(struct nl_sock *h, int ifindex, int speed)
 {
 	struct tc_tbf_qopt opt;
 	struct nl_msg *msg;
@@ -159,7 +159,7 @@ nla_put_failure:
 	return -1;
 }
 
-static int install_ingress(struct nl_handle *h, int ifindex)
+static int install_ingress(struct nl_sock *h, int ifindex)
 {
 	struct nl_msg *pmsg;
 
@@ -200,7 +200,7 @@ nla_put_failure:
 	return -1;
 }
 
-static int install_filter(struct nl_handle *h, int ifindex, int speed)
+static int install_filter(struct nl_sock *h, int ifindex, int speed)
 {
 	double rate = speed*1000/8;
 	double bucket = rate*conf_burst_factor;
@@ -323,7 +323,7 @@ nla_put_failure:
 
 static int install_shaper(const char *ifname, int down_speed, int up_speed)
 {
-	struct nl_handle *h;
+	struct nl_sock *h;
 	struct ifreq ifr;
 	int err;
 
@@ -335,9 +335,9 @@ static int install_shaper(const char *ifname, int down_speed, int up_speed)
 		return -1;
 	}
 
-	h = nl_handle_alloc();
+	h = nl_socket_alloc();
 	if (!h) {
-		log_ppp_error("tbf: nl_handle_alloc failed\n");
+		log_ppp_error("tbf: nl_socket_alloc failed\n");
 		return -1;
 	}
 
@@ -360,7 +360,7 @@ static int install_shaper(const char *ifname, int down_speed, int up_speed)
 
 	nl_close(h);
 out:
-	nl_handle_destroy(h);
+	nl_socket_free(h);
 
 	return 0;
 }
@@ -395,7 +395,7 @@ static struct shaper_pd_t *find_pd(struct ppp_t *ppp, int create)
 
 static int remove_shaper(const char *ifname)
 {
-	struct nl_handle *h;
+	struct nl_sock *h;
 	struct ifreq ifr;
 	struct nl_msg *pmsg;
 	int err;
@@ -422,16 +422,16 @@ static int remove_shaper(const char *ifname)
 		.tcm_parent = TC_H_INGRESS,
 	};
 
-	h = nl_handle_alloc();
+	h = nl_socket_alloc();
 	if (!h) {
-		log_ppp_error("tbf: nl_handle_alloc failed\n");
+		log_ppp_error("tbf: nl_socket_alloc failed\n");
 		return -1;
 	}
 
 	err = nl_connect(h, NETLINK_ROUTE);
 	if (err < 0) {
 		log_ppp_error("tbf: nl_connect: %s", strerror(errno));
-		nl_handle_destroy(h);
+		nl_socket_free(h);
 		return -1;
 	}
 
@@ -466,7 +466,7 @@ static int remove_shaper(const char *ifname)
 	nlmsg_free(pmsg);
 
 	nl_close(h);
-	nl_handle_destroy(h);
+	nl_socket_free(h);
 	return 0;
 
 out_err:
@@ -476,7 +476,7 @@ out_err:
 		nlmsg_free(pmsg);
 
 	nl_close(h);
-	nl_handle_destroy(h);
+	nl_socket_free(h);
 
 	return -1;
 }
