@@ -255,7 +255,7 @@ static void write_radattr(struct ppp_t *ppp, struct rad_packet_t *pack, int save
 	struct rad_attr_t *attr;
 	struct rad_dict_value_t *val;
 	FILE *f;
-	char *fname1, *fname2;
+	char *fname1, *fname2 = NULL;
 	int i;
 
 	fname1 = _malloc(PATH_MAX);

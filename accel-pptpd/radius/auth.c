@@ -295,7 +295,7 @@ static void setup_mppe(struct rad_req_t *req, const uint8_t *challenge)
 
 int rad_auth_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list args)
 {
-	int r;
+	int r = PWDB_DENIED;
 	struct rad_req_t *req;
 	uint8_t response[50];
 
@@ -340,7 +340,7 @@ out:
 
 int rad_auth_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list args)
 {
-	int r;
+	int r = PWDB_DENIED;
 	struct rad_req_t *req;
 	struct rad_attr_t *ra;
 	uint8_t mschap_response[50];

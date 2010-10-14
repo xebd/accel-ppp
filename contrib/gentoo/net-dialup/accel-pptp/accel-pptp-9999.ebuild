@@ -3,7 +3,7 @@
 
 EAPI=2
 
-inherit git linux-mod cmake-utils
+inherit eutils git linux-mod cmake-utils
 
 EGIT_REPO_URI="git://accel-pptp.git.sourceforge.net/gitroot/accel-pptp/accel-pptp"
 
@@ -33,12 +33,13 @@ MODULESD_PPTP_ALIASES=("net-pf-24 pptp")
 PREFIX="/"
 MODULE_NAMES="pptp(extra:${S}/driver/)"
 
-src_unpack() {
+src_unpack () {
 	git_src_unpack
+}
+
+src_prepare() {
 	sed -i -e "/mkdir/d" "${S}/accel-pptpd/CMakeLists.txt"
 	sed -i -e "/INSTALL/d" "${S}/driver/CMakeLists.txt"
-	
-	convert_to_m ${S}/driver/Makefile
 }
 
 src_configure() {
@@ -65,6 +66,7 @@ src_compile() {
 	cmake-utils_src_compile
 	
 	cd ${S}/driver
+	#convert_to_m Makefile
 	linux-mod_src_compile || die "failed to build driver"
 }
 
