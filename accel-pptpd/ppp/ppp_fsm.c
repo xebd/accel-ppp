@@ -157,6 +157,7 @@ void ppp_fsm_timeout0(struct ppp_fsm_t *layer)
 	{
 		case FSM_Closing:
 		case FSM_Stopping:
+			--layer->restart_counter;
 			layer->send_term_req(layer);
 			break;
 		case FSM_Ack_Rcvd:
@@ -454,6 +455,7 @@ void ppp_fsm_recv_code_rej_bad(struct ppp_fsm_t *layer)
 	{
 		case FSM_Opened:
 			if (layer->layer_down) layer->layer_down(layer);
+			--layer->restart_counter;
 			layer->send_term_req(layer);
 			layer->fsm_state=FSM_Stopping;
 			break;
