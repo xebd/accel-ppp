@@ -39,7 +39,7 @@ Compilation and instalation
 -----------
 Make sure you have configured kernel headers in /usr/src/linux,
 or specify other location via KDIR.
-1. cd /path/to/accel-pptp-1.0
+1. cd /path/to/accel-pptp-1.1
 2. mkdir build
 3. cd build
 4. cmake [-DBUILD_DRIVER=TRUE] [-DKDIR=/usr/src/linux] [-DCMAKE_INSTALL_PREFIX=/usr/local] [-DCMAKE_BUILD_TYPE=Debug] [-DLOG_PGSQL=TRUE] [-DL2TP=TRUE] [-DSHAPER=TRUE] ..
