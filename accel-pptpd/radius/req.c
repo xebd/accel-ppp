@@ -196,8 +196,22 @@ static void req_wakeup(struct rad_req_t *req)
 static int rad_req_read(struct triton_md_handler_t *h)
 {
 	struct rad_req_t *req = container_of(h, typeof(*req), hnd);
+	struct rad_packet_t *pack;
+	int r;
 
-	req->reply = rad_packet_recv(h->fd, NULL);
+	while (1) {
+		r = rad_packet_recv(h->fd, &pack, NULL);
+		
+		if (pack) {
+			if (req->reply)
+				rad_packet_free(req->reply);
+			req->reply = pack;
+		}
+
+		if (r)
+			break;
+	}
+
 	req_wakeup(req);
 	
 	return 0;

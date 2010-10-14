@@ -107,6 +107,8 @@ int l2tp_recv(int fd, struct l2tp_packet_t **p)
 	struct sockaddr_in addr;
 	socklen_t len = sizeof(addr);
 
+  *p = NULL;
+
 	if (!buf) {
 		log_emerg("l2tp: out of memory\n");
 		return 0;
@@ -115,10 +117,9 @@ int l2tp_recv(int fd, struct l2tp_packet_t **p)
 	n = recvfrom(fd, buf, L2TP_MAX_PACKET_SIZE, 0, &addr, &len);
 
 	if (n < 0) {
-		if (errno == EAGAIN) {
-			mempool_free(buf);
+		mempool_free(buf);
+		if (errno == EAGAIN)
 			return -1;
-		}
 		log_error("l2tp: recv: %s\n", strerror(errno));
 		return 0;
 	}

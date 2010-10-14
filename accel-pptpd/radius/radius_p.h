@@ -86,7 +86,7 @@ void rad_acct_stop(struct radius_pd_t *rpd);
 
 struct rad_packet_t *rad_packet_alloc(int code);
 int rad_packet_build(struct rad_packet_t *pack, uint8_t *RA);
-struct rad_packet_t *rad_packet_recv(int fd, struct sockaddr_in *addr);
+int rad_packet_recv(int fd, struct rad_packet_t **, struct sockaddr_in *addr);
 void rad_packet_free(struct rad_packet_t *);
 void rad_packet_print(struct rad_packet_t *pack, void (*print)(const char *fmt, ...));
 int rad_packet_send(struct rad_packet_t *pck, int fd, struct sockaddr_in *addr);

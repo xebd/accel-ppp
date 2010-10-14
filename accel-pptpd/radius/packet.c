@@ -97,7 +97,7 @@ int rad_packet_build(struct rad_packet_t *pack, uint8_t *RA)
 	return 0;
 }
 
-struct rad_packet_t *rad_packet_recv(int fd, struct sockaddr_in *addr)
+int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 {
 	struct rad_packet_t *pack;
 	struct rad_attr_t *attr;
@@ -107,9 +107,11 @@ struct rad_packet_t *rad_packet_recv(int fd, struct sockaddr_in *addr)
 	int n, id, len, vendor_id;
 	socklen_t addr_len = sizeof(*addr);
 
+	*p = NULL;
+
 	pack = rad_packet_alloc(0);
 	if (!pack)
-		return NULL;
+		return 0;
 
 	pack->buf = _malloc(REQ_LENGTH_MAX);
 	if (!pack->buf) {
@@ -123,8 +125,9 @@ struct rad_packet_t *rad_packet_recv(int fd, struct sockaddr_in *addr)
 		else
 			n = read(fd, pack->buf, REQ_LENGTH_MAX);
 		if (n < 0) {
-			if (errno == EINTR)
-				continue;
+			rad_packet_free(pack);
+			if (errno == EAGAIN)
+				return -1;
 			log_ppp_error("radius:packet:read: %s\n", strerror(errno));
 			goto out_err;
 		}
@@ -219,11 +222,13 @@ struct rad_packet_t *rad_packet_recv(int fd, struct sockaddr_in *addr)
 		n -= 2 + len;
 	}
 
-	return pack;
+	*p = pack;
+
+	return 0;
 
 out_err:
 	rad_packet_free(pack);
-	return NULL;
+	return 0;
 }
 
 void rad_packet_free(struct rad_packet_t *pack)

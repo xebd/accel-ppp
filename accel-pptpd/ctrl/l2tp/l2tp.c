@@ -137,7 +137,7 @@ static void l2tp_disconnect(struct l2tp_conn_t *conn)
 	
 	_free(conn->ctrl.calling_station_id);
 	_free(conn->ctrl.called_station_id);
-	
+
 	mempool_free(conn);
 }
 
@@ -333,6 +333,7 @@ static int l2tp_connect(struct l2tp_conn_t *conn)
 	pppox_addr.pppol2tp.d_tunnel = conn->peer_tid;
 	pppox_addr.pppol2tp.d_session = conn->peer_sid;
 
+	l2tp_nl_delete_tunnel(conn->tid);
 	l2tp_nl_create_tunnel(conn->hnd.fd, conn->tid, conn->peer_tid);
 	l2tp_nl_create_session(conn->tid, conn->sid, conn->peer_sid);
 
@@ -420,7 +421,8 @@ static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 		list_add_tail(&pack->entry, &conn->send_queue);
 		if (!conn->rtimeout_timer.tpd)
 			triton_timer_add(&conn->ctx, &conn->rtimeout_timer, 0);
-	}
+	} else
+		l2tp_packet_free(pack);
 	
 	return 0;
 
@@ -792,8 +794,6 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 	struct l2tp_attr_t *msg_type;
 
 	while (1) {
-		pack = NULL;
-
 		if (l2tp_recv(h->fd, &pack))
 			return 0;
 
@@ -923,8 +923,6 @@ static int l2tp_udp_read(struct triton_md_handler_t *h)
 	struct l2tp_attr_t *msg_type;
 
 	while (1) {
-		pack = NULL;
-
 		if (l2tp_recv(h->fd, &pack))
 			break;
 

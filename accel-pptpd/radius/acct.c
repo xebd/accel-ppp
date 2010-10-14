@@ -64,18 +64,33 @@ static void req_set_stat(struct rad_req_t *req, struct ppp_t *ppp)
 static int rad_acct_read(struct triton_md_handler_t *h)
 {
 	struct rad_req_t *req = container_of(h, typeof(*req), hnd);
+	struct rad_packet_t *pack;
+	int r;
 
-	if (req->reply)
+	if (req->reply) {
 		rad_packet_free(req->reply);
+		req->reply = NULL;
+	}
 
-	req->reply = rad_packet_recv(h->fd, NULL);
+	while (1) {
+		r = rad_packet_recv(h->fd, &pack, NULL);
+
+		if (pack) {
+			if (req->reply)
+				rad_packet_free(req->reply);
+			req->reply = pack;
+			if (conf_verbose) {
+				log_ppp_info("recv ");
+				rad_packet_print(req->reply, log_ppp_info);
+			}
+		}
+
+		if (r)
+			break;
+	}
+
 	if (!req->reply)
 		return 0;
-
-	if (conf_verbose) {
-		log_ppp_info("recv ");
-		rad_packet_print(req->reply, log_ppp_info);
-	}
 
 	if (req->reply->code != CODE_ACCOUNTING_RESPONSE || req->reply->id != req->pack->id) {
 		rad_packet_free(req->reply);

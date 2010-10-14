@@ -21,10 +21,11 @@
 #include "radius.h"
 #include "log.h"
 #include "ppp.h"
+#include "memdebug.h"
 
 #define TIME_UNITS_PER_SEC 1000000
 
-//static int conf_verbose = 0;
+static int conf_verbose = 0;
 static int conf_attr_down = 11; //Filter-Id
 static int conf_attr_up = 11; //Filter-Id
 static double conf_burst_factor = 0.1;
@@ -33,6 +34,15 @@ static int conf_mpu = 0;
 
 static double tick_in_usec = 1;
 static double clock_factor = 1;
+
+struct shaper_pd_t
+{
+	struct ppp_pd_t pd;
+	int down_speed;
+	int up_speed;
+};
+
+static void *pd_key;
 
 static unsigned tc_time2tick(unsigned time)
 {
@@ -311,7 +321,7 @@ nla_put_failure:
 }
 
 
-static void install_shaper(const char *ifname, int down_speed, int up_speed)
+static int install_shaper(const char *ifname, int down_speed, int up_speed)
 {
 	struct nl_handle *h;
 	struct ifreq ifr;
@@ -322,13 +332,13 @@ static void install_shaper(const char *ifname, int down_speed, int up_speed)
 
 	if (ioctl(sock_fd, SIOCGIFINDEX, &ifr)) {
 		log_ppp_error("tbf: ioctl(SIOCGIFINDEX)", strerror(errno));
-		return;
+		return -1;
 	}
 
 	h = nl_handle_alloc();
 	if (!h) {
 		log_ppp_error("tbf: nl_handle_alloc failed\n");
-		return;
+		return -1;
 	}
 
 	err = nl_connect(h, NETLINK_ROUTE);
@@ -338,19 +348,52 @@ static void install_shaper(const char *ifname, int down_speed, int up_speed)
 	}
 
 	if (down_speed)
-		install_tbf(h, ifr.ifr_ifindex, down_speed);
+		if (install_tbf(h, ifr.ifr_ifindex, down_speed))
+			return -1;
 	
 	if (up_speed) {
-		install_ingress(h, ifr.ifr_ifindex);
-		install_filter(h, ifr.ifr_ifindex, up_speed);
+		if (install_ingress(h, ifr.ifr_ifindex))
+			return -1;
+		if (install_filter(h, ifr.ifr_ifindex, up_speed))
+			return -1;
 	}
 
 	nl_close(h);
 out:
 	nl_handle_destroy(h);
+
+	return 0;
 }
 
-static void remove_shaper(const char *ifname)
+static struct shaper_pd_t *find_pd(struct ppp_t *ppp, int create)
+{
+	struct ppp_pd_t *pd;
+	struct shaper_pd_t *spd;
+
+	list_for_each_entry(pd, &ppp->pd_list, entry) {
+		if (pd->key == &pd_key) {
+			spd = container_of(pd, typeof(*spd), pd);
+			return spd;
+		}
+	}
+
+	if (create) {
+		spd = _malloc(sizeof(*spd));
+		if (!spd) {
+			log_emerg("tbf: out of memory\n");
+			return NULL;
+		}
+
+		memset(spd, 0, sizeof(*spd));
+		list_add_tail(&spd->pd.entry, &ppp->pd_list);
+		spd->pd.key = &pd_key;
+		return spd;
+	}
+
+	return NULL;
+}
+
+static int remove_shaper(const char *ifname)
 {
 	struct nl_handle *h;
 	struct ifreq ifr;
@@ -362,7 +405,7 @@ static void remove_shaper(const char *ifname)
 
 	if (ioctl(sock_fd, SIOCGIFINDEX, &ifr)) {
 		log_ppp_error("tbf: ioctl(SIOCGIFINDEX)", strerror(errno));
-		return;
+		return -1;
 	}
 
 	struct tcmsg tchdr1 = {
@@ -382,13 +425,14 @@ static void remove_shaper(const char *ifname)
 	h = nl_handle_alloc();
 	if (!h) {
 		log_ppp_error("tbf: nl_handle_alloc failed\n");
-		return;
+		return -1;
 	}
 
 	err = nl_connect(h, NETLINK_ROUTE);
 	if (err < 0) {
 		log_ppp_error("tbf: nl_connect: %s", strerror(errno));
-		goto out;
+		nl_handle_destroy(h);
+		return -1;
 	}
 
 	pmsg = nlmsg_alloc_simple(RTM_DELQDISC, NLM_F_CREATE | NLM_F_REPLACE);
@@ -422,18 +466,20 @@ static void remove_shaper(const char *ifname)
 	nlmsg_free(pmsg);
 
 	nl_close(h);
-out:
 	nl_handle_destroy(h);
-	return;
+	return 0;
 
 out_err:
 	log_ppp_error("tbf: failed to remove shaper\n");
 
-	nlmsg_free(pmsg);
+	if (pmsg)
+		nlmsg_free(pmsg);
+
 	nl_close(h);
 	nl_handle_destroy(h);
-}
 
+	return -1;
+}
 
 static int parse_attr(struct rad_attr_t *attr)
 {
@@ -450,6 +496,10 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 	struct rad_attr_t *attr;
 	int down_speed = 0;
 	int up_speed = 0;
+	struct shaper_pd_t *pd = find_pd(ev->ppp, 1);
+
+	if (!pd)
+		return;
 
 	list_for_each_entry(attr, &ev->reply->attrs, entry) {
 		if (attr->attr->id == conf_attr_down)
@@ -458,8 +508,14 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 			up_speed = parse_attr(attr);
 	}
 
-	if (down_speed > 0 && up_speed > 0)
-		install_shaper(ev->ppp->ifname, down_speed, up_speed);
+	if (down_speed > 0 && up_speed > 0) {
+		pd->down_speed = down_speed;
+		pd->up_speed = up_speed;
+		if (!install_shaper(ev->ppp->ifname, down_speed, up_speed)) {
+			if (conf_verbose)
+				log_ppp_info("tbf: installed shaper %i/%i (Kbit)\n", down_speed, up_speed);
+		}
+	}
 }
 
 static void ev_radius_coa(struct ev_radius_t *ev)
@@ -467,6 +523,12 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 	struct rad_attr_t *attr;
 	int down_speed = 0;
 	int up_speed = 0;
+	struct shaper_pd_t *pd = find_pd(ev->ppp, 1);
+
+	if (!pd) {
+		ev->res = -1;
+		return;
+	}
 
 	list_for_each_entry(attr, &ev->request->attrs, entry) {
 		if (attr->attr->id == conf_attr_down)
@@ -475,10 +537,38 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 			up_speed = parse_attr(attr);
 	}
 	
-	remove_shaper(ev->ppp->ifname);
+	if (pd->down_speed != down_speed || pd->up_speed != up_speed) {
+		pd->down_speed = down_speed;
+		pd->up_speed = up_speed;
 
-	if (down_speed > 0 && up_speed > 0)
-		install_shaper(ev->ppp->ifname, down_speed, up_speed);
+		if (remove_shaper(ev->ppp->ifname)) {
+			ev->res = -1;
+			return;
+		}
+		
+		if (down_speed > 0 || up_speed > 0) {
+			if (install_shaper(ev->ppp->ifname, down_speed, up_speed)) {
+				ev->res= -1;
+				return;
+			} else {
+				if (conf_verbose)
+					log_ppp_info("tbf: changed shaper %i/%i (Kbit)\n", down_speed, up_speed);
+			}
+		} else {
+			if (conf_verbose)
+				log_ppp_info("tbf: removed shaper\n");
+		}
+	}
+}
+
+static void ev_ctrl_finished(struct ppp_t *ppp)
+{
+	struct shaper_pd_t *pd = find_pd(ppp, 0);
+
+	if (pd) {
+		list_del(&pd->pd.entry);
+		_free(pd);
+	}
 }
 
 static int clock_init(void)
@@ -560,6 +650,10 @@ static void __init init(void)
 	if (opt && atoi(opt) >= 0)
 		conf_mpu = atoi(opt);
 
+	opt = conf_get_opt("tbf", "verbose");
+	if (opt && atoi(opt) > 0)
+		conf_verbose = 1;
+
 	if (conf_attr_up <= 0 || conf_attr_down <= 0) {
 		log_emerg("tbf: incorrect attribute(s), tbf disabled...\n");
 		return;
@@ -567,5 +661,6 @@ static void __init init(void)
 
 	triton_event_register_handler(EV_RADIUS_ACCESS_ACCEPT, (triton_event_func)ev_radius_access_accept);
 	triton_event_register_handler(EV_RADIUS_COA, (triton_event_func)ev_radius_coa);
+	triton_event_register_handler(EV_CTRL_FINISHED, (triton_event_func)ev_ctrl_finished);
 }
 

@@ -172,62 +172,64 @@ static int dm_coa_read(struct triton_md_handler_t *h)
 	int err_code;
 	struct sockaddr_in addr;
 
+	while (1) {
+		if (rad_packet_recv(h->fd, &pack, &addr))
+			return 0;
 
-	pack = rad_packet_recv(h->fd, &addr);
-	if (!pack)
-		return 0;
+		if (!pack)
+			continue;
 
-	if (pack->code != CODE_DISCONNECT_REQUEST	&& pack->code != CODE_COA_REQUEST) {
-		log_warn("radius:dm_coa: unexpected code (%i) received\n", pack->code);
-		goto out_err_no_reply;
-	}
+		if (pack->code != CODE_DISCONNECT_REQUEST	&& pack->code != CODE_COA_REQUEST) {
+			log_warn("radius:dm_coa: unexpected code (%i) received\n", pack->code);
+			goto out_err_no_reply;
+		}
 
-	if (dm_coa_check_RA(pack, conf_dm_coa_secret)) {
-		log_warn("radius:dm_coa: RA validation failed\n");
-		goto out_err_no_reply;
-	}
+		if (dm_coa_check_RA(pack, conf_dm_coa_secret)) {
+			log_warn("radius:dm_coa: RA validation failed\n");
+			goto out_err_no_reply;
+		}
 
-	if (conf_verbose) {
-		log_debug("recv ");
-		rad_packet_print(pack, log_debug);
-	}
+		if (conf_verbose) {
+			log_debug("recv ");
+			rad_packet_print(pack, log_debug);
+		}
 
-	if (rad_check_nas_pack(pack)) {
-		log_warn("radius:dm_coa: NAS identification failed\n");
-		err_code = 403;
-		goto out_err;
-	}
-	
-	rpd = rad_find_session_pack(pack);
-	if (!rpd) {
-		log_warn("radius:dm_coa: session not found\n");
-		err_code = 503;
-		goto out_err;
-	}
-	
-	if (rpd->dm_coa_req) {
+		if (rad_check_nas_pack(pack)) {
+			log_warn("radius:dm_coa: NAS identification failed\n");
+			err_code = 403;
+			goto out_err;
+		}
+		
+		rpd = rad_find_session_pack(pack);
+		if (!rpd) {
+			log_warn("radius:dm_coa: session not found\n");
+			err_code = 503;
+			goto out_err;
+		}
+		
+		if (rpd->dm_coa_req) {
+			pthread_mutex_unlock(&rpd->lock);
+			goto out_err_no_reply;
+		}
+
+		rpd->dm_coa_req = pack;
+		memcpy(&rpd->dm_coa_addr, &addr, sizeof(addr));
+
+		if (pack->code == CODE_DISCONNECT_REQUEST)
+			triton_context_call(rpd->ppp->ctrl->ctx, (void (*)(void *))disconnect_request, rpd);
+		else
+			triton_context_call(rpd->ppp->ctrl->ctx, (void (*)(void *))coa_request, rpd);
+
 		pthread_mutex_unlock(&rpd->lock);
-		goto out_err_no_reply;
+
+		continue;
+
+	out_err:
+		dm_coa_send_nak(h->fd, pack, &addr, err_code);
+
+	out_err_no_reply:
+		rad_packet_free(pack);
 	}
-
-	rpd->dm_coa_req = pack;
-	memcpy(&rpd->dm_coa_addr, &addr, sizeof(addr));
-
-	if (pack->code == CODE_DISCONNECT_REQUEST)
-		triton_context_call(rpd->ppp->ctrl->ctx, (void (*)(void *))disconnect_request, rpd);
-	else
-		triton_context_call(rpd->ppp->ctrl->ctx, (void (*)(void *))coa_request, rpd);
-
-	pthread_mutex_unlock(&rpd->lock);
-
-	return 0;
-
-out_err:
-	dm_coa_send_nak(h->fd, pack, &addr, err_code);
-
-out_err_no_reply:
-	rad_packet_free(pack);
-	return 0;
 }
 
 static void dm_coa_close(struct triton_context_t *ctx)

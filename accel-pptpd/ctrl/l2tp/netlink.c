@@ -5,13 +5,18 @@
 #include "l2tp_kernel.h"
 #include "triton.h"
 
-static struct nl_handle *nl_sock;
 static int family;
 
 void l2tp_nl_delete_tunnel(int tid)
 {
-	struct nl_msg *msg = nlmsg_alloc();
+	struct nl_handle *nl_sock;
+	struct nl_msg *msg;
 	
+	nl_sock = nl_handle_alloc();
+	msg = nlmsg_alloc();
+
+	genl_connect(nl_sock);
+
 	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family, 0, NLM_F_REQUEST, L2TP_CMD_TUNNEL_DELETE, L2TP_GENL_VERSION);
 	nla_put_u32(msg, L2TP_ATTR_CONN_ID, tid);
 
@@ -19,15 +24,20 @@ void l2tp_nl_delete_tunnel(int tid)
 	nl_recvmsgs_default(nl_sock);
 
 	nlmsg_free(msg);
-
+	nl_close(nl_sock);
+	nl_handle_destroy(nl_sock);
 }
 
 void l2tp_nl_create_tunnel(int fd, int tid, int peer_tid)
 {
-	struct nl_msg *msg = nlmsg_alloc();
-
-	l2tp_nl_delete_tunnel(tid);
+	struct nl_handle *nl_sock;
+	struct nl_msg *msg;
 	
+	nl_sock = nl_handle_alloc();
+	msg = nlmsg_alloc();
+	
+	genl_connect(nl_sock);
+
 	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family, 0, NLM_F_REQUEST, L2TP_CMD_TUNNEL_CREATE, L2TP_GENL_VERSION);
 	nla_put_u16(msg, L2TP_ATTR_ENCAP_TYPE, L2TP_ENCAPTYPE_UDP);
 	nla_put_u8(msg, L2TP_ATTR_PROTO_VERSION, 2);
@@ -40,12 +50,20 @@ void l2tp_nl_create_tunnel(int fd, int tid, int peer_tid)
 	nl_recvmsgs_default(nl_sock);
 
 	nlmsg_free(msg);
+	nl_close(nl_sock);
+	nl_handle_destroy(nl_sock);
 }
 
 void l2tp_nl_create_session(int tid, int sid, int peer_sid)
 {
-	struct nl_msg *msg = nlmsg_alloc();
+	struct nl_handle *nl_sock;
+	struct nl_msg *msg;
 	
+	nl_sock = nl_handle_alloc();
+	msg = nlmsg_alloc();
+	
+	genl_connect(nl_sock);
+
 	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family, 0, NLM_F_REQUEST, L2TP_CMD_SESSION_CREATE, L2TP_GENL_VERSION);
 	nla_put_u32(msg, L2TP_ATTR_CONN_ID, tid);
 	nla_put_u32(msg, L2TP_ATTR_SESSION_ID, sid);
@@ -58,13 +76,19 @@ void l2tp_nl_create_session(int tid, int sid, int peer_sid)
 	nl_recvmsgs_default(nl_sock);
 
 	nlmsg_free(msg);
+	nl_close(nl_sock);
+	nl_handle_destroy(nl_sock);
 }
 
 static void __init init(void)
 {
-	nl_sock = nl_handle_alloc();
+	struct nl_handle *nl_sock = nl_handle_alloc();
 	
 	genl_connect(nl_sock);
 
 	family = genl_ctrl_resolve(nl_sock, L2TP_GENL_NAME);
+	
+	nl_close(nl_sock);
+	nl_handle_destroy(nl_sock);
 }
+
