@@ -177,6 +177,7 @@ static void destablish_ppp(struct ppp_t *ppp)
 
 	ppp->unit_fd = -1;
 	ppp->chan_fd = -1;
+	ppp->fd = -1;
 
 	_free(ppp->unit_buf);
 	_free(ppp->chan_buf);

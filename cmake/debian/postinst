@@ -1,0 +1,11 @@
+#!/bin/sh
+
+chmod +x /etc/init.d/accel-pptp
+
+mkdir /var/log/accel-pptp &> /dev/null
+
+if [ -f /tmp/__accel-pptp.conf ]; then
+	mv /tmp/__accel-pptp.conf /etc/accel-pptp.conf
+fi
+
+exit 0

@@ -11,7 +11,7 @@ IF (NOT HAVE_SSL)
 	MESSAGE(FATAL_ERROR "openssl headers not found")
 ENDIF (NOT HAVE_SSL)
 
-SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fvisibility=hidden -D_GNU_SOURCE -DGCC_SPINLOCK -DMEMDEBUG")
+SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fvisibility=hidden -D_GNU_SOURCE -DGCC_SPINLOCK -DMEMDEBUG -fPIC")
 
 INCLUDE_DIRECTORIES(include)
 
@@ -59,7 +59,7 @@ INSTALL(TARGETS accel-pptpd
 	RUNTIME DESTINATION usr/sbin
 )
 
-INSTALL(FILES accel-pptp.conf DESTINATION /etc)
+INSTALL(FILES accel-pptp.conf DESTINATION etc)
 INSTALL(FILES accel-pptp.conf.5 DESTINATION usr/share/man/man5)
 
 INSTALL(CODE "EXECUTE_PROCESS(COMMAND mkdir -p /var/log/accel-pptp)")

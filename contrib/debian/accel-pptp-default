@@ -1,0 +1,5 @@
+# Config file for /etc/init.d/accel-pptp
+
+# Any extra options you want to pass to aceel-pptpd
+# on start-up should be put here.
+ACCEL_PPTPD_OPTS="-c /etc/accel-pptp.conf"

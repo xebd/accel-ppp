@@ -6,8 +6,12 @@ ADD_LIBRARY(l2tp SHARED
 	l2tp.c
 	dict.c
 	packet.c
-	netlink.c
+	#	netlink.c
 )
-TARGET_LINK_LIBRARIES(l2tp nl-genl)
+#TARGET_LINK_LIBRARIES(l2tp nl nl-genl)
 
 INSTALL(TARGETS l2tp LIBRARY DESTINATION usr/lib/accel-pptp)
+
+FILE(GLOB dict "${CMAKE_CURRENT_SOURCE_DIR}/dict/*")
+INSTALL(FILES ${dict} DESTINATION usr/share/accel-pptp/l2tp)
+

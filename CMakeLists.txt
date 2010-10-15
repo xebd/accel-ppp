@@ -1,8 +1,13 @@
 PROJECT (accel-pptpd C)
 cmake_minimum_required(VERSION 2.6)
 
-ADD_SUBDIRECTORY(accel-pptpd)
+include(cmake/cpack.cmake)
 
-if (BUILD_DRIVER)
-    ADD_SUBDIRECTORY(driver)
-endif (BUILD_DRIVER)
+if (NOT BUILD_DRIVER_ONLY)
+	ADD_SUBDIRECTORY(accel-pptpd)
+endif (NOT BUILD_DRIVER_ONLY)
+
+if (BUILD_DRIVER OR BUILD_DRIVER_ONLY)
+	ADD_SUBDIRECTORY(driver)
+endif (BUILD_DRIVER OR BUILD_DRIVER_ONLY)
+

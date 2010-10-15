@@ -1,0 +1,59 @@
+#!/bin/sh
+# /etc/init.d/accel-pptpd: set up the accel-pptp server
+### BEGIN INIT INFO
+# Provides:          accel-pptp
+# Required-Start:    $networking
+# Required-Stop:     $networking
+# Default-Start:     2 3 4 5
+# Default-Stop:      1
+### END INIT INFO
+
+set -e
+
+PATH=/bin:/usr/bin:/sbin:/usr/sbin
+
+. /lib/lsb/init-functions
+
+if test -f /etv/default/accel-pptp; then
+    . /etc/default/accel-pptp
+fi
+
+if [ -z $ACCEL_PPPTD_OPTS ]; then
+  ACCEL_PPTPD_OPTS="-c /etc/accel-pptp.conf"
+fi
+
+case "$1" in
+  start)
+	log_daemon_msg "Starting accel-pptp server" "accel-pptpd"
+	if start-stop-daemon --start --quiet --oknodo --exec /usr/sbin/accel-pptpd -- -d -p /var/run/accel-pptpd.pid $ACCEL_PPTPD_OPTS; then
+	    log_end_msg 0
+	else
+	    log_end_msg 1
+	fi
+  ;;
+  restart)
+	log_daemon_msg "Restarting accel-pptp server" "accel-pptpd"
+	start-stop-daemon --stop --quiet --oknodo --retry 180 --pidfile /var/run/accel-pptpd.pid
+	if start-stop-daemon --start --quiet --oknodo --exec /usr/sbin/accel-pptpd -- -d -p /var/run/accel-pptpd.pid $ACCEL_PPTPD_OPTS; then
+	    log_end_msg 0
+	else
+	    log_end_msg 1
+	fi
+  ;;
+
+  stop)
+	log_daemon_msg "Stopping accel-pptp server" "accel-pptpd"
+	start-stop-daemon --stop --quiet --oknodo --retry 180 --pidfile /var/run/accel-pptpd.pid
+	log_end_msg 0
+  ;;
+
+  status)
+    do_status
+  ;;
+  *)
+    log_success_msg "Usage: /etc/init.d/accel-pptp {start|stop|status|restart}"
+    exit 1
+    ;;
+esac
+
+exit 0
