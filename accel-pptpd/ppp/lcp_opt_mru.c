@@ -4,9 +4,8 @@
 #include <stdio.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
-#include <net/if.h>
-#include <linux/if_ppp.h>
 #include <sys/ioctl.h>
+#include "linux_ppp.h"
 
 #include "ppp.h"
 #include "ppp_lcp.h"
