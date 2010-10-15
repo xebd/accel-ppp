@@ -2,7 +2,6 @@
 #include <string.h>
 #include <errno.h>
 #include <signal.h>
-#include <sys/signalfd.h>
 #include <sys/wait.h>
 
 #include "triton.h"

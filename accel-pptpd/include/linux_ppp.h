@@ -11,9 +11,9 @@
 #define __aligned_u64 __u64 __attribute__((aligned(8)))
 #endif
 
+#include <linux/ppp_defs.h>
 #include <linux/if.h>
 #include <linux/if_ppp.h>
-#include <linux/ppp_defs.h>
 
 #endif
 

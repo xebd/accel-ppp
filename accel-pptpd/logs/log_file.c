@@ -6,7 +6,6 @@
 #include <unistd.h>
 #include <limits.h>
 #include <aio.h>
-#include <sys/signalfd.h>
 
 #include "log.h"
 #include "events.h"

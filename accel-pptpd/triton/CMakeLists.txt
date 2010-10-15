@@ -9,6 +9,25 @@ SET(sources_c
 	event.c
 )
 
+INCLUDE(CheckFunctionExists)
+CHECK_FUNCTION_EXISTS(timerfd_create HAVE_TIMERFD)
+
+IF (HAVE_TIMERFD)
+	ADD_DEFINITIONS(-DHAVE_TIMERFD)
+ELSE (HAVE_TIMERFD)
+	INCLUDE (CheckCSourceCompiles)
+	CHECK_C_SOURCE_COMPILES("
+	#include <sys/syscall.h>
+	int main()
+	{
+		syscall(SYS_timerfd_create);
+	}" HAVE_SYSCALL)
+	IF (NOT HAVE_SYSCALL)
+		MESSAGE(FATAL_ERROR "Your system is too old and is not supported by accel-pptp, sorry...")
+	ENDIF (NOT HAVE_SYSCALL)
+	SET(sources_c ${sources_c} timerfd.c)
+ENDIF (HAVE_TIMERFD)
+
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
 
 ADD_DEFINITIONS(-DMODULE_PATH="${CMAKE_INSTALL_PREFIX}/usr/lib/accel-pptp")

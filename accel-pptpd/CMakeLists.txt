@@ -1,3 +1,16 @@
+INCLUDE(CheckLibraryExists)
+INCLUDE(CheckIncludeFiles)
+
+CHECK_LIBRARY_EXISTS(ssl MD5_Init "" HAVE_SSL)
+IF (NOT HAVE_SSL)
+	MESSAGE(FATAL_ERROR "openssl library not found")
+ENDIF (NOT HAVE_SSL)
+
+CHECK_INCLUDE_FILES("openssl/md5.h" HAVE_SSL)
+IF (NOT HAVE_SSL)
+	MESSAGE(FATAL_ERROR "openssl headers not found")
+ENDIF (NOT HAVE_SSL)
+
 SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fvisibility=hidden -D_GNU_SOURCE -DGCC_SPINLOCK -DMEMDEBUG")
 
 INCLUDE_DIRECTORIES(include)

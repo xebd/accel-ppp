@@ -2,10 +2,16 @@
 #include <stdlib.h>
 #include <sys/time.h>
 #include <sys/epoll.h>
-#include <sys/timerfd.h>
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <fcntl.h>
+
+#ifdef HAVE_TIMERFD
+#include <sys/timerfd.h>
+#else
+#include "timerfd.h"
+#endif
 
 #include "triton_p.h"
 
@@ -94,6 +100,7 @@ void *timer_thread(void *arg)
 	return NULL;
 }
 
+
 int __export triton_timer_add(struct triton_context_t *ctx, struct triton_timer_t *ud, int abs_time)
 {
 	struct _triton_timer_t *t = mempool_alloc(timer_pool);
@@ -106,20 +113,22 @@ int __export triton_timer_add(struct triton_context_t *ctx, struct triton_timer_
 		t->ctx = (struct _triton_context_t *)ctx->tpd;
 	else
 		t->ctx = (struct _triton_context_t *)default_ctx->tpd;
-	t->fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+	t->fd = timerfd_create(CLOCK_MONOTONIC, 0);
 	if (t->fd < 0) {
-		triton_log_error("timer:timerfd_create: %s" ,strerror(errno));
+		triton_log_error("timer:timerfd_create: %s", strerror(errno));
 		mempool_free(t);
 		return -1;
+	}
+
+	if (fcntl(t->fd, F_SETFL, O_NONBLOCK)) { 
+    triton_log_error("timer: failed to set nonblocking mode: %s\n", strerror(errno));
+    goto out_err;
 	}
 	
 	ud->tpd = t;
 
-	if (triton_timer_mod(ud, abs_time)) {
-		close(t->fd);
-		mempool_free(t);
-		return -1;
-	}
+	if (triton_timer_mod(ud, abs_time))
+		goto out_err;
 	
 	spin_lock(&t->ctx->lock);
 	list_add_tail(&t->entry, &t->ctx->timers);
@@ -131,15 +140,18 @@ int __export triton_timer_add(struct triton_context_t *ctx, struct triton_timer_
 		t->ud = NULL;
 		list_del(&t->entry);
 		spin_unlock(&t->ctx->lock);
-		close(t->fd);
-		mempool_free(t);
-		ud->tpd = NULL;
-		return -1;
+		goto out_err;
 	}
 
 	__sync_fetch_and_add(&triton_stat.timer_count, 1);
 	
 	return 0;
+
+out_err:
+	ud->tpd = NULL;
+	close(t->fd);
+	mempool_free(t);
+	return -1;
 }
 int __export triton_timer_mod(struct triton_timer_t *ud,int abs_time)
 {

@@ -30,7 +30,6 @@ Requirment
 ----------
 1. modern linux distribution
 2. kernel-2.6.25 or later
-3. glibc-2.8 or later
 4. cmake-2.6 or later
 5. libnl-2.0 or probably later (required for l2tp and builtin shaper)
 
