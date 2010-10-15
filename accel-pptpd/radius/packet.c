@@ -125,10 +125,12 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 		else
 			n = read(fd, pack->buf, REQ_LENGTH_MAX);
 		if (n < 0) {
-			rad_packet_free(pack);
-			if (errno == EAGAIN)
+			if (errno == EAGAIN) {
+				rad_packet_free(pack);
 				return -1;
-			log_ppp_error("radius:packet:read: %s\n", strerror(errno));
+			}
+			if (errno != ECONNREFUSED)
+				log_ppp_error("radius:packet:read: %s\n", strerror(errno));
 			goto out_err;
 		}
 		break;
