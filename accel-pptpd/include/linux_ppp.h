@@ -12,8 +12,8 @@
 #endif
 
 #include <linux/if.h>
-#include <linux/ppp_defs.h>
 #include <linux/if_ppp.h>
+#include <linux/ppp_defs.h>
 
 #endif
 
