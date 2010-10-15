@@ -400,8 +400,8 @@ static int ccp_recv_conf_req(struct ppp_ccp_t *ccp, uint8_t *data, int size)
 					lopt->state = CCP_OPT_REJ;
 					ropt->state = CCP_OPT_REJ;
 				} else	{
-					if (lopt->state == CCP_OPT_NAK && r == CCP_OPT_ACK)
-						ccp->need_req = 1;
+					/*if (lopt->state == CCP_OPT_NAK && r == CCP_OPT_ACK)
+						ccp->need_req = 1;*/
 					lopt->state = r;
 					ropt->state = r;
 				}
@@ -514,7 +514,8 @@ static int ccp_recv_conf_nak(struct ppp_ccp_t *ccp, uint8_t *data, int size)
 				}
 				if (lopt->h->recv_conf_nak && lopt->h->recv_conf_nak(ccp, lopt, data))
 					res = -1;
-				lopt->state = CCP_OPT_NAK;
+				//lopt->state = CCP_OPT_NAK;
+				//ccp->need_req = 1;
 				break;
 			}
 		}

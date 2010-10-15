@@ -159,10 +159,14 @@ static int mppe_recv_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, u
 	} else
 		return CCP_OPT_REJ;
 	
-	if (setup_mppe_key(ccp->ppp->unit_fd, 1, mppe_opt->send_key))
-		return CCP_OPT_REJ;
+	if (mppe_opt->mppe) {
+		if (setup_mppe_key(ccp->ppp->unit_fd, 1, mppe_opt->send_key))
+			return CCP_OPT_REJ;
 
-	decrease_mtu(ccp->ppp);
+		decrease_mtu(ccp->ppp);
+
+		log_ppp_debug(" (mppe enabled)");
+	}
 
 	return CCP_OPT_ACK;
 }
