@@ -1,7 +1,7 @@
 INCLUDE(CheckLibraryExists)
 INCLUDE(CheckIncludeFiles)
 
-CHECK_LIBRARY_EXISTS(ssl MD5_Init "" HAVE_SSL)
+CHECK_LIBRARY_EXISTS(crypto MD5_Init "" HAVE_SSL)
 IF (NOT HAVE_SSL)
 	MESSAGE(FATAL_ERROR "openssl library not found")
 ENDIF (NOT HAVE_SSL)
@@ -49,7 +49,7 @@ ADD_EXECUTABLE(accel-pptpd
 	memdebug.c
 )
 
-TARGET_LINK_LIBRARIES(accel-pptpd triton rt pthread ssl crypto)
+TARGET_LINK_LIBRARIES(accel-pptpd triton rt pthread crypto)
 set_property(TARGET accel-pptpd PROPERTY CMAKE_SKIP_BUILD_RPATH FALSE)
 set_property(TARGET accel-pptpd PROPERTY CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
 set_property(TARGET accel-pptpd PROPERTY INSTALL_RPATH_USE_LINK_PATH FALSE)
