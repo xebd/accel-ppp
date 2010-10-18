@@ -41,9 +41,9 @@ or specify other location via KDIR.
 1. cd /path/to/accel-pptp-1.1
 2. mkdir build
 3. cd build
-4. cmake [-DBUILD_DRIVER=TRUE] [-DKDIR=/usr/src/linux] [-DCMAKE_INSTALL_PREFIX=/usr/local] [-DCMAKE_BUILD_TYPE=Debug] [-DLOG_PGSQL=TRUE] [-DL2TP=TRUE] [-DSHAPER=TRUE] ..
+4. cmake [-DBUILD_DRIVER=TRUE] [-DKDIR=/usr/src/linux] [-DCMAKE_INSTALL_PREFIX=/usr/local] [-DCMAKE_BUILD_TYPE=Debug] [-DLOG_PGSQL=TRUE] [-DSHAPER=TRUE] ..
    Please note that the double dot record in the end of the command is essential. You'll get error if you miss it.
-   BUILD_DRIVER, KDIR, CMAKE_INSTALL_PREFIX, CMAKE_BUILD_TYPE, LOG_PGSQL, L2TP, SHAPER  are optional,
+   BUILD_DRIVER, KDIR, CMAKE_INSTALL_PREFIX, CMAKE_BUILD_TYPE, LOG_PGSQL, SHAPER  are optional,
    but while pptp is not present in mainline kernel you probably need BUILD_DRIVER.
 5. make
 6. make install
