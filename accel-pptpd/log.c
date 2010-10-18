@@ -198,6 +198,7 @@ void __export log_emerg(const char *fmt, ...)
 		va_start(ap, fmt);
 		vfprintf(emerg_file, fmt, ap);
 		va_end(ap);
+		fflush(emerg_file);
 	}
 }
 

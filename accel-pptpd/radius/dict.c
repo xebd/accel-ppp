@@ -269,7 +269,7 @@ void rad_dict_free(struct rad_dict_t *dict)
 		_free((char*)attr->name);
 		_free(attr);
 	}
-	_free(dict);
+	free(dict);
 }
 
 static struct rad_dict_attr_t *dict_find_attr(struct list_head *items, const char *name)
