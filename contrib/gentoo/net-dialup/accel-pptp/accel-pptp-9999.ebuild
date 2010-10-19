@@ -14,12 +14,11 @@ HOMEPAGE="http://accel-pptp.sourceforge.net/"
 SLOT="0"
 LICENSE="GPL"
 KEYWORDS="~amd64 ~x86"
-IUSE="postgres debug l2tp shaper"
+IUSE="postgres debug shaper"
 
 DEPEND=">=sys-libs/glibc-2.8
 	dev-libs/openssl
 	dev-libs/libaio
-	l2tp? ( =dev-libs/libnl-9999 )
 	shaper? ( =dev-libs/libnl-9999 )
 	postgres? ( >=dev-db/postgresql-base-8.1 )"
 
@@ -51,10 +50,6 @@ src_configure() {
 		mycmakeargs+=( "-DLOG_PGSQL=TRUE" )
 	fi
 	
-	if use l2tp; then
-		mycmakeargs+=( "-DL2TP=TRUE" )
-	fi
-
 	if use shaper; then
 		mycmakeargs+=( "-DSHAPER=TRUE" )
 	fi
