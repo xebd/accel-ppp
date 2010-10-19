@@ -120,7 +120,7 @@ static void session_timeout(struct triton_timer_t *t)
 	struct radius_pd_t *rpd = container_of(t, typeof(*rpd), session_timeout);
 
 	log_ppp_msg("radius: session timed out\n");
-	ppp_terminate(rpd->ppp, 0);
+	ppp_terminate(rpd->ppp, TERM_SESSION_TIMEOUT, 0);
 }
 
 static void ppp_starting(struct ppp_t *ppp)
@@ -143,7 +143,7 @@ static void ppp_started(struct ppp_t *ppp)
 	struct radius_pd_t *rpd = find_pd(ppp);
 
 	if (rad_acct_start(rpd))
-		ppp_terminate(rpd->ppp, 0);
+		ppp_terminate(rpd->ppp, TERM_NAS_ERROR, 0);
 	
 	if (rpd->session_timeout.expire_tv.tv_sec) {
 		rpd->session_timeout.expire = session_timeout;

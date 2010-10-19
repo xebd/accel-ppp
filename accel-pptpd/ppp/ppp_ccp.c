@@ -182,7 +182,7 @@ static void ccp_layer_up(struct ppp_fsm_t *fsm)
 	if (!ccp->started) {
 		ccp->started = 1;
 		if (ccp_set_flags(ccp->ppp->unit_fd, 1, 1)) {
-			ppp_terminate(ccp->ppp, 0);
+			ppp_terminate(ccp->ppp, TERM_NAS_ERROR, 0);
 			return;
 		}
 		ppp_layer_started(ccp->ppp, &ccp->ld);
@@ -649,11 +649,11 @@ static void ccp_recv(struct ppp_handler_t*h)
 				send_conf_req(&ccp->fsm);
 			}
 			if (r == CCP_OPT_FAIL)
-				ppp_terminate(ccp->ppp, 0);
+				ppp_terminate(ccp->ppp, TERM_USER_ERROR, 0);
 			break;
 		case CONFACK:
 			if (ccp_recv_conf_ack(ccp, (uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN))
-				ppp_terminate(ccp->ppp, 0);
+				ppp_terminate(ccp->ppp, TERM_USER_ERROR, 0);
 			else {
 				ppp_fsm_recv_conf_ack(&ccp->fsm);
 				if (ccp->need_req)
@@ -666,7 +666,7 @@ static void ccp_recv(struct ppp_handler_t*h)
 			break;
 		case CONFREJ:
 			if (ccp_recv_conf_rej(ccp, (uint8_t*)(hdr + 1),ntohs(hdr->len) - PPP_HDRLEN))
-				ppp_terminate(ccp->ppp, 0);
+				ppp_terminate(ccp->ppp, TERM_USER_ERROR, 0);
 			else
 				ppp_fsm_recv_conf_rej(&ccp->fsm);
 			break;

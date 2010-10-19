@@ -116,7 +116,7 @@ static void l2tp_disconnect(struct l2tp_conn_t *conn)
 
 	if (conn->state == STATE_PPP) {
 		conn->state = STATE_FIN;
-		ppp_terminate(&conn->ppp, 1);
+		ppp_terminate(&conn->ppp, TERM_USER_REQUEST, 1);
 	}
 
 	pthread_mutex_lock(&l2tp_lock);
@@ -206,7 +206,7 @@ static void l2tp_conn_close(struct triton_context_t *ctx)
 	
 	if (conn->state == STATE_PPP) {
 		conn->state = STATE_FIN;
-		ppp_terminate(&conn->ppp, 1);
+		ppp_terminate(&conn->ppp, TERM_ADMIN_RESET, 1);
 	}
 	
 	if (l2tp_terminate(conn, 0, 0))
@@ -793,7 +793,7 @@ static int l2tp_recv_CDN(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 
 	if (conn->state == STATE_PPP) {
 		conn->state = STATE_FIN;
-		ppp_terminate(&conn->ppp, 1);
+		ppp_terminate(&conn->ppp, TERM_USER_REQUEST, 1);
 	}
 	
 	if (l2tp_terminate(conn, 0, 0))

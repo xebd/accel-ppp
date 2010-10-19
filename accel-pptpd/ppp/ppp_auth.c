@@ -309,7 +309,7 @@ void __export auth_successed(struct ppp_t *ppp, char *username)
 
 void __export auth_failed(struct ppp_t *ppp)
 {
-	ppp_terminate(ppp, 0);
+	ppp_terminate(ppp, TERM_AUTH_ERROR, 0);
 }
 
 int __export ppp_auth_register_handler(struct ppp_auth_handler_t *h)

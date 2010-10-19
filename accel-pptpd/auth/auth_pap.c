@@ -210,7 +210,7 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
 			log_ppp_warn("PAP: authentication error\n");
 		pap_send_nak(p, hdr->id);
 		if (p->started)
-			ppp_terminate(p->ppp, 0);
+			ppp_terminate(p->ppp, TERM_AUTH_ERROR, 0);
 		else
 			auth_failed(p->ppp);
 		ret=-1;

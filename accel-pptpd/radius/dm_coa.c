@@ -136,7 +136,7 @@ static void disconnect_request(struct radius_pd_t *rpd)
 	rad_packet_free(rpd->dm_coa_req);
 	rpd->dm_coa_req = NULL;
 
-	ppp_terminate(rpd->ppp, 0);
+	ppp_terminate(rpd->ppp, TERM_ADMIN_RESET, 0);
 }
 
 static void coa_request(struct radius_pd_t *rpd)

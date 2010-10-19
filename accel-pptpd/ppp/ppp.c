@@ -352,7 +352,7 @@ void __export ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 		list_for_each_entry(d, &n->items, entry) {
 			d->starting = 1;
 			if (d->layer->start(d)) {
-				ppp_terminate(ppp, 0);
+				ppp_terminate(ppp, TERM_NAS_ERROR, 0);
 				return;
 			}
 		}
@@ -376,11 +376,14 @@ void __export ppp_layer_finished(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 	destablish_ppp(ppp);
 }
 
-void __export ppp_terminate(struct ppp_t *ppp, int hard)
+void __export ppp_terminate(struct ppp_t *ppp, int cause, int hard)
 {
 	struct layer_node_t *n;
 	struct ppp_layer_data_t *d;
 	int s = 0;
+
+	if (!ppp->terminate_cause)
+		ppp->terminate_cause = cause;
 
 	if (ppp->terminating) {
 		if (hard)
@@ -520,7 +523,7 @@ static void start_first_layer(struct ppp_t *ppp)
 	list_for_each_entry(d, &n->items, entry) {
 		d->starting = 1;
 		if (d->layer->start(d)) {
-			ppp_terminate(ppp, 0);
+			ppp_terminate(ppp, TERM_NAS_ERROR, 0);
 			return;
 		}
 	}

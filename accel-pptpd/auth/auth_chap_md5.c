@@ -157,7 +157,7 @@ static void chap_timeout(struct triton_timer_t *t)
 
 	if (++d->failure == conf_max_failure) {
 		if (d->started)
-			ppp_terminate(d->ppp, 0);
+			ppp_terminate(d->ppp, TERM_USER_ERROR, 0);
 		else
 			auth_failed(d->ppp);
 	} else {
@@ -267,13 +267,13 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		if (conf_ppp_verbose)
 			log_ppp_error("chap-md5: id mismatch\n");
 		chap_send_failure(ad);
-		ppp_terminate(ad->ppp, 0);
+		ppp_terminate(ad->ppp, TERM_USER_ERROR, 0);
 	}
 
 	if (msg->val_size != VALUE_SIZE) {
 		log_ppp_error("chap-md5: incorrect value-size (%i)\n", msg->val_size);
 		chap_send_failure(ad);
-		ppp_terminate(ad->ppp, 0);
+		ppp_terminate(ad->ppp, TERM_USER_ERROR, 0);
 	}
 
 	name = _strndup(msg->name,ntohs(msg->hdr.len) - sizeof(*msg) + 2);
@@ -303,7 +303,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 				log_ppp_warn("chap-md5: challenge response mismatch\n");
 			chap_send_failure(ad);
 			if (ad->started)
-				ppp_terminate(ad->ppp, 0);
+				ppp_terminate(ad->ppp, TERM_USER_ERROR, 0);
 			else
 				auth_failed(ad->ppp);
 		}else
@@ -322,7 +322,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		chap_send_failure(ad);
 		_free(name);
 		if (ad->started)
-			ppp_terminate(ad->ppp, 0);
+			ppp_terminate(ad->ppp, TERM_USER_ERROR, 0);
 		else
 			auth_failed(ad->ppp);
 	} else {

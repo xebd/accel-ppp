@@ -178,7 +178,7 @@ static void lcp_layer_finished(struct ppp_fsm_t *fsm)
 		lcp->started = 0;
 		ppp_layer_finished(lcp->ppp, &lcp->ld);
 	} else
-		ppp_terminate(lcp->ppp, 1);
+		ppp_terminate(lcp->ppp, TERM_NAS_ERROR, 1);
 }
 
 static void print_ropt(struct recv_opt_t *ropt)
@@ -559,7 +559,7 @@ static void lcp_recv_echo_repl(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 
 	if (size != 4) {
 		log_ppp_error("lcp:echo: magic number size mismatch\n");
-		ppp_terminate(lcp->ppp, 0);
+		ppp_terminate(lcp->ppp, TERM_USER_ERROR, 0);
 	}
 
 	if (conf_ppp_verbose)
@@ -567,7 +567,7 @@ static void lcp_recv_echo_repl(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 
 	if (magic == lcp->magic) {
 		log_ppp_error("lcp: echo: loop-back detected\n");
-		ppp_terminate(lcp->ppp, 0);
+		ppp_terminate(lcp->ppp, TERM_NAS_ERROR, 0);
 	}
 
 	lcp->echo_sent = 0;
@@ -604,7 +604,7 @@ static void send_echo_request(struct triton_timer_t *t)
 
 	if (++lcp->echo_sent > lcp->echo_failure) {
 		log_ppp_warn("lcp: no echo reply\n");
-		ppp_terminate(lcp->ppp, 0);
+		ppp_terminate(lcp->ppp, TERM_USER_ERROR, 0);
 	} else {
 		if (conf_ppp_verbose)
 			log_ppp_info("send [LCP EchoReq id=%x <magic %x>]\n", msg.hdr.id, msg.magic);
@@ -723,11 +723,11 @@ static void lcp_recv(struct ppp_handler_t*h)
 			}
 			lcp_free_conf_req(lcp);
 			if (r == LCP_OPT_FAIL)
-				ppp_terminate(lcp->ppp, 0);
+				ppp_terminate(lcp->ppp, TERM_USER_ERROR, 0);
 			break;
 		case CONFACK:
 			if (lcp_recv_conf_ack(lcp,(uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN))
-				ppp_terminate(lcp->ppp, 0);
+				ppp_terminate(lcp->ppp, TERM_USER_ERROR, 0);
 			else
 				if (lcp->fsm.recv_id != lcp->fsm.id)
 					break;
@@ -741,7 +741,7 @@ static void lcp_recv(struct ppp_handler_t*h)
 			break;
 		case CONFREJ:
 			if (lcp_recv_conf_rej(lcp,(uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN))
-				ppp_terminate(lcp->ppp, 0);
+				ppp_terminate(lcp->ppp, TERM_USER_ERROR, 0);
 			else
 				if (lcp->fsm.recv_id != lcp->fsm.id)
 					break;
@@ -751,7 +751,7 @@ static void lcp_recv(struct ppp_handler_t*h)
 			if (conf_ppp_verbose)
 				log_ppp_info("recv [LCP TermReq id=%x]\n", hdr->id);
 			ppp_fsm_recv_term_req(&lcp->fsm);
-			ppp_terminate(lcp->ppp, 0);
+			ppp_terminate(lcp->ppp, TERM_USER_REQUEST, 0);
 			break;
 		case TERMACK:
 			if (conf_ppp_verbose)

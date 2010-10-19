@@ -156,7 +156,7 @@ static void ipcp_layer_down(struct ppp_fsm_t *fsm)
 		ipcp->started = 0;
 	  ppp_layer_finished(ipcp->ppp, &ipcp->ld);
 	} else
-		ppp_terminate(ipcp->ppp, 1);
+		ppp_terminate(ipcp->ppp, TERM_NAS_ERROR, 1);
 }
 
 static void print_ropt(struct recv_opt_t *ropt)
@@ -584,11 +584,11 @@ static void ipcp_recv(struct ppp_handler_t*h)
 			}
 			ipcp_free_conf_req(ipcp);
 			if (r == IPCP_OPT_FAIL)
-				ppp_terminate(ipcp->ppp, 0);
+				ppp_terminate(ipcp->ppp, TERM_USER_ERROR, 0);
 			break;
 		case CONFACK:
 			if (ipcp_recv_conf_ack(ipcp,(uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN))
-				ppp_terminate(ipcp->ppp, 0);
+				ppp_terminate(ipcp->ppp, TERM_USER_ERROR, 0);
 			else
 				ppp_fsm_recv_conf_ack(&ipcp->fsm);
 			break;
@@ -598,7 +598,7 @@ static void ipcp_recv(struct ppp_handler_t*h)
 			break;
 		case CONFREJ:
 			if (ipcp_recv_conf_rej(ipcp, (uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN))
-				ppp_terminate(ipcp->ppp, 0);
+				ppp_terminate(ipcp->ppp, TERM_USER_ERROR, 0);
 			else
 				ppp_fsm_recv_conf_rej(&ipcp->fsm);
 			break;
@@ -606,7 +606,7 @@ static void ipcp_recv(struct ppp_handler_t*h)
 			if (conf_ppp_verbose)
 				log_ppp_info("recv [IPCP TermReq id=%x]\n", hdr->id);
 			ppp_fsm_recv_term_req(&ipcp->fsm);
-			ppp_terminate(ipcp->ppp, 0);
+			ppp_terminate(ipcp->ppp, TERM_USER_REQUEST, 0);
 			break;
 		case TERMACK:
 			if (conf_ppp_verbose)

@@ -186,7 +186,7 @@ static void chap_timeout(struct triton_timer_t *t)
 
 	if (++d->failure == conf_max_failure) {
 		if (d->started)
-			ppp_terminate(d->ppp, 0);
+			ppp_terminate(d->ppp, TERM_USER_ERROR, 0);
 		else
 			auth_failed(d->ppp);
 	} else {
@@ -356,7 +356,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 			log_ppp_error("mschap-v2: id mismatch\n");
 		chap_send_failure(ad);
 		if (ad->started)
-			ppp_terminate(ad->ppp, 0);
+			ppp_terminate(ad->ppp, TERM_USER_ERROR, 0);
 		else
 			auth_failed(ad->ppp);
 	}
@@ -365,7 +365,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		log_ppp_error("mschap-v2: incorrect value-size (%i)\n", msg->val_size);
 		chap_send_failure(ad);
 		if (ad->started)
-			ppp_terminate(ad->ppp, 0);
+			ppp_terminate(ad->ppp, TERM_USER_ERROR, 0);
 		else
 			auth_failed(ad->ppp);
 	}
@@ -374,7 +374,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	if (!name) {
 		log_emerg("mschap-v2: out of memory\n");
 		if (ad->started)
-			ppp_terminate(ad->ppp, 0);
+			ppp_terminate(ad->ppp, TERM_NAS_ERROR, 0);
 		else
 			auth_failed(ad->ppp);
 		return;
@@ -391,7 +391,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	if (r == PWDB_DENIED) {
 		chap_send_failure(ad);
 		if (ad->started)
-			ppp_terminate(ad->ppp, 0);
+			ppp_terminate(ad->ppp, TERM_AUTH_ERROR, 0);
 		else
 			auth_failed(ad->ppp);
 		_free(name);

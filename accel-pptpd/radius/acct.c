@@ -193,6 +193,24 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 		if (rpd->acct_req->timeout.tpd)
 			triton_timer_del(&rpd->acct_req->timeout);
 
+		switch (rpd->ppp->terminate_cause) {
+			case TERM_USER_REQUEST:
+				rad_packet_add_val(rpd->acct_req->pack, "Acct-Terminate-Cause", "User-Request");
+				break;
+			case TERM_SESSION_TIMEOUT:
+				rad_packet_add_val(rpd->acct_req->pack, "Acct-Terminate-Cause", "Session-Timeout");
+				break;
+			case TERM_ADMIN_RESET:
+				rad_packet_add_val(rpd->acct_req->pack, "Acct-Terminate-Cause", "Admin-Reset");
+				break;
+			case TERM_USER_ERROR:
+			case TERM_AUTH_ERROR:
+				rad_packet_add_val(rpd->acct_req->pack, "Acct-Terminate-Cause", "User-Error");
+				break;
+			case TERM_NAS_ERROR:
+				rad_packet_add_val(rpd->acct_req->pack, "Acct-Terminate-Cause", "NAS-Error");
+				break;
+		}
 		rad_packet_change_val(rpd->acct_req->pack, "Acct-Status-Type", "Stop");
 		req_set_stat(rpd->acct_req, rpd->ppp);
 		req_set_RA(rpd->acct_req, conf_acct_secret);

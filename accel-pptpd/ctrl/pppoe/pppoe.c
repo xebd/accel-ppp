@@ -70,7 +70,7 @@ static void disconnect(struct pppoe_conn_t *conn)
 {
 	if (conn->ppp_started) {
 		conn->ppp_started = 0;
-		ppp_terminate(&conn->ppp, 1);
+		ppp_terminate(&conn->ppp, TERM_USER_REQUEST, 1);
 	}
 
 	pppoe_send_PADT(conn);
@@ -120,7 +120,7 @@ static void pppoe_conn_close(struct triton_context_t *ctx)
 	struct pppoe_conn_t *conn = container_of(ctx, typeof(*conn), ctx);
 
 	if (conn->ppp_started)
-		ppp_terminate(&conn->ppp, 0);
+		ppp_terminate(&conn->ppp, TERM_ADMIN_RESET, 0);
 	else
 		disconnect(conn);
 }
