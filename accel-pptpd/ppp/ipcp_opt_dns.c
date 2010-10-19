@@ -75,15 +75,7 @@ static void dns_free(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt)
 
 static int dns_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt, uint8_t *ptr)
 {
-	struct dns_option_t *dns_opt=container_of(opt,typeof(*dns_opt),opt);
-	struct ipcp_opt32_t *opt32=(struct ipcp_opt32_t*)ptr;
-
-	if (!dns_opt->addr)
-		return 0;
-	opt32->hdr.id=dns_opt->opt.id;
-	opt32->hdr.len=6;
-	opt32->val=dns_opt->addr;
-	return 6;
+	return 0;
 }
 
 static int dns_send_conf_nak(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt, uint8_t *ptr)
