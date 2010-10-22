@@ -495,7 +495,7 @@ static int lcp_recv_conf_nak(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 					log_ppp_info(" ");
 					lopt->h->print(log_ppp_info, lopt, data);
 				}
-				if (lopt->h->recv_conf_nak(lcp, lopt, data))
+				if (lopt->h->recv_conf_nak && lopt->h->recv_conf_nak(lcp, lopt, data))
 					res = -1;
 				break;
 			}

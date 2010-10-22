@@ -454,7 +454,7 @@ static int ipcp_recv_conf_nak(struct ppp_ipcp_t *ipcp, uint8_t *data, int size)
 					log_ppp_info(" ");
 					lopt->h->print(log_ppp_info,lopt,data);
 				}
-				if (lopt->h->recv_conf_nak(ipcp, lopt, data))
+				if (lopt->h->recv_conf_nak && lopt->h->recv_conf_nak(ipcp, lopt, data))
 					res =- 1;
 				break;
 			}
