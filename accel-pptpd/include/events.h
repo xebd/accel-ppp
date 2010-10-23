@@ -11,6 +11,7 @@
 #define EV_CTRL_STARTING    6
 #define EV_CTRL_STARTED     7
 #define EV_CTRL_FINISHED    8
+#define EV_PPP_PRE_UP       9
 #define EV_IP_CHANGED       100
 #define EV_SHAPE_CHANGED    101
 #define EV_MPPE_KEYS        102

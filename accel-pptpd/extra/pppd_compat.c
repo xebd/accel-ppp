@@ -113,7 +113,8 @@ static void ev_ppp_starting(struct ppp_t *ppp)
 	pd->ip_change_hnd.handler = ip_change_handler;
 	list_add_tail(&pd->pd.entry, &ppp->pd_list);
 }
-static void ev_ppp_started(struct ppp_t *ppp)
+
+static void ev_ppp_pre_up(struct ppp_t *ppp)
 {
 	pid_t pid;
 	char *argv[8];
@@ -157,6 +158,28 @@ static void ev_ppp_started(struct ppp_t *ppp)
 		} else
 			log_error("pppd_compat: fork: %s\n", strerror(errno));
 	}
+}
+
+static void ev_ppp_started(struct ppp_t *ppp)
+{
+	pid_t pid;
+	char *argv[8];
+	char *env[2];
+	char ipaddr[16];
+	char peer_ipaddr[16];
+	char peername[64];
+	struct pppd_compat_pd_t *pd = find_pd(ppp);
+	
+	if (!pd)
+		return;
+
+	argv[4] = ipaddr;
+	argv[5] = peer_ipaddr;
+	fill_argv(argv, ppp, conf_ip_up);
+	
+	env[0] = peername;
+	env[1] = NULL;
+	fill_env(env, pd);
 
 	if (conf_ip_up) {
 		sigchld_lock();
@@ -479,6 +502,7 @@ static void __init init(void)
 		conf_verbose = 1;
 
 	triton_event_register_handler(EV_PPP_STARTING, (triton_event_func)ev_ppp_starting);
+	triton_event_register_handler(EV_PPP_PRE_UP, (triton_event_func)ev_ppp_pre_up);
 	triton_event_register_handler(EV_PPP_STARTED, (triton_event_func)ev_ppp_started);
 	triton_event_register_handler(EV_PPP_FINISHING, (triton_event_func)ev_ppp_finishing);
 	triton_event_register_handler(EV_PPP_FINISHED, (triton_event_func)ev_ppp_finished);

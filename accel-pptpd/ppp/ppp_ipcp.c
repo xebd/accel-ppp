@@ -335,17 +335,32 @@ static int ipcp_recv_conf_req(struct ppp_ipcp_t *ipcp, uint8_t *data, int size)
 	list_for_each_entry(lopt, &ipcp->options, entry)
 		lopt->state=IPCP_OPT_NONE;
 
-	if (conf_ppp_verbose)
+	if (conf_ppp_verbose) {
 		log_ppp_info("recv [IPCP ConfReq id=%x", ipcp->fsm.recv_id);
+
+		list_for_each_entry(ropt, &ipcp->ropt_list, entry) {
+			list_for_each_entry(lopt, &ipcp->options, entry) {
+				if (lopt->id == ropt->hdr->id) {
+					ropt->lopt = lopt;
+					log_ppp_info(" ");
+					lopt->h->print(log_ppp_info, lopt, (uint8_t*)ropt->hdr);
+					break;
+				}
+			}
+			if (!ropt->lopt) {
+				log_ppp_info(" ");
+				print_ropt(ropt);
+			}
+		}
+		log_ppp_info("]\n");
+	}
 
 	list_for_each_entry(ropt, &ipcp->ropt_list, entry) {
 		list_for_each_entry(lopt, &ipcp->options, entry) {
 			if (lopt->id == ropt->hdr->id) {
-				if (conf_ppp_verbose) {
-					log_ppp_info(" ");
-					lopt->h->print(log_ppp_info, lopt, (uint8_t*)ropt->hdr);
-				}
 				r = lopt->h->recv_conf_req(ipcp, lopt, (uint8_t*)ropt->hdr);
+				if (ipcp->ppp->stop_time)
+					return -1;
 				lopt->state = r;
 				ropt->state = r;
 				ropt->lopt = lopt;
@@ -354,19 +369,12 @@ static int ipcp_recv_conf_req(struct ppp_ipcp_t *ipcp, uint8_t *data, int size)
 				break;
 			}	
 		}
-		if (!ropt->lopt)
-		{
-			if (conf_ppp_verbose) {
-				log_ppp_info(" ");
-				print_ropt(ropt);
-			}
+		if (!ropt->lopt) {
 			ropt->state = IPCP_OPT_REJ;
 			ret = IPCP_OPT_REJ;
 		}
 	}
 
-	if (conf_ppp_verbose)
-		log_ppp_info("]\n");
 
 	/*list_for_each_entry(lopt,&ipcp->options,entry)
 	{
@@ -571,6 +579,8 @@ static void ipcp_recv(struct ppp_handler_t*h)
 	switch(hdr->code) {
 		case CONFREQ:
 			r = ipcp_recv_conf_req(ipcp,(uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN);
+			if (ipcp->ppp->stop_time)
+				return;
 			switch(r) {
 				case IPCP_OPT_ACK:
 					ppp_fsm_recv_conf_req_ack(&ipcp->fsm);

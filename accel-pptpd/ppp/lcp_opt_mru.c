@@ -24,6 +24,7 @@ static int mru_send_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, ui
 static int mru_send_conf_nak(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr);
 static int mru_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr);
 static int mru_recv_conf_ack(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr);
+static int mru_recv_conf_nak(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr);
 static void mru_print(void (*print)(const char *fmt,...),struct lcp_option_t*, uint8_t *ptr);
 
 struct mru_option_t
@@ -31,6 +32,7 @@ struct mru_option_t
 	struct lcp_option_t opt;
 	int mru;
 	int mtu;
+	int naked:1;
 };
 
 static struct lcp_option_handler_t mru_opt_hnd=
@@ -40,6 +42,7 @@ static struct lcp_option_handler_t mru_opt_hnd=
 	.send_conf_nak=mru_send_conf_nak,
 	.recv_conf_req=mru_recv_conf_req,
 	.recv_conf_ack=mru_recv_conf_ack,
+	.recv_conf_nak=mru_recv_conf_nak,
 	.free=mru_free,
 	.print=mru_print,
 };
@@ -71,6 +74,10 @@ static int mru_send_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, ui
 {
 	struct mru_option_t *mru_opt = container_of(opt,typeof(*mru_opt),opt);
 	struct lcp_opt16_t *opt16 = (struct lcp_opt16_t*)ptr;
+
+	if (mru_opt->naked)
+		return 0;
+
 	opt16->hdr.id = CI_MRU;
 	opt16->hdr.len = 4;
 	opt16->val = htons(mru_opt->mru);
@@ -120,6 +127,13 @@ static int mru_recv_conf_ack(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, ui
 	if (ioctl(sock_fd, SIOCSIFMTU, &ifr))
 		log_ppp_error("lcp:mru: failed to set MTU: %s\n", strerror(errno));
 	
+	return 0;
+}
+
+static int mru_recv_conf_nak(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)
+{
+	struct mru_option_t *mru_opt = container_of(opt,typeof(*mru_opt), opt);
+	mru_opt->naked = 1;
 	return 0;
 }
 

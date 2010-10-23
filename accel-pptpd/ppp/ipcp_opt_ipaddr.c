@@ -12,6 +12,7 @@
 #include "log.h"
 #include "ipdb.h"
 #include "iprange.h"
+#include "events.h"
 
 #include "memdebug.h"
 
@@ -120,6 +121,10 @@ static int ipaddr_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 ack:
 	ipcp->ppp->ipaddr = ipaddr_opt->ip->addr;
 	ipcp->ppp->peer_ipaddr = ipaddr_opt->ip->peer_addr;
+
+	triton_event_fire(EV_PPP_PRE_UP, ipcp->ppp);
+	if (ipcp->ppp->stop_time)
+		return IPCP_OPT_ACK;
 
 	memset(&ifr, 0, sizeof(ifr));
 	memset(&addr, 0, sizeof(addr));
