@@ -275,6 +275,9 @@ text
 .br
 Configuration of pppd_compat module.
 .TP
+.BI "ip-pre-up=" file
+Path to ip-pre-up script which is executed before ppp interface comes up, useful to setup firewall rules before any traffic can pass through the interface.
+.TP
 .BI "ip-up=" file
 Path to ip-up script which is executed when ppp interfaces is completly configured and started.
 .TP
