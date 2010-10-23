@@ -58,7 +58,7 @@ static void req_set_stat(struct rad_req_t *req, struct ppp_t *ppp)
 	rad_packet_change_int(req->pack, "Acct-Output-Packets", ifreq.stats.p.ppp_opackets);
 	rad_packet_change_int(req->pack, "Acct-Input-Gigawords", req->rpd->acct_input_gigawords);
 	rad_packet_change_int(req->pack, "Acct-Output-Gigawords", req->rpd->acct_output_gigawords);
-	rad_packet_change_int(req->pack, "Acct-Session-Time", time(NULL) - ppp->start_time);
+	rad_packet_change_int(req->pack, "Acct-Session-Time", ppp->stop_time - ppp->start_time);
 }
 
 static int rad_acct_read(struct triton_md_handler_t *h)

@@ -6,6 +6,9 @@
 #include <unistd.h>
 #include <sched.h>
 #include <limits.h>
+#include <sys/ioctl.h>
+#include <netinet/in.h>
+#include "linux_ppp.h"
 
 #include "triton.h"
 
@@ -19,8 +22,9 @@
 #include "memdebug.h"
 
 static char *conf_ip_up = "/etc/ppp/ip-up";
+static char *conf_ip_pre_up;
 static char *conf_ip_down = "/etc/ppp/ip-down";
-static char *conf_ip_change = "/etc/ppp/ip-change";
+static char *conf_ip_change;
 static char *conf_radattr_prefix = "/var/run/radattr.";
 static int conf_verbose = 0;
 
@@ -30,18 +34,34 @@ struct pppd_compat_pd_t
 {
 	struct ppp_pd_t pd;
 	struct ppp_t *ppp;
+	struct sigchld_handler_t ip_pre_up_hnd;
 	struct sigchld_handler_t ip_up_hnd;
 	struct sigchld_handler_t ip_change_hnd;
 	struct sigchld_handler_t ip_down_hnd;
 	int radattr_saved:1;
 	int started:1;
-	int ip_change_res;
+	int res;
+	int bytes_sent;
+	int bytes_rcvd;
 };
 
 static void remove_radattr(struct ppp_t *ppp);
 static struct pppd_compat_pd_t *find_pd(struct ppp_t *ppp);
 static void fill_argv(char **argv, struct ppp_t *ppp, char *path);
+static void fill_env(char **env, struct pppd_compat_pd_t *pd);
 static void write_radattr(struct ppp_t *ppp, struct rad_packet_t *pack, int save_old);
+
+static void ip_pre_up_handler(struct sigchld_handler_t *h, int status)
+{
+	struct pppd_compat_pd_t *pd = container_of(h, typeof(*pd), ip_pre_up_hnd);
+	if (conf_verbose) {
+		log_switch(NULL, pd->ppp);
+		log_ppp_info("pppd_compat: ip-pre-up finished (%i)\n", status);
+		pd->res = status;
+	}
+	sched_yield();
+	triton_context_wakeup(pd->ppp->ctrl->ctx);
+}
 
 static void ip_up_handler(struct sigchld_handler_t *h, int status)
 {
@@ -71,7 +91,7 @@ static void ip_change_handler(struct sigchld_handler_t *h, int status)
 		log_ppp_info("pppd_compat: ip-change finished (%i)\n", status);
 	}
 	sched_yield();
-	pd->ip_change_res = status;
+	pd->res = status;
 	triton_context_wakeup(pd->ppp->ctrl->ctx);
 }
 
@@ -87,6 +107,7 @@ static void ev_ppp_starting(struct ppp_t *ppp)
 	memset(pd, 0, sizeof(*pd));
 	pd->pd.key = &pd_key;
 	pd->ppp = ppp;
+	pd->ip_pre_up_hnd.handler = ip_pre_up_handler;
 	pd->ip_up_hnd.handler = ip_up_handler;
 	pd->ip_down_hnd.handler = ip_down_handler;
 	pd->ip_change_hnd.handler = ip_change_handler;
@@ -96,8 +117,10 @@ static void ev_ppp_started(struct ppp_t *ppp)
 {
 	pid_t pid;
 	char *argv[8];
+	char *env[2];
 	char ipaddr[16];
 	char peer_ipaddr[16];
+	char peername[64];
 	struct pppd_compat_pd_t *pd = find_pd(ppp);
 	
 	if (!pd)
@@ -106,31 +129,87 @@ static void ev_ppp_started(struct ppp_t *ppp)
 	argv[4] = ipaddr;
 	argv[5] = peer_ipaddr;
 	fill_argv(argv, ppp, conf_ip_up);
+	
+	env[0] = peername;
+	env[1] = NULL;
+	fill_env(env, pd);
 
-	sigchld_lock();
-	pid = fork();
-	if (pid > 0) {
-		pd->ip_up_hnd.pid = pid;
-		sigchld_register_handler(&pd->ip_up_hnd);
-		if (conf_verbose)
-			log_ppp_info("pppd_compat: ip-up started (pid %i)\n", pid);
-		sigchld_unlock();
-	} else if (pid == 0) {
-		execv(conf_ip_up, argv);
-		log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_up, strerror(errno));
-		_exit(EXIT_FAILURE);
-	} else
-		log_error("pppd_compat: fork: %s\n", strerror(errno));
+	if (conf_ip_pre_up) {
+		sigchld_lock();
+		pid = fork();
+		if (pid > 0) {
+			pd->ip_pre_up_hnd.pid = pid;
+			sigchld_register_handler(&pd->ip_pre_up_hnd);
+			if (conf_verbose)
+				log_ppp_info("pppd_compat: ip-pre-up started (pid %i)\n", pid);
+			sigchld_unlock();
+			triton_context_schedule(pd->ppp->ctrl->ctx);
+			pthread_mutex_lock(&pd->ip_pre_up_hnd.lock);
+			pthread_mutex_unlock(&pd->ip_pre_up_hnd.lock);
+			if (pd->res != 0) {
+				ppp_terminate(ppp, 0, pd->res < 0 ? TERM_NAS_ERROR : TERM_ADMIN_RESET);
+				return;
+			}
+		} else if (pid == 0) {
+			execve(conf_ip_pre_up, argv, env);
+			log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_pre_up, strerror(errno));
+			_exit(EXIT_FAILURE);
+		} else
+			log_error("pppd_compat: fork: %s\n", strerror(errno));
+	}
+
+	if (conf_ip_up) {
+		sigchld_lock();
+		pid = fork();
+		if (pid > 0) {
+			pd->ip_up_hnd.pid = pid;
+			sigchld_register_handler(&pd->ip_up_hnd);
+			if (conf_verbose)
+				log_ppp_info("pppd_compat: ip-up started (pid %i)\n", pid);
+			sigchld_unlock();
+		} else if (pid == 0) {
+			execve(conf_ip_up, argv, env);
+			log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_up, strerror(errno));
+			_exit(EXIT_FAILURE);
+		} else
+			log_error("pppd_compat: fork: %s\n", strerror(errno));
+	}
 	
 	pd->started = 1;
+}
+
+static void ev_ppp_finishing(struct ppp_t *ppp)
+{
+	struct ifpppstatsreq ifreq;
+	struct pppd_compat_pd_t *pd = find_pd(ppp);
+	
+	if (!pd)
+		return;
+	
+	memset(&ifreq, 0, sizeof(ifreq));
+	ifreq.stats_ptr = (void *)&ifreq.stats;
+	strcpy(ifreq.ifr__name, ppp->ifname);
+
+	if (ioctl(sock_fd, SIOCGPPPSTATS, &ifreq)) {
+		log_ppp_error("pppd_compat: failed to get ppp statistics: %s\n", strerror(errno));
+		return;
+	}
+
+	pd->bytes_sent = ifreq.stats.p.ppp_obytes;
+	pd->bytes_rcvd = ifreq.stats.p.ppp_ibytes;
 }
 
 static void ev_ppp_finished(struct ppp_t *ppp)
 {
 	pid_t pid;
 	char *argv[8];
+	char *env[5];
 	char ipaddr[16];
 	char peer_ipaddr[16];
+	char peername[64];
+	char connect_time[16];
+	char bytes_sent[12];
+	char bytes_rcvd[12];
 	struct pppd_compat_pd_t *pd = find_pd(ppp);
 	
 	if (!pd)
@@ -150,6 +229,13 @@ static void ev_ppp_finished(struct ppp_t *ppp)
 	argv[5] = peer_ipaddr;
 	fill_argv(argv, pd->ppp, conf_ip_down);
 
+	env[0] = peername;
+	env[1] = connect_time;
+	env[2] = bytes_sent;
+	env[3] = bytes_rcvd;
+	env[4] = NULL;
+	fill_env(env, pd);
+
 	sigchld_lock();
 	pid = fork();
 	if (pid > 0) {
@@ -162,8 +248,8 @@ static void ev_ppp_finished(struct ppp_t *ppp)
 		pthread_mutex_lock(&pd->ip_down_hnd.lock);
 		pthread_mutex_unlock(&pd->ip_down_hnd.lock);
 	} else if (pid == 0) {
-		execv(conf_ip_down, argv);
-		log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_change, strerror(errno));
+		execve(conf_ip_down, argv, env);
+		log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_down, strerror(errno));
 		_exit(EXIT_FAILURE);
 	} else
 		log_error("pppd_compat: fork: %s\n", strerror(errno));
@@ -198,8 +284,10 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 {
 	pid_t pid;
 	char *argv[8];
+	char *env[2];
 	char ipaddr[16];
 	char peer_ipaddr[16];
+	char peername[64];
 	struct pppd_compat_pd_t *pd = find_pd(ev->ppp);
 	
 	if (!pd)
@@ -211,6 +299,10 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 	argv[5] = peer_ipaddr;
 	fill_argv(argv, pd->ppp, conf_ip_change);
 
+	env[0] = peername;
+	env[1] = NULL;
+	fill_env(env, pd);
+
 	sigchld_lock();
 	pid = fork();
 	if (pid > 0) {
@@ -221,9 +313,9 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 			log_ppp_info("pppd_compat: ip-change started (pid %i)\n", pid);
 		triton_context_schedule(pd->ppp->ctrl->ctx);
 		if (!ev->res)
-			ev->res = pd->ip_change_res;
+			ev->res = pd->res;
 	} else if (pid == 0) {
-		execv(conf_ip_change, argv);
+		execve(conf_ip_change, argv, env);
 		log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_change, strerror(errno));
 		_exit(EXIT_FAILURE);
 	} else
@@ -342,13 +434,29 @@ static void fill_argv(char **argv, struct ppp_t *ppp, char *path)
 	argv[3] = "0";
 	u_inet_ntoa(ppp->ipaddr, argv[4]);
 	u_inet_ntoa(ppp->peer_ipaddr, argv[5]);
-	argv[6] = "none";
+	argv[6] = ppp->ctrl->calling_station_id;
 	argv[7] = NULL;
+}
+
+static void fill_env(char **env, struct pppd_compat_pd_t *pd)
+{
+	sprintf(env[0], "PEERNAME=%s", pd->ppp->username);
+	
+	if (pd->ppp->stop_time) {
+
+		sprintf(env[1], "CONNECT_TIME=%lu", pd->ppp->stop_time - pd->ppp->start_time);
+		sprintf(env[2], "BYTES_SENT=%u", pd->bytes_sent);
+		sprintf(env[3], "BYTES_RCVD=%u", pd->bytes_rcvd);
+	}
 }
 
 static void __init init(void)
 {
 	char *opt;
+
+	opt = conf_get_opt("pppd-compat", "ip-pre-up");
+	if (opt)
+		conf_ip_pre_up = opt;
 
 	opt = conf_get_opt("pppd-compat", "ip-up");
 	if (opt)
@@ -372,6 +480,7 @@ static void __init init(void)
 
 	triton_event_register_handler(EV_PPP_STARTING, (triton_event_func)ev_ppp_starting);
 	triton_event_register_handler(EV_PPP_STARTED, (triton_event_func)ev_ppp_started);
+	triton_event_register_handler(EV_PPP_FINISHING, (triton_event_func)ev_ppp_finishing);
 	triton_event_register_handler(EV_PPP_FINISHED, (triton_event_func)ev_ppp_finished);
 	triton_event_register_handler(EV_RADIUS_ACCESS_ACCEPT, (triton_event_func)ev_radius_access_accept);
 	triton_event_register_handler(EV_RADIUS_COA, (triton_event_func)ev_radius_coa);

@@ -88,6 +88,7 @@ struct ppp_t
 	char ifname[PPP_IFNAME_LEN];
 	char sessionid[PPP_SESSIONID_LEN+1];
 	time_t start_time;
+	time_t stop_time;
 	char *username;
 	in_addr_t ipaddr;
 	in_addr_t peer_ipaddr;
