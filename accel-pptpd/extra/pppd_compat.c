@@ -230,9 +230,9 @@ static void ev_ppp_finished(struct ppp_t *ppp)
 	char ipaddr[16];
 	char peer_ipaddr[16];
 	char peername[64];
-	char connect_time[16];
-	char bytes_sent[12];
-	char bytes_rcvd[12];
+	char connect_time[24];
+	char bytes_sent[24];
+	char bytes_rcvd[24];
 	struct pppd_compat_pd_t *pd = find_pd(ppp);
 	
 	if (!pd)
@@ -463,13 +463,13 @@ static void fill_argv(char **argv, struct ppp_t *ppp, char *path)
 
 static void fill_env(char **env, struct pppd_compat_pd_t *pd)
 {
-	sprintf(env[0], "PEERNAME=%s", pd->ppp->username);
+	snprintf(env[0], 64, "PEERNAME=%s", pd->ppp->username);
 	
 	if (pd->ppp->stop_time) {
 
-		sprintf(env[1], "CONNECT_TIME=%lu", pd->ppp->stop_time - pd->ppp->start_time);
-		sprintf(env[2], "BYTES_SENT=%u", pd->bytes_sent);
-		sprintf(env[3], "BYTES_RCVD=%u", pd->bytes_rcvd);
+		snprintf(env[1], 24, "CONNECT_TIME=%lu", pd->ppp->stop_time - pd->ppp->start_time);
+		snprintf(env[2], 24, "BYTES_SENT=%u", pd->bytes_sent);
+		snprintf(env[3], 24, "BYTES_RCVD=%u", pd->bytes_rcvd);
 	}
 }
 
