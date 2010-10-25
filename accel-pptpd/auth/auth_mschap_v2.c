@@ -384,7 +384,9 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 
 	if (r == PWDB_NO_IMPL) {	
 		r = chap_check_response(ad, msg, name);
-		if (generate_response(ad, msg, name, authenticator))
+		if (r)
+			r = PWDB_DENIED;
+		else if (generate_response(ad, msg, name, authenticator))
 			r = PWDB_DENIED;
 	}
 

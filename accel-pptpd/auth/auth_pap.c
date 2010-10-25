@@ -170,7 +170,7 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
 	int ret, r;
 	char *peer_id;
 	char *passwd;
-	const char *passwd2;
+	char *passwd2;
 	int peer_id_len;
 	int passwd_len;
 	uint8_t *ptr = (uint8_t*)(hdr + 1);
@@ -204,6 +204,7 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
 			r = PWDB_DENIED;
 		else
 			r = PWDB_SUCCESS;
+		_free(passwd2);
 	}
 	if (r == PWDB_DENIED) {
 		if (conf_ppp_verbose)

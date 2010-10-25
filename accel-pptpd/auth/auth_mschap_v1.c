@@ -307,7 +307,8 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	
 	r = pwdb_check(ad->ppp, name, PPP_CHAP, MSCHAP_V1, ad->id, ad->val, VALUE_SIZE, msg->lm_hash, msg->nt_hash, msg->flags);
 	if (r == PWDB_NO_IMPL)
-		r = chap_check_response(ad, msg, name);
+		if (chap_check_response(ad, msg, name))
+			r = PWDB_DENIED;
 	
 	if (r == PWDB_DENIED) {
 		chap_send_failure(ad);

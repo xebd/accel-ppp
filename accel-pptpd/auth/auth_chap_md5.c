@@ -316,7 +316,6 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 				auth_successed(ad->ppp, name);
 			}
 		}
-		_free(name);
 		_free(passwd);
 	} else if (r == PWDB_DENIED) {
 		chap_send_failure(ad);

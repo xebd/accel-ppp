@@ -1,8 +1,9 @@
 ADD_LIBRARY(pppd_compat SHARED pppd_compat.c)
 ADD_LIBRARY(ippool SHARED ippool.c)
 ADD_LIBRARY(sigchld SHARED sigchld.c)
+ADD_LIBRARY(chap-secrets SHARED chap-secrets.c)
 
-INSTALL(TARGETS pppd_compat ippool sigchld
+INSTALL(TARGETS pppd_compat ippool sigchld chap-secrets
 	LIBRARY DESTINATION usr/lib/accel-pptp
 )
 

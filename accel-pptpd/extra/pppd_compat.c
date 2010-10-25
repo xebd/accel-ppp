@@ -15,9 +15,12 @@
 #include "events.h"
 #include "ppp.h"
 #include "log.h"
-#include "radius.h"
 #include "utils.h"
 #include "sigchld.h"
+
+#ifdef RADIUS
+#include "radius.h"
+#endif
 
 #include "memdebug.h"
 
@@ -38,18 +41,22 @@ struct pppd_compat_pd_t
 	struct sigchld_handler_t ip_up_hnd;
 	struct sigchld_handler_t ip_change_hnd;
 	struct sigchld_handler_t ip_down_hnd;
+#ifdef RADIUS
 	int radattr_saved:1;
+#endif
 	int started:1;
 	int res;
 	int bytes_sent;
 	int bytes_rcvd;
 };
 
-static void remove_radattr(struct ppp_t *ppp);
 static struct pppd_compat_pd_t *find_pd(struct ppp_t *ppp);
 static void fill_argv(char **argv, struct ppp_t *ppp, char *path);
 static void fill_env(char **env, struct pppd_compat_pd_t *pd);
+#ifdef RADIUS
+static void remove_radattr(struct ppp_t *ppp);
 static void write_radattr(struct ppp_t *ppp, struct rad_packet_t *pack, int save_old);
+#endif
 
 static void ip_pre_up_handler(struct sigchld_handler_t *h, int status)
 {
@@ -287,13 +294,16 @@ static void ev_ppp_finished(struct ppp_t *ppp)
 		pthread_mutex_unlock(&pd->ip_up_hnd.lock);
 
 skip:
+#ifdef RADIUS
 	if (pd->radattr_saved)
 		remove_radattr(ppp);
+#endif
 	
 	list_del(&pd->pd.entry);
 	_free(pd);
 }
 
+#ifdef RADIUS
 static void ev_radius_access_accept(struct ev_radius_t *ev)
 {
 	struct pppd_compat_pd_t *pd = find_pd(ev->ppp);
@@ -432,6 +442,7 @@ static void write_radattr(struct ppp_t *ppp, struct rad_packet_t *pack, int save
 	if (save_old)
 		_free(fname2);
 }
+#endif
 
 static struct pppd_compat_pd_t *find_pd(struct ppp_t *ppp)
 {
@@ -506,7 +517,9 @@ static void __init init(void)
 	triton_event_register_handler(EV_PPP_STARTED, (triton_event_func)ev_ppp_started);
 	triton_event_register_handler(EV_PPP_FINISHING, (triton_event_func)ev_ppp_finishing);
 	triton_event_register_handler(EV_PPP_FINISHED, (triton_event_func)ev_ppp_finished);
+#ifdef RADIUS
 	triton_event_register_handler(EV_RADIUS_ACCESS_ACCEPT, (triton_event_func)ev_radius_access_accept);
 	triton_event_register_handler(EV_RADIUS_COA, (triton_event_func)ev_radius_coa);
+#endif
 }
 

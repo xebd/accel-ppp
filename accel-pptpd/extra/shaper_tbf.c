@@ -18,9 +18,13 @@
 
 #include "triton.h"
 #include "events.h"
-#include "radius.h"
 #include "log.h"
 #include "ppp.h"
+
+#ifdef RADIUS
+#include "radius.h"
+#endif
+
 #include "memdebug.h"
 
 #define TIME_UNITS_PER_SEC 1000000
@@ -481,6 +485,7 @@ out_err:
 	return -1;
 }
 
+#ifdef RADIUS
 static int parse_attr(struct rad_attr_t *attr)
 {
 	if (attr->attr->type == ATTR_TYPE_STRING)
@@ -560,6 +565,7 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 		}
 	}
 }
+#endif
 
 static void ev_ctrl_finished(struct ppp_t *ppp)
 {
@@ -606,6 +612,7 @@ static int clock_init(void)
 	return 0;
 }
 
+#ifdef RADIUS
 static int parse_attr_opt(const char *opt)
 {
 	struct rad_dict_attr_t *attr;
@@ -616,6 +623,7 @@ static int parse_attr_opt(const char *opt)
 
 	return atoi(opt);
 }
+#endif
 
 static void __init init(void)
 {
@@ -624,6 +632,7 @@ static void __init init(void)
 	if (clock_init())
 		return;
 
+#ifdef RADIUS
 	opt = conf_get_opt("tbf", "attr");
 	if (opt) {
 		conf_attr_down = parse_attr_opt(opt);
@@ -637,6 +646,12 @@ static void __init init(void)
 	opt = conf_get_opt("tbf", "attr-up");
 	if (opt)
 		conf_attr_up = parse_attr_opt(opt);
+
+	if (conf_attr_up <= 0 || conf_attr_down <= 0) {
+		log_emerg("tbf: incorrect attribute(s), tbf disabled...\n");
+		return;
+	}
+#endif
 	
 	opt = conf_get_opt("tbf", "burst-factor");
 	if (opt)
@@ -654,13 +669,10 @@ static void __init init(void)
 	if (opt && atoi(opt) > 0)
 		conf_verbose = 1;
 
-	if (conf_attr_up <= 0 || conf_attr_down <= 0) {
-		log_emerg("tbf: incorrect attribute(s), tbf disabled...\n");
-		return;
-	}
-
+#ifdef RADIUS
 	triton_event_register_handler(EV_RADIUS_ACCESS_ACCEPT, (triton_event_func)ev_radius_access_accept);
 	triton_event_register_handler(EV_RADIUS_COA, (triton_event_func)ev_radius_coa);
+#endif
 	triton_event_register_handler(EV_CTRL_FINISHED, (triton_event_func)ev_ctrl_finished);
 }
 
