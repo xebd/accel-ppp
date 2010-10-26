@@ -131,6 +131,8 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 
 int rad_acct_start(struct radius_pd_t *rpd)
 {
+	int i;
+
 	rpd->acct_req = rad_req_alloc(rpd, CODE_ACCOUNTING_REQUEST, rpd->ppp->username);
 	if (!rpd->acct_req) {
 		log_emerg("radius: out of memory\n");
@@ -150,8 +152,28 @@ int rad_acct_start(struct radius_pd_t *rpd)
 	if (req_set_RA(rpd->acct_req, conf_acct_secret))
 		goto out_err;
 
-	if (rad_req_send(rpd->acct_req))
+	if (rpd->acct_req->reply) {
+		rad_packet_free(rpd->acct_req->reply);
+		rpd->acct_req->reply = NULL;
+	}
+
+	for (i = 0; i < conf_max_try; i++) {
+		if (rad_req_send(rpd->acct_req))
+			goto out_err;
+		rad_req_wait(rpd->acct_req, conf_timeout);
+		if (!rpd->acct_req->reply)
+			continue;
+		if (rpd->acct_req->reply->id != rpd->acct_req->pack->id || rpd->acct_req->reply->code != CODE_ACCOUNTING_RESPONSE) {
+			rad_packet_free(rpd->acct_req->reply);
+			rpd->acct_req->reply = NULL;
+		} else
+			break;
+	}
+
+	if (!rpd->acct_req->reply) {
+		log_ppp_warn("radius:acct_start: no response\n");
 		goto out_err;
+	}
 	
 	rpd->acct_req->hnd.read = rad_acct_read;
 
