@@ -30,6 +30,7 @@ struct radius_pd_t
 
 	struct ipdb_item_t ipaddr;
 	int acct_interim_interval;
+	int acct_delay_time;
 };
 
 struct rad_req_t

@@ -85,9 +85,9 @@ int rad_req_acct_fill(struct rad_req_t *req)
 
 	memset(req->RA, 0, sizeof(req->RA));
 
-	if (rad_packet_add_val(req->pack, "Acct-Authentic", "RADIUS"))
-		return -1;
 	if (rad_packet_add_val(req->pack, "Acct-Status-Type", "Start"))
+		return -1;
+	if (rad_packet_add_val(req->pack, "Acct-Authentic", "RADIUS"))
 		return -1;
 	if (rad_packet_add_str(req->pack, "Acct-Session-Id", req->rpd->ppp->sessionid, PPP_SESSIONID_LEN))
 		return -1;
@@ -104,6 +104,8 @@ int rad_req_acct_fill(struct rad_req_t *req)
 	if (rad_packet_add_int(req->pack, "Acct-Input-Gigawords", 0))
 		return -1;
 	if (rad_packet_add_int(req->pack, "Acct-Output-Gigawords", 0))
+		return -1;
+	if (rad_packet_add_int(req->pack, "Acct-Delay-Time", 0))
 		return -1;
 	if (rad_packet_add_ipaddr(req->pack, "Framed-IP-Address", req->rpd->ppp->peer_ipaddr))
 		return -1;

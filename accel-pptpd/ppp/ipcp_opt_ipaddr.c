@@ -122,6 +122,10 @@ ack:
 	ipcp->ppp->ipaddr = ipaddr_opt->ip->addr;
 	ipcp->ppp->peer_ipaddr = ipaddr_opt->ip->peer_addr;
 
+	triton_event_fire(EV_PPP_ACCT_START, ipcp->ppp);
+	if (ipcp->ppp->stop_time)
+		return IPCP_OPT_ACK;
+
 	triton_event_fire(EV_PPP_PRE_UP, ipcp->ppp);
 	if (ipcp->ppp->stop_time)
 		return IPCP_OPT_ACK;

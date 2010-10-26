@@ -138,12 +138,14 @@ static void ppp_starting(struct ppp_t *ppp)
 	pthread_rwlock_unlock(&sessions_lock);
 }
 
-static void ppp_started(struct ppp_t *ppp)
+static void ppp_acct_start(struct ppp_t *ppp)
 {
 	struct radius_pd_t *rpd = find_pd(ppp);
 
-	if (rad_acct_start(rpd))
+	if (rad_acct_start(rpd)) {
 		ppp_terminate(rpd->ppp, TERM_NAS_ERROR, 0);
+		return;
+	}
 	
 	if (rpd->session_timeout.expire_tv.tv_sec) {
 		rpd->session_timeout.expire = session_timeout;
@@ -367,7 +369,7 @@ static void __init radius_init(void)
 	ipdb_register(&ipdb);
 
 	triton_event_register_handler(EV_PPP_STARTING, (triton_event_func)ppp_starting);
-	triton_event_register_handler(EV_PPP_STARTED, (triton_event_func)ppp_started);
+	triton_event_register_handler(EV_PPP_ACCT_START, (triton_event_func)ppp_acct_start);
 	triton_event_register_handler(EV_PPP_FINISHING, (triton_event_func)ppp_finishing);
 	triton_event_register_handler(EV_PPP_FINISHED, (triton_event_func)ppp_finished);
 }
