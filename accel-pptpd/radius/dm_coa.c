@@ -250,6 +250,11 @@ static void __init init(void)
 {
 	struct sockaddr_in addr;
 
+	if (!conf_dm_coa_secret) {
+		log_emerg("radius: no dm_coa_secret specified, DM/CoA disabled...\n");
+		return;
+	}
+
 	serv.hnd.fd = socket (PF_INET, SOCK_DGRAM, 0);
   if (serv.hnd.fd < 0) {
     log_emerg("radius:dm_coa: socket: %s\n", strerror(errno));

@@ -1,11 +1,11 @@
 SET(sources
-	radius.c
 	dict.c
 	req.c
 	packet.c
 	auth.c
 	acct.c
 	dm_coa.c
+	radius.c
 )
 
 ADD_DEFINITIONS(-DDICTIONARY="${CMAKE_INSTALL_PREFIX}/usr/share/accel-pptp/radius/dictionary")
