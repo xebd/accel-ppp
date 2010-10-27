@@ -31,6 +31,9 @@ struct radius_pd_t
 	struct ipdb_item_t ipaddr;
 	int acct_interim_interval;
 	int acct_delay_time;
+	
+	uint8_t *class;
+	int class_len;
 };
 
 struct rad_req_t
@@ -75,7 +78,7 @@ int rad_req_send(struct rad_req_t *);
 int rad_req_wait(struct rad_req_t *, int);
 
 struct radius_pd_t *find_pd(struct ppp_t *ppp);
-void rad_proc_attrs(struct rad_req_t *req);
+int rad_proc_attrs(struct rad_req_t *req);
 
 int rad_auth_pap(struct radius_pd_t *rpd, const char *username, va_list args);
 int rad_auth_chap_md5(struct radius_pd_t *rpd, const char *username, va_list args);

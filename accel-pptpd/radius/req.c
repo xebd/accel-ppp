@@ -70,6 +70,9 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 	if (rpd->ppp->ctrl->called_station_id)
 		if (rad_packet_add_str(req->pack, "Called-Station-Id", rpd->ppp->ctrl->called_station_id, strlen(rpd->ppp->ctrl->called_station_id)))
 			goto out_err;
+	if (rpd->class)
+		if (rad_packet_add_octets(req->pack, "Class", rpd->class, rpd->class_len))
+			goto out_err;
 
 	return req;
 

@@ -45,9 +45,10 @@ static struct ipdb_t ipdb;
 
 static mempool_t rpd_pool;
 
-void rad_proc_attrs(struct rad_req_t *req)
+int rad_proc_attrs(struct rad_req_t *req)
 {
 	struct rad_attr_t *attr;
+	int res = 0;
 
 	list_for_each_entry(attr, &req->reply->attrs, entry) {
 		if (attr->vendor)
@@ -68,8 +69,22 @@ void rad_proc_attrs(struct rad_req_t *req)
 			case Session_Timeout:
 				req->rpd->session_timeout.expire_tv.tv_sec = attr->val.integer;
 				break;
+			case Class:
+				req->rpd->class = _malloc(attr->len);
+				if (!req->rpd->class) {
+					log_emerg("radius: out of memory\n");
+					return -1;
+				}
+				memcpy(req->rpd->class, attr->val.octets, attr->len);
+				req->rpd->class_len = attr->len;
+				break;
+			case Termination_Action:
+				if (attr->val.integer != 0)
+					res = -1;
 		}
 	}
+
+	return res;
 }
 
 static int check(struct pwdb_t *pwdb, struct ppp_t *ppp, const char *username, int type, va_list _args)
@@ -176,6 +191,9 @@ static void ppp_finished(struct ppp_t *ppp)
 
 	if (rpd->session_timeout.tpd)
 		triton_timer_del(&rpd->session_timeout);
+
+	if (rpd->class)
+		_free(rpd->class);
 
 	list_del(&rpd->pd.entry);
 	
