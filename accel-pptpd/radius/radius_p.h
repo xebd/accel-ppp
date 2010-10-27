@@ -16,6 +16,7 @@ struct radius_pd_t
 	struct ppp_t *ppp;
 	pthread_mutex_t lock;
 
+	struct rad_req_t *auth_req;
 	struct rad_req_t *acct_req;
 	struct triton_timer_t acct_interim_timer;
 	uint32_t acct_input_octets;
@@ -31,9 +32,12 @@ struct radius_pd_t
 	struct ipdb_item_t ipaddr;
 	int acct_interim_interval;
 	int acct_delay_time;
-	
-	uint8_t *class;
-	int class_len;
+
+	uint8_t *attr_class;
+	int attr_class_len;
+	uint8_t *attr_state;
+	int attr_state_len;
+	int termination_action;	
 };
 
 struct rad_req_t

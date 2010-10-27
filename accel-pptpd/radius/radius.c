@@ -11,6 +11,7 @@
 #include "ppp.h"
 #include "pwdb.h"
 #include "ipdb.h"
+#include "ppp_auth.h"
 
 #include "radius_p.h"
 #include "attr_defs.h"
@@ -67,20 +68,27 @@ int rad_proc_attrs(struct rad_req_t *req)
 				req->rpd->acct_interim_interval = attr->val.integer;
 				break;
 			case Session_Timeout:
-				req->rpd->session_timeout.expire_tv.tv_sec = attr->val.integer;
+				req->rpd->session_timeout.period = attr->val.integer * 1000;
 				break;
 			case Class:
-				req->rpd->class = _malloc(attr->len);
-				if (!req->rpd->class) {
-					log_emerg("radius: out of memory\n");
-					return -1;
-				}
-				memcpy(req->rpd->class, attr->val.octets, attr->len);
-				req->rpd->class_len = attr->len;
+				if (!req->rpd->attr_class)
+					req->rpd->attr_class = _malloc(attr->len);
+				else if (req->rpd->attr_class_len != attr->len)
+					req->rpd->attr_class = _realloc(req->rpd->attr_class, attr->len);
+				memcpy(req->rpd->attr_class, attr->val.octets, attr->len);
+				req->rpd->attr_class_len = attr->len;
+				break;
+			case State:
+				if (!req->rpd->attr_state)
+					req->rpd->attr_state = _malloc(attr->len);
+				else if (req->rpd->attr_state_len != attr->len)
+					req->rpd->attr_state = _realloc(req->rpd->attr_state, attr->len);
+				memcpy(req->rpd->attr_state, attr->val.octets, attr->len);
+				req->rpd->attr_state_len = attr->len;	
 				break;
 			case Termination_Action:
-				if (attr->val.integer != 0)
-					res = -1;
+				req->rpd->termination_action = attr->val.integer; 
+				break;
 		}
 	}
 
@@ -133,9 +141,16 @@ static struct ipdb_item_t *get_ip(struct ppp_t *ppp)
 static void session_timeout(struct triton_timer_t *t)
 {
 	struct radius_pd_t *rpd = container_of(t, typeof(*rpd), session_timeout);
-
 	log_ppp_msg("radius: session timed out\n");
-	ppp_terminate(rpd->ppp, TERM_SESSION_TIMEOUT, 0);
+
+	if (rpd->ppp->stop_time)
+		return;
+
+	if (rpd->termination_action == Termination_Action_RADIUS_Request) {
+		if (ppp_auth_restart(rpd->ppp))
+			ppp_terminate(rpd->ppp, TERM_SESSION_TIMEOUT, 0);
+	} else
+		ppp_terminate(rpd->ppp, TERM_SESSION_TIMEOUT, 0);
 }
 
 static void ppp_starting(struct ppp_t *ppp)
@@ -162,7 +177,7 @@ static void ppp_acct_start(struct ppp_t *ppp)
 		return;
 	}
 	
-	if (rpd->session_timeout.expire_tv.tv_sec) {
+	if (rpd->session_timeout.period) {
 		rpd->session_timeout.expire = session_timeout;
 		triton_timer_add(ppp->ctrl->ctx, &rpd->session_timeout, 0);
 	}
@@ -183,6 +198,9 @@ static void ppp_finished(struct ppp_t *ppp)
 	pthread_mutex_unlock(&rpd->lock);
 	pthread_rwlock_unlock(&sessions_lock);
 
+	if (rpd->auth_req)
+		rad_req_free(rpd->auth_req);
+
 	if (rpd->acct_req)
 		rad_req_free(rpd->acct_req);
 
@@ -192,9 +210,12 @@ static void ppp_finished(struct ppp_t *ppp)
 	if (rpd->session_timeout.tpd)
 		triton_timer_del(&rpd->session_timeout);
 
-	if (rpd->class)
-		_free(rpd->class);
-
+	if (rpd->attr_class)
+		_free(rpd->attr_class);
+	
+	if (rpd->attr_state)
+		_free(rpd->attr_state);
+	
 	list_del(&rpd->pd.entry);
 	
 	mempool_free(rpd);

@@ -118,7 +118,7 @@ static void pap_timeout(struct triton_timer_t *t)
 	if (conf_ppp_verbose)
 		log_ppp_warn("pap: timeout\n");
 
-	auth_failed(d->ppp);
+	ppp_auth_failed(d->ppp);
 }
 
 static int lcp_send_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *ptr)
@@ -213,14 +213,14 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
 		if (p->started)
 			ppp_terminate(p->ppp, TERM_AUTH_ERROR, 0);
 		else
-			auth_failed(p->ppp);
+			ppp_auth_failed(p->ppp);
 		ret=-1;
 		_free(peer_id);
 	} else {
 		pap_send_ack(p, hdr->id);
 		if (!p->started) {
 			p->started = 1;
-			auth_successed(p->ppp, peer_id);
+			ppp_auth_successed(p->ppp, peer_id);
 		}
 		ret = 0;
 	}

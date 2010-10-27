@@ -363,7 +363,7 @@ int rad_packet_change_int(struct rad_packet_t *pack, const char *name, int val)
 	return 0;
 }
 
-int rad_packet_add_octets(struct rad_packet_t *pack, const char *name, uint8_t *val, int len)
+int rad_packet_add_octets(struct rad_packet_t *pack, const char *name, const uint8_t *val, int len)
 {
 	struct rad_attr_t *ra;
 	struct rad_dict_attr_t *attr;
@@ -396,6 +396,35 @@ int rad_packet_add_octets(struct rad_packet_t *pack, const char *name, uint8_t *
 
 	return 0;
 }
+
+int rad_packet_change_octets(struct rad_packet_t *pack, const char *name, const uint8_t *val, int len)
+{
+	struct rad_attr_t *ra;
+	
+	ra = rad_packet_find_attr(pack, name);
+	if (!ra)
+		return -1;
+
+	if (ra->len != len) {
+		if (pack->len - ra->len + len >= REQ_LENGTH_MAX)
+			return -1;
+
+		ra->val.octets = _realloc(ra->val.octets, len);
+		if (!ra->val.octets) {
+			log_emerg("radius: out of memory\n");
+			return -1;
+		}
+	
+		pack->len += len - ra->len;
+		ra->len = len;
+	}
+
+	memcpy(ra->val.octets, val, len);
+
+	return 0;
+}
+
+
 int rad_packet_add_str(struct rad_packet_t *pack, const char *name, const char *val, int len)
 {
 	struct rad_attr_t *ra;
@@ -585,6 +614,33 @@ int rad_packet_add_vendor_octets(struct rad_packet_t *pack, const char *vendor_n
 	memcpy(ra->val.octets, val, len);
 	list_add_tail(&ra->entry, &pack->attrs);
 	pack->len += 6 + 2 + len;
+
+	return 0;
+}
+
+int rad_packet_change_vendor_octets(struct rad_packet_t *pack, const char *vendor_name, const char *name, const uint8_t *val, int len)
+{
+	struct rad_attr_t *ra;
+	
+	ra = rad_packet_find_vendor_attr(pack, vendor_name, name);
+	if (!ra)
+		return -1;
+
+	if (ra->len != len) {
+		if (pack->len - ra->len + len >= REQ_LENGTH_MAX)
+			return -1;
+
+		ra->val.octets = _realloc(ra->val.octets, len);
+		if (!ra->val.octets) {
+			log_emerg("radius: out of memory\n");
+			return -1;
+		}
+	
+		pack->len += len - ra->len;
+		ra->len = len;
+	}
+
+	memcpy(ra->val.octets, val, len);
 
 	return 0;
 }
