@@ -81,8 +81,8 @@ struct chap_auth_data_t
 
 static void chap_send_challenge(struct chap_auth_data_t *ad);
 static void chap_recv(struct ppp_handler_t *h);
-static void chap_timeout(struct triton_timer_t *t);
-static void chap_restart(struct triton_timer_t *t);
+static void chap_timeout_timer(struct triton_timer_t *t);
+static void chap_restart_timer(struct triton_timer_t *t);
 
 static void print_buf(const uint8_t *buf, int size)
 {
@@ -112,6 +112,12 @@ static void auth_data_free(struct ppp_t *ppp, struct auth_data_t *auth)
 {
 	struct chap_auth_data_t *d = container_of(auth, typeof(*d), auth);
 
+	if (d->timeout.tpd)
+		triton_timer_del(&d->timeout);
+
+	if (d->interval.tpd)
+		triton_timer_del(&d->interval);
+
 	_free(d);
 }
 
@@ -121,9 +127,9 @@ static int chap_start(struct ppp_t *ppp, struct auth_data_t *auth)
 
 	d->h.proto = PPP_CHAP;
 	d->h.recv = chap_recv;
-	d->timeout.expire = chap_timeout;
+	d->timeout.expire = chap_timeout_timer;
 	d->timeout.period = conf_timeout * 1000;
-	d->interval.expire = chap_restart;
+	d->interval.expire = chap_restart_timer;
 	d->interval.period = conf_interval * 1000;
 
 	ppp_register_chan_handler(ppp, &d->h);
@@ -148,7 +154,7 @@ static int chap_finish(struct ppp_t *ppp, struct auth_data_t *auth)
 	return 0;
 }
 
-static void chap_timeout(struct triton_timer_t *t)
+static void chap_timeout_timer(struct triton_timer_t *t)
 {
 	struct chap_auth_data_t *d = container_of(t, typeof(*d), timeout);
 
@@ -159,14 +165,14 @@ static void chap_timeout(struct triton_timer_t *t)
 		if (d->started)
 			ppp_terminate(d->ppp, TERM_USER_ERROR, 0);
 		else
-			auth_failed(d->ppp);
+			ppp_auth_failed(d->ppp);
 	} else {
 		--d->id;
 		chap_send_challenge(d);
 	}
 }
 
-static void chap_restart(struct triton_timer_t *t)
+static void chap_restart_timer(struct triton_timer_t *t)
 {
 	struct chap_auth_data_t *d = container_of(t, typeof(*d), interval);
 	
@@ -305,7 +311,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 			if (ad->started)
 				ppp_terminate(ad->ppp, TERM_USER_ERROR, 0);
 			else
-				auth_failed(ad->ppp);
+				ppp_auth_failed(ad->ppp);
 		}else
 		{
 			chap_send_success(ad);
@@ -313,8 +319,9 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 				ad->started = 1;
 				if (conf_interval)
 					triton_timer_add(ad->ppp->ctrl->ctx, &ad->interval, 0);
-				auth_successed(ad->ppp, name);
-			}
+				ppp_auth_successed(ad->ppp, name);
+			} else
+				_free(name);
 		}
 		_free(passwd);
 	} else if (r == PWDB_DENIED) {
@@ -323,21 +330,31 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		if (ad->started)
 			ppp_terminate(ad->ppp, TERM_USER_ERROR, 0);
 		else
-			auth_failed(ad->ppp);
+			ppp_auth_failed(ad->ppp);
 	} else {
 		chap_send_success(ad);
 		if (!ad->started) {
 			ad->started = 1;
 			if (conf_interval)
 				triton_timer_add(ad->ppp->ctrl->ctx, &ad->interval, 0);
-			auth_successed(ad->ppp, name);
-		}
+			ppp_auth_successed(ad->ppp, name);
+		} else
+			_free(name);
 	}
 }
 
 static int chap_check(uint8_t *ptr)
 {
 	return *ptr == CHAP_MD5;
+}
+
+static int chap_restart(struct ppp_t *ppp, struct auth_data_t *auth)
+{
+	struct chap_auth_data_t *d = container_of(auth, typeof(*d), auth);
+	
+	chap_send_challenge(d);
+
+	return 0;
 }
 
 static struct ppp_auth_handler_t chap=
@@ -350,6 +367,7 @@ static struct ppp_auth_handler_t chap=
 	.start         = chap_start,
 	.finish        = chap_finish,
 	.check         = chap_check,
+	.restart       = chap_restart,
 };
 
 static void chap_recv(struct ppp_handler_t *h)

@@ -24,12 +24,14 @@ struct ppp_auth_handler_t
 	int (*finish)(struct ppp_t*, struct auth_data_t*);
 	void (*free)(struct ppp_t*,struct auth_data_t*);
 	int (*check)(uint8_t *);
+	int (*restart)(struct ppp_t*,struct auth_data_t*);
 };
 
 int ppp_auth_register_handler(struct ppp_auth_handler_t*);
 
-void auth_successed(struct ppp_t *ppp, char *username);
-void auth_failed(struct ppp_t *ppp);
+void ppp_auth_successed(struct ppp_t *ppp, char *username);
+void ppp_auth_failed(struct ppp_t *ppp);
+int  ppp_auth_restart(struct ppp_t *ppp);
 
 #endif
 

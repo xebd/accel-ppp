@@ -159,9 +159,10 @@ static int rad_auth_send(struct rad_req_t *req)
 	if (!req->reply)
 		log_ppp_warn("radius:auth: no response\n");
 	else if (req->reply->code == CODE_ACCESS_ACCEPT) {
-		rad_proc_attrs(req);
+		if (rad_proc_attrs(req))
+			return PWDB_DENIED;
 		return PWDB_SUCCESS;
-}
+	}
 
 out:
 	return PWDB_DENIED;
@@ -209,7 +210,6 @@ out:
 
 int rad_auth_chap_md5(struct radius_pd_t *rpd, const char *username, va_list args)
 {
-	struct rad_req_t *req;
 	int r = PWDB_DENIED;
 	uint8_t chap_password[17];
 	
@@ -221,32 +221,60 @@ int rad_auth_chap_md5(struct radius_pd_t *rpd, const char *username, va_list arg
 	chap_password[0] = id;
 	memcpy(chap_password + 1, response, 16);
 
-	req = rad_req_alloc(rpd, CODE_ACCESS_REQUEST, username);
-	if (!req)
-		return PWDB_DENIED;
+	if (!rpd->auth_req) {
+		rpd->auth_req = rad_req_alloc(rpd, CODE_ACCESS_REQUEST, username);
+		if (!rpd->auth_req)
+			return PWDB_DENIED;
 	
-	if (challenge_len == 16)
-		memcpy(req->RA, challenge, 16);
-	else {
-		if (rad_packet_add_octets(req->pack, "CHAP-Challenge", challenge, challenge_len))
+		if (challenge_len == 16)
+			memcpy(rpd->auth_req->RA, challenge, 16);
+		else {
+			if (rad_packet_add_octets(rpd->auth_req->pack, "CHAP-Challenge", challenge, challenge_len))
 			goto out;
+		}
+
+		if (rad_packet_add_octets(rpd->auth_req->pack, "CHAP-Password", chap_password, 17))
+			goto out;
+	} else {
+		if (challenge_len == 16)
+			memcpy(rpd->auth_req->RA, challenge, 16);
+		else {
+			if (rad_packet_change_octets(rpd->auth_req->pack, "CHAP-Challenge", challenge, challenge_len))
+			goto out;
+		}
+
+		if (rad_packet_change_octets(rpd->auth_req->pack, "CHAP-Password", chap_password, 17))
+			goto out;
+		
+		if (rpd->attr_state) {
+			if (rad_packet_find_attr(rpd->auth_req->pack, "State")) {
+				if (rad_packet_change_octets(rpd->auth_req->pack, "State", rpd->attr_state, rpd->attr_state_len))
+					goto out;
+			} else {
+				if (rad_packet_add_octets(rpd->auth_req->pack, "State", rpd->attr_state, rpd->attr_state_len))
+					goto out;
+			}
+		}
+		
+		if (rad_packet_build(rpd->auth_req->pack, rpd->auth_req->RA))
+			return -1;
 	}
-
-	if (rad_packet_add_octets(req->pack, "CHAP-Password", chap_password, 17))
-		goto out;
-
-	r = rad_auth_send(req);
+	
+	r = rad_auth_send(rpd->auth_req);
 	if (r == PWDB_SUCCESS) {
 		struct ev_radius_t ev = {
 			.ppp = rpd->ppp,
-			.request = req->pack,
-			.reply = req->reply,
+			.request = rpd->auth_req->pack,
+			.reply = rpd->auth_req->reply,
 		};
 		triton_event_fire(EV_RADIUS_ACCESS_ACCEPT, &ev);
+		rpd->auth_req->pack->id++;
 	}
 
+	return r;
 out:
-	rad_req_free(req);
+	rad_req_free(rpd->auth_req);
+	rpd->auth_req = NULL;
 
 	return r;
 }
@@ -296,7 +324,6 @@ static void setup_mppe(struct rad_req_t *req, const uint8_t *challenge)
 int rad_auth_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list args)
 {
 	int r = PWDB_DENIED;
-	struct rad_req_t *req;
 	uint8_t response[50];
 
 	int id = va_arg(args, int);
@@ -306,34 +333,58 @@ int rad_auth_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list ar
 	const uint8_t *nt_response = va_arg(args, const uint8_t *);
 	int flags = va_arg(args, int);
 
-	req = rad_req_alloc(rpd, CODE_ACCESS_REQUEST, username);
-	if (!req)
-		return PWDB_DENIED;
-	
 	response[0] = id;
 	response[1] = flags;
 	memcpy(response + 2, lm_response, 24);
 	memcpy(response + 2 + 24, nt_response, 24);
 
-	if (rad_packet_add_vendor_octets(req->pack, "Microsoft", "MS-CHAP-Challenge", challenge, challenge_len))
-		goto out;
-	
-	if (rad_packet_add_vendor_octets(req->pack, "Microsoft", "MS-CHAP-Response", response, sizeof(response)))
-		goto out;
+	if (!rpd->auth_req) {
+		rpd->auth_req = rad_req_alloc(rpd, CODE_ACCESS_REQUEST, username);
+		if (!rpd->auth_req)
+			return PWDB_DENIED;
+		
+		if (rad_packet_add_vendor_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP-Challenge", challenge, challenge_len))
+			goto out;
+		
+		if (rad_packet_add_vendor_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP-Response", response, sizeof(response)))
+			goto out;
+	} else {
+		if (rad_packet_change_vendor_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP-Challenge", challenge, challenge_len))
+			goto out;
+		
+		if (rad_packet_change_vendor_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP-Response", response, sizeof(response)))
+			goto out;
 
-	r = rad_auth_send(req);
+		if (rpd->attr_state) {
+			if (rad_packet_find_attr(rpd->auth_req->pack, "State")) {
+				if (rad_packet_change_octets(rpd->auth_req->pack, "State", rpd->attr_state, rpd->attr_state_len))
+					goto out;
+			} else {
+				if (rad_packet_add_octets(rpd->auth_req->pack, "State", rpd->attr_state, rpd->attr_state_len))
+					goto out;
+			}
+		}
+		
+		if (rad_packet_build(rpd->auth_req->pack, rpd->auth_req->RA))
+			return -1;
+	}
+
+	r = rad_auth_send(rpd->auth_req);
 	if (r == PWDB_SUCCESS) {
 		struct ev_radius_t ev = {
 			.ppp = rpd->ppp,
-			.request = req->pack,
-			.reply = req->reply,
+			.request = rpd->auth_req->pack,
+			.reply = rpd->auth_req->reply,
 		};
 		triton_event_fire(EV_RADIUS_ACCESS_ACCEPT, &ev);
-		setup_mppe(req, challenge);
+		setup_mppe(rpd->auth_req, challenge);
+		rpd->auth_req->pack->id++;
 	}
 
+	return r;
 out:
-	rad_req_free(req);
+	rad_req_free(rpd->auth_req);
+	rpd->auth_req = NULL;
 
 	return r;
 }
@@ -341,7 +392,6 @@ out:
 int rad_auth_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list args)
 {
 	int r = PWDB_DENIED;
-	struct rad_req_t *req;
 	struct rad_attr_t *ra;
 	uint8_t mschap_response[50];
 
@@ -353,25 +403,46 @@ int rad_auth_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list ar
 	int flags = va_arg(args, int);
 	uint8_t *authenticator = va_arg(args, uint8_t *);
 
-	req = rad_req_alloc(rpd, CODE_ACCESS_REQUEST, username);
-	if (!req)
-		return PWDB_DENIED;
-	
 	mschap_response[0] = id;
 	mschap_response[1] = flags;
 	memcpy(mschap_response + 2, peer_challenge, 16);
 	memcpy(mschap_response + 2 + 16, reserved, 8);
 	memcpy(mschap_response + 2 + 16 + 8, response, 24);
 
-	if (rad_packet_add_vendor_octets(req->pack, "Microsoft", "MS-CHAP-Challenge", challenge, 16))
-		goto out;
-	
-	if (rad_packet_add_vendor_octets(req->pack, "Microsoft", "MS-CHAP2-Response", mschap_response, sizeof(mschap_response)))
-		goto out;
+	if (!rpd->auth_req) {		
+		rpd->auth_req = rad_req_alloc(rpd, CODE_ACCESS_REQUEST, username);
+		if (!rpd->auth_req)
+			return PWDB_DENIED;
 
-	r = rad_auth_send(req);
+		if (rad_packet_add_vendor_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP-Challenge", challenge, 16))
+			goto out;
+		
+		if (rad_packet_add_vendor_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP2-Response", mschap_response, sizeof(mschap_response)))
+			goto out;
+	} else {
+		if (rad_packet_change_vendor_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP-Challenge", challenge, 16))
+			goto out;
+		
+		if (rad_packet_change_vendor_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP2-Response", mschap_response, sizeof(mschap_response)))
+			goto out;
+
+		if (rpd->attr_state) {
+			if (rad_packet_find_attr(rpd->auth_req->pack, "State")) {
+				if (rad_packet_change_octets(rpd->auth_req->pack, "State", rpd->attr_state, rpd->attr_state_len))
+					goto out;
+			} else {
+				if (rad_packet_add_octets(rpd->auth_req->pack, "State", rpd->attr_state, rpd->attr_state_len))
+					goto out;
+			}
+		}
+		
+		if (rad_packet_build(rpd->auth_req->pack, rpd->auth_req->RA))
+			return -1;
+	}
+	
+	r = rad_auth_send(rpd->auth_req);
 	if (r == PWDB_SUCCESS) {
-		ra = rad_packet_find_vendor_attr(req->reply, "Microsoft", "MS-CHAP2-Success");
+		ra = rad_packet_find_vendor_attr(rpd->auth_req->reply, "Microsoft", "MS-CHAP2-Success");
 		if (!ra) {
 			log_error("radius:auth:mschap-v2: 'MS-CHAP-Success' not found in radius response\n");
 			r = PWDB_DENIED;
@@ -381,15 +452,18 @@ int rad_auth_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list ar
 	if (r == PWDB_SUCCESS) {
 		struct ev_radius_t ev = {
 			.ppp = rpd->ppp,
-			.request = req->pack,
-			.reply = req->reply,
+			.request = rpd->auth_req->pack,
+			.reply = rpd->auth_req->reply,
 		};
 		triton_event_fire(EV_RADIUS_ACCESS_ACCEPT, &ev);
-		setup_mppe(req, NULL);
+		setup_mppe(rpd->auth_req, NULL);
+		rpd->auth_req->pack->id++;
 	}
 
+	return r;
 out:
-	rad_req_free(req);
+	rad_req_free(rpd->auth_req);
+	rpd->auth_req = NULL;
 
 	return r;
 }

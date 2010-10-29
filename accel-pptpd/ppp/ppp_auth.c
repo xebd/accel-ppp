@@ -298,7 +298,7 @@ static void auth_layer_free(struct ppp_layer_data_t *ld)
 	_free(ad);
 }
 
-void __export auth_successed(struct ppp_t *ppp, char *username)
+void __export ppp_auth_successed(struct ppp_t *ppp, char *username)
 {
 	struct auth_layer_data_t *ad = container_of(ppp_find_layer_data(ppp, &auth_layer), typeof(*ad), ld);
 	log_ppp_debug("auth_layer_started\n");
@@ -307,7 +307,7 @@ void __export auth_successed(struct ppp_t *ppp, char *username)
 	triton_event_fire(EV_PPP_AUTHORIZED, ppp);
 }
 
-void __export auth_failed(struct ppp_t *ppp)
+void __export ppp_auth_failed(struct ppp_t *ppp)
 {
 	ppp_terminate(ppp, TERM_AUTH_ERROR, 0);
 }
@@ -315,6 +315,20 @@ void __export auth_failed(struct ppp_t *ppp)
 int __export ppp_auth_register_handler(struct ppp_auth_handler_t *h)
 {
 	list_add_tail(&h->entry, &auth_handlers);
+	return 0;
+}
+
+int __export ppp_auth_restart(struct ppp_t *ppp)
+{
+	struct auth_layer_data_t *ad = container_of(ppp_find_layer_data(ppp, &auth_layer), typeof(*ad), ld);
+	log_ppp_debug("ppp_auth_restart\n");
+
+	if (!ad->auth_opt.auth->h->restart)
+		return -1;
+	
+	if (ad->auth_opt.auth->h->restart(ppp, ad->auth_opt.auth))
+		return -1;
+	
 	return 0;
 }
 
