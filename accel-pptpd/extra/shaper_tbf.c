@@ -29,6 +29,9 @@
 
 #define TIME_UNITS_PER_SEC 1000000
 
+#define ATTR_UP 1
+#define ATTR_DOWN 2
+
 static int conf_verbose = 0;
 static int conf_attr_down = 11; //Filter-Id
 static int conf_attr_up = 11; //Filter-Id
@@ -486,10 +489,23 @@ out_err:
 }
 
 #ifdef RADIUS
-static int parse_attr(struct rad_attr_t *attr)
+static int parse_attr(struct rad_attr_t *attr, int dir)
 {
-	if (attr->attr->type == ATTR_TYPE_STRING)
-		return atoi(attr->val.string);
+	char *endptr;
+	long int val;
+
+	if (attr->attr->type == ATTR_TYPE_STRING) {
+		val = strtol(attr->val.string, &endptr, 10);
+		if (*endptr == 0)
+			return val;
+
+		if (*endptr == '/' || *endptr == '\\' || *endptr == ':') {
+			if (dir == ATTR_DOWN)
+				return val;
+			else
+				return strtol(endptr + 1, &endptr, 10);
+		}
+	}
 	else if (attr->attr->type == ATTR_TYPE_INTEGER)
 		return attr->val.integer;
 	
@@ -508,9 +524,9 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 
 	list_for_each_entry(attr, &ev->reply->attrs, entry) {
 		if (attr->attr->id == conf_attr_down)
-			down_speed = parse_attr(attr);
+			down_speed = parse_attr(attr, ATTR_DOWN);
 		if (attr->attr->id == conf_attr_up)
-			up_speed = parse_attr(attr);
+			up_speed = parse_attr(attr, ATTR_UP);
 	}
 
 	if (down_speed > 0 && up_speed > 0) {
@@ -537,9 +553,9 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 
 	list_for_each_entry(attr, &ev->request->attrs, entry) {
 		if (attr->attr->id == conf_attr_down)
-			down_speed = parse_attr(attr);
+			down_speed = parse_attr(attr, ATTR_DOWN);
 		if (attr->attr->id == conf_attr_up)
-			up_speed = parse_attr(attr);
+			up_speed = parse_attr(attr, ATTR_UP);
 	}
 	
 	if (pd->down_speed != down_speed || pd->up_speed != up_speed) {
