@@ -38,6 +38,7 @@ static int conf_attr_up = 11; //Filter-Id
 static double conf_burst_factor = 0.1;
 static int conf_latency = 50;
 static int conf_mpu = 0;
+static int conf_vendor = 0;
 
 static double tick_in_usec = 1;
 static double clock_factor = 1;
@@ -99,14 +100,14 @@ static void tc_calc_rtable(struct tc_ratespec *r, uint32_t *rtab, int cell_log, 
 	r->cell_log=cell_log;
 }
 
-static int install_tbf(struct nl_sock *h, int ifindex, int speed)
+static int install_tbf(struct nl_sock *h, int ifindex, int speed, int burst)
 {
 	struct tc_tbf_qopt opt;
 	struct nl_msg *msg;
 	struct nl_msg *pmsg = NULL;
 	uint32_t rtab[RTNL_TC_RTABLE_SIZE];
-	double rate = speed*1000/8;
-	double bucket = rate*conf_burst_factor;
+	double rate = speed * 1000 / 8;
+	double bucket = burst ? burst : rate * conf_burst_factor;
 
 	struct tcmsg tchdr = {
 		.tcm_family = AF_UNSPEC,
@@ -207,10 +208,12 @@ nla_put_failure:
 	return -1;
 }
 
-static int install_filter(struct nl_sock *h, int ifindex, int speed)
+static int install_filter(struct nl_sock *h, int ifindex, int speed, int burst)
 {
-	double rate = speed*1000/8;
-	double bucket = rate*conf_burst_factor;
+	//double rate = speed*1000/8;
+	//double bucket = rate*conf_burst_factor;
+	double rate = speed * 1000 / 8;
+	double bucket = burst ? burst : rate * conf_burst_factor;
 	struct nl_msg *pmsg = NULL;
 	struct nl_msg *msg = NULL;
 	struct nl_msg *msg1 = NULL;
@@ -328,7 +331,7 @@ nla_put_failure:
 }
 
 
-static int install_shaper(const char *ifname, int down_speed, int up_speed)
+static int install_shaper(const char *ifname, int down_speed, int down_burst, int up_speed, int up_burst)
 {
 	struct nl_sock *h;
 	struct ifreq ifr;
@@ -355,13 +358,13 @@ static int install_shaper(const char *ifname, int down_speed, int up_speed)
 	}
 
 	if (down_speed)
-		if (install_tbf(h, ifr.ifr_ifindex, down_speed))
+		if (install_tbf(h, ifr.ifr_ifindex, down_speed, down_burst))
 			return -1;
 	
 	if (up_speed) {
 		if (install_ingress(h, ifr.ifr_ifindex))
 			return -1;
-		if (install_filter(h, ifr.ifr_ifindex, up_speed))
+		if (install_filter(h, ifr.ifr_ifindex, up_speed, up_burst))
 			return -1;
 	}
 
@@ -489,50 +492,75 @@ out_err:
 }
 
 #ifdef RADIUS
-static int parse_attr(struct rad_attr_t *attr, int dir)
+static void parse_attr(struct rad_attr_t *attr, int dir, int *speed, int *burst)
 {
 	char *endptr;
 	long int val;
+	unsigned int n1, n2, n3;
 
 	if (attr->attr->type == ATTR_TYPE_STRING) {
+		if (strstr(attr->val.string, "lcp:interface-config#1=rate-limit output") == attr->val.string) {
+			if (dir == ATTR_DOWN) {
+				val = sscanf(attr->val.string, "lcp:interface-config#1=rate-limit output %u %u %u conform-action transmit exceed-action drop", &n1, &n2, &n3);
+				if (val == 3) {
+					*speed = n1/1000;
+					*burst = n2;
+				}
+			}
+			return;
+		}
+		else if (strstr(attr->val.string, "lcp:interface-config#1=rate-limit input") == attr->val.string) {
+			if (dir == ATTR_UP) {
+				val = sscanf(attr->val.string, "lcp:interface-config#1=rate-limit input %u %u %u conform-action transmit exceed-action drop", &n1, &n2, &n3);
+				if (val == 3) {
+					*speed = n1/1000;
+					*burst = n2;
+				}
+			}
+			return;
+		}
+
 		val = strtol(attr->val.string, &endptr, 10);
 		if (*endptr == 0)
-			return val;
-
-		if (*endptr == '/' || *endptr == '\\' || *endptr == ':') {
-			if (dir == ATTR_DOWN)
-				return val;
-			else
-				return strtol(endptr + 1, &endptr, 10);
+			*speed = val;
+		else {
+			if (*endptr == '/' || *endptr == '\\' || *endptr == ':') {
+				if (dir == ATTR_DOWN)
+					*speed = val;
+				else
+					*speed = strtol(endptr + 1, &endptr, 10);
+			}
 		}
 	}
 	else if (attr->attr->type == ATTR_TYPE_INTEGER)
-		return attr->val.integer;
-	
-	return 0;
+		*speed = attr->val.integer;
 }
 
 static void ev_radius_access_accept(struct ev_radius_t *ev)
 {
 	struct rad_attr_t *attr;
-	int down_speed = 0;
-	int up_speed = 0;
+	int down_speed = 0, down_burst = 0;
+	int up_speed = 0, up_burst = 0;
 	struct shaper_pd_t *pd = find_pd(ev->ppp, 1);
 
 	if (!pd)
 		return;
 
 	list_for_each_entry(attr, &ev->reply->attrs, entry) {
+		if (attr->vendor && attr->vendor->id != conf_vendor)
+			continue;
+		if (!attr->vendor && conf_vendor)
+			continue;
 		if (attr->attr->id == conf_attr_down)
-			down_speed = parse_attr(attr, ATTR_DOWN);
+			parse_attr(attr, ATTR_DOWN, &down_speed, &down_burst);
 		if (attr->attr->id == conf_attr_up)
-			up_speed = parse_attr(attr, ATTR_UP);
+			parse_attr(attr, ATTR_UP, &up_speed, &up_burst);
 	}
 
 	if (down_speed > 0 && up_speed > 0) {
 		pd->down_speed = down_speed;
 		pd->up_speed = up_speed;
-		if (!install_shaper(ev->ppp->ifname, down_speed, up_speed)) {
+		if (!install_shaper(ev->ppp->ifname, down_speed, down_burst, up_speed, up_burst)) {
 			if (conf_verbose)
 				log_ppp_info("tbf: installed shaper %i/%i (Kbit)\n", down_speed, up_speed);
 		}
@@ -542,8 +570,8 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 static void ev_radius_coa(struct ev_radius_t *ev)
 {
 	struct rad_attr_t *attr;
-	int down_speed = 0;
-	int up_speed = 0;
+	int down_speed = 0, down_burst = 0;
+	int up_speed = 0, up_burst = 0;
 	struct shaper_pd_t *pd = find_pd(ev->ppp, 1);
 
 	if (!pd) {
@@ -552,10 +580,14 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 	}
 
 	list_for_each_entry(attr, &ev->request->attrs, entry) {
+		if (attr->vendor && attr->vendor->id != conf_vendor)
+			continue;
+		if (!attr->vendor && conf_vendor)
+			continue;
 		if (attr->attr->id == conf_attr_down)
-			down_speed = parse_attr(attr, ATTR_DOWN);
+			parse_attr(attr, ATTR_DOWN, &down_speed, &down_burst);
 		if (attr->attr->id == conf_attr_up)
-			up_speed = parse_attr(attr, ATTR_UP);
+			parse_attr(attr, ATTR_UP, &up_speed, &up_burst);
 	}
 	
 	if (pd->down_speed != down_speed || pd->up_speed != up_speed) {
@@ -568,7 +600,7 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 		}
 		
 		if (down_speed > 0 || up_speed > 0) {
-			if (install_shaper(ev->ppp->ifname, down_speed, up_speed)) {
+			if (install_shaper(ev->ppp->ifname, down_speed, down_burst, up_speed, up_burst)) {
 				ev->res= -1;
 				return;
 			} else {
@@ -632,11 +664,35 @@ static int clock_init(void)
 static int parse_attr_opt(const char *opt)
 {
 	struct rad_dict_attr_t *attr;
+	struct rad_dict_vendor_t *vendor;
 
-	attr = rad_dict_find_attr(opt);
+	if (conf_vendor)
+		vendor = rad_dict_find_vendor_id(conf_vendor);
+	else
+		vendor = NULL;
+
+	if (conf_vendor) {
+		if (vendor)
+			attr = rad_dict_find_vendor_attr(vendor, opt);
+		else
+			attr = NULL;
+	}else
+		attr = rad_dict_find_attr(opt);
+
 	if (attr)
 		return attr->id;
 
+	return atoi(opt);
+}
+
+static int parse_vendor_opt(const char *opt)
+{
+	struct rad_dict_vendor_t *vendor;
+
+	vendor = rad_dict_find_vendor_name(opt);
+	if (vendor)
+		return vendor->id;
+	
 	return atoi(opt);
 }
 #endif
@@ -649,6 +705,10 @@ static void __init init(void)
 		return;
 
 #ifdef RADIUS
+	opt = conf_get_opt("tbf", "vendor");
+	if (opt)
+		conf_vendor = parse_vendor_opt(opt);
+
 	opt = conf_get_opt("tbf", "attr");
 	if (opt) {
 		conf_attr_down = parse_attr_opt(opt);

@@ -72,7 +72,7 @@ $INCLUDE dictionary.rfc4072
 $INCLUDE dictionary.rfc4372
 $INCLUDE dictionary.rfc5176
 
-
 $INCLUDE dictionary.microsoft
+$INCLUDE dictionary.cisco
 
 ATTRIBUTE Traffic-Shape-in 231 integer
