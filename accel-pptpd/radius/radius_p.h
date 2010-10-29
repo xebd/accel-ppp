@@ -59,6 +59,7 @@ extern int conf_timeout;
 extern int conf_verbose;
 extern char *conf_nas_identifier;
 extern char *conf_nas_ip_address;
+extern in_addr_t conf_bind;
 extern char *conf_gw_ip_address;
 extern char *conf_auth_server;
 extern char *conf_auth_secret;

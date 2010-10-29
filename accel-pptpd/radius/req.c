@@ -140,8 +140,8 @@ static int make_socket(struct rad_req_t *req)
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
 
-	if (conf_nas_ip_address) {
-		addr.sin_addr.s_addr = inet_addr(conf_nas_ip_address);
+	if (conf_bind) {
+		addr.sin_addr.s_addr = conf_bind;
 		if (bind(req->hnd.fd, (struct sockaddr *) &addr, sizeof(addr))) {
 			log_ppp_error("radius:bind: %s\n", strerror(errno));
 			goto out_err;

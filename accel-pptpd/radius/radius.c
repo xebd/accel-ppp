@@ -27,6 +27,7 @@ int conf_timeout = 3;
 char *conf_nas_identifier = "accel-pptpd";
 char *conf_nas_ip_address;
 char *conf_gw_ip_address;
+in_addr_t conf_bind = 0;
 int conf_verbose = 0;
 
 char *conf_auth_server;
@@ -377,6 +378,12 @@ static void __init radius_init(void)
 	opt = conf_get_opt("radius", "gw-ip-address");
 	if (opt)
 		conf_gw_ip_address = opt;
+
+	opt = conf_get_opt("radius", "bind");
+	if (opt)
+		conf_bind = inet_addr(opt);
+	else if (conf_nas_ip_address)
+		conf_bind = inet_addr(conf_nas_ip_address);
 
 	opt = conf_get_opt("radius", "auth_server");
 	if (!opt) {

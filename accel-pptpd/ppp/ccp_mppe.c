@@ -25,6 +25,8 @@ static struct ccp_option_t *mppe_init(struct ppp_ccp_t *ccp);
 static void mppe_free(struct ppp_ccp_t *ccp, struct ccp_option_t *opt);
 static int mppe_send_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, uint8_t *ptr);
 static int mppe_recv_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, uint8_t *ptr);
+static int mppe_recv_conf_nak(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, uint8_t *ptr);
+static int mppe_recv_conf_rej(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, uint8_t *ptr);
 static void mppe_print(void (*print)(const char *fmt,...),struct ccp_option_t*, uint8_t *ptr);
 
 struct mppe_option_t
@@ -41,6 +43,8 @@ static struct ccp_option_handler_t mppe_opt_hnd = {
 	.send_conf_req = mppe_send_conf_req,
 	.send_conf_nak = mppe_send_conf_req,
 	.recv_conf_req = mppe_recv_conf_req,
+	.recv_conf_nak = mppe_recv_conf_nak,
+	.recv_conf_rej = mppe_recv_conf_rej,
 	.free = mppe_free,
 	.print = mppe_print,
 };
@@ -114,7 +118,7 @@ static int mppe_send_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, u
 	struct mppe_option_t *mppe_opt = container_of(opt,typeof(*mppe_opt),opt);
 	struct ccp_opt32_t *opt32 = (struct ccp_opt32_t*)ptr;
 
-	if (mppe_opt->policy == 2 || mppe_opt->mppe != -1)	{
+	if (mppe_opt->mppe != -1)	{
 		opt32->hdr.id = CI_MPPE;
 		opt32->hdr.len = 6;
 		opt32->val = mppe_opt->mppe ? htonl(MPPE_S | MPPE_H) : 0;
@@ -168,6 +172,42 @@ static int mppe_recv_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, u
 	}
 
 	return CCP_OPT_ACK;
+}
+
+static int mppe_recv_conf_rej(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, uint8_t *ptr)
+{
+	struct mppe_option_t *mppe_opt = container_of(opt, typeof(*mppe_opt), opt);
+
+	if (mppe_opt->mppe != 2) {
+		mppe_opt->mppe = -1;
+		return 0;
+	}
+
+	return -1;
+}
+
+static int mppe_recv_conf_nak(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, uint8_t *ptr)
+{
+	struct mppe_option_t *mppe_opt = container_of(opt, typeof(*mppe_opt), opt);
+	struct ccp_opt32_t *opt32 = (struct ccp_opt32_t *)ptr;
+
+	if (opt32->hdr.len != 6)
+		return -1;
+
+	if (mppe_opt->policy == 2) {
+		if (ntohl(opt32->val) == (MPPE_S | MPPE_H))
+			return -1;
+	} else if (mppe_opt->policy == 1) {
+		if (ntohl(opt32->val) & (MPPE_S | MPPE_H) == (MPPE_S | MPPE_H))
+			mppe_opt->mppe = 0;
+		else
+			mppe_opt->mppe = 1;
+	} else {
+		if (opt32->val == 0)
+			return -1;
+	}
+
+	return 0;
 }
 
 static void mppe_print(void (*print)(const char *fmt,...),struct ccp_option_t *opt, uint8_t *ptr)
