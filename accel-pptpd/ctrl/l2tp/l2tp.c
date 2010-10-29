@@ -1060,7 +1060,7 @@ static void __init l2tp_init(void)
 	if (opt && atoi(opt) > 0)
 		conf_verbose = 1;
 
-	opt = conf_get_opt("l2tp", "hello_interval");
+	opt = conf_get_opt("l2tp", "hello-interval");
 	if (opt && atoi(opt) > 0)
 		conf_hello_interval = atoi(opt);
 

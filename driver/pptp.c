@@ -400,7 +400,11 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 		}
 	}
 #endif
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,36)
 	tdev = rt->u.dst.dev;
+#else
+	tdev = rt->dst.dev;
+#endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	max_headroom = ((tdev->hard_header_len+15)&~15) + sizeof(*iph)+sizeof(*hdr)+2;
@@ -507,7 +511,11 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 #endif
 	iph->version		=	4;
 	iph->ihl		=	sizeof(struct iphdr) >> 2;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,36)
 	if (ip_dont_fragment(sk, &rt->u.dst))
+#else
+	if (ip_dont_fragment(sk, &rt->dst))
+#endif
 		iph->frag_off	=	htons(IP_DF);
 	else
 		iph->frag_off	=	0;
@@ -518,13 +526,21 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	iph->ttl = sk->protinfo.af_inet.ttl;
 #else
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,36)
 	iph->ttl = dst_metric(&rt->u.dst, RTAX_HOPLIMIT);
+#else
+	iph->ttl = dst_metric(&rt->dst, RTAX_HOPLIMIT);
+#endif
 #endif
 	iph->tot_len = htons(skb->len);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,31)
 	skb_dst_drop(skb);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,36)
 	skb_dst_set(skb,&rt->u.dst);
+#else
+	skb_dst_set(skb,&rt->dst);
+#endif
 #else
 	dst_release(skb->dst);
 	skb->dst = &rt->u.dst;
@@ -533,7 +549,11 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 	nf_reset(skb);
 
 	skb->ip_summed = CHECKSUM_NONE;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,36)
 	ip_select_ident(iph, &rt->u.dst, NULL);
+#else
+	ip_select_ident(iph, &rt->dst, NULL);
+#endif
 	ip_send_check(iph);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
@@ -855,13 +875,21 @@ static int pptp_connect(struct socket *sock, struct sockaddr *uservaddr,
 			error = -EHOSTUNREACH;
 			goto end;
 		}
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,36)
 		sk_setup_caps(sk, &rt->u.dst);
+#else
+		sk_setup_caps(sk, &rt->dst);
+#endif
 	}
 #endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	po->chan.mtu=PPP_MTU;
 #else
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,36)
 	po->chan.mtu=dst_mtu(&rt->u.dst);
+#else
+	po->chan.mtu=dst_mtu(&rt->dst);
+#endif
 	if (!po->chan.mtu) po->chan.mtu=PPP_MTU;
 #endif
 	ip_rt_put(rt);
