@@ -28,6 +28,7 @@ struct ipaddr_option_t
 {
 	struct ipcp_option_t opt;
 	struct ipdb_item_t *ip;
+	int started:1;
 };
 
 static struct ipcp_option_handler_t ipaddr_opt_hnd=
@@ -119,6 +120,11 @@ static int ipaddr_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 	return IPCP_OPT_NAK;
 
 ack:
+	if (ipaddr_opt->started)
+		return IPCP_OPT_ACK;
+	
+	ipaddr_opt->started = 1;
+
 	ipcp->ppp->ipaddr = ipaddr_opt->ip->addr;
 	ipcp->ppp->peer_ipaddr = ipaddr_opt->ip->peer_addr;
 
