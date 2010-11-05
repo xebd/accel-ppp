@@ -10,9 +10,11 @@
 
 #include <openssl/md4.h>
 #include <openssl/des.h>
+#include <openssl/sha.h>
 
 #include "log.h"
 #include "ppp.h"
+#include "events.h"
 #include "ppp_auth.h"
 #include "ppp_lcp.h"
 #include "pwdb.h"
@@ -97,6 +99,7 @@ static void chap_recv(struct ppp_handler_t *h);
 static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response_t *res, const char *name);
 static void chap_timeout_timer(struct triton_timer_t *t);
 static void chap_restart_timer(struct triton_timer_t *t);
+static void set_mppe_keys(struct chap_auth_data_t *ad, uint8_t *z_hash);
 
 static void print_buf(const uint8_t *buf,int size)
 {
@@ -396,6 +399,8 @@ static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response
 	des_encrypt(ad->val, z_hash + 7, nt_hash + 8);
 	des_encrypt(ad->val, z_hash + 14, nt_hash + 16);
 
+	set_mppe_keys(ad, z_hash);
+
 	_free(passwd);
 	_free(u_passwd);
 
@@ -405,6 +410,35 @@ static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response
 static int chap_check(uint8_t *ptr)
 {
 	return *ptr == MSCHAP_V1;
+}
+
+static void set_mppe_keys(struct chap_auth_data_t *ad, uint8_t *z_hash)
+{
+	MD4_CTX md4_ctx;
+	SHA_CTX sha_ctx;
+	uint8_t digest[20];
+
+	struct ev_mppe_keys_t ev_mppe = {
+		.ppp = ad->ppp,
+		.type = 1 << 2,
+		.policy = 1,
+		.recv_key = digest,
+		.send_key = digest,
+	};
+
+	//NtPasswordHashHash
+	MD4_Init(&md4_ctx);
+	MD4_Update(&md4_ctx, z_hash, 16);
+	MD4_Final(digest, &md4_ctx);
+
+	//Get_Start_Key
+	SHA1_Init(&sha_ctx);
+	SHA1_Update(&sha_ctx, digest, 16);
+	SHA1_Update(&sha_ctx, digest, 16);
+	SHA1_Update(&sha_ctx, ad->val, VALUE_SIZE);
+	SHA1_Final(digest, &sha_ctx);	
+
+	triton_event_fire(EV_MPPE_KEYS, &ev_mppe);
 }
 
 static int chap_restart(struct ppp_t *ppp, struct auth_data_t *auth)
