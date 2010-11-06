@@ -14,7 +14,7 @@
 #define EV_PPP_PRE_UP       9
 #define EV_PPP_ACCT_START   10
 #define EV_IP_CHANGED       100
-#define EV_SHAPE_CHANGED    101
+#define EV_SHAPER           101
 #define EV_MPPE_KEYS        102
 #define EV_RADIUS_ACCESS_ACCEPT 200
 #define EV_RADIUS_COA           201
@@ -36,6 +36,12 @@ struct ev_mppe_keys_t
 	uint8_t *send_key;
 	int policy;
 	int type;
+};
+
+struct ev_shaper_t
+{
+	struct ppp_t *ppp;
+	const char *val;
 };
 
 #endif

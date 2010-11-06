@@ -24,6 +24,7 @@ struct cs_pd_t
 	struct ppp_pd_t pd;
 	struct ipdb_item_t ip;
 	char *passwd;
+	char *rate;
 };
 
 static char *skip_word(char *ptr)
@@ -44,7 +45,7 @@ static int split(char *buf, char **ptr)
 {
 	int i;
 
-	for (i = 0; i < 3; i++) {
+	for (i = 0; i < 4; i++) {
 		buf = skip_word(buf);
 		if (!*buf)
 			return i;
@@ -72,7 +73,7 @@ static struct cs_pd_t *create_pd(struct ppp_t *ppp, const char *username)
 {
 	FILE *f;
 	char *buf;
-	char *ptr[4];
+	char *ptr[5];
 	int n;
 	struct cs_pd_t *pd;
 
@@ -122,10 +123,13 @@ found:
 	}
 
 	pd->ip.addr = conf_gw_ip_address;
-	if (n == 3)
+	if (n >= 3)
 		pd->ip.peer_addr = inet_addr(ptr[2]);
 	pd->ip.owner = &ipdb;
-	
+
+	if (n == 4)
+		pd->rate = _strdup(ptr[3]);
+
 	list_add_tail(&pd->pd.entry, &ppp->pd_list);
 
 	fclose(f);
@@ -156,7 +160,25 @@ static void ev_ppp_finished(struct ppp_t *ppp)
 
 	list_del(&pd->pd.entry);
 	_free(pd->passwd);
+	if (pd->rate)
+		_free(pd->rate);
 	_free(pd);
+}
+
+static void ev_ppp_pre_up(struct ppp_t *ppp)
+{
+	struct cs_pd_t *pd = find_pd(ppp);
+	struct ev_shaper_t ev = {
+		.ppp = ppp,
+	};
+
+	if (!pd)
+		return;
+
+	if (pd->rate) {
+		ev.val = pd->rate;
+		triton_event_fire(EV_SHAPER, &ev);
+	}
 }
 
 static struct ipdb_item_t *get_ip(struct ppp_t *ppp)
@@ -214,4 +236,5 @@ static void __init init(void)
 	ipdb_register(&ipdb);
 	
 	triton_event_register_handler(EV_PPP_FINISHED, (triton_event_func)ev_ppp_finished);
+	triton_event_register_handler(EV_PPP_PRE_UP, (triton_event_func)ev_ppp_pre_up);
 }

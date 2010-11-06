@@ -198,7 +198,7 @@ static int mppe_recv_conf_nak(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, u
 		if (ntohl(opt32->val) == (MPPE_S | MPPE_H))
 			return -1;
 	} else if (mppe_opt->policy == 1) {
-		if (ntohl(opt32->val) & (MPPE_S | MPPE_H) == (MPPE_S | MPPE_H))
+		if ((ntohl(opt32->val) & (MPPE_S | MPPE_H)) == (MPPE_S | MPPE_H))
 			mppe_opt->mppe = 0;
 		else
 			mppe_opt->mppe = 1;

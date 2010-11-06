@@ -33,12 +33,14 @@
 #define ATTR_DOWN 2
 
 static int conf_verbose = 0;
+#ifdef RADIUS
 static int conf_attr_down = 11; //Filter-Id
 static int conf_attr_up = 11; //Filter-Id
+static int conf_vendor = 0;
+#endif
 static double conf_burst_factor = 0.1;
 static int conf_latency = 50;
 static int conf_mpu = 0;
-static int conf_vendor = 0;
 
 static double tick_in_usec = 1;
 static double clock_factor = 1;
@@ -491,47 +493,51 @@ out_err:
 	return -1;
 }
 
-#ifdef RADIUS
-static void parse_attr(struct rad_attr_t *attr, int dir, int *speed, int *burst)
+static void parse_string(const char *str, int dir, int *speed, int *burst)
 {
 	char *endptr;
 	long int val;
 	unsigned int n1, n2, n3;
 
-	if (attr->attr->type == ATTR_TYPE_STRING) {
-		if (strstr(attr->val.string, "lcp:interface-config#1=rate-limit output") == attr->val.string) {
-			if (dir == ATTR_DOWN) {
-				val = sscanf(attr->val.string, "lcp:interface-config#1=rate-limit output %u %u %u conform-action transmit exceed-action drop", &n1, &n2, &n3);
-				if (val == 3) {
-					*speed = n1/1000;
-					*burst = n2;
-				}
+	if (strstr(str, "lcp:interface-config#1=rate-limit output") == str) {
+		if (dir == ATTR_DOWN) {
+			val = sscanf(str, "lcp:interface-config#1=rate-limit output %u %u %u conform-action transmit exceed-action drop", &n1, &n2, &n3);
+			if (val == 3) {
+				*speed = n1/1000;
+				*burst = n2;
 			}
-			return;
 		}
-		else if (strstr(attr->val.string, "lcp:interface-config#1=rate-limit input") == attr->val.string) {
-			if (dir == ATTR_UP) {
-				val = sscanf(attr->val.string, "lcp:interface-config#1=rate-limit input %u %u %u conform-action transmit exceed-action drop", &n1, &n2, &n3);
-				if (val == 3) {
-					*speed = n1/1000;
-					*burst = n2;
-				}
+		return;
+	}
+	else if (strstr(str, "lcp:interface-config#1=rate-limit input") == str) {
+		if (dir == ATTR_UP) {
+			val = sscanf(str, "lcp:interface-config#1=rate-limit input %u %u %u conform-action transmit exceed-action drop", &n1, &n2, &n3);
+			if (val == 3) {
+				*speed = n1/1000;
+				*burst = n2;
 			}
-			return;
 		}
+		return;
+	}
 
-		val = strtol(attr->val.string, &endptr, 10);
-		if (*endptr == 0)
-			*speed = val;
-		else {
-			if (*endptr == '/' || *endptr == '\\' || *endptr == ':') {
-				if (dir == ATTR_DOWN)
-					*speed = val;
-				else
-					*speed = strtol(endptr + 1, &endptr, 10);
-			}
+	val = strtol(str, &endptr, 10);
+	if (*endptr == 0)
+		*speed = val;
+	else {
+		if (*endptr == '/' || *endptr == '\\' || *endptr == ':') {
+			if (dir == ATTR_DOWN)
+				*speed = val;
+			else
+				*speed = strtol(endptr + 1, &endptr, 10);
 		}
 	}
+}
+
+#ifdef RADIUS
+static void parse_attr(struct rad_attr_t *attr, int dir, int *speed, int *burst)
+{
+	if (attr->attr->type == ATTR_TYPE_STRING)
+		parse_string(attr->val.string, dir, speed, burst);
 	else if (attr->attr->type == ATTR_TYPE_INTEGER)
 		*speed = attr->val.integer;
 }
@@ -614,6 +620,28 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 	}
 }
 #endif
+
+static void ev_shaper(struct ev_shaper_t *ev)
+{
+	struct shaper_pd_t *pd = find_pd(ev->ppp, 1);
+	int down_speed = 0, down_burst = 0;
+	int up_speed = 0, up_burst = 0;
+
+	if (!pd)
+		return;
+
+	parse_string(ev->val, ATTR_DOWN, &down_speed, &down_burst);
+	parse_string(ev->val, ATTR_UP, &up_speed, &up_burst);
+
+	if (down_speed > 0 && up_speed > 0) {
+		pd->down_speed = down_speed;
+		pd->up_speed = up_speed;
+		if (!install_shaper(ev->ppp->ifname, down_speed, down_burst, up_speed, up_burst)) {
+			if (conf_verbose)
+				log_ppp_info("tbf: installed shaper %i/%i (Kbit)\n", down_speed, up_speed);
+		}
+	}
+}
 
 static void ev_ctrl_finished(struct ppp_t *ppp)
 {
@@ -750,5 +778,6 @@ static void __init init(void)
 	triton_event_register_handler(EV_RADIUS_COA, (triton_event_func)ev_radius_coa);
 #endif
 	triton_event_register_handler(EV_CTRL_FINISHED, (triton_event_func)ev_ctrl_finished);
+	triton_event_register_handler(EV_SHAPER, (triton_event_func)ev_shaper);
 }
 
