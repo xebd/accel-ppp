@@ -38,7 +38,8 @@ static int conf_attr_down = 11; //Filter-Id
 static int conf_attr_up = 11; //Filter-Id
 static int conf_vendor = 0;
 #endif
-static double conf_burst_factor = 0.1;
+static double conf_down_burst_factor = 0.1;
+static double conf_up_burst_factor = 1;
 static int conf_latency = 50;
 static int conf_mpu = 0;
 
@@ -109,7 +110,7 @@ static int install_tbf(struct nl_sock *h, int ifindex, int speed, int burst)
 	struct nl_msg *pmsg = NULL;
 	uint32_t rtab[RTNL_TC_RTABLE_SIZE];
 	double rate = speed * 1000 / 8;
-	double bucket = burst ? burst : rate * conf_burst_factor;
+	double bucket = burst ? burst : rate * conf_down_burst_factor;
 
 	struct tcmsg tchdr = {
 		.tcm_family = AF_UNSPEC,
@@ -215,7 +216,7 @@ static int install_filter(struct nl_sock *h, int ifindex, int speed, int burst)
 	//double rate = speed*1000/8;
 	//double bucket = rate*conf_burst_factor;
 	double rate = speed * 1000 / 8;
-	double bucket = burst ? burst : rate * conf_burst_factor;
+	double bucket = burst ? burst : rate * conf_up_burst_factor;
 	struct nl_msg *pmsg = NULL;
 	struct nl_msg *msg = NULL;
 	struct nl_msg *msg1 = NULL;
@@ -758,9 +759,19 @@ static void __init init(void)
 #endif
 	
 	opt = conf_get_opt("tbf", "burst-factor");
-	if (opt)
-		conf_burst_factor = strtod(opt, NULL);
+	if (opt) {
+		conf_down_burst_factor = strtod(opt, NULL);
+		conf_up_burst_factor = conf_down_burst_factor * 10;
+	}
 	
+	opt = conf_get_opt("tbf", "down-burst-factor");
+	if (opt)
+		conf_down_burst_factor = strtod(opt, NULL);
+
+	opt = conf_get_opt("tbf", "up-burst-factor");
+	if (opt)
+		conf_up_burst_factor = strtod(opt, NULL);
+
 	opt = conf_get_opt("tbf", "latency");
 	if (opt && atoi(opt) > 0)
 		conf_latency = atoi(opt);
