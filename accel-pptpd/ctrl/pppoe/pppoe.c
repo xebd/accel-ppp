@@ -35,6 +35,8 @@ struct pppoe_serv_t
 	pthread_mutex_t lock;
 	struct pppoe_conn_t *conn[MAX_SID];
 	uint16_t sid;
+
+	struct list_head pado_list;
 };
 
 struct pppoe_conn_t
@@ -48,16 +50,29 @@ struct pppoe_conn_t
 
 	struct pppoe_tag *relay_sid;
 	struct pppoe_tag *host_uniq;
+	struct pppoe_tag *service_name;
 	
 	struct ppp_ctrl_t ctrl;
 	struct ppp_t ppp;
 };
 
-static int conf_verbose = 0;
-static const char *conf_service_name = "";
-static const char *conf_ac_name = "accel-pptp";
+struct delayed_pado_t
+{
+	struct list_head entry;
+	struct triton_timer_t timer;
+	struct pppoe_serv_t *serv;
+	uint8_t addr[ETH_ALEN];
+	struct pppoe_tag *host_uniq;
+	struct pppoe_tag *relay_sid;
+	struct pppoe_tag *service_name;
+};
 
+static int conf_verbose = 0;
+static const char *conf_service_name = NULL;
+static const char *conf_ac_name = "accel-pptp";
+static int conf_pado_delay = 0;
 static mempool_t conn_pool;
+static mempool_t pado_pool;
 
 #define SECRET_SIZE 16
 static uint8_t *secret;
@@ -88,6 +103,7 @@ static void disconnect(struct pppoe_conn_t *conn)
 
 	_free(conn->ctrl.calling_station_id);
 	_free(conn->ctrl.called_station_id);
+	_free(conn->service_name);
 	if (conn->host_uniq)
 		_free(conn->host_uniq);
 	if (conn->relay_sid)
@@ -125,7 +141,7 @@ static void pppoe_conn_close(struct triton_context_t *ctx)
 		disconnect(conn);
 }
 
-static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const uint8_t *addr, const struct pppoe_tag *host_uniq, const struct pppoe_tag *relay_sid)
+static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const uint8_t *addr, const struct pppoe_tag *host_uniq, const struct pppoe_tag *relay_sid, const struct pppoe_tag *service_name)
 {
 	struct pppoe_conn_t *conn;
 	int sid;
@@ -169,6 +185,9 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 		conn->relay_sid = _malloc(sizeof(*relay_sid) + ntohs(relay_sid->tag_len));
 		memcpy(conn->relay_sid, relay_sid, sizeof(*relay_sid) + ntohs(relay_sid->tag_len));
 	}
+
+	conn->service_name = _malloc(sizeof(*service_name) + ntohs(service_name->tag_len));
+	memcpy(conn->service_name, service_name, sizeof(*service_name) + ntohs(service_name->tag_len));
 
 	conn->ctx.before_switch = log_switch;
 	conn->ctx.close = pppoe_conn_close;
@@ -402,7 +421,7 @@ static void pppoe_send(int fd, const uint8_t *pack)
 	}
 }
 
-static void pppoe_send_PADO(struct pppoe_serv_t *serv, const uint8_t *addr, const struct pppoe_tag *host_uniq, const struct pppoe_tag *relay_sid)
+static void pppoe_send_PADO(struct pppoe_serv_t *serv, const uint8_t *addr, const struct pppoe_tag *host_uniq, const struct pppoe_tag *relay_sid, const struct pppoe_tag *service_name)
 {
 	uint8_t pack[ETHER_MAX_LEN];
 	uint8_t cookie[MD5_DIGEST_LENGTH];
@@ -410,8 +429,12 @@ static void pppoe_send_PADO(struct pppoe_serv_t *serv, const uint8_t *addr, cons
 	setup_header(pack, serv->hwaddr, addr, CODE_PADO, 0);
 
 	add_tag(pack, TAG_AC_NAME, (uint8_t *)conf_ac_name, strlen(conf_ac_name));
-	add_tag(pack, TAG_SERVICE_NAME, (uint8_t *)conf_service_name, strlen(conf_service_name));
+	if (conf_service_name)
+		add_tag(pack, TAG_SERVICE_NAME, (uint8_t *)conf_service_name, strlen(conf_service_name));
 
+	if (service_name)
+		add_tag2(pack, service_name);
+	
 	generate_cookie(serv->hwaddr, addr, cookie);
 	add_tag(pack, TAG_AC_COOKIE, cookie, MD5_DIGEST_LENGTH);
 
@@ -459,7 +482,8 @@ static void pppoe_send_PADS(struct pppoe_conn_t *conn)
 	setup_header(pack, conn->serv->hwaddr, conn->addr, CODE_PADS, conn->sid);
 
 	add_tag(pack, TAG_AC_NAME, (uint8_t *)conf_ac_name, strlen(conf_ac_name));
-	add_tag(pack, TAG_SERVICE_NAME, (uint8_t *)conf_service_name, strlen(conf_service_name));
+	
+	add_tag2(pack, conn->service_name);
 
 	if (conn->host_uniq)
 		add_tag2(pack, conn->host_uniq);
@@ -482,7 +506,8 @@ static void pppoe_send_PADT(struct pppoe_conn_t *conn)
 	setup_header(pack, conn->serv->hwaddr, conn->addr, CODE_PADT, conn->sid);
 
 	add_tag(pack, TAG_AC_NAME, (uint8_t *)conf_ac_name, strlen(conf_ac_name));
-	add_tag(pack, TAG_SERVICE_NAME, (uint8_t *)conf_service_name, strlen(conf_service_name));
+
+	add_tag2(pack, conn->service_name);
 
 	if (conn->host_uniq)
 		add_tag2(pack, conn->host_uniq);
@@ -498,6 +523,26 @@ static void pppoe_send_PADT(struct pppoe_conn_t *conn)
 	pppoe_send(conn->disc_sock, pack);
 }
 
+static void pado_timer(struct triton_timer_t *t)
+{
+	struct delayed_pado_t *pado = container_of(t, typeof(*pado), timer);
+
+	triton_timer_del(t);
+
+	pppoe_send_PADO(pado->serv, pado->addr, pado->host_uniq, pado->relay_sid, pado->service_name);
+
+	list_del(&pado->entry);
+
+	if (pado->host_uniq)
+		_free(pado->host_uniq);
+	if (pado->relay_sid)
+		_free(pado->relay_sid);
+	if (pado->service_name)
+		_free(pado->service_name);
+
+	mempool_free(pado);
+}
+
 static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 {
 	struct ethhdr *ethhdr = (struct ethhdr *)pack;
@@ -505,7 +550,9 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	struct pppoe_tag *tag;
 	struct pppoe_tag *host_uniq_tag = NULL;
 	struct pppoe_tag *relay_sid_tag = NULL;
+	struct pppoe_tag *service_name_tag = NULL;
 	int n, service_match = 0;
+	struct delayed_pado_t *pado;
 
 	if (hdr->sid) {
 		log_warn("pppoe: discarding PADI packet (sid is not zero)\n");
@@ -531,6 +578,9 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 					if (memcmp(tag->tag_data, conf_service_name, ntohs(tag->tag_len)))
 						break;
 					service_match = 1;
+				} else {
+					service_name_tag = tag;
+					service_match = 1;
 				}
 				break;
 			case TAG_HOST_UNIQ:
@@ -547,8 +597,43 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 			log_warn("pppoe: discarding PADI packet (Service-Name mismatch)\n");
 		return;
 	}
-	
-	pppoe_send_PADO(serv, ethhdr->h_source, host_uniq_tag, relay_sid_tag);
+
+	if (conf_pado_delay) {
+		list_for_each_entry(pado, &serv->pado_list, entry) {
+			if (memcmp(pado->addr, ethhdr->h_source, ETH_ALEN))
+				continue;
+			if (conf_verbose)
+				log_warn("pppoe: discarding PADI packet (already queued)\n");
+			return;
+		}
+		pado = mempool_alloc(pado_pool);
+		memset(pado, 0, sizeof(*pado));
+		pado->serv = serv;
+		memcpy(pado->addr, ethhdr->h_source, ETH_ALEN);
+
+		if (host_uniq_tag) {
+			pado->host_uniq = _malloc(sizeof(*host_uniq_tag) + ntohs(host_uniq_tag->tag_len));
+			memcpy(pado->host_uniq, host_uniq_tag, sizeof(*host_uniq_tag) + ntohs(host_uniq_tag->tag_len));
+		}
+
+		if (relay_sid_tag) {
+			pado->relay_sid = _malloc(sizeof(*relay_sid_tag) + ntohs(relay_sid_tag->tag_len));
+			memcpy(pado->relay_sid, relay_sid_tag, sizeof(*relay_sid_tag) + ntohs(relay_sid_tag->tag_len));
+		}
+
+		if (service_name_tag) {
+			pado->service_name = _malloc(sizeof(*service_name_tag) + ntohs(service_name_tag->tag_len));
+			memcpy(pado->service_name, service_name_tag, sizeof(*service_name_tag) + ntohs(service_name_tag->tag_len));
+		}
+
+		pado->timer.expire = pado_timer;
+		pado->timer.period = conf_pado_delay;
+
+		triton_timer_add(&serv->ctx, &pado->timer, 0);
+
+		list_add_tail(&pado->entry, &serv->pado_list);
+	} else
+		pppoe_send_PADO(serv, ethhdr->h_source, host_uniq_tag, relay_sid_tag, service_name_tag);
 }
 
 static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
@@ -559,6 +644,7 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	struct pppoe_tag *host_uniq_tag = NULL;
 	struct pppoe_tag *relay_sid_tag = NULL;
 	struct pppoe_tag *ac_cookie_tag = NULL;
+	struct pppoe_tag *service_name_tag = NULL;
 	uint8_t cookie[MD5_DIGEST_LENGTH];
 	int n, service_match = 0;
 	struct pppoe_conn_t *conn;
@@ -586,6 +672,7 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 			case TAG_END_OF_LIST:
 				break;
 			case TAG_SERVICE_NAME:
+				service_name_tag = tag;
 				if (tag->tag_len == 0)
 					service_match = 1;
 				else if (conf_service_name) {
@@ -593,6 +680,8 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 						break;
 					if (memcmp(tag->tag_data, conf_service_name, ntohs(tag->tag_len)))
 						break;
+					service_match = 1;
+				} else {
 					service_match = 1;
 				}
 				break;
@@ -635,7 +724,7 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 		return;
 	}
 
-	conn = allocate_channel(serv, ethhdr->h_source, host_uniq_tag, relay_sid_tag);
+	conn = allocate_channel(serv, ethhdr->h_source, host_uniq_tag, relay_sid_tag, service_name_tag);
 	if (!conn)
 		pppoe_send_err(serv, ethhdr->h_source, host_uniq_tag, relay_sid_tag, CODE_PADS, TAG_AC_SYSTEM_ERROR);
 	else {
@@ -826,6 +915,8 @@ static void pppoe_start_server(const char *ifname)
 	serv->ifname = ifname;
 	pthread_mutex_init(&serv->lock, NULL);
 
+	INIT_LIST_HEAD(&serv->pado_list);
+
 	triton_context_register(&serv->ctx, NULL);
 	triton_md_register_handler(&serv->ctx, &serv->hnd);
 	triton_md_enable_handler(&serv->hnd, MD_MODE_READ);
@@ -867,6 +958,7 @@ static void __init pppoe_init(void)
 	struct conf_option_t *opt;
 
 	conn_pool = mempool_create(sizeof(struct pppoe_conn_t));
+	pado_pool = mempool_create(sizeof(struct delayed_pado_t));
 
 	if (init_secret())
 		_exit(EXIT_FAILURE);
@@ -877,15 +969,21 @@ static void __init pppoe_init(void)
 	}
 	
 	list_for_each_entry(opt, &s->items, entry) {
-		if (!strcmp(opt->name, "interface"))
-			pppoe_start_server(opt->val);
-		else if (!strcmp(opt->name, "verbose")) {
+		if (!strcmp(opt->name, "interface")) {
+			if (opt->val)
+				pppoe_start_server(opt->val);
+		} else if (!strcmp(opt->name, "verbose")) {
 			if (atoi(opt->val) > 0)
 				conf_verbose = 1;
 		}	else if (!strcmp(opt->name, "ac-name") || !strcmp(opt->name, "AC-Name"))
 			conf_ac_name = opt->val;
-		else if (!strcmp(opt->name, "service-name") || !strcmp(opt->name, "Service-Name"))
-			conf_service_name = opt->val;
+		else if (!strcmp(opt->name, "service-name") || !strcmp(opt->name, "Service-Name")) {
+			if (opt->val && strlen(opt->val))
+				conf_service_name = opt->val;
+		} else if (!strcmp(opt->name, "pado-delay") || !strcmp(opt->name, "PADO-delay")) {
+			if (opt->val && atoi(opt->val) > 0)
+				conf_pado_delay = atoi(opt->val);
+		}
 	}
 }
 

@@ -156,7 +156,10 @@ options.
 Specifies AC-Name tag value. If absent tag will not be sent.
 .TP
 .BI "service-name=" service-name
-Specifies Service-Name to respond. If absent any Service-Name is acceptable.
+Specifies Service-Name to respond. If absent any Service-Name is acceptable and client's Service-Name will be sent back.
+.TP
+.BI "pado-delay=" n
+Specifies delay to send PADO (ms).
 .TP
 .BI "verbose=" n
 If this option is given and 
