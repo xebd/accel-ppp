@@ -252,7 +252,7 @@ struct radius_pd_t *rad_find_session(const char *sessionid, const char *username
 			continue;
 		if (port_id >= 0 && port_id != rpd->ppp->unit_idx)
 			continue;
-		if (ipaddr && ipaddr != rpd->ipaddr.peer_addr)
+		if (ipaddr && ipaddr != rpd->ppp->peer_ipaddr)
 			continue;
 		if (csid && rpd->ppp->ctrl->calling_station_id && strcmp(csid, rpd->ppp->ctrl->calling_station_id))
 			continue;

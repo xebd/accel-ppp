@@ -43,7 +43,9 @@ ADD_EXECUTABLE(accel-pptpd
 	ppp/ipcp_opt_ipaddr.c
 	ppp/ipcp_opt_dns.c
 	ppp/ppp_ccp.c	
-	ppp/ccp_mppe.c	
+	ppp/ccp_mppe.c
+
+	cli/telnet.c
 
 	pwdb.c
 	ipdb.c
