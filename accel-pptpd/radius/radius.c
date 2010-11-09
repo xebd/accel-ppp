@@ -40,6 +40,7 @@ char *conf_acct_secret;
 char *conf_dm_coa_secret;
 
 int conf_sid_in_auth = 0;
+int conf_require_nas_ident = 0;
 
 static LIST_HEAD(sessions);
 static pthread_rwlock_t sessions_lock = PTHREAD_RWLOCK_INITIALIZER;
@@ -308,7 +309,7 @@ int rad_check_nas_pack(struct rad_packet_t *pack)
 			ipaddr = attr->val.ipaddr;
 	}
 
-	if (!ident && !ipaddr)
+	if (conf_require_nas_ident && !ident && !ipaddr)
 		return -1;
 
 	if (conf_nas_identifier && ident && strcmp(conf_nas_identifier, ident))
@@ -416,6 +417,10 @@ static void __init radius_init(void)
 	opt = conf_get_opt("radius", "sid_in_auth");
 	if (opt && atoi(opt) > 0)
 		conf_sid_in_auth = 1;
+	
+	opt = conf_get_opt("radius", "require-nas-identification");
+	if (opt && atoi(opt) > 0)
+		conf_require_nas_ident = 1;
 	
 	if (rad_dict_load(dict))
 		_exit(EXIT_FAILURE);
