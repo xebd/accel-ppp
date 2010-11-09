@@ -25,8 +25,8 @@
 int conf_max_try = 3;
 int conf_timeout = 3;
 char *conf_nas_identifier = "accel-pptpd";
-char *conf_nas_ip_address;
-char *conf_gw_ip_address;
+in_addr_t conf_nas_ip_address;
+in_addr_t conf_gw_ip_address;
 in_addr_t conf_bind = 0;
 int conf_verbose = 0;
 
@@ -62,7 +62,7 @@ int rad_proc_attrs(struct rad_req_t *req)
 				else {
 					req->rpd->ipaddr.owner = &ipdb;
 					req->rpd->ipaddr.peer_addr = attr->val.ipaddr;
-					req->rpd->ipaddr.addr = inet_addr(conf_gw_ip_address);
+					req->rpd->ipaddr.addr = conf_gw_ip_address;
 				}
 				break;
 			case Acct_Interim_Interval:
@@ -306,9 +306,12 @@ int rad_check_nas_pack(struct rad_packet_t *pack)
 			ipaddr = attr->val.ipaddr;
 	}
 
-	if (conf_nas_identifier && (!ident || strcmp(conf_nas_identifier, ident)))
+	if (!ident && !ipaddr)
 		return -1;
-	if (conf_nas_ip_address && inet_addr(conf_nas_ip_address) != ipaddr)
+
+	if (conf_nas_identifier && ident && strcmp(conf_nas_identifier, ident))
+		return -1;
+	if (conf_nas_ip_address && ipaddr && conf_nas_ip_address != ipaddr)
 		return -1;
 	
 	return 0;
@@ -369,7 +372,7 @@ static void __init radius_init(void)
 	
 	opt = conf_get_opt("radius", "nas-ip-address");
 	if (opt)
-		conf_nas_ip_address = opt;
+		conf_nas_ip_address = inet_addr(opt);
 	
 	opt = conf_get_opt("radius", "nas-identifier");
 	if (opt)
@@ -377,13 +380,13 @@ static void __init radius_init(void)
 	
 	opt = conf_get_opt("radius", "gw-ip-address");
 	if (opt)
-		conf_gw_ip_address = opt;
+		conf_gw_ip_address = inet_addr(opt);
 
 	opt = conf_get_opt("radius", "bind");
 	if (opt)
 		conf_bind = inet_addr(opt);
 	else if (conf_nas_ip_address)
-		conf_bind = inet_addr(conf_nas_ip_address);
+		conf_bind = conf_nas_ip_address;
 
 	opt = conf_get_opt("radius", "auth_server");
 	if (!opt) {

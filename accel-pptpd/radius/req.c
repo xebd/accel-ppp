@@ -54,7 +54,7 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 		if (rad_packet_add_str(req->pack, "NAS-Identifier", conf_nas_identifier, strlen(conf_nas_identifier)))
 			goto out_err;
 	if (conf_nas_ip_address)
-		if (rad_packet_add_ipaddr(req->pack, "NAS-IP-Address", inet_addr(conf_nas_ip_address)))
+		if (rad_packet_add_ipaddr(req->pack, "NAS-IP-Address", conf_nas_ip_address))
 			goto out_err;
 	if (rad_packet_add_int(req->pack, "NAS-Port", rpd->ppp->unit_idx))
 		goto out_err;

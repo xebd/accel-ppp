@@ -263,7 +263,7 @@ static void __init init(void)
   addr.sin_family = AF_INET;
   addr.sin_port = htons (PD_COA_PORT);
 	if (conf_nas_ip_address)
-	  addr.sin_addr.s_addr = inet_addr(conf_nas_ip_address);
+	  addr.sin_addr.s_addr = conf_nas_ip_address;
 	else
 		addr.sin_addr.s_addr = htonl (INADDR_ANY);
   if (bind (serv.hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
