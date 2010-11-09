@@ -219,6 +219,9 @@ Specifies IP address, port to bind and secret for Dynamic Authorization Extensio
 .BI "dm_coa_secret=" secret (deprecated, use dae-server instead)
 Specifies secret to use in DM/CoA communication.
 .TP
+.BI "acct-interim-interval=" n
+Specifies interval in seconds to send accounting information (may be overriden by radius Acct-Interim-Interval attribute)
+.TP
 .SH [log]
 .br
 Configuration of log and log_file modules.

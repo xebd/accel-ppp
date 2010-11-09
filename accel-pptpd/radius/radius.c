@@ -27,8 +27,8 @@ int conf_timeout = 3;
 char *conf_nas_identifier = "accel-pptpd";
 in_addr_t conf_nas_ip_address;
 in_addr_t conf_gw_ip_address;
-in_addr_t conf_bind = 0;
-int conf_verbose = 0;
+in_addr_t conf_bind;
+int conf_verbose;
 
 char *conf_auth_server;
 int conf_auth_server_port = 1812;
@@ -41,8 +41,9 @@ char *conf_dm_coa_server;
 int conf_dm_coa_port = 3799;
 char *conf_dm_coa_secret;
 
-int conf_sid_in_auth = 0;
-int conf_require_nas_ident = 0;
+int conf_sid_in_auth;
+int conf_require_nas_ident;
+int conf_acct_interim_interval;
 
 static LIST_HEAD(sessions);
 static pthread_rwlock_t sessions_lock = PTHREAD_RWLOCK_INITIALIZER;
@@ -56,6 +57,8 @@ int rad_proc_attrs(struct rad_req_t *req)
 {
 	struct rad_attr_t *attr;
 	int res = 0;
+
+	req->rpd->acct_interim_interval = conf_acct_interim_interval;
 
 	list_for_each_entry(attr, &req->reply->attrs, entry) {
 		if (attr->vendor)
@@ -277,16 +280,23 @@ struct radius_pd_t *rad_find_session_pack(struct rad_packet_t *pack)
 	in_addr_t ipaddr = 0;
 	
 	list_for_each_entry(attr, &pack->attrs, entry) {
-		if (!strcmp(attr->attr->name, "Acct-Session-Id"))
-			sessionid = attr->val.string;
-		else if (!strcmp(attr->attr->name, "User-Name"))
-			username = attr->val.string;
-		else if (!strcmp(attr->attr->name, "NAS-Port"))
-			port_id = attr->val.integer;
-		else if (!strcmp(attr->attr->name, "Framed-IP-Address"))
-			ipaddr = attr->val.ipaddr;
-		else if (!strcmp(attr->attr->name, "Calling-Station-Id"))
-			csid = attr->val.string;
+		switch(attr->attr->id) {
+			case Acct_Session_Id:
+				sessionid = attr->val.string;
+				break;
+			case User_Name:
+				username = attr->val.string;
+				break;
+			case NAS_Port:
+				port_id = attr->val.integer;
+				break;
+			case Framed_IP_Address:
+				ipaddr = attr->val.ipaddr;
+				break;
+			case Calling_Station_Id:
+				csid = attr->val.string;
+				break;
+		}
 	}
 
 	if (!sessionid && !username && port_id == -1 && ipaddr == 0 && !csid)
@@ -435,6 +445,10 @@ static void __init radius_init(void)
 	opt = conf_get_opt("radius", "require-nas-identification");
 	if (opt && atoi(opt) > 0)
 		conf_require_nas_ident = 1;
+	
+	opt = conf_get_opt("radius", "acct-interim-interval");
+	if (opt && atoi(opt) > 0)
+		conf_acct_interim_interval = atoi(opt);
 	
 	if (rad_dict_load(dict))
 		_exit(EXIT_FAILURE);
