@@ -34,6 +34,7 @@
 static int conf_timeout = 5;
 static int conf_interval = 0;
 static int conf_max_failure = 3;
+static int conf_any_login = 0;
 
 static int urandom_fd;
 
@@ -284,6 +285,13 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 
 	name = _strndup(msg->name,ntohs(msg->hdr.len) - sizeof(*msg) + 2);
 
+	if (conf_any_login) {
+		chap_send_success(ad);
+		ad->started = 1;
+		ppp_auth_successed(ad->ppp, name);
+		return;
+	}
+
 	r = pwdb_check(ad->ppp, name, PPP_CHAP, CHAP_MD5, ad->id, ad->val, VALUE_SIZE, msg->val);
 
 	if (r == PWDB_NO_IMPL) {
@@ -401,6 +409,10 @@ static void __init auth_chap_md5_init()
 	opt = conf_get_opt("auth", "max-failure");
 	if (opt && atoi(opt) > 0)
 		conf_max_failure = atoi(opt);
+
+	opt = conf_get_opt("auth", "any-login");
+	if (opt && atoi(opt) > 0)
+		conf_any_login = 1;
 
 	urandom_fd=open("/dev/urandom", O_RDONLY);
 

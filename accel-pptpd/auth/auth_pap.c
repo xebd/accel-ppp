@@ -21,6 +21,7 @@
 #define PAP_NAK 3
 
 static int conf_timeout = 5;
+static int conf_any_login = 0;
 
 static struct auth_data_t* auth_data_init(struct ppp_t *ppp);
 static void auth_data_free(struct ppp_t*, struct auth_data_t*);
@@ -195,6 +196,14 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
 	}
 
 	peer_id = _strndup((const char*)peer_id, peer_id_len);
+	
+	if (conf_any_login) {
+		pap_send_ack(p, hdr->id);
+		p->started = 1;
+		ppp_auth_successed(p->ppp, peer_id);
+		return 0;
+	}
+
 	passwd = _strndup((const char*)ptr, passwd_len);
 
 	r = pwdb_check(p->ppp, peer_id, PPP_PAP, passwd);
@@ -254,6 +263,10 @@ static void __init auth_pap_init()
 	opt = conf_get_opt("auth", "timeout");
 	if (opt && atoi(opt) > 0)
 		conf_timeout = atoi(opt);
+
+	opt = conf_get_opt("auth", "any-login");
+	if (opt && atoi(opt) > 0)
+		conf_any_login = 1;
 
 	ppp_auth_register_handler(&pap);
 }
