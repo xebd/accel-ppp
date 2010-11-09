@@ -37,6 +37,8 @@ char *conf_auth_secret;
 char *conf_acct_server;
 int conf_acct_server_port = 1813;
 char *conf_acct_secret;
+char *conf_dm_coa_server;
+int conf_dm_coa_port = 3799;
 char *conf_dm_coa_secret;
 
 int conf_sid_in_auth = 0;
@@ -391,24 +393,36 @@ static void __init radius_init(void)
 	else if (conf_nas_ip_address)
 		conf_bind = conf_nas_ip_address;
 
-	opt = conf_get_opt("radius", "auth_server");
+	opt = conf_get_opt("radius", "auth-server");
+	if (!opt)
+		opt = conf_get_opt("radius", "auth_server");
 	if (!opt) {
-		log_emerg("radius: auth_server not specified\n");
+		log_emerg("radius: auth-server not specified\n");
 		_exit(EXIT_FAILURE);
 	} else if (parse_server(opt, &conf_auth_server, &conf_auth_server_port, &conf_auth_secret)) {
 		log_emerg("radius: failed to parse auth_server\n");
 		_exit(EXIT_FAILURE);
 	}
 
-	opt = conf_get_opt("radius", "acct_server");
+	opt = conf_get_opt("radius", "acct-server");
+	if (!opt)
+		opt = conf_get_opt("radius", "acct_server");
+	if (!opt)
+		log_emerg("radius: acct-server not specified\n");
 	if (opt && parse_server(opt, &conf_acct_server, &conf_acct_server_port, &conf_acct_secret)) {
 		log_emerg("radius: failed to parse acct_server\n");
 		_exit(EXIT_FAILURE);
 	}
 
-	opt = conf_get_opt("radius", "dm_coa_secret");
-	if (opt)
-		conf_dm_coa_secret = opt;
+	opt = conf_get_opt("radius", "dae-server");
+	if (opt && parse_server(opt, &conf_dm_coa_server, &conf_dm_coa_port, &conf_dm_coa_secret)) {
+		log_emerg("radius: failed to parse dae-server\n");
+		_exit(EXIT_FAILURE);
+	} else {
+		opt = conf_get_opt("radius", "dm_coa_secret");
+		if (opt)
+			conf_dm_coa_secret = opt;
+	}
 
 	opt = conf_get_opt("radius", "dictionary");
 	if (opt)

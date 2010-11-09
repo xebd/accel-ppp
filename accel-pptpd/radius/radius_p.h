@@ -70,6 +70,8 @@ extern int conf_acct_server_port;
 extern char *conf_dm_coa_secret;
 extern int conf_sid_in_auth;
 extern int conf_require_nas_ident;
+extern char *conf_dm_coa_server;
+extern int conf_dm_coa_port;
 
 int rad_check_nas_pack(struct rad_packet_t *pack);
 struct radius_pd_t *rad_find_session(const char *sessionid, const char *username, int port_id, in_addr_t ipaddr, const char *csid);

@@ -207,13 +207,16 @@ Also DM/CoA server will bind to that address.
 .BI "gw-ip-address=" x.x.x.x
 Specifies address to use as local address of ppp interfaces if Framed-IP-Address received from RADIUS server.
 .TP
-.BI "auth_server=" x.x.x.x:port,secret
+.BI "auth-server=" x.x.x.x:port,secret
 Specifies IP address, port and secret of authentication RADIUS server.
 .TP
-.BI "acct_server=" x.x.x.x:port,secret
+.BI "acct-server=" x.x.x.x:port,secret
 Specifies IP address, port and secret of accounting RADIUS server.
 .TP
-.BI "dm_coa_secret=" secret
+.BI "dae-server=" x.x.x.x:port,secret
+Specifies IP address, port to bind and secret for Dynamic Authorization Extension server (DM/CoA).
+.TP
+.BI "dm_coa_secret=" secret (deprecated, use dae-server instead)
 Specifies secret to use in DM/CoA communication.
 .TP
 .SH [log]
