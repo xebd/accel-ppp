@@ -43,7 +43,7 @@
 #define PPP_LAYER_CCP  3
 #define PPP_LAYER_IPCP 4
 
-#define PPP_SESSIONID_LEN 32
+#define PPP_SESSIONID_LEN 16
 #define PPP_IFNAME_LEN 10
 
 #define TERM_USER_REQUEST 1

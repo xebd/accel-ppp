@@ -1015,6 +1015,8 @@ static void start_udp_server(void)
     log_emerg("l2tp: socket: %s\n", strerror(errno));
     return;
   }
+
+	memset(&addr, 0, sizeof(addr));
   addr.sin_family = AF_INET;
   addr.sin_port = htons(L2TP_PORT);
 

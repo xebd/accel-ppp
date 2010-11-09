@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <time.h>
 #include <arpa/inet.h>
+#include <arpa/telnet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
 
@@ -22,18 +23,98 @@ struct client_t
 {
 	struct list_head entry;
 	struct triton_md_handler_t hnd;
-	char *recv_buf;
+	uint8_t *recv_buf;
 	int recv_pos;
 	struct list_head xmit_queue;
+	struct buffer_t *xmit_buf;
+	int xmit_pos;
 	int auth:1;
+};
+
+struct buffer_t
+{
+	struct list_head entry;
+	int size;
+	uint8_t buf[0];
 };
 
 static struct triton_context_t serv_ctx;
 static struct triton_md_handler_t serv_hnd;
 
-static void send_banner(struct client_t *cln)
+static void disconnect(struct client_t *cln)
 {
-	write(cln->hnd.fd, BANNER, sizeof(BANNER));
+	struct buffer_t *b;
+
+	log_debug("cli: disconnect\n");
+
+	triton_md_unregister_handler(&cln->hnd);
+	close(cln->hnd.fd);
+
+	if (cln->xmit_buf)
+		_free(cln->xmit_buf);
+
+	while (!list_empty(&cln->xmit_queue)) {
+		b = list_entry(cln->xmit_queue.next, typeof(*b), entry);
+		list_del(&b->entry);
+		_free(b);
+	}
+
+	_free(cln->recv_buf);
+	_free(cln);
+}
+
+static void queue_buffer(struct client_t *cln, struct buffer_t *b)
+{
+	if (cln->xmit_buf)
+		list_add_tail(&b->entry, &cln->xmit_queue);
+	else
+		cln->xmit_buf = b;
+}
+
+static int telnet_send(struct client_t *cln, const void *_buf, int size)
+{
+	int n, k;
+	struct buffer_t *b;
+	const uint8_t *buf = (const uint8_t *)_buf;
+
+	for (n = 0; n < size; n += k) {
+		k = write(cln->hnd.fd, buf + n, size - n);
+		if (k < 0) {
+			if (errno == EAGAIN) {
+				b = _malloc(sizeof(*b) + size - n);
+				b->size = size - n;
+				memcpy(b->buf, buf, size - n);
+				queue_buffer(cln, b);
+
+				triton_md_enable_handler(&cln->hnd, MD_MODE_WRITE);
+				break;
+			}
+			if (errno != EPIPE)
+				log_error("cli: write: %s\n", strerror(errno));
+			disconnect(cln);
+			return -1;
+		}
+	}
+	return 0;
+}
+
+static int send_banner(struct client_t *cln)
+{
+	return telnet_send(cln, BANNER, sizeof(BANNER));
+}
+
+static int send_auth_request(struct client_t *cln)
+{
+	return 0;
+}
+
+static void print_buf(const uint8_t *buf, int size)
+{
+	int i;
+
+	for (i = 0; i < size; i++)
+		log_debug("%x ", buf[i]);
+	log_debug("\n");
 }
 
 static int cln_read(struct triton_md_handler_t *h)
@@ -44,7 +125,7 @@ static int cln_read(struct triton_md_handler_t *h)
 	while (1) {
 		n = read(h->fd, cln->recv_buf + cln->recv_pos, RECV_BUF_SIZE - cln->recv_pos);
 		if (n == 0) {
-			//disconnect(cln);
+			disconnect(cln);
 			return 0;
 		}
 		if (n < 0) {
@@ -53,7 +134,41 @@ static int cln_read(struct triton_md_handler_t *h)
 			return 0;
 		}
 		log_debug("cli: read(%i): ", n);
+		print_buf(cln->recv_buf + cln->recv_pos, n);
 	}
+
+	return 0;
+}
+
+static int cln_write(struct triton_md_handler_t *h)
+{
+	struct client_t *cln = container_of(h, typeof(*cln), hnd);
+	int k;
+	
+	while (1) {
+		for (; cln->xmit_pos < cln->xmit_buf->size; cln->xmit_pos += k) {
+			k = write(cln->hnd.fd, cln->xmit_buf->buf + cln->xmit_pos, cln->xmit_buf->size - cln->xmit_pos);
+			if (k < 0) {
+				if (errno == EAGAIN)
+					return 0;
+				if (errno != EPIPE)
+					log_error("cli: write: %s\n", strerror(errno));
+				disconnect(cln);
+				return -1;
+			}
+		}
+
+		_free(cln->xmit_buf);
+		cln->xmit_pos = 0;
+
+		if (list_empty(&cln->xmit_queue))
+			break;
+
+		cln->xmit_buf = list_entry(cln->xmit_queue.next, typeof(*cln->xmit_buf), entry);
+		list_del(&cln->xmit_buf->entry);
+	}
+
+	triton_md_disable_handler(&cln->hnd, MD_MODE_WRITE);
 
 	return 0;
 }
@@ -86,14 +201,16 @@ static int serv_read(struct triton_md_handler_t *h)
 		memset(conn, 0, sizeof(*conn));
 		conn->hnd.fd = sock;
 		conn->hnd.read = cln_read;
-		//conn->hnd.write = cln_write;
+		conn->hnd.write = cln_write;
 		conn->recv_buf = _malloc(RECV_BUF_SIZE);
 		INIT_LIST_HEAD(&conn->xmit_queue);
 		
 		triton_md_register_handler(&serv_ctx, &conn->hnd);
 		triton_md_enable_handler(&conn->hnd,MD_MODE_READ);
 
-		send_banner(conn);
+		if (send_banner(conn))
+			continue;
+		send_auth_request(conn);
 	}
 	return 0;
 }
@@ -121,6 +238,14 @@ static void start_server(const char *host, int port)
     log_emerg("cli: failed to create server socket: %s\n", strerror(errno));
     return;
   }
+
+	memset(&addr, 0, sizeof(addr));
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(port);
+	if (host)
+		addr.sin_addr.s_addr = inet_addr(host);
+	else
+		addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
   if (bind (serv_hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
     log_emerg("cli: failed to bind socket: %s\n", strerror(errno));
@@ -164,7 +289,7 @@ static void __init init(void)
 	if (opt)
 		host = opt;
 	
-	if (!host || !port) {
+	if (!port) {
 		log_emerg("cli: disabled\n");
 		return;
 	}

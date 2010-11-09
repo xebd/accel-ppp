@@ -19,7 +19,7 @@ IUSE="postgres debug shaper"
 DEPEND=">=sys-libs/glibc-2.8
 	dev-libs/openssl
 	dev-libs/libaio
-	shaper? ( =dev-libs/libnl-9999 )
+	shaper? ( =dev-libs/libnl-2 )
 	postgres? ( >=dev-db/postgresql-base-8.1 )"
 
 RDEPEND="$DEPEND
@@ -38,6 +38,7 @@ src_unpack () {
 
 src_prepare() {
 	sed -i -e "/mkdir/d" "${S}/accel-pptpd/CMakeLists.txt"
+	sed -i -e "/echo/d" "${S}/accel-pptpd/CMakeLists.txt"
 	sed -i -e "/INSTALL/d" "${S}/driver/CMakeLists.txt"
 }
 
@@ -78,5 +79,6 @@ src_install() {
 	newins "${S}/contrib/gentoo/net-dialup/accel-pptp/files/pptpd-confd" accel-pptpd
 
 	dodir /var/log/accel-pptp
+	dodir /var/run/accel-pptp
 	dodir /var/run/radattr
 }

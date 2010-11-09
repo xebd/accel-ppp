@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <sys/ioctl.h>
 #include <arpa/inet.h>
+#include <features.h>
 #include "linux_ppp.h"
 
 #include <openssl/md5.h>
@@ -17,6 +18,7 @@
 #include "ppp.h"
 #include "ppp_fsm.h"
 #include "log.h"
+#include "spinlock.h"
 
 #include "memdebug.h"
 
@@ -24,6 +26,9 @@ int __export conf_ppp_verbose;
 
 static LIST_HEAD(layers);
 int __export sock_fd;
+
+static spinlock_t seq_lock = SPINLOCK_INITIALIZER;
+static uint64_t seq;
 
 struct layer_node_t
 {
@@ -58,21 +63,14 @@ static void _free_ppp(struct ppp_t *ppp)
 
 static void generate_sessionid(struct ppp_t *ppp)
 {
-	MD5_CTX ctx;
-	uint8_t md5[MD5_DIGEST_LENGTH];
-	int i;
-		
-	MD5_Init(&ctx);
-	MD5_Update(&ctx,&ppp->unit_idx, 4);
-	MD5_Update(&ctx,&ppp->unit_fd, 4);
-	MD5_Update(&ctx,&ppp->chan_fd, 4);
-	MD5_Update(&ctx,&ppp->fd, 4);
-	MD5_Update(&ctx,&ppp->start_time, sizeof(time_t));
-	MD5_Update(&ctx,ppp->ctrl->ctx, sizeof(void *));
-	MD5_Final(md5,&ctx);
+	unsigned long long sid;
 
-	for( i = 0; i < 16; i++)
-		sprintf(ppp->sessionid + i*2, "%02X", md5[i]);
+	spin_lock(&seq_lock);
+	seq++;
+	sid = seq;
+	spin_unlock(&seq_lock);
+
+	sprintf(ppp->sessionid, "%016llx", sid);
 }
 
 int __export establish_ppp(struct ppp_t *ppp)
@@ -546,9 +544,24 @@ struct ppp_layer_data_t *ppp_find_layer_data(struct ppp_t *ppp, struct ppp_layer
 	return NULL;
 }
 
+static void save_seq(void)
+{
+	FILE *f;
+	unsigned long long sid = seq;
+	char *opt = conf_get_opt("ppp", "seq-file");
+	if (!opt)
+		opt = "/var/run/accel-pptp/seq";
+
+	f = fopen(opt, "w");
+	fprintf(f, "%llu", sid);
+	fclose(f);
+}
+
 static void __init init(void)
 {
 	char *opt;
+	FILE *f;
+	unsigned long long sid;
 
 	sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sock_fd < 0) {
@@ -559,5 +572,20 @@ static void __init init(void)
 	opt = conf_get_opt("ppp", "verbose");
 	if (opt && atoi(opt) > 0)
 		conf_ppp_verbose = 1;
+
+	opt = conf_get_opt("ppp", "seq-file");
+	if (!opt)
+		opt = "/var/run/accel-pptp/seq";
+	
+	f = fopen(opt, "r");
+	if (f) {
+		fscanf(f, "%llu", &sid);
+		seq = sid;
+		fclose(f);
+	} else
+		//log_emerg("ppp: failed to open seq-file (%s): %s\n", opt, strerror(errno));
+		seq = (unsigned long long)random() * (unsigned long long)random();
+
+	atexit(save_seq);
 }
 
