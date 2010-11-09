@@ -192,6 +192,10 @@ int rad_auth_pap(struct radius_pd_t *rpd, const char *username, va_list args)
 
 	_free(epasswd);
 
+	if (conf_sid_in_auth)
+		if (rad_packet_add_str(req->pack, "Acct-Session-Id", rpd->ppp->sessionid, PPP_SESSIONID_LEN))
+			return -1;
+
 	r = rad_auth_send(req);
 	if (r == PWDB_SUCCESS) {
 		struct ev_radius_t ev = {
@@ -260,6 +264,10 @@ int rad_auth_chap_md5(struct radius_pd_t *rpd, const char *username, va_list arg
 			return -1;
 	}
 	
+	if (conf_sid_in_auth)
+		if (rad_packet_add_str(rpd->auth_req->pack, "Acct-Session-Id", rpd->ppp->sessionid, PPP_SESSIONID_LEN))
+			goto out;
+
 	r = rad_auth_send(rpd->auth_req);
 	if (r == PWDB_SUCCESS) {
 		struct ev_radius_t ev = {
@@ -369,6 +377,10 @@ int rad_auth_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list ar
 			return -1;
 	}
 
+	if (conf_sid_in_auth)
+		if (rad_packet_add_str(rpd->auth_req->pack, "Acct-Session-Id", rpd->ppp->sessionid, PPP_SESSIONID_LEN))
+			goto out;
+
 	r = rad_auth_send(rpd->auth_req);
 	if (r == PWDB_SUCCESS) {
 		struct ev_radius_t ev = {
@@ -440,6 +452,10 @@ int rad_auth_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list ar
 			return -1;
 	}
 	
+	if (conf_sid_in_auth)
+		if (rad_packet_add_str(rpd->auth_req->pack, "Acct-Session-Id", rpd->ppp->sessionid, PPP_SESSIONID_LEN))
+			goto out;
+
 	r = rad_auth_send(rpd->auth_req);
 	if (r == PWDB_SUCCESS) {
 		ra = rad_packet_find_vendor_attr(rpd->auth_req->reply, "Microsoft", "MS-CHAP2-Success");

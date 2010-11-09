@@ -39,6 +39,8 @@ int conf_acct_server_port = 1813;
 char *conf_acct_secret;
 char *conf_dm_coa_secret;
 
+int conf_sid_in_auth = 0;
+
 static LIST_HEAD(sessions);
 static pthread_rwlock_t sessions_lock = PTHREAD_RWLOCK_INITIALIZER;
 
@@ -411,6 +413,10 @@ static void __init radius_init(void)
 	if (opt)
 		dict = opt;
 
+	opt = conf_get_opt("radius", "sid_in_auth");
+	if (opt && atoi(opt) > 0)
+		conf_sid_in_auth = 1;
+	
 	if (rad_dict_load(dict))
 		_exit(EXIT_FAILURE);
 
