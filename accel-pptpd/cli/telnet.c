@@ -121,14 +121,14 @@ static int send_prompt(struct client_t *cln)
 	return telnet_send(cln, conf_prompt, strlen(conf_prompt));
 }
 
-static void print_buf(const uint8_t *buf, int size)
+/*static void print_buf(const uint8_t *buf, int size)
 {
 	int i;
 
 	for (i = 0; i < size; i++)
 		log_debug("%x ", buf[i]);
 	log_debug("\n");
-}
+}*/
 
 static int process_data(struct client_t *cln)
 {
@@ -209,8 +209,8 @@ static int cln_read(struct triton_md_handler_t *h)
 				log_error("cli: read: %s\n", strerror(errno));
 			return 0;
 		}
-		log_debug("cli: read(%i): ", n);
-		print_buf(cln->recv_buf + cln->recv_pos, n);
+		/*log_debug("cli: read(%i): ", n);
+		print_buf(cln->recv_buf + cln->recv_pos, n);*/
 		cln->recv_pos += n;
 		if (process_data(cln))
 			return -1;

@@ -222,6 +222,16 @@ Specifies secret to use in DM/CoA communication.
 .BI "acct-interim-interval=" n
 Specifies interval in seconds to send accounting information (may be overriden by radius Acct-Interim-Interval attribute)
 .TP
+.BI "verbose=" n
+If this option is given and 
+.B n
+is greater of zero then radius module will produce verbose logging.
+.TP
+.BI "interim-verbose=" n
+If this option is given and 
+.B n
+is greater of zero then radius module will produce verbose logging of interim radius packets.
+.TP
 .SH [log]
 .br
 Configuration of log and log_file modules.

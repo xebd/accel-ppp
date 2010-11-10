@@ -19,6 +19,7 @@
 #include "log.h"
 #include "ppp.h"
 #include "mempool.h"
+#include "cli.h"
 
 #include "pppoe.h"
 
@@ -74,6 +75,9 @@ static int conf_pado_delay = 0;
 static mempool_t conn_pool;
 static mempool_t pado_pool;
 
+static uint32_t stat_active;
+static uint32_t stat_delayed_pado;
+
 #define SECRET_SIZE 16
 static uint8_t *secret;
 
@@ -84,6 +88,7 @@ static void pppoe_send_PADT(struct pppoe_conn_t *conn);
 static void disconnect(struct pppoe_conn_t *conn)
 {
 	if (conn->ppp_started) {
+		__sync_fetch_and_sub(&stat_active, 1);
 		conn->ppp_started = 0;
 		ppp_terminate(&conn->ppp, TERM_USER_REQUEST, 1);
 	}
@@ -91,6 +96,7 @@ static void disconnect(struct pppoe_conn_t *conn)
 	pppoe_send_PADT(conn);
 
 	close(conn->disc_sock);
+
 
 	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp);
 
@@ -126,6 +132,7 @@ static void ppp_finished(struct ppp_t *ppp)
 	log_ppp_debug("pppoe: ppp finished\n");
 
 	if (conn->ppp_started) {
+		__sync_fetch_and_sub(&stat_active, 1);
 		conn->ppp_started = 0;
 		disconnect(conn);
 	}
@@ -531,6 +538,7 @@ static void pado_timer(struct triton_timer_t *t)
 
 	pppoe_send_PADO(pado->serv, pado->addr, pado->host_uniq, pado->relay_sid, pado->service_name);
 
+	__sync_fetch_and_sub(&stat_delayed_pado, 1);
 	list_del(&pado->entry);
 
 	if (pado->host_uniq)
@@ -632,6 +640,7 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 		triton_timer_add(&serv->ctx, &pado->timer, 0);
 
 		list_add_tail(&pado->entry, &serv->pado_list);
+		__sync_fetch_and_add(&stat_delayed_pado, 1);
 	} else
 		pppoe_send_PADO(serv, ethhdr->h_source, host_uniq_tag, relay_sid_tag, service_name_tag);
 }
@@ -731,8 +740,10 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 		pppoe_send_PADS(conn);
 		if (connect_channel(conn))
 			disconnect(conn);
-		else
+		else {
+			__sync_fetch_and_add(&stat_active, 1);
 			conn->ppp_started = 1;
+		}
 	}
 }
 
@@ -929,6 +940,31 @@ out_err:
 	_free(serv);
 }
 
+static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
+{
+	char buf[128];
+
+	if (cli_send(client, "pppoe:\r\n"))
+		return CLI_CMD_FAILED;
+	
+	sprintf(buf, "  active: %u\r\n", stat_active);
+	if (cli_send(client, buf))
+		return CLI_CMD_FAILED;
+
+	sprintf(buf, "  delayed PADO: %u\r\n", stat_delayed_pado);
+	if (cli_send(client, buf))
+		return CLI_CMD_FAILED;
+
+	return CLI_CMD_OK;
+}
+
+static const char *show_stat_hdr[] = {"show","stat"};
+static struct cli_simple_cmd_t show_stat_cmd = {
+	.hdr_len = 2,
+	.hdr = show_stat_hdr,
+	.exec = show_stat_exec,
+};
+
 static int init_secret(void)
 {
 	int fd;
@@ -985,5 +1021,7 @@ static void __init pppoe_init(void)
 				conf_pado_delay = atoi(opt->val);
 		}
 	}
+
+	cli_register_simple_cmd(&show_stat_cmd);
 }
 

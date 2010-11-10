@@ -24,11 +24,16 @@
 
 int __export conf_ppp_verbose;
 
+pthread_rwlock_t __export ppp_lock;
+__export LIST_HEAD(ppp_list);
+
 static LIST_HEAD(layers);
 int __export sock_fd;
 
 static spinlock_t seq_lock = SPINLOCK_INITIALIZER;
 static uint64_t seq;
+
+struct ppp_stat_t ppp_stat;
 
 struct layer_node_t
 {
@@ -146,6 +151,13 @@ int __export establish_ppp(struct ppp_t *ppp)
 	triton_md_enable_handler(&ppp->chan_hnd, MD_MODE_READ);
 	triton_md_enable_handler(&ppp->unit_hnd, MD_MODE_READ);
 
+	ppp->state = PPP_STATE_STARTING;
+	__sync_fetch_and_add(&ppp_stat.starting, 1);
+
+	pthread_rwlock_wrlock(&ppp_lock);
+	list_add_tail(&ppp->entry, &ppp_list);
+	pthread_rwlock_unlock(&ppp_lock);
+
 	log_ppp_debug("ppp established\n");
 
 	triton_event_fire(EV_PPP_STARTING, ppp);
@@ -166,6 +178,22 @@ exit_close_chan:
 
 static void destablish_ppp(struct ppp_t *ppp)
 {
+	pthread_rwlock_wrlock(&ppp_lock);
+	list_del(&ppp->entry);
+	pthread_rwlock_unlock(&ppp_lock);
+
+	switch (ppp->state) {
+		case PPP_STATE_ACTIVE:
+			__sync_fetch_and_sub(&ppp_stat.active, 1);
+			break;
+		case PPP_STATE_STARTING:
+			__sync_fetch_and_sub(&ppp_stat.starting, 1);
+			break;
+		case PPP_STATE_FINISHING:
+			__sync_fetch_and_sub(&ppp_stat.finishing, 1);
+			break;
+	}
+
 	triton_md_unregister_handler(&ppp->chan_hnd);
 	triton_md_unregister_handler(&ppp->unit_hnd);
 	
@@ -343,6 +371,9 @@ void __export ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 		if (!d->started) return;
 
 	if (n->entry.next == &ppp->layers) {
+		ppp->state = PPP_STATE_ACTIVE;
+		__sync_fetch_and_sub(&ppp_stat.starting, 1);
+		__sync_fetch_and_add(&ppp_stat.active, 1);
 		ppp->ctrl->started(ppp);
 		triton_event_fire(EV_PPP_STARTED, ppp);
 	} else {
@@ -392,6 +423,12 @@ void __export ppp_terminate(struct ppp_t *ppp, int cause, int hard)
 	}
 	
 	ppp->terminating = 1;
+	if (ppp->state == PPP_STATE_ACTIVE)
+		__sync_fetch_and_sub(&ppp_stat.active, 1);
+	else
+		__sync_fetch_and_sub(&ppp_stat.starting, 1);
+	__sync_fetch_and_add(&ppp_stat.finishing, 1);
+	ppp->state = PPP_STATE_FINISHING;
 
 	log_ppp_debug("ppp_terminate\n");
 

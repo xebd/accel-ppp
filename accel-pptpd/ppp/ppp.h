@@ -4,6 +4,7 @@
 #include <sys/types.h>
 #include <time.h>
 #include <netinet/in.h>
+#include <pthread.h>
 
 #include "triton.h"
 #include "list.h"
@@ -38,13 +39,12 @@
 #define PPP_CBCP	0xc029	/* Callback Control Protocol */
 #define PPP_EAP		0xc227	/* Extensible Authentication Protocol */
 
-#define PPP_LAYER_LCP  1
-#define PPP_LAYER_AUTH 2
-#define PPP_LAYER_CCP  3
-#define PPP_LAYER_IPCP 4
-
 #define PPP_SESSIONID_LEN 16
 #define PPP_IFNAME_LEN 10
+
+#define PPP_STATE_STARTING  1
+#define PPP_STATE_ACTIVE    2
+#define PPP_STATE_FINISHING 3
 
 #define TERM_USER_REQUEST 1
 #define TERM_SESSION_TIMEOUT 2
@@ -75,6 +75,7 @@ struct ppp_pd_t
 
 struct ppp_t
 {
+	struct list_head entry;
 	struct triton_md_handler_t chan_hnd;
 	struct triton_md_handler_t unit_hnd;
 	int fd;
@@ -84,6 +85,7 @@ struct ppp_t
 	int chan_idx;
 	int unit_idx;
 
+	int state;
 	char *chan_name;
 	char ifname[PPP_IFNAME_LEN];
 	char sessionid[PPP_SESSIONID_LEN+1];
@@ -142,6 +144,13 @@ struct ppp_handler_t
 	void (*recv_proto_rej)(struct ppp_handler_t *h);
 };
 
+struct ppp_stat_t
+{
+	uint32_t active;
+	uint32_t starting;
+	uint32_t finishing;
+};
+
 struct ppp_t *alloc_ppp(void);
 void ppp_init(struct ppp_t *ppp);
 int establish_ppp(struct ppp_t *ppp);
@@ -164,6 +173,11 @@ void ppp_unregister_layer(struct ppp_layer_t *);
 struct ppp_layer_data_t *ppp_find_layer_data(struct ppp_t *, struct ppp_layer_t *);
 
 extern int conf_ppp_verbose;
+
+extern pthread_rwlock_t ppp_lock;
+extern struct list_head ppp_list;
+
+extern struct ppp_stat_t ppp_stat;
 
 extern int sock_fd; // internet socket for ioctls
 #endif

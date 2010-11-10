@@ -22,6 +22,7 @@
 #include "events.h"
 #include "utils.h"
 #include "iprange.h"
+#include "cli.h"
 
 #include "memdebug.h"
 
@@ -48,6 +49,9 @@ int conf_rtimeout = 5;
 int conf_retransmit = 5;
 int conf_hello_interval = 60;
 const char *conf_host_name = "accel-pptp";
+
+static uint32_t stat_active;
+static uint32_t stat_starting;
 
 struct l2tp_serv_t
 {
@@ -115,9 +119,11 @@ static void l2tp_disconnect(struct l2tp_conn_t *conn)
 		triton_timer_del(&conn->hello_timer);
 
 	if (conn->state == STATE_PPP) {
+		__sync_fetch_and_sub(&stat_active, 1);
 		conn->state = STATE_FIN;
 		ppp_terminate(&conn->ppp, TERM_USER_REQUEST, 1);
-	}
+	} else if (conn->state != STATE_FIN)
+		__sync_fetch_and_sub(&stat_starting, 1);
 
 	pthread_mutex_lock(&l2tp_lock);
 	l2tp_conn[conn->tid] = NULL;
@@ -324,6 +330,8 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 
 	triton_context_call(&conn->ctx, (triton_event_func)l2tp_send_SCCRP, conn);
 
+	__sync_fetch_and_add(&stat_starting, 1);
+
 	return 0;
 
 out_err:
@@ -383,6 +391,9 @@ static int l2tp_connect(struct l2tp_conn_t *conn)
 
 	if (establish_ppp(&conn->ppp))
 		return -1;
+
+	__sync_fetch_and_sub(&stat_starting, 1);
+	__sync_fetch_and_add(&stat_active, 1);
 
 	conn->state = STATE_PPP;
 	
@@ -1049,6 +1060,31 @@ static void start_udp_server(void)
 	triton_context_wakeup(&udp_serv.ctx);
 }
 
+static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
+{
+	char buf[128];
+
+	if (cli_send(client, "l2tp:\r\n"))
+		return CLI_CMD_FAILED;
+	
+	sprintf(buf, "  starting: %u\r\n", stat_starting);
+	if (cli_send(client, buf))
+		return CLI_CMD_FAILED;
+
+	sprintf(buf, "  active: %u\r\n", stat_active);
+	if (cli_send(client, buf))
+		return CLI_CMD_FAILED;
+
+	return CLI_CMD_OK;
+}
+
+static const char *show_stat_hdr[] = {"show","stat"};
+static struct cli_simple_cmd_t show_stat_cmd = {
+	.hdr_len = 2,
+	.hdr = show_stat_hdr,
+	.exec = show_stat_exec,
+};
+
 static void __init l2tp_init(void)
 {
 	char *opt;
@@ -1083,5 +1119,7 @@ static void __init l2tp_init(void)
 		conf_host_name = opt;
 
 	start_udp_server();
+
+	cli_register_simple_cmd(&show_stat_cmd);
 }
 

@@ -21,6 +21,7 @@
 #include "mempool.h"
 #include "iprange.h"
 #include "utils.h"
+#include "cli.h"
 
 #include "memdebug.h"
 
@@ -58,6 +59,9 @@ static int conf_verbose = 0;
 
 static mempool_t conn_pool;
 
+static uint32_t stat_starting;
+static uint32_t stat_active;
+
 static int pptp_read(struct triton_md_handler_t *h);
 static int pptp_write(struct triton_md_handler_t *h);
 static void pptp_timeout(struct triton_timer_t *);
@@ -78,9 +82,11 @@ static void disconnect(struct pptp_conn_t *conn)
 		triton_timer_del(&conn->echo_timer);
 
 	if (conn->state == STATE_PPP) {
+		__sync_fetch_and_sub(&stat_active, 1);
 		conn->state = STATE_CLOSE;
 		ppp_terminate(&conn->ppp, TERM_USER_REQUEST, 1);
-	}
+	} else if (conn->state != STATE_CLOSE)
+		__sync_fetch_and_sub(&stat_starting, 1);
 
 	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp);
 	
@@ -323,6 +329,8 @@ static int pptp_out_call_rqst(struct pptp_conn_t *conn)
 		return -1;
 	}
 	conn->state = STATE_PPP;
+	__sync_fetch_and_sub(&stat_starting, 1);
+	__sync_fetch_and_add(&stat_active, 1);
 	
 	if (conn->timeout_timer.tpd)
 		triton_timer_del(&conn->timeout_timer);
@@ -359,9 +367,11 @@ static int pptp_call_clear_rqst(struct pptp_conn_t *conn)
 		log_ppp_info("recv [PPTP Call-Clear-Request <Call-ID %x>]\n", ntohs(rqst->call_id));
 
 	if (conn->state == STATE_PPP) {
+		__sync_fetch_and_sub(&stat_active, 1);
 		conn->state = STATE_CLOSE;
 		ppp_terminate(&conn->ppp, TERM_USER_REQUEST, 1);
-	}
+	} else
+		__sync_fetch_and_sub(&stat_starting, 1);
 
 	return send_pptp_call_disconnect_notify(conn, 4);
 }
@@ -540,6 +550,7 @@ static void pptp_close(struct triton_context_t *ctx)
 {
 	struct pptp_conn_t *conn = container_of(ctx, typeof(*conn), ctx);
 	if (conn->state == STATE_PPP) {
+		__sync_fetch_and_sub(&stat_active, 1);
 		conn->state = STATE_CLOSE;
 		ppp_terminate(&conn->ppp, TERM_ADMIN_RESET, 1);
 		if (send_pptp_call_disconnect_notify(conn, 3)) {
@@ -569,6 +580,7 @@ static void ppp_finished(struct ppp_t *ppp)
 	if (conn->state != STATE_CLOSE) {
 		log_ppp_debug("pptp: ppp finished\n");
 		conn->state = STATE_CLOSE;
+		__sync_fetch_and_sub(&stat_active, 1);
 
 		if (send_pptp_call_disconnect_notify(conn, 3))
 			triton_context_call(&conn->ctx, (void (*)(void*))disconnect, conn);
@@ -655,6 +667,8 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		triton_context_wakeup(&conn->ctx);
 
 		triton_event_fire(EV_CTRL_STARTING, &conn->ppp);
+
+		__sync_fetch_and_add(&stat_starting, 1);
 	}
 	return 0;
 }
@@ -670,6 +684,31 @@ static struct pptp_serv_t serv=
 {
 	.hnd.read=pptp_connect,
 	.ctx.close=pptp_serv_close,
+};
+
+static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
+{
+	char buf[128];
+
+	if (cli_send(client, "pptp:\r\n"))
+		return CLI_CMD_FAILED;
+	
+	sprintf(buf, "  starting: %u\r\n", stat_starting);
+	if (cli_send(client, buf))
+		return CLI_CMD_FAILED;
+
+	sprintf(buf, "  active: %u\r\n", stat_active);
+	if (cli_send(client, buf))
+		return CLI_CMD_FAILED;
+
+	return CLI_CMD_OK;
+}
+
+static const char *show_stat_hdr[] = {"show","stat"};
+static struct cli_simple_cmd_t show_stat_cmd = {
+	.hdr_len = 2,
+	.hdr = show_stat_hdr,
+	.exec = show_stat_exec,
 };
 
 static void __init pptp_init(void)
@@ -732,5 +771,7 @@ static void __init pptp_init(void)
 	triton_md_register_handler(&serv.ctx, &serv.hnd);
 	triton_md_enable_handler(&serv.hnd, MD_MODE_READ);
 	triton_context_wakeup(&serv.ctx);
+
+	cli_register_simple_cmd(&show_stat_cmd);
 }
 
