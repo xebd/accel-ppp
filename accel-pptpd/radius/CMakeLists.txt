@@ -17,4 +17,3 @@ INSTALL(TARGETS radius
 )
 FILE(GLOB dict "${CMAKE_CURRENT_SOURCE_DIR}/dict/*")
 INSTALL(FILES ${dict} DESTINATION usr/share/accel-pptp/radius)
-

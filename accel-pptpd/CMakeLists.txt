@@ -71,9 +71,9 @@ INSTALL(TARGETS accel-pptpd
 	RUNTIME DESTINATION usr/sbin
 )
 
-INSTALL(FILES accel-pptp.conf DESTINATION etc)
+INSTALL(FILES accel-pptp.conf DESTINATION /etc RENAME accel-pptp.conf.dist)
 INSTALL(FILES accel-pptp.conf.5 DESTINATION usr/share/man/man5)
 
 INSTALL(CODE "EXECUTE_PROCESS(COMMAND mkdir -p /var/log/accel-pptp)")
 INSTALL(CODE "EXECUTE_PROCESS(COMMAND mkdir -p /var/run/accel-pptp)")
-INSTALL(CODE "EXECUTE_PROCESS(COMMAND echo 0 > /var/run/accel-pptp/seq)")
+INSTALL(CODE "EXECUTE_PROCESS(COMMAND 'echo 0 > /var/run/accel-pptp/seq')")
