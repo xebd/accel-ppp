@@ -46,6 +46,8 @@ ADD_EXECUTABLE(accel-pptpd
 	ppp/ccp_mppe.c
 
 	cli/telnet.c
+	cli/cli.c
+	cli/std_cmd.c
 
 	pwdb.c
 	ipdb.c
@@ -59,7 +61,7 @@ ADD_EXECUTABLE(accel-pptpd
 	memdebug.c
 )
 
-TARGET_LINK_LIBRARIES(accel-pptpd triton rt pthread crypto)
+TARGET_LINK_LIBRARIES(accel-pptpd triton rt pthread crypto pcre)
 set_property(TARGET accel-pptpd PROPERTY CMAKE_SKIP_BUILD_RPATH FALSE)
 set_property(TARGET accel-pptpd PROPERTY CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
 set_property(TARGET accel-pptpd PROPERTY INSTALL_RPATH_USE_LINK_PATH FALSE)

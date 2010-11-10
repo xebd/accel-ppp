@@ -16,20 +16,11 @@
 #include "list.h"
 #include "memdebug.h"
 
+#include "telnet.h"
+
 #define RECV_BUF_SIZE 4096
 #define BANNER "accel-pptp-1.3-rc1\r\n"
-
-struct client_t
-{
-	struct list_head entry;
-	struct triton_md_handler_t hnd;
-	uint8_t *recv_buf;
-	int recv_pos;
-	struct list_head xmit_queue;
-	struct buffer_t *xmit_buf;
-	int xmit_pos;
-	int auth:1;
-};
+#define AUTH_FAILED "\r\nAuthentication failed\r\n"
 
 struct buffer_t
 {
@@ -37,6 +28,9 @@ struct buffer_t
 	int size;
 	uint8_t buf[0];
 };
+
+static const char *conf_passwd;
+static const char *conf_prompt = "accel-pptp# ";
 
 static struct triton_context_t serv_ctx;
 static struct triton_md_handler_t serv_hnd;
@@ -63,6 +57,11 @@ static void disconnect(struct client_t *cln)
 	_free(cln);
 }
 
+void telnet_disconnect(struct client_t *cln)
+{
+	disconnect(cln);
+}
+
 static void queue_buffer(struct client_t *cln, struct buffer_t *b)
 {
 	if (cln->xmit_buf)
@@ -71,7 +70,7 @@ static void queue_buffer(struct client_t *cln, struct buffer_t *b)
 		cln->xmit_buf = b;
 }
 
-static int telnet_send(struct client_t *cln, const void *_buf, int size)
+int telnet_send(struct client_t *cln, const void *_buf, int size)
 {
 	int n, k;
 	struct buffer_t *b;
@@ -103,9 +102,23 @@ static int send_banner(struct client_t *cln)
 	return telnet_send(cln, BANNER, sizeof(BANNER));
 }
 
-static int send_auth_request(struct client_t *cln)
+static int send_password_request(struct client_t *cln)
 {
+	uint8_t buf0[] = {IAC, WILL, TELOPT_ECHO};
+	uint8_t buf1[] = "Password: ";
+
+	if (telnet_send(cln, buf0, sizeof(buf0)))
+		return -1;
+	
+	if (telnet_send(cln, buf1, sizeof(buf1)))
+		return -1;
+	
 	return 0;
+}
+
+static int send_prompt(struct client_t *cln)
+{
+	return telnet_send(cln, conf_prompt, strlen(conf_prompt));
 }
 
 static void print_buf(const uint8_t *buf, int size)
@@ -115,6 +128,69 @@ static void print_buf(const uint8_t *buf, int size)
 	for (i = 0; i < size; i++)
 		log_debug("%x ", buf[i]);
 	log_debug("\n");
+}
+
+static int process_data(struct client_t *cln)
+{
+	int i, n;
+	char *eof;
+	uint8_t buf[] = {IAC, DONT, 0, '\r', '\n'};
+
+	eof = strstr((const char*)cln->recv_buf, "\r\n");
+	if (!eof)
+		return 0;
+	
+	*eof = 0;
+
+	for (i = 0; i < cln->recv_pos; i++) {
+		if (cln->recv_buf[i] == 0xff) {
+			if (i >= cln->recv_pos - 1)
+				return 0;
+			if (cln->recv_buf[i + 1] == WILL || cln->recv_buf[i + 1] == WONT) {
+				if (i >= cln->recv_pos - 2)
+					return 0;
+				buf[2] = cln->recv_buf[i + 2];
+				if (telnet_send(cln, buf, 3))
+					return -1;
+			}
+
+			if (cln->recv_buf[i + 1] >= 251 && cln->recv_buf[i + 1] <= 254) {
+				if (i >= cln->recv_pos - 2)
+					return 0;
+				n = 3;
+			} else
+				n = 2;
+			
+			memmove(cln->recv_buf + i, cln->recv_buf + i + n, cln->recv_pos - i - n);
+			cln->recv_pos -= n;
+			i--;
+		}
+	}
+
+	if (!cln->auth) {
+		if (strcmp((const char*)cln->recv_buf, conf_passwd)) {
+			if (telnet_send(cln, AUTH_FAILED, sizeof(AUTH_FAILED)))
+				return -1;
+			disconnect(cln);
+			return -1;
+		}
+		cln->auth = 1;
+		buf[1] = WONT;
+		buf[2] = TELOPT_ECHO;
+		if (telnet_send(cln, buf, 5))
+			return -1;
+
+	} else {
+		if (process_cmd(cln))
+			return -1;
+	}
+
+	if (send_prompt(cln))
+		return -1;
+
+	cln->recv_pos = 0;
+
+	return 0;
 }
 
 static int cln_read(struct triton_md_handler_t *h)
@@ -135,6 +211,9 @@ static int cln_read(struct triton_md_handler_t *h)
 		}
 		log_debug("cli: read(%i): ", n);
 		print_buf(cln->recv_buf + cln->recv_pos, n);
+		cln->recv_pos += n;
+		if (process_data(cln))
+			return -1;
 	}
 
 	return 0;
@@ -210,7 +289,13 @@ static int serv_read(struct triton_md_handler_t *h)
 
 		if (send_banner(conn))
 			continue;
-		send_auth_request(conn);
+
+		if (conf_passwd)
+			send_password_request(conn);
+		else {
+			conn->auth = 1;
+			send_prompt(conn);
+		}
 	}
 	return 0;
 }
@@ -293,6 +378,11 @@ static void __init init(void)
 		log_emerg("cli: disabled\n");
 		return;
 	}
+
+	conf_passwd = conf_get_opt("cli", "passwd");
+	opt = conf_get_opt("cli", "prompt");
+	if (opt)
+		conf_prompt = opt;
 
 	start_server(host, port);
 }
