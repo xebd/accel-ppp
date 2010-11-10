@@ -169,7 +169,7 @@ out_err:
 	return -1;
 }
 
-int rad_req_send(struct rad_req_t *req)
+int rad_req_send(struct rad_req_t *req, int verbose)
 {
 	if (req->hnd.fd == -1 && make_socket(req))
 		return -1;
@@ -177,7 +177,7 @@ int rad_req_send(struct rad_req_t *req)
 	if (!req->pack->buf && rad_packet_build(req->pack, req->RA))
 		goto out_err;
 	
-	if (conf_verbose) {
+	if (verbose) {
 		log_ppp_info("send ");
 		rad_packet_print(req->pack, log_ppp_info);
 	}

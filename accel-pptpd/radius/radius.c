@@ -29,6 +29,7 @@ in_addr_t conf_nas_ip_address;
 in_addr_t conf_gw_ip_address;
 in_addr_t conf_bind;
 int conf_verbose;
+int conf_interim_verbose;
 
 char *conf_auth_server;
 int conf_auth_server_port = 1812;
@@ -384,6 +385,10 @@ static void __init radius_init(void)
 	opt = conf_get_opt("radius", "verbose");
 	if (opt && atoi(opt) > 0)
 		conf_verbose = 1;
+	
+	opt = conf_get_opt("radius", "interim-verbose");
+	if (opt && atoi(opt) > 0)
+		conf_interim_verbose = 1;
 	
 	opt = conf_get_opt("radius", "nas-ip-address");
 	if (opt)

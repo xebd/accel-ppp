@@ -142,7 +142,7 @@ static int rad_auth_send(struct rad_req_t *req)
 	int i;
 
 	for(i = 0; i < conf_max_try; i++) {
-		if (rad_req_send(req))
+		if (rad_req_send(req, conf_verbose))
 			goto out;
 
 		rad_req_wait(req, conf_timeout);

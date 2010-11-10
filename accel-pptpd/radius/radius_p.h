@@ -57,6 +57,7 @@ struct rad_req_t
 extern int conf_max_try;
 extern int conf_timeout;
 extern int conf_verbose;
+extern int conf_interim_verbose;
 extern char *conf_nas_identifier;
 extern in_addr_t conf_nas_ip_address;
 extern in_addr_t conf_bind;
@@ -84,7 +85,7 @@ void rad_dict_free(struct rad_dict_t *dict);
 struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *username);
 int rad_req_acct_fill(struct rad_req_t *);
 void rad_req_free(struct rad_req_t *);
-int rad_req_send(struct rad_req_t *);
+int rad_req_send(struct rad_req_t *, int verbose);
 int rad_req_wait(struct rad_req_t *, int);
 
 struct radius_pd_t *find_pd(struct ppp_t *ppp);
