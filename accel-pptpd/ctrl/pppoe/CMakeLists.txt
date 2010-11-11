@@ -1,5 +1,11 @@
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
 
-ADD_LIBRARY(pppoe SHARED pppoe.c mac_filter.c)
+ADD_LIBRARY(pppoe SHARED
+	pppoe.c
+	mac_filter.c
+	cli.c
+)
+
+TARGET_LINK_LIBRARIES(pppoe crypto)
 
 INSTALL(TARGETS pppoe LIBRARY DESTINATION usr/lib/accel-pptp)

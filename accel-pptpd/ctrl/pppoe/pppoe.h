@@ -1,6 +1,7 @@
 #ifndef __PPPOE_H
 #define __PPPOE_H
 
+#include <pthread.h>
 #include <linux/if.h>
 #include <linux/if_pppox.h>
 
@@ -55,7 +56,33 @@ struct pppoe_packet_t
 	struct list_head tags;
 };
 
+struct pppoe_serv_t
+{
+	struct list_head entry;
+	struct triton_context_t ctx;
+	struct triton_md_handler_t hnd;
+	uint8_t hwaddr[ETH_ALEN];
+	char *ifname;
+
+	pthread_mutex_t lock;
+	struct pppoe_conn_t *conn[MAX_SID];
+	uint16_t sid;
+	int stopping:1;
+
+	unsigned int conn_cnt;
+	struct list_head conn_list;
+	struct list_head pado_list;
+};
+
+extern uint32_t stat_active;
+extern uint32_t stat_delayed_pado;
+
+extern pthread_rwlock_t serv_lock;
+extern struct list_head serv_list;
+
 int mac_filter_check(const uint8_t *addr);
+void pppoe_server_start(const char *intf, void *client);
+void pppoe_server_stop(const char *intf);
 
 #endif
 

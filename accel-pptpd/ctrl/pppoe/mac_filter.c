@@ -9,6 +9,7 @@
 #include "cli.h"
 #include "triton.h"
 #include "log.h"
+#include "ppp.h"
 #include "memdebug.h"
 
 #include "pppoe.h"
