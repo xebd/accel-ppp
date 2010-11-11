@@ -688,28 +688,12 @@ static struct pptp_serv_t serv=
 
 static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
 {
-	char buf[128];
-
-	if (cli_send(client, "pptp:\r\n"))
-		return CLI_CMD_FAILED;
-	
-	sprintf(buf, "  starting: %u\r\n", stat_starting);
-	if (cli_send(client, buf))
-		return CLI_CMD_FAILED;
-
-	sprintf(buf, "  active: %u\r\n", stat_active);
-	if (cli_send(client, buf))
-		return CLI_CMD_FAILED;
+	cli_send(client, "pptp:\r\n");
+	cli_sendv(client,"  starting: %u\r\n", stat_starting);
+	cli_sendv(client,"  active: %u\r\n", stat_active);
 
 	return CLI_CMD_OK;
 }
-
-static const char *show_stat_hdr[] = {"show","stat"};
-static struct cli_simple_cmd_t show_stat_cmd = {
-	.hdr_len = 2,
-	.hdr = show_stat_hdr,
-	.exec = show_stat_exec,
-};
 
 static void __init pptp_init(void)
 {
@@ -772,6 +756,6 @@ static void __init pptp_init(void)
 	triton_md_enable_handler(&serv.hnd, MD_MODE_READ);
 	triton_context_wakeup(&serv.ctx);
 
-	cli_register_simple_cmd(&show_stat_cmd);
+	cli_register_simple_cmd2(show_stat_exec, NULL, 2, "show", "stat");
 }
 

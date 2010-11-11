@@ -1,6 +1,8 @@
 #ifndef __TELNET_H
 #define __TELNET_H
 
+#include <stdarg.h>
+
 struct client_t
 {
 	struct list_head entry;
@@ -18,9 +20,11 @@ struct client_t
 	int echo:1;
 	int telcmd:1;
 	int esc:1;
+	int disconnect:1;
 };
 
 int telnet_send(struct client_t *cln, const void *buf, int size);
+int telnet_sendv(struct client_t *cln, const char *fmt, va_list ap);
 void telnet_disconnect(struct client_t *cln);
 int process_cmd(struct client_t *cln);
 

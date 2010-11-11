@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -20,6 +21,33 @@ void __export cli_register_simple_cmd(struct cli_simple_cmd_t *cmd)
 	list_add_tail(&cmd->entry, &simple_cmd_list);
 }
 
+void __export cli_register_simple_cmd2(
+	int (*exec)(const char *cmd, char * const *fields, int fields_cnt, void *client),
+	void (*help)(char * const *fields, int fields_cnt, void *client),
+	int hdr_len,
+	...
+	)
+{
+	struct cli_simple_cmd_t *c;
+	int i;
+	va_list ap;
+
+	va_start(ap, hdr_len);
+
+	c = malloc(sizeof(*c));
+	memset(c, 0, sizeof(*c));
+	
+	c->exec = exec;
+	c->help = help;
+	c->hdr_len = hdr_len;
+	c->hdr = malloc(hdr_len * sizeof(void*));
+
+	for (i = 0; i < hdr_len; i++)
+		c->hdr[i] = va_arg(ap, char *);
+	
+	list_add_tail(&c->entry, &simple_cmd_list);
+}
+
 void __export cli_register_regexp_cmd(struct cli_regexp_cmd_t *cmd)
 {
 	int err;
@@ -36,6 +64,19 @@ int __export cli_send(void *client, const char *data)
 	struct client_t *cln = (struct client_t *)client;
 
 	return telnet_send(cln, data, strlen(data));
+}
+
+int __export cli_sendv(void *client, const char *fmt, ...)
+{
+	struct client_t *cln = (struct client_t *)client;
+	int r;
+
+	va_list ap;
+	va_start(ap, fmt);
+	r = telnet_sendv(cln, fmt, ap);
+	va_end(ap);
+
+	return r;
 }
 
 
@@ -89,14 +130,13 @@ int process_cmd(struct client_t *cln)
 	n = split((char *)cln->cmdline, f);
 
 	if (n >= 1 && !strcmp(f[0], "help")) {
-		list_for_each_entry(cmd1, &simple_cmd_list, entry) {
-			if (cmd1->help && cmd1->help(f, n, cln))
-				return -1;
-		}
-		list_for_each_entry(cmd2, &regexp_cmd_list, entry) {
-			if (cmd2->help && cmd1->help(f, n, cln))
-				return -1;
-		}
+		list_for_each_entry(cmd1, &simple_cmd_list, entry)
+			if (cmd1->help)
+				cmd1->help(f, n, cln);
+
+		list_for_each_entry(cmd2, &regexp_cmd_list, entry)
+			if (cmd2->help)
+				cmd1->help(f, n, cln);
 
 		return 0;
 	}

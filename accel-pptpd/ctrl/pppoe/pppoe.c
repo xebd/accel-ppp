@@ -943,31 +943,6 @@ out_err:
 	_free(serv);
 }
 
-static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
-{
-	char buf[128];
-
-	if (cli_send(client, "pppoe:\r\n"))
-		return CLI_CMD_FAILED;
-	
-	sprintf(buf, "  active: %u\r\n", stat_active);
-	if (cli_send(client, buf))
-		return CLI_CMD_FAILED;
-
-	sprintf(buf, "  delayed PADO: %u\r\n", stat_delayed_pado);
-	if (cli_send(client, buf))
-		return CLI_CMD_FAILED;
-
-	return CLI_CMD_OK;
-}
-
-static const char *show_stat_hdr[] = {"show","stat"};
-static struct cli_simple_cmd_t show_stat_cmd = {
-	.hdr_len = 2,
-	.hdr = show_stat_hdr,
-	.exec = show_stat_exec,
-};
-
 static int init_secret(void)
 {
 	int fd;
@@ -1024,7 +999,5 @@ static void __init pppoe_init(void)
 				conf_pado_delay = atoi(opt->val);
 		}
 	}
-
-	cli_register_simple_cmd(&show_stat_cmd);
 }
 

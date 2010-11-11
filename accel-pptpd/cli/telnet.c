@@ -91,6 +91,9 @@ int telnet_send(struct client_t *cln, const void *_buf, int size)
 	struct buffer_t *b;
 	const uint8_t *buf = (const uint8_t *)_buf;
 
+	if (cln->disconnect)
+		return -1;
+
 	for (n = 0; n < size; n += k) {
 		k = write(cln->hnd.fd, buf + n, size - n);
 		if (k < 0) {
@@ -105,11 +108,24 @@ int telnet_send(struct client_t *cln, const void *_buf, int size)
 			}
 			if (errno != EPIPE)
 				log_error("cli: write: %s\n", strerror(errno));
-			disconnect(cln);
+			//disconnect(cln);
+			cln->disconnect = 1;
 			return -1;
 		}
 	}
 	return 0;
+}
+
+int telnet_sendv(struct client_t *cln, const char *fmt, va_list ap)
+{
+	int r = vsnprintf((char *)temp_buf, RECV_BUF_SIZE, fmt, ap);
+
+	if (r >= RECV_BUF_SIZE) {
+		strcpy((char *)temp_buf + RECV_BUF_SIZE - 6, "...\r\n");
+		r = RECV_BUF_SIZE;
+	}
+
+	return telnet_send(cln, temp_buf, r);
 }
 
 static int send_banner(struct client_t *cln)
@@ -397,6 +413,10 @@ static int cln_read(struct triton_md_handler_t *h)
 		for (i = 0; i < n; i++) {
 			if (telnet_input_char(cln, recv_buf[i]))
 				return -1;
+		}
+		if (cln->disconnect) {
+			disconnect(cln);
+			return 0;
 		}
 	}
 
