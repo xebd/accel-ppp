@@ -50,11 +50,11 @@ static int parse1(const char *str, uint32_t *begin, uint32_t *end)
 		return -1;
 	if (f1 > 255)
 		return -1;
-	if (f1 > 255)
+	if (f2 > 255)
 		return -1;
-	if (f1 > 255)
+	if (f3 > 255)
 		return -1;
-	if (f1 > 255)
+	if (f4 > 255)
 		return -1;
 	if (m == 0 || m > 32)
 		return -1;

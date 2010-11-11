@@ -73,8 +73,8 @@ static int ipaddr_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 			return -1;
 		}
 	}
-	if (!iprange_client_check(ipaddr_opt->ip->peer_addr)) {
-		log_ppp_warn("ppp:ipcp: to avoid hard loops requested IP cannot be assigned (%i.%i.%i.%i)\n",
+	if (iprange_tunnel_check(ipaddr_opt->ip->peer_addr)) {
+		log_ppp_warn("ppp:ipcp: to avoid kernel soft lockup requested IP cannot be assigned (%i.%i.%i.%i)\n",
 			ipaddr_opt->ip->peer_addr&0xff, 
 			(ipaddr_opt->ip->peer_addr >> 8)&0xff, 
 			(ipaddr_opt->ip->peer_addr >> 16)&0xff, 
