@@ -74,6 +74,11 @@ struct pppoe_serv_t
 	struct list_head pado_list;
 };
 
+extern int conf_verbose;
+extern char *conf_service_name;
+extern char *conf_ac_name;
+extern int conf_pado_delay;
+
 extern uint32_t stat_active;
 extern uint32_t stat_delayed_pado;
 

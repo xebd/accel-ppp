@@ -54,10 +54,11 @@ struct delayed_pado_t
 	struct pppoe_tag *service_name;
 };
 
-static int conf_verbose = 0;
-static const char *conf_service_name = NULL;
-static const char *conf_ac_name = "accel-pptp";
-static int conf_pado_delay = 0;
+int conf_verbose;
+char *conf_service_name;
+char *conf_ac_name;
+int conf_pado_delay;
+
 static mempool_t conn_pool;
 static mempool_t pado_pool;
 
@@ -529,13 +530,9 @@ static void pppoe_send_PADT(struct pppoe_conn_t *conn)
 	pppoe_send(conn->disc_sock, pack);
 }
 
-static void pado_timer(struct triton_timer_t *t)
+static void free_delayed_pado(struct delayed_pado_t *pado)
 {
-	struct delayed_pado_t *pado = container_of(t, typeof(*pado), timer);
-
-	triton_timer_del(t);
-
-	pppoe_send_PADO(pado->serv, pado->addr, pado->host_uniq, pado->relay_sid, pado->service_name);
+	triton_timer_del(&pado->timer);
 
 	__sync_fetch_and_sub(&stat_delayed_pado, 1);
 	list_del(&pado->entry);
@@ -548,6 +545,15 @@ static void pado_timer(struct triton_timer_t *t)
 		_free(pado->service_name);
 
 	mempool_free(pado);
+}
+
+static void pado_timer(struct triton_timer_t *t)
+{
+	struct delayed_pado_t *pado = container_of(t, typeof(*pado), timer);
+
+	pppoe_send_PADO(pado->serv, pado->addr, pado->host_uniq, pado->relay_sid, pado->service_name);
+
+	free_delayed_pado(pado);
 }
 
 static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
@@ -846,7 +852,9 @@ static int pppoe_serv_read(struct triton_md_handler_t *h)
 static void pppoe_serv_close(struct triton_context_t *ctx)
 {
 	struct pppoe_serv_t *serv = container_of(ctx, typeof(*serv), ctx);
-	_server_stop(serv);
+
+	triton_md_disable_handler(&serv->hnd, MD_MODE_READ | MD_MODE_WRITE);
+	serv->stopping = 1;
 }
 
 void pppoe_server_start(const char *ifname, void *cli)
@@ -976,6 +984,7 @@ static void _server_stop(struct pppoe_serv_t *serv)
 		return;
 	
 	serv->stopping = 1;
+	triton_md_disable_handler(&serv->hnd, MD_MODE_READ | MD_MODE_WRITE);
 
 	pthread_mutex_lock(&serv->lock);
 	if (!serv->conn_cnt) {
@@ -990,9 +999,16 @@ static void _server_stop(struct pppoe_serv_t *serv)
 
 void pppoe_server_free(struct pppoe_serv_t *serv)
 {
+	struct delayed_pado_t *pado;
+
 	pthread_rwlock_wrlock(&serv_lock);
 	list_del(&serv->entry);
 	pthread_rwlock_unlock(&serv_lock);
+
+	while (!list_empty(&serv->pado_list)) {
+		pado = list_entry(serv->pado_list.next, typeof(*pado), entry);
+		free_delayed_pado(pado);
+	}
 
 	triton_md_unregister_handler(&serv->hnd);
 	close(serv->hnd.fd);
@@ -1061,15 +1077,19 @@ static void __init pppoe_init(void)
 		} else if (!strcmp(opt->name, "verbose")) {
 			if (atoi(opt->val) > 0)
 				conf_verbose = 1;
-		}	else if (!strcmp(opt->name, "ac-name") || !strcmp(opt->name, "AC-Name"))
-			conf_ac_name = opt->val;
-		else if (!strcmp(opt->name, "service-name") || !strcmp(opt->name, "Service-Name")) {
+		}	else if (!strcmp(opt->name, "ac-name") || !strcmp(opt->name, "AC-Name")) {
 			if (opt->val && strlen(opt->val))
-				conf_service_name = opt->val;
+				conf_ac_name = _strdup(opt->val);
+		} else if (!strcmp(opt->name, "service-name") || !strcmp(opt->name, "Service-Name")) {
+			if (opt->val && strlen(opt->val))
+				conf_service_name = _strdup(opt->val);
 		} else if (!strcmp(opt->name, "pado-delay") || !strcmp(opt->name, "PADO-delay")) {
 			if (opt->val && atoi(opt->val) > 0)
 				conf_pado_delay = atoi(opt->val);
 		}
 	}
+
+	if (!conf_ac_name)
+		conf_ac_name = _strdup("accel-pptp");
 }
 

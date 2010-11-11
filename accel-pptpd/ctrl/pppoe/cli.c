@@ -1,10 +1,12 @@
 #include <string.h>
+#include <stdlib.h>
 #include <netinet/in.h>
 #include <net/ethernet.h>
 
 #include "triton.h"
 #include "cli.h"
 #include "ppp.h"
+#include "memdebug.h"
 
 #include "pppoe.h"
 
@@ -70,9 +72,136 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	return CLI_CMD_OK;
 }
 
+//===================================
+
+static void set_verbose_help(char * const *f, int f_cnt, void *cli)
+{
+	cli_send(cli, "pppoe set verbose <n> - set verbosity of pppoe logging\r\n");
+	cli_send(cli, "pppoe set PADO-delay <delay> - set PADO delay (ms)\r\n");
+	cli_send(cli, "pppoe set Service-Name <name> - set Service-Name to respond\r\n");
+	cli_send(cli, "pppoe set Service-Name * - respond with client's Service-Name\r\n");
+	cli_send(cli, "pppoe set AC-Name <name> - set AC-Name tag value\r\n");
+	cli_send(cli, "pppoe show verbose - show current verbose value\r\n");
+	cli_send(cli, "pppoe show PADO-delay - show current PADO delay value\r\n");
+	cli_send(cli, "pppoe show Service-Name - show current Service-Name value\r\n");
+	cli_send(cli, "pppoe show AC-Name - show current AC-Name tag value\r\n");
+}
+
+static int show_verbose_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
+{
+	if (f_cnt != 3)
+		return CLI_CMD_SYNTAX;
+	
+	cli_sendv(cli, "%i\r\n", conf_verbose);
+	
+	return CLI_CMD_OK;
+}
+
+static int show_pado_delay_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
+{
+	if (f_cnt != 3)
+		return CLI_CMD_SYNTAX;
+	
+	cli_sendv(cli, "%i\r\n", conf_pado_delay);
+	
+	return CLI_CMD_OK;
+}
+
+static int show_service_name_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
+{
+	if (f_cnt != 3)
+		return CLI_CMD_SYNTAX;
+	
+	if (conf_service_name)
+		cli_sendv(cli, "%s\r\n", conf_service_name);
+	else
+		cli_sendv(cli, "*\r\n", conf_service_name);
+	
+	return CLI_CMD_OK;
+}
+
+static int show_ac_name_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
+{
+	if (f_cnt != 3)
+		return CLI_CMD_SYNTAX;
+	
+	cli_sendv(cli, "%s\r\n", conf_ac_name);
+	
+	return CLI_CMD_OK;
+}
+
+static int set_verbose_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
+{
+	if (f_cnt != 4)
+		return CLI_CMD_SYNTAX;
+	
+	if (!strcmp(f[3], "0"))
+		conf_verbose = 0;
+	else if (!strcmp(f[3], "1"))
+		conf_verbose = 1;
+	else
+		return CLI_CMD_INVAL;
+	
+	return CLI_CMD_OK;
+}
+
+static int set_pado_delay_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
+{
+	char *endptr;
+	int d;
+
+	if (f_cnt != 4)
+		return CLI_CMD_SYNTAX;
+	
+	d = strtol(f[3], &endptr, 10);
+	if (*endptr || d < 0)
+		return CLI_CMD_INVAL;
+	
+	conf_pado_delay = d;
+	
+	return CLI_CMD_OK;
+}
+
+static int set_service_name_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
+{
+	if (f_cnt != 4)
+		return CLI_CMD_SYNTAX;
+	
+	if (conf_service_name)
+		_free(conf_service_name);
+
+	if (!strcmp(f[3], "*"))
+		conf_service_name = NULL;
+	else
+		conf_service_name = _strdup(f[3]);
+	
+	return CLI_CMD_OK;
+}
+
+static int set_ac_name_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
+{
+	if (f_cnt != 4)
+		return CLI_CMD_SYNTAX;
+	
+	_free(conf_ac_name);
+	conf_ac_name = _strdup(f[3]);
+	
+	return CLI_CMD_OK;
+}
+//===================================
+
+
 static void __init init(void)
 {
 	cli_register_simple_cmd2(show_stat_exec, NULL, 2, "show", "stat");
 	cli_register_simple_cmd2(intf_exec, intf_help, 2, "pppoe", "interface");
+	cli_register_simple_cmd2(set_verbose_exec, set_verbose_help, 3, "pppoe", "set", "verbose");
+	cli_register_simple_cmd2(set_pado_delay_exec, NULL, 3, "pppoe", "set", "PADO-delay");
+	cli_register_simple_cmd2(set_service_name_exec, NULL, 3, "pppoe", "set", "Service-Name");
+	cli_register_simple_cmd2(set_ac_name_exec, NULL, 3, "pppoe", "set", "AC-Name");
+	cli_register_simple_cmd2(show_verbose_exec, NULL, 3, "pppoe", "show", "verbose");
+	cli_register_simple_cmd2(show_pado_delay_exec, NULL, 3, "pppoe", "show", "PADO-delay");
+	cli_register_simple_cmd2(show_service_name_exec, NULL, 3, "pppoe", "show", "Service-Name");
+	cli_register_simple_cmd2(show_ac_name_exec, NULL, 3, "pppoe", "show", "AC-Name");
 }
 

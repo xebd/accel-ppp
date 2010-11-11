@@ -8,6 +8,7 @@
 #define CLI_CMD_FAILED -1
 #define CLI_CMD_EXIT -2
 #define CLI_CMD_SYNTAX 1
+#define CLI_CMD_INVAL 2
 
 struct cli_simple_cmd_t
 {

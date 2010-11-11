@@ -11,6 +11,7 @@
 
 #define MAX_CMD_ITEMS 100
 #define MSG_SYNTAX_ERROR "syntax error\r\n"
+#define MSG_INVAL_ERROR "invalid argument\r\n"
 #define MSG_UNKNOWN_CMD "command unknown\r\n"
 
 static LIST_HEAD(simple_cmd_list);
@@ -156,8 +157,10 @@ int process_cmd(struct client_t *cln)
 				case CLI_CMD_FAILED:
 					return -1;
 				case CLI_CMD_SYNTAX:
-					if (telnet_send(cln, MSG_SYNTAX_ERROR, sizeof(MSG_SYNTAX_ERROR)))
-						return -1;
+					telnet_send(cln, MSG_SYNTAX_ERROR, sizeof(MSG_SYNTAX_ERROR));
+					return 0;
+				case CLI_CMD_INVAL:
+					telnet_send(cln, MSG_INVAL_ERROR, sizeof(MSG_INVAL_ERROR));
 					return 0;
 				case CLI_CMD_OK:
 					found = 1;
