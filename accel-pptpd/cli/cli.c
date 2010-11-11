@@ -86,7 +86,7 @@ int process_cmd(struct client_t *cln)
 	char *f[MAX_CMD_ITEMS];
 	int r, i, n, found = 0;
 
-	n = split((char *)cln->recv_buf, f);
+	n = split((char *)cln->cmdline, f);
 
 	if (n >= 1 && !strcmp(f[0], "help")) {
 		list_for_each_entry(cmd1, &simple_cmd_list, entry) {
@@ -109,7 +109,7 @@ int process_cmd(struct client_t *cln)
 			}
 			if (i < cmd1->hdr_len)
 				continue;
-			r = cmd1->exec((char *)cln->recv_buf, f, n, cln);
+			r = cmd1->exec((char *)cln->cmdline, f, n, cln);
 			switch (r) {
 				case CLI_CMD_EXIT:
 					telnet_disconnect(cln);
@@ -126,7 +126,7 @@ int process_cmd(struct client_t *cln)
 	}
 
 	list_for_each_entry(cmd2, &regexp_cmd_list, entry) {
-		r = cmd2->exec((char *)cln->recv_buf, cln);
+		r = cmd2->exec((char *)cln->cmdline, cln);
 		switch (r) {
 			case CLI_CMD_EXIT:
 				telnet_disconnect(cln);

@@ -24,7 +24,7 @@
 
 int __export conf_ppp_verbose;
 
-pthread_rwlock_t __export ppp_lock;
+pthread_rwlock_t __export ppp_lock = PTHREAD_RWLOCK_INITIALIZER;
 __export LIST_HEAD(ppp_list);
 
 static LIST_HEAD(layers);

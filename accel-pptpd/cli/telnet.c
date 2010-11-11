@@ -6,6 +6,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <time.h>
+#include <ctype.h>
 #include <arpa/inet.h>
 #include <arpa/telnet.h>
 #include <netinet/in.h>
@@ -18,9 +19,14 @@
 
 #include "telnet.h"
 
-#define RECV_BUF_SIZE 4096
+#define RECV_BUF_SIZE 1024
 #define BANNER "accel-pptp-1.3-rc1\r\n"
 #define AUTH_FAILED "\r\nAuthentication failed\r\n"
+
+#define ESC_LEFT "[D"
+#define ESC_RIGHT "[C"
+#define ESC_UP "[A"
+#define ESC_DOWN "[B"
 
 struct buffer_t
 {
@@ -34,6 +40,9 @@ static const char *conf_prompt = "accel-pptp# ";
 
 static struct triton_context_t serv_ctx;
 static struct triton_md_handler_t serv_hnd;
+
+static uint8_t *recv_buf;
+static uint8_t *temp_buf;
 
 static void disconnect(struct client_t *cln)
 {
@@ -53,7 +62,13 @@ static void disconnect(struct client_t *cln)
 		_free(b);
 	}
 
-	_free(cln->recv_buf);
+	while (!list_empty(&cln->history)) {
+		b = list_entry(cln->history.next, typeof(*b), entry);
+		list_del(&b->entry);
+		_free(b);
+	}
+
+	_free(cln->cmdline);
 	_free(cln);
 }
 
@@ -102,6 +117,12 @@ static int send_banner(struct client_t *cln)
 	return telnet_send(cln, BANNER, sizeof(BANNER));
 }
 
+static int send_config(struct client_t *cln)
+{
+	uint8_t buf[] = {IAC, WILL, TELOPT_ECHO, IAC, WILL,	TELOPT_SGA, IAC, DONT, TELOPT_LINEMODE};
+	return telnet_send(cln, buf, sizeof(buf));
+}
+
 static int send_password_request(struct client_t *cln)
 {
 	uint8_t buf0[] = {IAC, WILL, TELOPT_ECHO};
@@ -130,65 +151,227 @@ static int send_prompt(struct client_t *cln)
 	log_debug("\n");
 }*/
 
-static int process_data(struct client_t *cln)
+static int send_cmdline_tail(struct client_t *cln, int corr)
 {
-	int i, n;
-	char *eof;
-	uint8_t buf[] = {IAC, DONT, 0, '\r', '\n'};
+	if (telnet_send(cln, cln->cmdline + cln->cmdline_pos, cln->cmdline_len - cln->cmdline_pos))
+		return -1;
 
-	eof = strstr((const char*)cln->recv_buf, "\r\n");
-	if (!eof)
+	memset(temp_buf, '\b', cln->cmdline_len - cln->cmdline_pos - corr);
+	
+	if (telnet_send(cln, temp_buf, cln->cmdline_len - cln->cmdline_pos - corr))
+		return -1;
+	
+	return 0;
+}
+
+static int load_history(struct client_t *cln)
+{
+	struct buffer_t *b = list_entry(cln->history_pos, typeof(*b), entry);
+	if (b->size < cln->cmdline_len) {
+		memset(temp_buf, '\b', cln->cmdline_len - b->size);
+		memset(temp_buf + cln->cmdline_len - b->size, ' ', cln->cmdline_len - b->size);
+		if (telnet_send(cln, temp_buf, (cln->cmdline_len - b->size) * 2))
+			return -1;
+	}
+	if (telnet_send(cln, "\r", 1))
+		return -1;
+	if (send_prompt(cln))
+		return -1;
+	memcpy(cln->cmdline, b->buf, b->size);
+	cln->cmdline_pos = b->size;
+	cln->cmdline_len = b->size;
+	if (telnet_send(cln, b->buf, b->size))
+		return -1;
+
+	return 0;
+}
+
+static int telnet_input_char(struct client_t *cln, uint8_t c)
+{
+	uint8_t buf[] = {IAC, DONT, 0};
+	struct buffer_t *b;
+	
+	if (c == '\n')
 		return 0;
 	
-	*eof = 0;
+	if (c == '\r') {
+		cln->cmdline[cln->cmdline_len] = 0;
 
-	for (i = 0; i < cln->recv_pos; i++) {
-		if (cln->recv_buf[i] == 0xff) {
-			if (i >= cln->recv_pos - 1)
-				return 0;
-			if (cln->recv_buf[i + 1] == WILL || cln->recv_buf[i + 1] == WONT) {
-				if (i >= cln->recv_pos - 2)
-					return 0;
-				buf[2] = cln->recv_buf[i + 2];
-				if (telnet_send(cln, buf, 3))
-					return -1;
-			}
-
-			if (cln->recv_buf[i + 1] >= 251 && cln->recv_buf[i + 1] <= 254) {
-				if (i >= cln->recv_pos - 2)
-					return 0;
-				n = 3;
-			} else
-				n = 2;
-			
-			memmove(cln->recv_buf + i, cln->recv_buf + i + n, cln->recv_pos - i - n);
-			cln->recv_pos -= n;
-			i--;
+		if (cln->echo) {
+			if (telnet_send(cln, "\r\n", 2))
+				return -1;
 		}
+
+		if (!cln->auth) {
+			if (strcmp((char *)cln->cmdline, conf_passwd)) {
+				if (telnet_send(cln, AUTH_FAILED, sizeof(AUTH_FAILED)))
+					return -1;
+				disconnect(cln);
+				return -1;
+			}
+			cln->auth = 1;
+		} else {
+			b = _malloc(sizeof(*b) + cln->cmdline_len);
+			memcpy(b->buf, cln->cmdline, cln->cmdline_len);
+			b->size = cln->cmdline_len;
+			list_add(&b->entry, cln->history.next);
+			cln->history_pos = cln->history.next;
+			
+			if (process_cmd(cln))
+				return -1;
+		}
+	
+		cln->cmdline_pos = 0;
+		cln->cmdline_len = 0;
+
+		return send_prompt(cln);
 	}
 
-	if (!cln->auth) {
-		if (strcmp((const char*)cln->recv_buf, conf_passwd)) {
-			if (telnet_send(cln, AUTH_FAILED, sizeof(AUTH_FAILED)))
-				return -1;
+	if (cln->telcmd) {
+		if (cln->cmdline_pos2 == RECV_BUF_SIZE - 1) {
+			log_error("cli: buffer overflow, dropping connection ...\n");
 			disconnect(cln);
 			return -1;
 		}
-		cln->auth = 1;
-		buf[1] = WONT;
-		buf[2] = TELOPT_ECHO;
-		if (telnet_send(cln, buf, 5))
-			return -1;
 
+		cln->cmdline[cln->cmdline_pos2] = c;
+		cln->cmdline_pos2++;
+
+		if (cln->cmdline[cln->cmdline_len] >= WILL && cln->cmdline[cln->cmdline_len] <= DONT && cln->cmdline_pos2 - cln->cmdline_len != 2)
+			return 0;
+
+		switch (cln->cmdline[cln->cmdline_len]) {
+			case WILL:
+			case WONT:
+				buf[2] = c;
+				if (telnet_send(cln, buf, 3))
+					return -1;
+				break;
+			case DO:
+				if (c == TELOPT_ECHO)
+					cln->echo = 1;
+				break;
+			case SB:
+				if (c != SE)
+					return 0;
+		}
+		
+		cln->telcmd = 0;
+	} else if (cln->esc) {
+		if (cln->cmdline_pos2 == RECV_BUF_SIZE - 1) {
+			log_error("cli: buffer overflow, dropping connection ...\n");
+			disconnect(cln);
+			return -1;
+		}
+
+		cln->cmdline[cln->cmdline_pos2] = c;
+		cln->cmdline_pos2++;
+
+		if (cln->cmdline_pos2 - cln->cmdline_len != 2)
+			return 0;
+		
+		cln->esc = 0;
+
+		if (cln->auth) {
+			if (!memcmp(cln->cmdline + cln->cmdline_len, ESC_LEFT, 2)) {
+				if (cln->cmdline_pos) {
+					if (telnet_send(cln, "\b", 1))
+						return -1;
+					cln->cmdline_pos--;
+				}
+			} else if (!memcmp(cln->cmdline + cln->cmdline_len, ESC_RIGHT, 2)) {
+				if (cln->cmdline_pos < cln->cmdline_len) {
+					if (send_cmdline_tail(cln, 1))
+						return -1;
+					cln->cmdline_pos++;
+				}
+			} else if (!memcmp(cln->cmdline + cln->cmdline_len, ESC_UP, 2)) {
+				if (cln->history_pos == cln->history.next) {
+					b = list_entry(cln->history_pos, typeof(*b), entry);
+					memcpy(b->buf, cln->cmdline, cln->cmdline_len);
+					b->size = cln->cmdline_len;
+				}
+				cln->history_pos = cln->history_pos->next;
+				if (cln->history_pos == &cln->history) {
+					cln->history_pos = cln->history_pos->prev;
+					return 0;
+				}
+				if (load_history(cln))
+					return -1;
+			} else if (!memcmp(cln->cmdline + cln->cmdline_len, ESC_DOWN, 2)) {
+				cln->history_pos = cln->history_pos->prev;
+				if (cln->history_pos == &cln->history) {
+					cln->history_pos = cln->history_pos->next;
+					return 0;
+				}
+				if (load_history(cln))
+					return -1;
+			}
+		}
 	} else {
-		if (process_cmd(cln))
-			return -1;
+		switch (c) {
+			case 0xff:
+				cln->cmdline_pos2 = cln->cmdline_len;
+				cln->telcmd = 1;
+				return 0;
+			case 0x1b:
+				cln->cmdline_pos2 = cln->cmdline_len;
+				cln->esc = 1;
+				return 0;
+			case 0x7f:
+				if (cln->cmdline_pos) {
+					if (cln->cmdline_pos < cln->cmdline_len) {
+						memmove(cln->cmdline + cln->cmdline_pos - 1, cln->cmdline + cln->cmdline_pos, cln->cmdline_len - cln->cmdline_pos);
+						
+						cln->cmdline[cln->cmdline_len - 1] = ' ';
+						
+						if (telnet_send(cln, "\b", 1))
+							return -1;
+					
+						cln->cmdline_pos--;
+					
+						if (send_cmdline_tail(cln, 0))
+							return -1;
+					} else {
+						buf[0] = '\b';
+						buf[1] = ' ';
+						buf[2] = '\b';
+						if (telnet_send(cln, buf, 3))
+							return -1;
+						cln->cmdline_pos--;
+					}
+
+					cln->cmdline_len--;
+				}
+				return 0;
+		}
+
+		if (isprint(c)) {
+			if (cln->cmdline_len == RECV_BUF_SIZE - 1)
+				return 0;
+
+			if (cln->cmdline_pos < cln->cmdline_len)
+				memmove(cln->cmdline + cln->cmdline_pos + 1, cln->cmdline + cln->cmdline_pos, cln->cmdline_len - cln->cmdline_pos);
+			cln->cmdline[cln->cmdline_pos] = c;
+			cln->cmdline_pos++;
+			cln->cmdline_len++;
+
+			if (cln->echo) {
+				if (!cln->auth) {
+					if (telnet_send(cln, "*", 1))
+						return -1;
+				} else {
+					if (telnet_send(cln, &c, 1))
+						return -1;
+				}
+			}
+			
+			if (cln->cmdline_pos < cln->cmdline_len) {
+				if (send_cmdline_tail(cln, 0))
+					return -1;
+			}
+		}
 	}
-
-	if (send_prompt(cln))
-		return -1;
-
-	cln->recv_pos = 0;
 
 	return 0;
 }
@@ -196,10 +379,10 @@ static int process_data(struct client_t *cln)
 static int cln_read(struct triton_md_handler_t *h)
 {
 	struct client_t *cln = container_of(h, typeof(*cln), hnd);
-	int n;
+	int i, n;
 
 	while (1) {
-		n = read(h->fd, cln->recv_buf + cln->recv_pos, RECV_BUF_SIZE - cln->recv_pos);
+		n = read(h->fd, recv_buf, RECV_BUF_SIZE);
 		if (n == 0) {
 			disconnect(cln);
 			return 0;
@@ -211,9 +394,10 @@ static int cln_read(struct triton_md_handler_t *h)
 		}
 		/*log_debug("cli: read(%i): ", n);
 		print_buf(cln->recv_buf + cln->recv_pos, n);*/
-		cln->recv_pos += n;
-		if (process_data(cln))
-			return -1;
+		for (i = 0; i < n; i++) {
+			if (telnet_input_char(cln, recv_buf[i]))
+				return -1;
+		}
 	}
 
 	return 0;
@@ -258,6 +442,7 @@ static int serv_read(struct triton_md_handler_t *h)
 	socklen_t size = sizeof(addr);
 	int sock;
 	struct client_t *conn;
+	struct buffer_t *b;
 
 	while(1) {
 		sock = accept(h->fd, (struct sockaddr *)&addr, &size);
@@ -281,13 +466,22 @@ static int serv_read(struct triton_md_handler_t *h)
 		conn->hnd.fd = sock;
 		conn->hnd.read = cln_read;
 		conn->hnd.write = cln_write;
-		conn->recv_buf = _malloc(RECV_BUF_SIZE);
+		conn->cmdline = _malloc(RECV_BUF_SIZE);
 		INIT_LIST_HEAD(&conn->xmit_queue);
+		INIT_LIST_HEAD(&conn->history);
+
+		b = _malloc(sizeof(*b) + RECV_BUF_SIZE);
+		b->size = 0;
+		list_add_tail(&b->entry, &conn->history);
+		conn->history_pos = conn->history.next;
 		
 		triton_md_register_handler(&serv_ctx, &conn->hnd);
 		triton_md_enable_handler(&conn->hnd,MD_MODE_READ);
 
 		if (send_banner(conn))
+			continue;
+
+		if (send_config(conn))
 			continue;
 
 		if (conf_passwd)
@@ -332,6 +526,7 @@ static void start_server(const char *host, int port)
 	else
 		addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
+  setsockopt(serv_hnd.fd, SOL_SOCKET, SO_REUSEADDR, &serv_hnd.fd, 4);  
   if (bind (serv_hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
     log_emerg("cli: failed to bind socket: %s\n", strerror(errno));
 		close(serv_hnd.fd);
@@ -383,6 +578,9 @@ static void __init init(void)
 	opt = conf_get_opt("cli", "prompt");
 	if (opt)
 		conf_prompt = opt;
+
+	recv_buf = malloc(RECV_BUF_SIZE);
+	temp_buf = malloc(RECV_BUF_SIZE);
 
 	start_server(host, port);
 }
