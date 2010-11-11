@@ -791,34 +791,37 @@ static int pppoe_serv_read(struct triton_md_handler_t *h)
 		if (n < ETH_HLEN + sizeof(*hdr)) {
 			if (conf_verbose)
 				log_warn("pppoe: short packet received (%i)\n", n);
-			return 0;
+			continue;
 		}
 
+		if (mac_filter_check(ethhdr->h_source))
+			continue;
+
 		if (memcmp(ethhdr->h_dest, bc_addr, ETH_ALEN) && memcmp(ethhdr->h_dest, serv->hwaddr, ETH_ALEN))
-			return 0;
+			continue;
 
 		if (!memcmp(ethhdr->h_source, bc_addr, ETH_ALEN)) {
 			if (conf_verbose)
 				log_warn("pppoe: discarding packet (host address is broadcast)\n");
-			return 0;
+			continue;
 		}
 
 		if ((ethhdr->h_source[0] & 1) != 0) {
 			if (conf_verbose)
 				log_warn("pppoe: discarding packet (host address is not unicast)\n");
-			return 0;
+			continue;
 		}
 
 		if (n < ETH_HLEN + sizeof(*hdr) + ntohs(hdr->length)) {
 			if (conf_verbose)
 				log_warn("pppoe: short packet received\n");
-			return 0;
+			continue;
 		}
 
 		if (hdr->ver != 1) {
 			if (conf_verbose)
 				log_warn("pppoe: discarding packet (unsupported version %i)\n", hdr->ver);
-			return 0;
+			continue;
 		}
 		
 		if (hdr->type != 1) {

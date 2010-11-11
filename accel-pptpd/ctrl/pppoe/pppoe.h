@@ -55,5 +55,7 @@ struct pppoe_packet_t
 	struct list_head tags;
 };
 
+int mac_filter_check(const uint8_t *addr);
+
 #endif
 
