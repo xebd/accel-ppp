@@ -854,7 +854,16 @@ static void pppoe_serv_close(struct triton_context_t *ctx)
 	struct pppoe_serv_t *serv = container_of(ctx, typeof(*serv), ctx);
 
 	triton_md_disable_handler(&serv->hnd, MD_MODE_READ | MD_MODE_WRITE);
+
 	serv->stopping = 1;
+
+	pthread_mutex_lock(&serv->lock);
+	if (!serv->conn_cnt) {
+		pthread_mutex_unlock(&serv->lock);
+		pppoe_server_free(serv);
+		return;
+	}
+	pthread_mutex_unlock(&serv->lock);
 }
 
 void pppoe_server_start(const char *ifname, void *cli)

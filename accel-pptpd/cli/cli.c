@@ -5,14 +5,17 @@
 
 #include "triton.h"
 
-#include "telnet.h"
 #include "cli.h"
+#include "cli_p.h"
 #include "log.h"
 
 #define MAX_CMD_ITEMS 100
 #define MSG_SYNTAX_ERROR "syntax error\r\n"
 #define MSG_INVAL_ERROR "invalid argument\r\n"
 #define MSG_UNKNOWN_CMD "command unknown\r\n"
+
+char *conf_cli_passwd;
+const char *conf_cli_prompt = "accel-pptp# ";
 
 static LIST_HEAD(simple_cmd_list);
 static LIST_HEAD(regexp_cmd_list);
@@ -62,19 +65,19 @@ void __export cli_register_regexp_cmd(struct cli_regexp_cmd_t *cmd)
 
 int __export cli_send(void *client, const char *data)
 {
-	struct client_t *cln = (struct client_t *)client;
+	struct cli_client_t *cln = (struct cli_client_t *)client;
 
-	return telnet_send(cln, data, strlen(data));
+	return cln->send(cln, data, strlen(data));
 }
 
 int __export cli_sendv(void *client, const char *fmt, ...)
 {
-	struct client_t *cln = (struct client_t *)client;
+	struct cli_client_t *cln = (struct cli_client_t *)client;
 	int r;
 
 	va_list ap;
 	va_start(ap, fmt);
-	r = telnet_sendv(cln, fmt, ap);
+	r = cln->sendv(cln, fmt, ap);
 	va_end(ap);
 
 	return r;
@@ -121,7 +124,7 @@ static int split(char *buf, char **ptr)
 	return i;
 }
 
-int process_cmd(struct client_t *cln)
+int cli_process_cmd(struct cli_client_t *cln)
 {
 	struct cli_simple_cmd_t *cmd1;
 	struct cli_regexp_cmd_t *cmd2;
@@ -153,14 +156,14 @@ int process_cmd(struct client_t *cln)
 			r = cmd1->exec((char *)cln->cmdline, f, n, cln);
 			switch (r) {
 				case CLI_CMD_EXIT:
-					telnet_disconnect(cln);
+					cln->disconnect(cln);
 				case CLI_CMD_FAILED:
 					return -1;
 				case CLI_CMD_SYNTAX:
-					telnet_send(cln, MSG_SYNTAX_ERROR, sizeof(MSG_SYNTAX_ERROR));
+					cli_send(cln, MSG_SYNTAX_ERROR);
 					return 0;
 				case CLI_CMD_INVAL:
-					telnet_send(cln, MSG_INVAL_ERROR, sizeof(MSG_INVAL_ERROR));
+					cli_send(cln, MSG_INVAL_ERROR);
 					return 0;
 				case CLI_CMD_OK:
 					found = 1;
@@ -172,12 +175,11 @@ int process_cmd(struct client_t *cln)
 		r = cmd2->exec((char *)cln->cmdline, cln);
 		switch (r) {
 			case CLI_CMD_EXIT:
-				telnet_disconnect(cln);
+				cln->disconnect(cln);
 			case CLI_CMD_FAILED:
 				return -1;
 			case CLI_CMD_SYNTAX:
-				if (telnet_send(cln, MSG_SYNTAX_ERROR, sizeof(MSG_SYNTAX_ERROR)))
-					return -1;
+				cli_send(cln, MSG_SYNTAX_ERROR);
 				return 0;
 			case CLI_CMD_OK:
 				found = 1;
@@ -185,10 +187,19 @@ int process_cmd(struct client_t *cln)
 	}
 
 	if (!found) {
-		if (telnet_send(cln, MSG_UNKNOWN_CMD, sizeof(MSG_UNKNOWN_CMD)))
+		if (cli_send(cln, MSG_UNKNOWN_CMD))
 			return -1;
 	}
 
 	return 0;
 }
 
+static void __init init(void)
+{
+	const char *opt;
+
+	conf_cli_passwd = conf_get_opt("cli", "passwd");
+	opt = conf_get_opt("cli", "prompt");
+	if (opt)
+		conf_cli_prompt = opt;
+}

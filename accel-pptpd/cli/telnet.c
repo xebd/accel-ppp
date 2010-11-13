@@ -17,7 +17,7 @@
 #include "list.h"
 #include "memdebug.h"
 
-#include "telnet.h"
+#include "cli_p.h"
 
 #define RECV_BUF_SIZE 1024
 #define BANNER "accel-pptp-1.3-rc1\r\n"
@@ -28,6 +28,27 @@
 #define ESC_UP "[A"
 #define ESC_DOWN "[B"
 
+struct telnet_client_t
+{
+	struct cli_client_t cli_client;
+	struct list_head entry;
+	struct triton_md_handler_t hnd;
+	struct list_head xmit_queue;
+	struct buffer_t *xmit_buf;
+	int xmit_pos;
+	struct list_head history;
+	struct list_head *history_pos;
+	uint8_t *cmdline;
+	int cmdline_pos;
+	int cmdline_pos2;
+	int cmdline_len;
+	int auth:1;
+	int echo:1;
+	int telcmd:1;
+	int esc:1;
+	int disconnect:1;
+};
+
 struct buffer_t
 {
 	struct list_head entry;
@@ -35,20 +56,20 @@ struct buffer_t
 	uint8_t buf[0];
 };
 
-static const char *conf_passwd;
-static const char *conf_prompt = "accel-pptp# ";
-
 static struct triton_context_t serv_ctx;
 static struct triton_md_handler_t serv_hnd;
+static LIST_HEAD(clients);
 
 static uint8_t *recv_buf;
 static uint8_t *temp_buf;
 
-static void disconnect(struct client_t *cln)
+static void disconnect(struct telnet_client_t *cln)
 {
 	struct buffer_t *b;
 
 	log_debug("cli: disconnect\n");
+
+	list_del(&cln->entry);
 
 	triton_md_unregister_handler(&cln->hnd);
 	close(cln->hnd.fd);
@@ -72,12 +93,13 @@ static void disconnect(struct client_t *cln)
 	_free(cln);
 }
 
-void telnet_disconnect(struct client_t *cln)
+static void cli_client_disconnect(struct cli_client_t *tcln)
 {
+	struct telnet_client_t *cln = container_of(tcln, typeof(*cln), cli_client);
 	disconnect(cln);
 }
 
-static void queue_buffer(struct client_t *cln, struct buffer_t *b)
+static void queue_buffer(struct telnet_client_t *cln, struct buffer_t *b)
 {
 	if (cln->xmit_buf)
 		list_add_tail(&b->entry, &cln->xmit_queue);
@@ -85,7 +107,7 @@ static void queue_buffer(struct client_t *cln, struct buffer_t *b)
 		cln->xmit_buf = b;
 }
 
-int telnet_send(struct client_t *cln, const void *_buf, int size)
+static int telnet_send(struct telnet_client_t *cln, const void *_buf, int size)
 {
 	int n, k;
 	struct buffer_t *b;
@@ -93,6 +115,14 @@ int telnet_send(struct client_t *cln, const void *_buf, int size)
 
 	if (cln->disconnect)
 		return -1;
+	
+	if (!list_empty(&cln->xmit_queue)) {
+		b = _malloc(sizeof(*b) + size);
+		b->size = size;
+		memcpy(b->buf, buf, size);
+		queue_buffer(cln, b);
+		return 0;
+	}
 
 	for (n = 0; n < size; n += k) {
 		k = write(cln->hnd.fd, buf + n, size - n);
@@ -116,8 +146,15 @@ int telnet_send(struct client_t *cln, const void *_buf, int size)
 	return 0;
 }
 
-int telnet_sendv(struct client_t *cln, const char *fmt, va_list ap)
+static int cli_client_send(struct cli_client_t *tcln, const void *buf, int size)
 {
+	struct telnet_client_t *cln = container_of(tcln, typeof(*cln), cli_client);
+	return telnet_send(cln, buf, size);
+}
+
+static int cli_client_sendv(struct cli_client_t *tcln, const char *fmt, va_list ap)
+{
+	struct telnet_client_t *cln = container_of(tcln, typeof(*cln), cli_client);
 	int r = vsnprintf((char *)temp_buf, RECV_BUF_SIZE, fmt, ap);
 
 	if (r >= RECV_BUF_SIZE) {
@@ -128,18 +165,18 @@ int telnet_sendv(struct client_t *cln, const char *fmt, va_list ap)
 	return telnet_send(cln, temp_buf, r);
 }
 
-static int send_banner(struct client_t *cln)
+static int send_banner(struct telnet_client_t *cln)
 {
 	return telnet_send(cln, BANNER, sizeof(BANNER));
 }
 
-static int send_config(struct client_t *cln)
+static int send_config(struct telnet_client_t *cln)
 {
 	uint8_t buf[] = {IAC, WILL, TELOPT_ECHO, IAC, WILL,	TELOPT_SGA, IAC, DONT, TELOPT_LINEMODE};
 	return telnet_send(cln, buf, sizeof(buf));
 }
 
-static int send_password_request(struct client_t *cln)
+static int send_password_request(struct telnet_client_t *cln)
 {
 	uint8_t buf0[] = {IAC, WILL, TELOPT_ECHO};
 	uint8_t buf1[] = "Password: ";
@@ -153,9 +190,9 @@ static int send_password_request(struct client_t *cln)
 	return 0;
 }
 
-static int send_prompt(struct client_t *cln)
+static int send_prompt(struct telnet_client_t *cln)
 {
-	return telnet_send(cln, conf_prompt, strlen(conf_prompt));
+	return telnet_send(cln, conf_cli_prompt, strlen(conf_cli_prompt));
 }
 
 /*static void print_buf(const uint8_t *buf, int size)
@@ -167,7 +204,7 @@ static int send_prompt(struct client_t *cln)
 	log_debug("\n");
 }*/
 
-static int send_cmdline_tail(struct client_t *cln, int corr)
+static int send_cmdline_tail(struct telnet_client_t *cln, int corr)
 {
 	if (telnet_send(cln, cln->cmdline + cln->cmdline_pos, cln->cmdline_len - cln->cmdline_pos))
 		return -1;
@@ -180,7 +217,7 @@ static int send_cmdline_tail(struct client_t *cln, int corr)
 	return 0;
 }
 
-static int load_history(struct client_t *cln)
+static int load_history(struct telnet_client_t *cln)
 {
 	struct buffer_t *b = list_entry(cln->history_pos, typeof(*b), entry);
 	if (b->size < cln->cmdline_len) {
@@ -202,7 +239,7 @@ static int load_history(struct client_t *cln)
 	return 0;
 }
 
-static int telnet_input_char(struct client_t *cln, uint8_t c)
+static int telnet_input_char(struct telnet_client_t *cln, uint8_t c)
 {
 	uint8_t buf[] = {IAC, DONT, 0};
 	struct buffer_t *b;
@@ -219,7 +256,7 @@ static int telnet_input_char(struct client_t *cln, uint8_t c)
 		}
 
 		if (!cln->auth) {
-			if (strcmp((char *)cln->cmdline, conf_passwd)) {
+			if (strcmp((char *)cln->cmdline, conf_cli_passwd)) {
 				if (telnet_send(cln, AUTH_FAILED, sizeof(AUTH_FAILED)))
 					return -1;
 				disconnect(cln);
@@ -233,7 +270,7 @@ static int telnet_input_char(struct client_t *cln, uint8_t c)
 			list_add(&b->entry, cln->history.next);
 			cln->history_pos = cln->history.next;
 			
-			if (process_cmd(cln))
+			if (cli_process_cmd(&cln->cli_client))
 				return -1;
 		}
 	
@@ -394,7 +431,7 @@ static int telnet_input_char(struct client_t *cln, uint8_t c)
 
 static int cln_read(struct triton_md_handler_t *h)
 {
-	struct client_t *cln = container_of(h, typeof(*cln), hnd);
+	struct telnet_client_t *cln = container_of(h, typeof(*cln), hnd);
 	int i, n;
 
 	while (1) {
@@ -405,7 +442,7 @@ static int cln_read(struct triton_md_handler_t *h)
 		}
 		if (n < 0) {
 			if (errno != EAGAIN)
-				log_error("cli: read: %s\n", strerror(errno));
+				log_error("cli: telnet: read: %s\n", strerror(errno));
 			return 0;
 		}
 		/*log_debug("cli: read(%i): ", n);
@@ -425,7 +462,7 @@ static int cln_read(struct triton_md_handler_t *h)
 
 static int cln_write(struct triton_md_handler_t *h)
 {
-	struct client_t *cln = container_of(h, typeof(*cln), hnd);
+	struct telnet_client_t *cln = container_of(h, typeof(*cln), hnd);
 	int k;
 	
 	while (1) {
@@ -435,7 +472,7 @@ static int cln_write(struct triton_md_handler_t *h)
 				if (errno == EAGAIN)
 					return 0;
 				if (errno != EPIPE)
-					log_error("cli: write: %s\n", strerror(errno));
+					log_error("cli: telnet: write: %s\n", strerror(errno));
 				disconnect(cln);
 				return -1;
 			}
@@ -461,7 +498,7 @@ static int serv_read(struct triton_md_handler_t *h)
   struct sockaddr_in addr;
 	socklen_t size = sizeof(addr);
 	int sock;
-	struct client_t *conn;
+	struct telnet_client_t *conn;
 	struct buffer_t *b;
 
 	while(1) {
@@ -469,14 +506,14 @@ static int serv_read(struct triton_md_handler_t *h)
 		if (sock < 0) {
 			if (errno == EAGAIN)
 				return 0;
-			log_error("cli: accept failed: %s\n", strerror(errno));
+			log_error("cli: telnet: accept failed: %s\n", strerror(errno));
 			continue;
 		}
 
-		log_info("cli: new connection from %s\n", inet_ntoa(addr.sin_addr));
+		log_info("cli: telnet: new connection from %s\n", inet_ntoa(addr.sin_addr));
 
 		if (fcntl(sock, F_SETFL, O_NONBLOCK)) {
-			log_error("cli: failed to set nonblocking mode: %s, closing connection...\n", strerror(errno));
+			log_error("cli: telnet: failed to set nonblocking mode: %s, closing connection...\n", strerror(errno));
 			close(sock);
 			continue;
 		}
@@ -495,8 +532,15 @@ static int serv_read(struct triton_md_handler_t *h)
 		list_add_tail(&b->entry, &conn->history);
 		conn->history_pos = conn->history.next;
 		
+		conn->cli_client.cmdline = conn->cmdline;
+		conn->cli_client.send = cli_client_send;
+		conn->cli_client.sendv = cli_client_sendv;
+		conn->cli_client.disconnect = cli_client_disconnect;
+
 		triton_md_register_handler(&serv_ctx, &conn->hnd);
 		triton_md_enable_handler(&conn->hnd,MD_MODE_READ);
+
+		list_add_tail(&conn->entry, &clients);
 
 		if (send_banner(conn))
 			continue;
@@ -504,7 +548,7 @@ static int serv_read(struct triton_md_handler_t *h)
 		if (send_config(conn))
 			continue;
 
-		if (conf_passwd)
+		if (conf_cli_passwd)
 			send_password_request(conn);
 		else {
 			conn->auth = 1;
@@ -515,6 +559,13 @@ static int serv_read(struct triton_md_handler_t *h)
 }
 static void serv_close(struct triton_context_t *ctx)
 {
+	struct telnet_client_t *cln;
+
+	while (!list_empty(&clients)) {
+		cln = list_entry(clients.next, typeof(*cln), entry);
+		disconnect(cln);
+	}
+
 	triton_md_unregister_handler(&serv_hnd);
 	close(serv_hnd.fd);
 	triton_context_unregister(ctx);
@@ -534,7 +585,7 @@ static void start_server(const char *host, int port)
 
 	serv_hnd.fd = socket(PF_INET, SOCK_STREAM, 0);
   if (serv_hnd.fd < 0) {
-    log_emerg("cli: failed to create server socket: %s\n", strerror(errno));
+    log_emerg("cli: telnet: failed to create server socket: %s\n", strerror(errno));
     return;
   }
 
@@ -548,19 +599,19 @@ static void start_server(const char *host, int port)
 
   setsockopt(serv_hnd.fd, SOL_SOCKET, SO_REUSEADDR, &serv_hnd.fd, 4);  
   if (bind (serv_hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
-    log_emerg("cli: failed to bind socket: %s\n", strerror(errno));
+    log_emerg("cli: telnet: failed to bind socket: %s\n", strerror(errno));
 		close(serv_hnd.fd);
     return;
 	}
 
   if (listen (serv_hnd.fd, 1) < 0) {
-    log_emerg("cli: failed to listen socket: %s\n", strerror(errno));
+    log_emerg("cli: telnet: failed to listen socket: %s\n", strerror(errno));
 		close(serv_hnd.fd);
     return;
   }
 
 	if (fcntl(serv_hnd.fd, F_SETFL, O_NONBLOCK)) {
-    log_emerg("cli: failed to set nonblocking mode: %s\n", strerror(errno));
+    log_emerg("cli: telnet: failed to set nonblocking mode: %s\n", strerror(errno));
 		close(serv_hnd.fd);
     return;
 	}
@@ -578,30 +629,30 @@ static void start_server(const char *host, int port)
 static void __init init(void)
 {
 	const char *opt;
-	int port = 0;
-	const char *host="127.0.0.1";
+	char *host, *d;
+	int port;
 
-	opt = conf_get_opt("cli", "port");
-	if (opt && atoi(opt) > 0)
-		port = atoi(opt);
-	
-	opt = conf_get_opt("cli", "bind");
-	if (opt)
-		host = opt;
-	
-	if (!port) {
-		log_emerg("cli: disabled\n");
-		return;
+	opt = conf_get_opt("cli", "telnet");
+	if (opt) {
+		host = strdup(opt);
+		d = strstr(host, ":");
+		if (!d) {
+			return;
+		}
+		*d = 0;
+		port = atoi(d + 1);
+		if (port <= 0)
+			goto err_fmt;
 	}
-
-	conf_passwd = conf_get_opt("cli", "passwd");
-	opt = conf_get_opt("cli", "prompt");
-	if (opt)
-		conf_prompt = opt;
 
 	recv_buf = malloc(RECV_BUF_SIZE);
 	temp_buf = malloc(RECV_BUF_SIZE);
 
 	start_server(host, port);
+	
+	return;
+err_fmt:
+	log_emerg("cli: telnet: invalid format\n");
+	free(host);
 }
 

@@ -45,9 +45,10 @@ ADD_EXECUTABLE(accel-pptpd
 	ppp/ppp_ccp.c	
 	ppp/ccp_mppe.c
 
-	cli/telnet.c
-	cli/cli.c
 	cli/std_cmd.c
+	cli/telnet.c
+	cli/tcp.c
+	cli/cli.c
 
 	pwdb.c
 	ipdb.c

@@ -317,6 +317,7 @@ void __export triton_context_unregister(struct triton_context_t *ud)
 			triton_thread_wakeup(t);
 	}
 }
+
 void __export triton_context_schedule(struct triton_context_t *ud)
 {
 	struct _triton_context_t *ctx = (struct _triton_context_t *)ud->tpd;
@@ -342,6 +343,14 @@ void __export triton_context_schedule(struct triton_context_t *ud)
 	}
 	
 	__sync_fetch_and_add(&triton_stat.context_sleeping, 1);
+}
+
+void triton_context_print(void)
+{
+	struct _triton_context_t *ctx;
+
+	list_for_each_entry(ctx, &ctx_list, entry)
+		printf("%p\n", ctx);
 }
 
 int __export triton_context_wakeup(struct triton_context_t *ud)
