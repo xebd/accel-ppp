@@ -8,6 +8,7 @@
 #include <linux/pkt_sched.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <pthread.h>
 
 #include <netlink/netlink.h>
 #include <netlink/route/qdisc.h>
@@ -20,6 +21,7 @@
 #include "events.h"
 #include "log.h"
 #include "ppp.h"
+#include "cli.h"
 
 #ifdef RADIUS
 #include "radius.h"
@@ -43,14 +45,26 @@ static double conf_up_burst_factor = 1;
 static int conf_latency = 50;
 static int conf_mpu = 0;
 
+static int temp_down_speed;
+static int temp_up_speed;
+
+static pthread_rwlock_t shaper_lock = PTHREAD_RWLOCK_INITIALIZER;
+static LIST_HEAD(shaper_list);
+
 static double tick_in_usec = 1;
 static double clock_factor = 1;
 
 struct shaper_pd_t
 {
+	struct list_head entry;
+	struct ppp_t *ppp;
 	struct ppp_pd_t pd;
 	int down_speed;
+	int down_burst;
 	int up_speed;
+	int up_burst;
+	int temp_down_speed;
+	int temp_up_speed;
 };
 
 static void *pd_key;
@@ -398,8 +412,13 @@ static struct shaper_pd_t *find_pd(struct ppp_t *ppp, int create)
 		}
 
 		memset(spd, 0, sizeof(*spd));
+		spd->ppp = ppp;
 		list_add_tail(&spd->pd.entry, &ppp->pd_list);
 		spd->pd.key = &pd_key;
+
+		pthread_rwlock_wrlock(&shaper_lock);
+		list_add_tail(&spd->entry, &shaper_list);
+		pthread_rwlock_unlock(&shaper_lock);
 		return spd;
 	}
 
@@ -564,9 +583,24 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 			parse_attr(attr, ATTR_UP, &up_speed, &up_burst);
 	}
 
+	pd->down_speed = down_speed;
+	pd->down_burst = down_burst;
+	pd->up_speed = up_speed;
+	pd->up_burst = up_burst;
+
+	if (temp_down_speed) {
+		pd->temp_down_speed = temp_down_speed;
+		pd->temp_up_speed = temp_up_speed;
+		down_speed = temp_down_speed;
+		down_burst = 0;
+	}
+
+	if (temp_up_speed) {
+		up_speed = temp_up_speed;
+		up_burst = 0;
+	}
+
 	if (down_speed > 0 && up_speed > 0) {
-		pd->down_speed = down_speed;
-		pd->up_speed = up_speed;
 		if (!install_shaper(ev->ppp->ifname, down_speed, down_burst, up_speed, up_burst)) {
 			if (conf_verbose)
 				log_ppp_info("tbf: installed shaper %i/%i (Kbit)\n", down_speed, up_speed);
@@ -597,9 +631,14 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 			parse_attr(attr, ATTR_UP, &up_speed, &up_burst);
 	}
 	
-	if (pd->down_speed != down_speed || pd->up_speed != up_speed) {
+	if (pd->down_speed != down_speed || pd->up_speed != up_speed || pd->down_burst != down_burst || pd->up_burst != up_burst) {
 		pd->down_speed = down_speed;
+		pd->down_burst = down_burst;
 		pd->up_speed = up_speed;
+		pd->up_burst = up_burst;
+
+		if (temp_down_speed ||  temp_up_speed)
+			return;
 
 		if (remove_shaper(ev->ppp->ifname)) {
 			ev->res = -1;
@@ -649,9 +688,141 @@ static void ev_ctrl_finished(struct ppp_t *ppp)
 	struct shaper_pd_t *pd = find_pd(ppp, 0);
 
 	if (pd) {
+		pthread_rwlock_wrlock(&shaper_lock);
+		list_del(&pd->entry);
+		pthread_rwlock_unlock(&shaper_lock);
 		list_del(&pd->pd.entry);
 		_free(pd);
 	}
+}
+
+static void shaper_change_help(char * const *f, int f_cnt, void *cli)
+{
+	cli_send(cli, "shaper change <interface> <value> [temp] - change shaper on specified interface, if temp is set then previous settings may be restored later by 'shaper restore'\r\n");
+	cli_send(cli, "shaper change all <value> [temp] - change shaper on all interfaces, if temp is set also new interfaces will have specified shaper value\r\n");
+}
+
+static void shaper_change(struct shaper_pd_t *pd)
+{
+	if ((pd->temp_down_speed && pd->temp_up_speed) || (pd->down_speed && pd->up_speed))
+		remove_shaper(pd->ppp->ifname);
+
+	if (pd->temp_down_speed && pd->temp_up_speed)
+		install_shaper(pd->ppp->ifname, pd->temp_down_speed, 0, pd->temp_up_speed, 0);
+	else if (pd->down_speed && pd->up_speed)
+		install_shaper(pd->ppp->ifname, pd->down_speed, pd->down_burst, pd->up_speed, pd->up_burst);
+}
+
+static int shaper_change_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
+{
+	struct shaper_pd_t *pd;
+	int down_speed = 0, up_speed = 0, down_burst = 0, up_burst = 0;
+	int all = 0, temp = 0, found = 0;
+
+	if (f_cnt < 4)
+		return CLI_CMD_SYNTAX;
+
+	parse_string(f[3], ATTR_DOWN, &down_speed, &down_burst);
+	parse_string(f[3], ATTR_UP, &up_speed, &up_burst);
+
+	if (down_speed == 0 || up_speed == 0)
+		return CLI_CMD_INVAL;
+	
+	if (!strcmp(f[2], "all"))
+		all = 1;
+	
+	if (f_cnt == 5) {
+		if (strcmp(f[4], "temp"))
+			return CLI_CMD_SYNTAX;
+		else
+			temp = 1;
+	}
+
+	if (all && temp) {
+		temp_down_speed = down_speed;
+		temp_up_speed = up_speed;
+	}
+
+	pthread_rwlock_rdlock(&shaper_lock);
+	list_for_each_entry(pd, &shaper_list, entry) {
+		if (all || !strcmp(f[2], pd->ppp->ifname)) {
+			if (temp) {
+				pd->temp_down_speed = down_speed;
+				pd->temp_up_speed = up_speed;
+			} else {
+				pd->temp_down_speed = 0;
+				pd->temp_up_speed = 0;
+				pd->down_speed = down_speed;
+				pd->down_burst = down_burst;
+				pd->up_speed = up_speed;
+				pd->up_burst = up_burst;
+			}
+			triton_context_call(pd->ppp->ctrl->ctx, (triton_event_func)shaper_change, pd);
+			if (!all) {
+				found = 1;
+				break;
+			}
+		}
+	}
+	pthread_rwlock_unlock(&shaper_lock);
+
+	if (!all && !found)
+		cli_send(cli, "not found\r\n");
+
+	return CLI_CMD_OK;
+}
+
+static void shaper_restore_help(char * const *f, int f_cnt, void *cli)
+{
+	cli_send(cli, "shaper restore <interface> - restores shaper settings on specified interface made by 'shaper change' command with 'temp' flag\r\n");
+	cli_send(cli, "shaper restore all - restores shaper settings on all interfaces made by 'shaper change' command with 'temp' flag\r\n");
+}
+
+static void shaper_restore(struct shaper_pd_t *pd)
+{
+	remove_shaper(pd->ppp->ifname);
+
+	if (pd->down_speed && pd->up_speed)
+		install_shaper(pd->ppp->ifname, pd->down_speed, pd->down_burst, pd->up_speed, pd->up_burst);
+}
+
+static int shaper_restore_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
+{
+	struct shaper_pd_t *pd;
+	int all, found = 0;;
+
+	if (f_cnt != 3)
+		return CLI_CMD_SYNTAX;
+	
+	if (strcmp(f[2], "all"))
+		all = 0;
+	else
+		all = 1;
+	
+	pthread_rwlock_rdlock(&shaper_lock);
+	if (all) {
+		temp_down_speed = 0;
+		temp_up_speed = 0;
+	}
+	list_for_each_entry(pd, &shaper_list, entry) {
+		if (!pd->temp_down_speed)
+			continue;
+		if (all || !strcmp(f[2], pd->ppp->ifname)) {
+			pd->temp_down_speed = 0;
+			pd->temp_up_speed = 0;
+			triton_context_call(pd->ppp->ctrl->ctx, (triton_event_func)shaper_restore, pd);
+			if (!all) {
+				found = 1;
+				break;
+			}
+		}
+	}
+	pthread_rwlock_unlock(&shaper_lock);
+
+	if (!all && !found)
+		cli_send(cli, "not found\r\n");
+	
+	return CLI_CMD_OK;
 }
 
 static int clock_init(void)
@@ -790,5 +961,8 @@ static void __init init(void)
 #endif
 	triton_event_register_handler(EV_CTRL_FINISHED, (triton_event_func)ev_ctrl_finished);
 	triton_event_register_handler(EV_SHAPER, (triton_event_func)ev_shaper);
+
+	cli_register_simple_cmd2(shaper_change_exec, shaper_change_help, 2, "shaper", "change");
+	cli_register_simple_cmd2(shaper_restore_exec, shaper_restore_help, 2, "shaper", "restore");
 }
 
