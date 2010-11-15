@@ -583,9 +583,7 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 			case TAG_END_OF_LIST:
 				break;
 			case TAG_SERVICE_NAME:
-				if (tag->tag_len == 0)
-					service_match = 1;
-				else if (conf_service_name) {
+				if (conf_service_name && tag->tag_len) {
 					if (ntohs(tag->tag_len) != strlen(conf_service_name))
 						break;
 					if (memcmp(tag->tag_data, conf_service_name, ntohs(tag->tag_len)))

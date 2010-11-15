@@ -154,31 +154,35 @@ static int cln_read(struct triton_md_handler_t *h)
 		}
 
 		cln->recv_pos += n;
-
-		d = strchr((char *)cln->cmdline, '\n');
-		if (!d) {
-			if (cln->recv_pos == RECV_BUF_SIZE) {
-				log_warn("cli: tcp: recv buffer overflow\n");
+		
+		while (cln->recv_pos) {
+			d = strchr((char *)cln->cmdline, '\n');
+			if (!d) {
+				if (cln->recv_pos == RECV_BUF_SIZE) {
+					log_warn("cli: tcp: recv buffer overflow\n");
+					goto drop;
+				}
 				break;
 			}
-			continue;
+
+			*d = 0;
+
+			if (!cln->auth) {
+				if (strcmp((char *)cln->cmdline, conf_cli_passwd))
+					goto drop;
+				cln->auth = 1;
+			} else
+				cli_process_cmd(&cln->cli_client);
+
+			if (cln->disconnect)
+				goto drop;
+
+			cln->recv_pos -= (uint8_t *)d + 1 - cln->cmdline;
+			memmove(cln->cmdline, d + 1, cln->recv_pos);
 		}
-
-		*d = 0;
-
-		if (!cln->auth) {
-			if (strcmp((char *)cln->cmdline, conf_cli_passwd))
-				break;
-			cln->auth = 1;
-		} else
-			cli_process_cmd(&cln->cli_client);
-
-		if (cln->disconnect)
-			break;
-
-		memmove(cln->cmdline, d + 1, cln->recv_pos - ((uint8_t *)d + 1 - cln->cmdline));
 	}
 
+drop:
 	disconnect(cln);
 	return 0;
 }
