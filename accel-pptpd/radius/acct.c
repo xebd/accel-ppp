@@ -119,8 +119,8 @@ static void rad_acct_timeout(struct triton_timer_t *t)
 	dt = ts - req->rpd->acct_timestamp;
 
 	if (dt > conf_acct_timeout) {
-		log_ppp_warn("radius: acct: no response, terminating session...\n");
-		ppp_terminate(req->rpd->ppp, 0, TERM_NAS_ERROR);
+		log_ppp_warn("radius:acct: no response, terminating session...\n");
+		ppp_terminate(req->rpd->ppp, TERM_NAS_ERROR, 0);
 		return;
 	}
 	if (dt > conf_acct_timeout / 2) {

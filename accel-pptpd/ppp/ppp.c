@@ -397,7 +397,7 @@ void __export ppp_layer_finished(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 
 	list_for_each_entry(n, &ppp->layers, entry) {
 		list_for_each_entry(d, &n->items, entry) {
-			if (!d->finished)
+			if (d->starting && !d->finished)
 				return;
 		}
 	}
