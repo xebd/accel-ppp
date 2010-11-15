@@ -193,7 +193,7 @@ static void queue_log(struct log_msg_t *msg)
 }
 
 
-static void general_log(struct log_msg_t *msg, struct ppp_t *ppp)
+static void general_log(struct log_target_t *t, struct log_msg_t *msg, struct ppp_t *ppp)
 {
 	set_hdr(msg, ppp);
 	queue_log(msg);

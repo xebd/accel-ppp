@@ -29,6 +29,9 @@ containes list of modules to load
 .BI log_file
 This is logging target which logs messages to files. It support per-session/per-user features.
 .TP
+.BI log_tcp
+This is logging target which logs messages over TCP/IP.
+.TP
 .BI log_pgsql
 This is logging target which logs messages to PostgreSQL.
 .TP
@@ -247,6 +250,9 @@ Path to file to write general log.
 .TP
 .BI "log-emerg=" file
 Path to file to write emergency messages.
+.TP
+.BI "log-tcp=" x.x.x.x:port
+Send logs to specified host.
 .TP
 .BI "copy=" n
 If this options is given and greater then zero logging engine will duplicate session log in general log.
