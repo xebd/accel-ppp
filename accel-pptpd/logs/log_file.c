@@ -261,7 +261,7 @@ static void set_hdr(struct log_msg_t *msg, struct ppp_t *ppp)
 	msg->hdr->len = strlen(msg->hdr->msg);
 }
 
-static void general_log(struct log_msg_t *msg, struct ppp_t *ppp)
+static void general_log(struct log_target_t *t, struct log_msg_t *msg, struct ppp_t *ppp)
 {
 	if (ppp && !conf_copy) {
 		log_free_msg(msg);
@@ -286,7 +286,7 @@ static struct log_file_pd_t *find_pd(struct ppp_t *ppp, void *pd_key)
 	return NULL;
 }
 
-static void per_user_log(struct log_msg_t *msg, struct ppp_t *ppp)
+static void per_user_log(struct log_target_t *t, struct log_msg_t *msg, struct ppp_t *ppp)
 {
 	struct log_file_pd_t *lpd;
 
@@ -306,7 +306,7 @@ static void per_user_log(struct log_msg_t *msg, struct ppp_t *ppp)
 	queue_log(&lpd->lf, msg);
 }
 
-static void per_session_log(struct log_msg_t *msg, struct ppp_t *ppp)
+static void per_session_log(struct log_target_t *t, struct log_msg_t *msg, struct ppp_t *ppp)
 {
 	struct log_file_pd_t *lpd;
 	

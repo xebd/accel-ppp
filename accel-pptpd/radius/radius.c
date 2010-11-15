@@ -24,6 +24,7 @@
 
 int conf_max_try = 3;
 int conf_timeout = 3;
+int conf_acct_timeout = 600;
 char *conf_nas_identifier = "accel-pptpd";
 in_addr_t conf_nas_ip_address;
 in_addr_t conf_gw_ip_address;
@@ -381,6 +382,10 @@ static void __init radius_init(void)
 	opt = conf_get_opt("radius", "timeout");
 	if (opt && atoi(opt) > 0)
 		conf_timeout = atoi(opt);
+
+	opt = conf_get_opt("radius", "acct-timeout");
+	if (opt && atoi(opt) > 0)
+		conf_acct_timeout = atoi(opt);
 
 	opt = conf_get_opt("radius", "verbose");
 	if (opt && atoi(opt) > 0)

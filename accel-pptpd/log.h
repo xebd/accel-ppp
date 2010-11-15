@@ -39,7 +39,7 @@ struct log_target_t
 {
 	struct list_head entry;
 
-	void (*log)(struct log_msg_t *, struct ppp_t *ppp);
+	void (*log)(struct log_target_t *, struct log_msg_t *, struct ppp_t *ppp);
 	void (*reopen)(void);
 };
 

@@ -29,6 +29,9 @@ containes list of modules to load
 .BI log_file
 This is logging target which logs messages to files. It support per-session/per-user features.
 .TP
+.BI log_tcp
+This is logging target which logs messages over TCP/IP.
+.TP
 .BI log_pgsql
 This is logging target which logs messages to PostgreSQL.
 .TP
@@ -238,6 +241,15 @@ If this option is given and
 .B n
 is greater of zero then radius module will produce verbose logging of interim radius packets.
 .TP
+.BI "timeout=" n
+Timeout to wait response from server (sec) 
+.TP
+.BI "max-try=" n
+Specifies number of tries to send Access-Request/Accounting-Request queries.
+.TP
+.BI "acct-timeout=" n
+Specifies timeout of accounting interim update.
+.TP
 .SH [log]
 .br
 Configuration of log and log_file modules.
@@ -247,6 +259,9 @@ Path to file to write general log.
 .TP
 .BI "log-emerg=" file
 Path to file to write emergency messages.
+.TP
+.BI "log-tcp=" x.x.x.x:port
+Send logs to specified host.
 .TP
 .BI "copy=" n
 If this options is given and greater then zero logging engine will duplicate session log in general log.

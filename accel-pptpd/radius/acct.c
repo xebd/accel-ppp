@@ -112,11 +112,30 @@ static int rad_acct_read(struct triton_md_handler_t *h)
 static void rad_acct_timeout(struct triton_timer_t *t)
 {
 	struct rad_req_t *req = container_of(t, typeof(*req), timeout);
+	time_t ts, dt;
 
-	req->rpd->acct_delay_time += conf_timeout;
+	time(&ts);
+
+	dt = ts - req->rpd->acct_timestamp;
+
+	if (dt > conf_acct_timeout) {
+		log_ppp_warn("radius: acct: no response, terminating session...\n");
+		ppp_terminate(req->rpd->ppp, 0, TERM_NAS_ERROR);
+		return;
+	}
+	if (dt > conf_acct_timeout / 2) {
+		req->timeout.period += 1000;
+		triton_timer_mod(&req->timeout, 0);
+	} else if (dt > conf_acct_timeout / 3) {
+		if (req->timeout.period != conf_timeout * 2000) {
+			req->timeout.period = conf_timeout * 2000;
+			triton_timer_mod(&req->timeout, 0);
+		}
+	}
+
 	req->pack->id++;
 	
-	rad_packet_change_int(req->pack, "Acct-Delay-Time", req->rpd->acct_delay_time);
+	rad_packet_change_int(req->pack, "Acct-Delay-Time", dt);
 	req_set_RA(req, conf_acct_secret);
 	rad_req_send(req, conf_interim_verbose);
 }
@@ -132,7 +151,7 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 	if (!rpd->acct_interim_interval)
 		return;
 
-	rpd->acct_delay_time = 0;
+	time(&rpd->acct_timestamp);
 	rpd->acct_req->pack->id++;
 
 	rad_packet_change_val(rpd->acct_req->pack, "Acct-Status-Type", "Interim-Update");
@@ -146,6 +165,7 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 int rad_acct_start(struct radius_pd_t *rpd)
 {
 	int i;
+	time_t ts;
 
 	rpd->acct_req = rad_req_alloc(rpd, CODE_ACCOUNTING_REQUEST, rpd->ppp->username);
 	if (!rpd->acct_req) {
@@ -168,11 +188,11 @@ int rad_acct_start(struct radius_pd_t *rpd)
 		rpd->acct_req->reply = NULL;
 	}
 
-	rpd->acct_delay_time = 0;
+	time(&rpd->acct_timestamp);
 	
 	for (i = 0; i < conf_max_try; i++) {
-		rad_packet_change_int(rpd->acct_req->pack, "Acct-Delay-Time", rpd->acct_delay_time);
-		rpd->acct_delay_time += conf_timeout;
+		time(&ts);
+		rad_packet_change_int(rpd->acct_req->pack, "Acct-Delay-Time", ts - rpd->acct_timestamp);
 		if (req_set_RA(rpd->acct_req, conf_acct_secret))
 			goto out_err;
 		if (rad_req_send(rpd->acct_req, conf_verbose))
@@ -222,6 +242,7 @@ out_err:
 void rad_acct_stop(struct radius_pd_t *rpd)
 {
 	int i;
+	time_t ts;
 
 	if (rpd->acct_interim_timer.tpd)
 		triton_timer_del(&rpd->acct_interim_timer);
@@ -259,11 +280,11 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 			rpd->acct_req->reply = NULL;
 		}
 	
-		rpd->acct_delay_time = 0;
+		time(&rpd->acct_timestamp);
 
 		for(i = 0; i < conf_max_try; i++) {
-			rad_packet_change_int(rpd->acct_req->pack, "Acct-Delay-Time", rpd->acct_delay_time);
-			rpd->acct_delay_time += conf_timeout;
+			time(&ts);
+			rad_packet_change_int(rpd->acct_req->pack, "Acct-Delay-Time", ts - rpd->acct_timestamp);
 			rpd->acct_req->pack->id++;
 			if (req_set_RA(rpd->acct_req, conf_acct_secret))
 				break;

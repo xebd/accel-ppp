@@ -87,7 +87,7 @@ static void do_log(int level, const char *fmt, va_list ap, struct ppp_t *ppp)
 		m = clone_msg(cur_msg);
 		if (!m)
 			break;
-		t->log(m, ppp);
+		t->log(t, m, ppp);
 	}
 
 out:

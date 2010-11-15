@@ -1,7 +1,9 @@
 ADD_LIBRARY(log_file SHARED log_file.c)
 TARGET_LINK_LIBRARIES(log_file rt)
 
-INSTALL(TARGETS log_file
+ADD_LIBRARY(log_tcp SHARED log_tcp.c)
+
+INSTALL(TARGETS log_file log_tcp
 	LIBRARY DESTINATION usr/lib/accel-pptp
 )
 

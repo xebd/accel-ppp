@@ -31,7 +31,7 @@ struct radius_pd_t
 
 	struct ipdb_item_t ipaddr;
 	int acct_interim_interval;
-	int acct_delay_time;
+	time_t acct_timestamp;
 
 	uint8_t *attr_class;
 	int attr_class_len;
@@ -56,6 +56,7 @@ struct rad_req_t
 
 extern int conf_max_try;
 extern int conf_timeout;
+extern int conf_acct_timeout;
 extern int conf_verbose;
 extern int conf_interim_verbose;
 extern char *conf_nas_identifier;
