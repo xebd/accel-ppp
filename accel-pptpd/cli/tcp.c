@@ -344,17 +344,18 @@ static void __init init(void)
 	int port;
 
 	opt = conf_get_opt("cli", "tcp");
-	if (opt) {
-		host = strdup(opt);
-		d = strstr(host, ":");
-		if (!d) {
-			return;
-		}
-		*d = 0;
-		port = atoi(d + 1);
-		if (port <= 0)
-			goto err_fmt;
-	}
+	if (!opt)
+		return;
+
+	host = strdup(opt);
+	d = strstr(host, ":");
+	if (!d)
+		goto err_fmt;
+
+	*d = 0;
+	port = atoi(d + 1);
+	if (port <= 0)
+		goto err_fmt;
 
 	temp_buf = malloc(RECV_BUF_SIZE);
 
