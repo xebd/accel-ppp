@@ -563,7 +563,7 @@ static void lcp_recv_echo_repl(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 	}
 
 	if (conf_ppp_verbose)
-		log_ppp_info("recv [LCP EchoRep id=%x <magic %x>]\n", lcp->fsm.recv_id, magic);
+		log_ppp_debug("recv [LCP EchoRep id=%x <magic %x>]\n", lcp->fsm.recv_id, magic);
 
 	if (magic == lcp->magic) {
 		log_ppp_error("lcp: echo: loop-back detected\n");
@@ -582,7 +582,7 @@ static void send_echo_reply(struct ppp_lcp_t *lcp)
 	*(uint32_t *)(hdr + 1) = lcp->magic;
 
 	if (conf_ppp_verbose)
-		log_ppp_info("send [LCP EchoRep id=%x <magic %x>]\n", hdr->id, magic);
+		log_ppp_debug("send [LCP EchoRep id=%x <magic %x>]\n", hdr->id, magic);
 
 	ppp_chan_send(lcp->ppp, hdr, ntohs(hdr->len) + 2);
 }
@@ -607,7 +607,7 @@ static void send_echo_request(struct triton_timer_t *t)
 		ppp_terminate(lcp->ppp, TERM_USER_ERROR, 0);
 	} else {
 		if (conf_ppp_verbose)
-			log_ppp_info("send [LCP EchoReq id=%x <magic %x>]\n", msg.hdr.id, msg.magic);
+			log_ppp_debug("send [LCP EchoReq id=%x <magic %x>]\n", msg.hdr.id, msg.magic);
 		ppp_chan_send(lcp->ppp,&msg,ntohs(msg.hdr.len)+2);
 	}
 }
@@ -765,7 +765,7 @@ static void lcp_recv(struct ppp_handler_t*h)
 			break;
 		case ECHOREQ:
 			if (conf_ppp_verbose)
-				log_ppp_info("recv [LCP EchoReq id=%x <magic %x>]\n", hdr->id, *(uint32_t*)(hdr + 1));
+				log_ppp_debug("recv [LCP EchoReq id=%x <magic %x>]\n", hdr->id, *(uint32_t*)(hdr + 1));
 			send_echo_reply(lcp);
 			break;
 		case ECHOREP:

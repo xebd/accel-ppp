@@ -386,8 +386,8 @@ static int pptp_echo_rqst(struct pptp_conn_t *conn)
 	};
 
 	if (conf_verbose) {
-		log_ppp_info("recv [PPTP Echo-Request <Identifier %x>]\n", in_msg->identifier);
-		log_ppp_info("send [PPTP Echo-Reply <Identifier %x>]\n", out_msg.identifier);
+		log_ppp_debug("recv [PPTP Echo-Request <Identifier %x>]\n", in_msg->identifier);
+		log_ppp_debug("send [PPTP Echo-Reply <Identifier %x>]\n", out_msg.identifier);
 	}
 
 	return post_msg(conn, &out_msg, sizeof(out_msg));
@@ -398,7 +398,7 @@ static int pptp_echo_rply(struct pptp_conn_t *conn)
 	struct pptp_echo_rply *msg = (struct pptp_echo_rply *)conn->in_buf;
 	
 	if (conf_verbose)
-		log_ppp_info("recv [PPTP Echo-Reply <Identifier %x>]\n", msg->identifier);
+		log_ppp_debug("recv [PPTP Echo-Reply <Identifier %x>]\n", msg->identifier);
 
 	if (msg->identifier != conn->echo_sent) {
 		log_ppp_warn("pptp:echo: identifier mismatch\n");
@@ -424,7 +424,7 @@ static void pptp_send_echo(struct triton_timer_t *t)
 	msg.identifier = conn->echo_sent;
 
 	if (conf_verbose)
-		log_ppp_info("send [PPTP Echo-Request <Identifier %x>]\n", msg.identifier);
+		log_ppp_debug("send [PPTP Echo-Request <Identifier %x>]\n", msg.identifier);
 
 	if (post_msg(conn, &msg, sizeof(msg)))
 		disconnect(conn);
