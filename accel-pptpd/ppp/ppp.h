@@ -98,6 +98,7 @@ struct ppp_t
 	struct ppp_ctrl_t *ctrl;
 
 	int terminating:1;
+	int terminated:1;
 	int terminate_cause;
 
 	void *chan_buf;

@@ -210,6 +210,8 @@ static void destablish_ppp(struct ppp_t *ppp)
 
 	_free_layers(ppp);
 	
+	ppp->terminated = 1;
+	
 	log_ppp_debug("ppp destablished\n");
 
 	triton_event_fire(EV_PPP_FINISHED, ppp);
@@ -411,7 +413,11 @@ void __export ppp_terminate(struct ppp_t *ppp, int cause, int hard)
 	struct ppp_layer_data_t *d;
 	int s = 0;
 
-	time(&ppp->stop_time);
+	if (ppp->terminated)
+		return;
+
+	if (!ppp->stop_time)
+		time(&ppp->stop_time);
 
 	if (!ppp->terminate_cause)
 		ppp->terminate_cause = cause;

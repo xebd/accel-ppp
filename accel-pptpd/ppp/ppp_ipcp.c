@@ -579,8 +579,10 @@ static void ipcp_recv(struct ppp_handler_t*h)
 	switch(hdr->code) {
 		case CONFREQ:
 			r = ipcp_recv_conf_req(ipcp,(uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN);
-			if (ipcp->ppp->stop_time)
+			if (ipcp->ppp->stop_time) {
+				ipcp_free_conf_req(ipcp);
 				return;
+			}
 			switch(r) {
 				case IPCP_OPT_ACK:
 					ppp_fsm_recv_conf_req_ack(&ipcp->fsm);

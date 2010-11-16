@@ -205,7 +205,10 @@ int triton_queue_ctx(struct _triton_context_t *ctx)
 
 	spin_lock(&threads_lock);
 	if (list_empty(&sleep_threads)) {
-		list_add_tail(&ctx->entry2, &ctx_queue);
+		if (ctx->priority)
+			list_add(&ctx->entry2, &ctx_queue);
+		else
+			list_add_tail(&ctx->entry2, &ctx_queue);
 		spin_unlock(&threads_lock);
 		ctx->queued = 1;
 		//printf("ctx %p: queued\n", ctx);
@@ -318,6 +321,13 @@ void __export triton_context_unregister(struct triton_context_t *ud)
 	}
 }
 
+void __export triton_context_set_priority(struct triton_context_t *ud, int prio)
+{
+	struct _triton_context_t *ctx = (struct _triton_context_t *)ud->tpd;
+	
+	ctx->priority = prio > 0;
+}
+
 void __export triton_context_schedule(struct triton_context_t *ud)
 {
 	struct _triton_context_t *ctx = (struct _triton_context_t *)ud->tpd;
@@ -333,16 +343,10 @@ void __export triton_context_schedule(struct triton_context_t *ud)
 	ctx->thread = NULL;
 	spin_unlock(&ctx->lock);
 
-	while (1) {
-		if (swapcontext(&ctx->uctx, uctx)) {
-			if (errno == EINTR)
-				continue;
-			triton_log_error("swaswpntext: %s\n", strerror(errno));
-		} else
-			break;
-	}
-	
 	__sync_fetch_and_add(&triton_stat.context_sleeping, 1);
+
+	if (swapcontext(&ctx->uctx, uctx))
+		triton_log_error("swaswpntext: %s\n", strerror(errno));
 }
 
 void triton_context_print(void)

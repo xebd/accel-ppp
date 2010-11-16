@@ -111,6 +111,7 @@ static void queue_log(struct tcp_target_t *t, struct log_msg_t *msg)
 	if (t->queue_len == conf_queue_len) {
 		spin_unlock(&t->lock);
 		log_free_msg(msg);
+		return;
 	}
 	list_add_tail(&msg->entry, &t->queue);
 	t->queue_len++;
@@ -182,7 +183,8 @@ static int log_tcp_connect(struct triton_md_handler_t *h)
 	t->wait = 1;
 	spin_unlock(&t->lock);
 
-	send_log(t);
+	if (send_log(t))
+		triton_md_enable_handler(&t->hnd, MD_MODE_WRITE);
 
 	return 0;
 }
@@ -257,6 +259,8 @@ static int start_log(const char *_opt)
 	t->addr.sin_addr.s_addr = inet_addr(opt);
 
 	INIT_LIST_HEAD(&t->queue);
+
+	spinlock_init(&t->lock);
 
 	start_connect(t);
 

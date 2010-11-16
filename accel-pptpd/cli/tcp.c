@@ -332,6 +332,7 @@ static void start_server(const char *host, int port)
 	addr.sin_addr.s_addr = inet_addr(host);
 
 	triton_context_register(&serv_ctx, NULL);
+	triton_context_set_priority(&serv_ctx, 1);
 	triton_md_register_handler(&serv_ctx, &serv_hnd);
 	triton_md_enable_handler(&serv_hnd, MD_MODE_READ);
 	triton_context_wakeup(&serv_ctx);
