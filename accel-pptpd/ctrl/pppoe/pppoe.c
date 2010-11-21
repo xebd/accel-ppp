@@ -80,7 +80,7 @@ void pppoe_server_free(struct pppoe_serv_t *serv);
 static void disconnect(struct pppoe_conn_t *conn)
 {
 	if (conn->ppp_started) {
-		__sync_fetch_and_sub(&stat_active, 1);
+		stat_active--;
 		conn->ppp_started = 0;
 		ppp_terminate(&conn->ppp, TERM_USER_REQUEST, 1);
 	}
@@ -130,9 +130,9 @@ static void ppp_finished(struct ppp_t *ppp)
 	log_ppp_debug("pppoe: ppp finished\n");
 
 	if (conn->ppp_started) {
-		__sync_fetch_and_sub(&stat_active, 1);
+		stat_active--;
 		conn->ppp_started = 0;
-		disconnect(conn);
+		triton_context_call(&conn->ctx, (triton_event_func)disconnect, conn);
 	}
 }
 
@@ -534,7 +534,7 @@ static void free_delayed_pado(struct delayed_pado_t *pado)
 {
 	triton_timer_del(&pado->timer);
 
-	__sync_fetch_and_sub(&stat_delayed_pado, 1);
+	stat_delayed_pado--;
 	list_del(&pado->entry);
 
 	if (pado->host_uniq)
@@ -643,7 +643,7 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 		triton_timer_add(&serv->ctx, &pado->timer, 0);
 
 		list_add_tail(&pado->entry, &serv->pado_list);
-		__sync_fetch_and_add(&stat_delayed_pado, 1);
+		stat_delayed_pado++;
 	} else
 		pppoe_send_PADO(serv, ethhdr->h_source, host_uniq_tag, relay_sid_tag, service_name_tag);
 }
@@ -744,7 +744,7 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 		if (connect_channel(conn))
 			disconnect(conn);
 		else {
-			__sync_fetch_and_add(&stat_active, 1);
+			stat_active++;
 			conn->ppp_started = 1;
 		}
 	}

@@ -395,7 +395,7 @@ static void ev_ctrl_started(struct ppp_t *ppp)
 			return;
 		}
 
-		lpd->tmp = __sync_fetch_and_add(&temp_seq, 1);
+		lpd->tmp = temp_seq++;
 		strcpy(fname, conf_per_session_dir);
 		strcat(fname, "/tmp");
 		sprintf(fname + strlen(fname), "%lu", lpd->tmp);

@@ -119,11 +119,11 @@ static void l2tp_disconnect(struct l2tp_conn_t *conn)
 		triton_timer_del(&conn->hello_timer);
 
 	if (conn->state == STATE_PPP) {
-		__sync_fetch_and_sub(&stat_active, 1);
+		stat_active--;
 		conn->state = STATE_FIN;
 		ppp_terminate(&conn->ppp, TERM_USER_REQUEST, 1);
 	} else if (conn->state != STATE_FIN)
-		__sync_fetch_and_sub(&stat_starting, 1);
+		stat_starting--;
 
 	pthread_mutex_lock(&l2tp_lock);
 	l2tp_conn[conn->tid] = NULL;
@@ -211,6 +211,7 @@ static void l2tp_conn_close(struct triton_context_t *ctx)
 	struct l2tp_conn_t *conn = container_of(ctx, typeof(*conn), ctx);
 	
 	if (conn->state == STATE_PPP) {
+		stat_active--;
 		conn->state = STATE_FIN;
 		ppp_terminate(&conn->ppp, TERM_ADMIN_RESET, 1);
 	}
@@ -330,7 +331,7 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 
 	triton_context_call(&conn->ctx, (triton_event_func)l2tp_send_SCCRP, conn);
 
-	__sync_fetch_and_add(&stat_starting, 1);
+	stat_starting++;
 
 	return 0;
 
@@ -392,8 +393,8 @@ static int l2tp_connect(struct l2tp_conn_t *conn)
 	if (establish_ppp(&conn->ppp))
 		return -1;
 
-	__sync_fetch_and_sub(&stat_starting, 1);
-	__sync_fetch_and_add(&stat_active, 1);
+	stat_starting--;
+	stat_active++;
 
 	conn->state = STATE_PPP;
 	
@@ -803,6 +804,7 @@ static int l2tp_recv_CDN(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 	}
 
 	if (conn->state == STATE_PPP) {
+		stat_active--;
 		conn->state = STATE_FIN;
 		ppp_terminate(&conn->ppp, TERM_USER_REQUEST, 1);
 	}

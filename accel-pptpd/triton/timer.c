@@ -26,6 +26,10 @@ static void *timer_thread(void *arg);
 
 static mempool_t *timer_pool;
 
+static pthread_mutex_t freed_list_lock = PTHREAD_MUTEX_INITIALIZER;
+static LIST_HEAD(freed_list);
+static LIST_HEAD(freed_list2);
+
 int timer_init(void)
 {
 	epoll_fd = epoll_create(1);
@@ -81,6 +85,8 @@ void *timer_thread(void *arg)
 		
 		for(i = 0; i < n; i++) {
 			t = (struct _triton_timer_t *)epoll_events[i].data.ptr;
+			if (!t->ud)
+				continue;
 			spin_lock(&t->ctx->lock);
 			if (t->ud) {
 				if (!t->pending) {
@@ -95,6 +101,20 @@ void *timer_thread(void *arg)
 			if (r)
 				triton_thread_wakeup(t->ctx->thread);
 		}
+
+		while (!list_empty(&freed_list2)) {
+			t = list_entry(freed_list2.next, typeof(*t), entry);
+			list_del(&t->entry);
+			mempool_free(t);
+		}
+
+		pthread_mutex_lock(&freed_list_lock);
+		while (!list_empty(&freed_list)) {
+			t = list_entry(freed_list.next, typeof(*t), entry);
+			list_del(&t->entry);
+			list_add(&t->entry, &freed_list2);
+		}
+		pthread_mutex_unlock(&freed_list_lock);
 	}
 
 	return NULL;
@@ -143,7 +163,7 @@ int __export triton_timer_add(struct triton_context_t *ctx, struct triton_timer_
 		goto out_err;
 	}
 
-	__sync_fetch_and_add(&triton_stat.timer_count, 1);
+	triton_stat.timer_count++;
 	
 	return 0;
 
@@ -179,15 +199,20 @@ void __export triton_timer_del(struct triton_timer_t *ud)
 	epoll_ctl(epoll_fd, EPOLL_CTL_DEL, t->fd, &t->epoll_event);
 	close(t->fd);
 	spin_lock(&t->ctx->lock);
+	t->ud = NULL;
 	list_del(&t->entry);
 	if (t->pending)
 		list_del(&t->entry2);
-	t->ud = NULL;
 	spin_unlock(&t->ctx->lock);
+
 	sched_yield();
-	mempool_free(t);
+
+	pthread_mutex_lock(&freed_list_lock);
+	list_add_tail(&t->entry, &freed_list);
+	pthread_mutex_unlock(&freed_list_lock);
+	
 	ud->tpd = NULL;
 	
-	__sync_fetch_and_sub(&triton_stat.timer_count, 1);
+	triton_stat.timer_count--;
 }
 

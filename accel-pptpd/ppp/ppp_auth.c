@@ -34,6 +34,7 @@ struct auth_option_t
 	struct list_head auth_list;
 	struct auth_data_t *auth;
 	struct auth_data_t *peer_auth;
+	int started:1;
 };
 
 struct auth_layer_data_t
@@ -41,7 +42,6 @@ struct auth_layer_data_t
 	struct ppp_layer_data_t ld;
 	struct auth_option_t auth_opt;
 	struct ppp_t *ppp;
-	int started:1;
 };
 
 static struct lcp_option_handler_t auth_opt_hnd = 
@@ -91,6 +91,11 @@ static void auth_free(struct ppp_lcp_t *lcp, struct lcp_option_t *opt)
 {
 	struct auth_option_t *auth_opt = container_of(opt, typeof(*auth_opt), opt);
 	struct auth_data_t *d;
+
+	if (auth_opt->started && auth_opt->auth) {
+		auth_opt->auth->h->finish(lcp->ppp, auth_opt->auth);
+		auth_opt->started = 0;
+	}
 
 	while(!list_empty(&auth_opt->auth_list)) {
 		d = list_entry(auth_opt->auth_list.next, typeof(*d), entry);
@@ -258,12 +263,11 @@ static int auth_layer_start(struct ppp_layer_data_t *ld)
 	struct auth_layer_data_t *ad = container_of(ld,typeof(*ad),ld);
 	
 	log_ppp_debug("auth_layer_start\n");
-	
-	ad->started = 1;
-	
-	if (ad->auth_opt.auth)
+		
+	if (ad->auth_opt.auth) {
+		ad->auth_opt.started = 1;
 		ad->auth_opt.auth->h->start(ad->ppp, ad->auth_opt.auth);
-	else {
+	} else {
 		log_ppp_debug("auth_layer_started\n");
 		ppp_layer_started(ad->ppp, ld);
 	}
@@ -280,7 +284,7 @@ static void auth_layer_finish(struct ppp_layer_data_t *ld)
 	if (ad->auth_opt.auth)
 		ad->auth_opt.auth->h->finish(ad->ppp, ad->auth_opt.auth);
 	
-	ad->started = 0;
+	ad->auth_opt.started = 0;
 
 	log_ppp_debug("auth_layer_finished\n");
 	ppp_layer_finished(ad->ppp, ld);
@@ -292,9 +296,6 @@ static void auth_layer_free(struct ppp_layer_data_t *ld)
 
 	log_ppp_debug("auth_layer_free\n");
 
-	if (ad->started && ad->auth_opt.auth)
-		ad->auth_opt.auth->h->finish(ad->ppp, ad->auth_opt.auth);
-	
 	_free(ad);
 }
 

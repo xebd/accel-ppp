@@ -70,7 +70,7 @@ void __export *mempool_alloc(mempool_t *pool)
 		list_del(&it->entry);
 		spin_unlock(&p->lock);
 		
-		__sync_fetch_and_sub(&triton_stat.mempool_available, size);
+		triton_stat.mempool_available -= size;
 		
 		it->magic1 = MAGIC1;
 
@@ -88,7 +88,7 @@ void __export *mempool_alloc(mempool_t *pool)
 	it->magic2 = p->magic;
 	*(uint64_t*)(it->data + p->size) = it->magic2;
 
-	__sync_fetch_and_add(&triton_stat.mempool_allocated, size);
+	triton_stat.mempool_allocated += size;
 
 	return it->ptr;
 }
@@ -110,7 +110,7 @@ void __export *mempool_alloc_md(mempool_t *pool, const char *fname, int line)
 		it->fname = fname;
 		it->line = line;
 		
-		__sync_fetch_and_sub(&triton_stat.mempool_available, size);
+		triton_stat.mempool_available -= size;
 		
 		it->magic1 = MAGIC1;
 
@@ -134,7 +134,7 @@ void __export *mempool_alloc_md(mempool_t *pool, const char *fname, int line)
 	list_add(&it->entry, &p->ditems);
 	spin_unlock(&p->lock);
 
-	__sync_fetch_and_add(&triton_stat.mempool_allocated, size);
+	triton_stat.mempool_allocated += size;
 
 	return it->ptr;
 }
@@ -168,10 +168,16 @@ void __export mempool_free(void *ptr)
 #ifdef MEMDEBUG
 	list_del(&it->entry);
 #endif
+#ifndef MEMPOOL_DISABLE
 	list_add_tail(&it->entry,&it->owner->items);
+#endif
 	spin_unlock(&it->owner->lock);
 
-	__sync_fetch_and_add(&triton_stat.mempool_available, size);
+#ifdef MEMPOOL_DISABLE
+	_free(it);
+#endif
+
+	triton_stat.mempool_available += size;
 }
 
 void __export mempool_clean(mempool_t *pool)
@@ -185,8 +191,8 @@ void __export mempool_clean(mempool_t *pool)
 		it = list_entry(p->items.next, typeof(*it), entry);
 		list_del(&it->entry);
 		_free(it);
-		__sync_fetch_and_sub(&triton_stat.mempool_allocated, size);
-		__sync_fetch_and_sub(&triton_stat.mempool_available, size);
+		triton_stat.mempool_allocated -= size;
+		triton_stat.mempool_available -= size;
 	}
 	spin_unlock(&p->lock);
 }
@@ -220,8 +226,8 @@ void sigclean(int num)
 			it = list_entry(p->items.next, typeof(*it), entry);
 			list_del(&it->entry);
 			_free(it);
-			__sync_fetch_and_sub(&triton_stat.mempool_allocated, size);
-			__sync_fetch_and_sub(&triton_stat.mempool_available, size);
+			triton_stat.mempool_allocated -= size;
+			triton_stat.mempool_available -= size;
 		}
 		spin_unlock(&p->lock);
 	}

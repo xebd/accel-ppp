@@ -192,8 +192,8 @@ void ppp_fsm_timeout1(struct ppp_fsm_t *layer)
 		case FSM_Req_Sent:
 		case FSM_Ack_Sent:
 			stop_timer(layer);
-			if (layer->layer_finished) layer->layer_finished(layer);
 			layer->fsm_state=FSM_Stopped;
+			if (layer->layer_finished) layer->layer_finished(layer);
 			break;
 		default:
 			break;
@@ -417,8 +417,8 @@ void ppp_fsm_recv_term_ack(struct ppp_fsm_t *layer)
 			if (layer->layer_finished) layer->layer_finished(layer);
 			break;
 		case FSM_Stopping:
-			if (layer->layer_finished) layer->layer_finished(layer);
 			layer->fsm_state=FSM_Stopped;
+			if (layer->layer_finished) layer->layer_finished(layer);
 			break;
 		case FSM_Ack_Rcvd:
 			layer->fsm_state=FSM_Req_Sent;
@@ -462,15 +462,15 @@ void ppp_fsm_recv_code_rej_bad(struct ppp_fsm_t *layer)
 			layer->fsm_state=FSM_Stopping;
 			break;
 		case FSM_Closing:
-			if (layer->layer_finished) layer->layer_finished(layer);
 			layer->fsm_state=FSM_Closed;
+			if (layer->layer_finished) layer->layer_finished(layer);
 			break;
 		case FSM_Stopping:
 		case FSM_Req_Sent:
 		case FSM_Ack_Rcvd:
 		case FSM_Ack_Sent:
-			if (layer->layer_finished) layer->layer_finished(layer);
 			layer->fsm_state=FSM_Stopped;
+			if (layer->layer_finished) layer->layer_finished(layer);
 			break;
 		default:
 			break;

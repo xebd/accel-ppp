@@ -60,7 +60,7 @@ static void* triton_thread(struct _triton_thread_t *thread)
 			thread->ctx->thread = thread;
 			thread->ctx->queued = 0;
 			spin_unlock(&thread->ctx->lock);
-			__sync_fetch_and_sub(&triton_stat.context_pending, 1);
+			triton_stat.context_pending--;
 		} else {
 			//printf("thread: %p: sleeping\n", thread);
 			if (!terminate)
@@ -69,11 +69,11 @@ static void* triton_thread(struct _triton_thread_t *thread)
 			if (terminate)
 				return NULL;
 
-			__sync_fetch_and_sub(&triton_stat.thread_active, 1);
+			triton_stat.thread_active--;
 			//printf("thread %p: enter sigwait\n", thread);
 			sigwait(&set, &sig);
 			//printf("thread %p: exit sigwait\n", thread);
-			__sync_fetch_and_add(&triton_stat.thread_active, 1);
+			triton_stat.thread_active++;
 
 			if (!thread->ctx)
 				continue;
@@ -106,6 +106,8 @@ cont:
 
 			if (thread->ctx->need_free) {
 				//printf("- context %p removed\n", thread->ctx);
+				spin_lock(&thread->ctx->lock);
+				spin_unlock(&thread->ctx->lock);
 				mempool_free(thread->ctx->uctx.uc_stack.ss_sp);
 				mempool_free(thread->ctx);
 			}
@@ -148,10 +150,12 @@ static void ctx_thread(struct _triton_context_t *ctx)
 				spin_unlock(&ctx->lock);
 				if (h->trig_epoll_events & (EPOLLIN | EPOLLERR | EPOLLHUP))
 					if (h->ud && h->ud->read)
-						h->ud->read(h->ud);
+						if (h->ud->read(h->ud))
+							continue;
 				if (h->trig_epoll_events & (EPOLLOUT | EPOLLERR | EPOLLHUP))
 					if (h->ud && h->ud->write)
-						h->ud->write(h->ud);
+						if (h->ud->write(h->ud))
+							continue;
 				h->trig_epoll_events = 0;
 				continue;
 			}
@@ -212,7 +216,7 @@ int triton_queue_ctx(struct _triton_context_t *ctx)
 		spin_unlock(&threads_lock);
 		ctx->queued = 1;
 		//printf("ctx %p: queued\n", ctx);
-		__sync_fetch_and_add(&triton_stat.context_pending, 1);
+		triton_stat.context_pending++;
 		return 0;
 	}
 
@@ -265,8 +269,8 @@ int __export triton_context_register(struct triton_context_t *ud, void *bf_arg)
 	list_add_tail(&ctx->entry, &ctx_list);
 	spin_unlock(&ctx_list_lock);
 
-	__sync_fetch_and_add(&triton_stat.context_sleeping, 1);
-	__sync_fetch_and_add(&triton_stat.context_count, 1);
+	triton_stat.context_sleeping++;
+	triton_stat.context_count++;
 
 	return 0;
 }
@@ -313,7 +317,7 @@ void __export triton_context_unregister(struct triton_context_t *ud)
 		terminate = 1;
 	spin_unlock(&ctx_list_lock);
 	
-	__sync_fetch_and_sub(&triton_stat.context_count, 1);
+	triton_stat.context_count--;
 
 	if (terminate) {
 		list_for_each_entry(t, &threads, entry)
@@ -343,7 +347,7 @@ void __export triton_context_schedule(struct triton_context_t *ud)
 	ctx->thread = NULL;
 	spin_unlock(&ctx->lock);
 
-	__sync_fetch_and_add(&triton_stat.context_sleeping, 1);
+	triton_stat.context_sleeping++;
 
 	if (swapcontext(&ctx->uctx, uctx))
 		triton_log_error("swaswpntext: %s\n", strerror(errno));
@@ -375,7 +379,7 @@ int __export triton_context_wakeup(struct triton_context_t *ud)
 	if (r)
 		triton_thread_wakeup(ctx->thread);
 	
-	__sync_fetch_and_sub(&triton_stat.context_sleeping, 1);
+	triton_stat.context_sleeping--;
 
 	return 0;
 }

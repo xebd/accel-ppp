@@ -20,6 +20,10 @@ static void *md_thread(void *arg);
 
 static mempool_t *md_pool;
 
+static pthread_mutex_t freed_list_lock = PTHREAD_MUTEX_INITIALIZER;
+static LIST_HEAD(freed_list);
+static LIST_HEAD(freed_list2);
+
 int md_init(void)
 {
 	epoll_fd = epoll_create(1);
@@ -74,6 +78,8 @@ static void *md_thread(void *arg)
 		
 		for(i = 0; i < n; i++) {
 			h = (struct _triton_md_handler_t *)epoll_events[i].data.ptr;
+			if (!h->ud)
+				continue;
 			spin_lock(&h->ctx->lock);
 			if (h->ud) {
 				h->trig_epoll_events |= epoll_events[i].events;
@@ -89,6 +95,20 @@ static void *md_thread(void *arg)
 			if (r)
 				triton_thread_wakeup(h->ctx->thread);
 		}
+
+		while (!list_empty(&freed_list2)) {
+			h = list_entry(freed_list2.next, typeof(*h), entry);
+			list_del(&h->entry);
+			mempool_free(h);
+		}
+		
+		pthread_mutex_lock(&freed_list_lock);
+		while (!list_empty(&freed_list)) {
+			h = list_entry(freed_list.next, typeof(*h), entry);
+			list_del(&h->entry);
+			list_add(&h->entry, &freed_list2);
+		}
+		pthread_mutex_unlock(&freed_list_lock);
 	}
 
 	return NULL;
@@ -109,22 +129,27 @@ void __export triton_md_register_handler(struct triton_context_t *ctx, struct tr
 	list_add_tail(&h->entry, &h->ctx->handlers);
 	spin_unlock(&h->ctx->lock);
 
-	__sync_fetch_and_add(&triton_stat.md_handler_count, 1);
+	triton_stat.md_handler_count++;
 }
 void __export triton_md_unregister_handler(struct triton_md_handler_t *ud)
 {
 	struct _triton_md_handler_t *h = (struct _triton_md_handler_t *)ud->tpd;
 	triton_md_disable_handler(ud, MD_MODE_READ | MD_MODE_WRITE);
+	
 	spin_lock(&h->ctx->lock);
+	h->ud = NULL;
 	list_del(&h->entry);
 	if (h->pending)
 		list_del(&h->entry2);
-	h->ud = NULL;
 	spin_unlock(&h->ctx->lock);
+
 	sched_yield();
-	mempool_free(h);
-	
-	__sync_fetch_and_sub(&triton_stat.md_handler_count, 1);
+
+	pthread_mutex_lock(&freed_list_lock);
+	list_add_tail(&h->entry, &freed_list);
+	pthread_mutex_unlock(&freed_list_lock);
+
+	triton_stat.md_handler_count--;
 }
 int __export triton_md_enable_handler(struct triton_md_handler_t *ud, int mode)
 {

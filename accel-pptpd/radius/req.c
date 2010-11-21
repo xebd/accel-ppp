@@ -221,7 +221,7 @@ static int rad_req_read(struct triton_md_handler_t *h)
 
 	req_wakeup(req);
 	
-	return 0;
+	return 1;
 }
 static void rad_req_timeout(struct triton_timer_t *t)
 {

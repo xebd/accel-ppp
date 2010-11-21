@@ -152,7 +152,7 @@ int __export establish_ppp(struct ppp_t *ppp)
 	triton_md_enable_handler(&ppp->unit_hnd, MD_MODE_READ);
 
 	ppp->state = PPP_STATE_STARTING;
-	__sync_fetch_and_add(&ppp_stat.starting, 1);
+	ppp_stat.starting++;
 
 	pthread_rwlock_wrlock(&ppp_lock);
 	list_add_tail(&ppp->entry, &ppp_list);
@@ -184,13 +184,13 @@ static void destablish_ppp(struct ppp_t *ppp)
 
 	switch (ppp->state) {
 		case PPP_STATE_ACTIVE:
-			__sync_fetch_and_sub(&ppp_stat.active, 1);
+			ppp_stat.active--;
 			break;
 		case PPP_STATE_STARTING:
-			__sync_fetch_and_sub(&ppp_stat.starting, 1);
+			ppp_stat.starting--;
 			break;
 		case PPP_STATE_FINISHING:
-			__sync_fetch_and_sub(&ppp_stat.finishing, 1);
+			ppp_stat.finishing--;
 			break;
 	}
 
@@ -374,8 +374,8 @@ void __export ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 
 	if (n->entry.next == &ppp->layers) {
 		ppp->state = PPP_STATE_ACTIVE;
-		__sync_fetch_and_sub(&ppp_stat.starting, 1);
-		__sync_fetch_and_add(&ppp_stat.active, 1);
+		ppp_stat.starting--;
+		ppp_stat.active++;
 		ppp->ctrl->started(ppp);
 		triton_event_fire(EV_PPP_STARTED, ppp);
 	} else {
@@ -430,10 +430,10 @@ void __export ppp_terminate(struct ppp_t *ppp, int cause, int hard)
 	
 	ppp->terminating = 1;
 	if (ppp->state == PPP_STATE_ACTIVE)
-		__sync_fetch_and_sub(&ppp_stat.active, 1);
+		ppp_stat.active--;
 	else
-		__sync_fetch_and_sub(&ppp_stat.starting, 1);
-	__sync_fetch_and_add(&ppp_stat.finishing, 1);
+		ppp_stat.starting--;
+	ppp_stat.finishing++;
 	ppp->state = PPP_STATE_FINISHING;
 
 	log_ppp_debug("ppp_terminate\n");

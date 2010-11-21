@@ -263,7 +263,7 @@ static int telnet_input_char(struct telnet_client_t *cln, uint8_t c)
 				return -1;
 			}
 			cln->auth = 1;
-		} else {
+		} else if (cln->cmdline_len) {
 			b = _malloc(sizeof(*b) + cln->cmdline_len);
 			memcpy(b->buf, cln->cmdline, cln->cmdline_len);
 			b->size = cln->cmdline_len;

@@ -20,7 +20,7 @@ Features
 8.  Supported MPPE
 9.  Compression is not supported
 10. Extensible logging engine with per session logging support, implemented log to file and log to PostgreSQL targets
-11. Extensible user/password database, implemented only Radius source
+11. Extensible user/password database, implemented Radius, chap-secret sources
 12. Extensible IP pool, implemented Radius and static pools
 13. Supported pppd compatible ip-up/ip-down scripts
 14. Builtin tbf shaper manager
