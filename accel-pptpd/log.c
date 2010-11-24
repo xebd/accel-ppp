@@ -135,6 +135,14 @@ void __export log_debug(const char *fmt,...)
 	}
 }
 
+void __export log_debug2(const char *fmt,...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	vfprintf(debug_file, fmt, ap);
+	va_end(ap);
+	fflush(debug_file);
+}
 void __export log_msg(const char *fmt,...)
 {
 	va_list ap;

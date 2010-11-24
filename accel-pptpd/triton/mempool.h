@@ -11,6 +11,7 @@ struct mempool_stat_t
 
 typedef void * mempool_t;
 mempool_t *mempool_create(int size);
+mempool_t *mempool_create2(int size);
 void mempool_free(void*);
 struct mempool_stat_t mempool_get_stat(void);
 

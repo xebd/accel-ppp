@@ -2,10 +2,13 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#include <sys/mman.h>
 
 #include "triton_p.h"
 
 #include "memdebug.h"
+
+//#define MEMPOOL_DISABLE
 
 #define MAGIC1 0x2233445566778899llu
 
@@ -19,6 +22,7 @@ struct _mempool_t
 #endif
 	spinlock_t lock;
 	uint64_t magic;
+	int mmap:1;
 };
 
 struct _item_t
@@ -57,6 +61,15 @@ mempool_t __export *mempool_create(int size)
 	return (mempool_t *)p;
 }
 
+mempool_t __export *mempool_create2(int size)
+{
+	struct _mempool_t *p = (struct _mempool_t *)mempool_create(size);
+	
+	p->mmap = 1;
+
+	return (mempool_t *)p;
+}
+
 #ifndef MEMDEBUG
 void __export *mempool_alloc(mempool_t *pool)
 {
@@ -78,7 +91,11 @@ void __export *mempool_alloc(mempool_t *pool)
 	}
 	spin_unlock(&p->lock);
 
-	it = _malloc(size);
+	if (p->mmap)
+		it = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_32BIT, -1, 0);
+	else
+		it = _malloc(size);
+
 	if (!it) {
 		triton_log_error("mempool: out of memory\n");
 		return NULL;
@@ -118,7 +135,11 @@ void __export *mempool_alloc_md(mempool_t *pool, const char *fname, int line)
 	}
 	spin_unlock(&p->lock);
 
-	it = md_malloc(size, fname, line);
+	if (p->mmap)
+		it = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_32BIT, -1, 0);
+	else
+		it = md_malloc(size, fname, line);
+
 	if (!it) {
 		triton_log_error("mempool: out of memory\n");
 		return NULL;
@@ -174,7 +195,10 @@ void __export mempool_free(void *ptr)
 	spin_unlock(&it->owner->lock);
 
 #ifdef MEMPOOL_DISABLE
-	_free(it);
+	if (it->owner->mmap)
+		munmap(it, size);
+	else
+		_free(it);
 #endif
 
 	triton_stat.mempool_available += size;
@@ -190,7 +214,10 @@ void __export mempool_clean(mempool_t *pool)
 	while (!list_empty(&p->items)) {
 		it = list_entry(p->items.next, typeof(*it), entry);
 		list_del(&it->entry);
-		_free(it);
+		if (p->mmap)
+			munmap(it, size);
+		else
+			_free(it);
 		triton_stat.mempool_allocated -= size;
 		triton_stat.mempool_available -= size;
 	}
