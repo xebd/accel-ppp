@@ -108,8 +108,13 @@ static uint8_t* encrypt_password(const char *passwd, const char *secret, const u
 	int i, j, chunk_cnt;
 	uint8_t b[16], c[16];
 	MD5_CTX ctx;
-	
-	chunk_cnt = (strlen(passwd) - 1) / 16 + 1;
+
+	if (strlen(passwd))
+		chunk_cnt = (strlen(passwd) - 1) / 16 + 1;
+	else {
+		*epasswd_len = 0;
+		return (uint8_t *)1;
+	}
 	
 	epasswd = _malloc(chunk_cnt * 16);
 	if (!epasswd) {
@@ -186,11 +191,13 @@ int rad_auth_pap(struct radius_pd_t *rpd, const char *username, va_list args)
 		goto out;
 
 	if (rad_packet_add_octets(req->pack, "User-Password", epasswd, epasswd_len)) {
-		_free(epasswd);
+		if (epasswd_len)
+			_free(epasswd);
 		goto out;
 	}
 
-	_free(epasswd);
+	if (epasswd_len)
+		_free(epasswd);
 
 	if (conf_sid_in_auth)
 		if (rad_packet_add_str(req->pack, "Acct-Session-Id", rpd->ppp->sessionid, PPP_SESSIONID_LEN))
