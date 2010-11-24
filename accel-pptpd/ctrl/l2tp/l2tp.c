@@ -225,7 +225,7 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 	struct l2tp_conn_t *conn;
 	struct sockaddr_in addr;
 	uint16_t tid;
-	char *opt;
+	//char *opt;
 
 	conn = mempool_alloc(l2tp_conn_pool);
 	if (!conn) {
@@ -247,7 +247,7 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 	addr.sin_family = AF_INET;
 	addr.sin_port = 0;
 
-	opt = conf_get_opt("l2tp", "bind");
+	/*opt = conf_get_opt("l2tp", "bind");
 	if (opt)
 		addr.sin_addr.s_addr = inet_addr(opt);
 	else
@@ -256,7 +256,7 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 	if (bind(conn->hnd.fd, (struct sockaddr *)&addr, sizeof(addr))) {
 		log_error("l2tp: bind: %s\n", strerror(errno));
 		goto out_err;
-	}
+	}*/
 
 	if (connect(conn->hnd.fd, (struct sockaddr *)&pack->addr, sizeof(addr))) {
 		log_error("l2tp: connect: %s\n", strerror(errno));

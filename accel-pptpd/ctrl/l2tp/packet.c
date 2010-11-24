@@ -187,6 +187,9 @@ int l2tp_recv(int fd, struct l2tp_packet_t **p)
 			goto out_err;
 		}
 
+		if (avp->vendor)
+			goto skip;
+
 		da = l2tp_dict_find_attr_by_id(ntohs(avp->type));
 		if (!da) {
 			if (conf_verbose)
@@ -260,7 +263,7 @@ int l2tp_recv(int fd, struct l2tp_packet_t **p)
 					break;
 			}
 		}
-
+skip:
 		ptr += avp->length;
 		length -= avp->length;
 	}
