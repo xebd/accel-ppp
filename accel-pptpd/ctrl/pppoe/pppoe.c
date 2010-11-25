@@ -878,12 +878,24 @@ static void pppoe_serv_close(struct triton_context_t *ctx)
 
 void pppoe_server_start(const char *ifname, void *cli)
 {
-	struct pppoe_serv_t *serv = _malloc(sizeof(*serv));
+	struct pppoe_serv_t *serv;
 	int sock;
 	int opt = 1;
 	struct ifreq ifr;
 	struct sockaddr_ll sa;
 
+	pthread_rwlock_rdlock(&serv_lock);
+	list_for_each_entry(serv, &serv_list, entry) {
+		if (!strcmp(serv->ifname, ifname)) {
+			if (cli)
+				cli_send(cli, "error: already exists\r\n");
+			pthread_rwlock_unlock(&serv_lock);
+			return;
+		}
+	}
+	pthread_rwlock_unlock(&serv_lock);
+
+	serv = _malloc(sizeof(*serv));
 	memset(serv, 0, sizeof(*serv));
 
 	sock = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_PPP_DISC));
