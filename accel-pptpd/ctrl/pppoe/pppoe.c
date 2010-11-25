@@ -11,6 +11,7 @@
 #include <net/ethernet.h>
 #include <netpacket/packet.h>
 #include <arpa/inet.h>
+#include <printf.h>
 
 #include <openssl/md5.h>
 
@@ -58,6 +59,7 @@ int conf_verbose;
 char *conf_service_name;
 char *conf_ac_name;
 int conf_pado_delay;
+int conf_ifname_in_sid;
 
 static mempool_t conn_pool;
 static mempool_t pado_pool;
@@ -204,12 +206,22 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 	conn->ctrl.max_mtu = MAX_PPPOE_MTU;
 	conn->ctrl.name = "pppoe";
 
-	conn->ctrl.calling_station_id = _malloc(19);
-	conn->ctrl.called_station_id = _malloc(19);
-	sprintf(conn->ctrl.calling_station_id, "%02x:%02x:%02x:%02x:%02x:%02x",
-		addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
-	sprintf(conn->ctrl.called_station_id, "%02x:%02x:%02x:%02x:%02x:%02x",
-		serv->hwaddr[0], serv->hwaddr[1], serv->hwaddr[2], serv->hwaddr[3], serv->hwaddr[4], serv->hwaddr[5]);
+	conn->ctrl.calling_station_id = _malloc(IFNAMSIZ + 19);
+	conn->ctrl.called_station_id = _malloc(IFNAMSIZ + 19);
+
+	if (conf_ifname_in_sid == 1 || conf_ifname_in_sid == 3)
+		sprintf(conn->ctrl.calling_station_id, "%s:%02x:%02x:%02x:%02x:%02x:%02x", serv->ifname,
+			addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+	else
+		sprintf(conn->ctrl.calling_station_id, "%02x:%02x:%02x:%02x:%02x:%02x",
+			addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+	
+	if (conf_ifname_in_sid == 2 || conf_ifname_in_sid == 3)
+		sprintf(conn->ctrl.called_station_id, "%s:%02x:%02x:%02x:%02x:%02x:%02x", serv->ifname,
+			serv->hwaddr[0], serv->hwaddr[1], serv->hwaddr[2], serv->hwaddr[3], serv->hwaddr[4], serv->hwaddr[5]);
+	else
+		sprintf(conn->ctrl.called_station_id, "%02x:%02x:%02x:%02x:%02x:%02x",
+			serv->hwaddr[0], serv->hwaddr[1], serv->hwaddr[2], serv->hwaddr[3], serv->hwaddr[4], serv->hwaddr[5]);
 	
 	ppp_init(&conn->ppp);
 
@@ -1093,6 +1105,17 @@ static void __init pppoe_init(void)
 		} else if (!strcmp(opt->name, "pado-delay") || !strcmp(opt->name, "PADO-delay")) {
 			if (opt->val && atoi(opt->val) > 0)
 				conf_pado_delay = atoi(opt->val);
+		} else if (!strcmp(opt->name, "ifname-in-sid")) {
+			if (!opt->val)
+				continue;
+			if (!strcmp(opt->val, "called-sid"))
+				conf_ifname_in_sid = 1;
+			else if (!strcmp(opt->val, "calling-sid"))
+				conf_ifname_in_sid = 2;
+			else if (!strcmp(opt->val, "both"))
+				conf_ifname_in_sid = 3;
+			else if (atoi(opt->val) >= 0)
+				conf_ifname_in_sid = atoi(opt->val);
 		}
 	}
 
