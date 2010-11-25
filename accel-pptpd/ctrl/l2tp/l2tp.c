@@ -201,6 +201,7 @@ static void l2tp_ppp_finished(struct ppp_t *ppp)
 	log_ppp_debug("l2tp: ppp finished\n");
 
 	if (conn->state != STATE_FIN) {
+		stat_active--;
 		if (l2tp_terminate(conn, 0, 0))
 			triton_context_call(&conn->ctx, (triton_event_func)l2tp_disconnect, conn);
 	}
@@ -224,8 +225,10 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 {
 	struct l2tp_conn_t *conn;
 	struct sockaddr_in addr;
+	socklen_t addr_len = sizeof(addr);
 	uint16_t tid;
 	//char *opt;
+	int opt = 1;
 
 	conn = mempool_alloc(l2tp_conn_pool);
 	if (!conn) {
@@ -258,6 +261,29 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 		goto out_err;
 	}*/
 
+	if (connect(conn->hnd.fd, (struct sockaddr *)&pack->addr, sizeof(addr))) {
+		log_error("l2tp: connect: %s\n", strerror(errno));
+		goto out_err;
+	}
+
+	getsockname(conn->hnd.fd, &addr, &addr_len);
+	addr.sin_port = htons(L2TP_PORT);
+
+	close(conn->hnd.fd);
+	
+	conn->hnd.fd = socket(PF_INET, SOCK_DGRAM, 0);
+	if (conn->hnd.fd < 0) {
+		log_error("l2tp: socket: %s\n", strerror(errno));
+		mempool_free(conn);
+		return -1;
+	}
+
+  setsockopt(conn->hnd.fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));  
+	if (bind(conn->hnd.fd, &addr, sizeof(addr))) {
+		log_error("l2tp: bind: %s\n", strerror(errno));
+		goto out_err;
+	}
+	
 	if (connect(conn->hnd.fd, (struct sockaddr *)&pack->addr, sizeof(addr))) {
 		log_error("l2tp: connect: %s\n", strerror(errno));
 		goto out_err;
