@@ -416,6 +416,21 @@ int __export triton_context_call(struct triton_context_t *ud, void (*func)(void 
 	return 0;
 }
 
+void __export triton_cancel_call(struct triton_context_t *ud, void (*func)(void *))
+{
+	struct _triton_context_t *ctx = (struct _triton_context_t *)ud->tpd;
+	struct list_head *pos, *n;
+	struct _triton_ctx_call_t *call;
+
+	list_for_each_safe(pos, n, &ctx->pending_calls) {
+		call = list_entry(pos, typeof(*call), entry);
+		if (call->func != func)
+			continue;
+		list_del(&call->entry);
+		mempool_free(call);
+	}
+}
+
 int __export triton_init(const char *conf_file)
 {
 	ctx_pool = mempool_create2(sizeof(struct _triton_context_t));

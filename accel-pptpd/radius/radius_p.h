@@ -107,6 +107,7 @@ void rad_packet_free(struct rad_packet_t *);
 void rad_packet_print(struct rad_packet_t *pack, void (*print)(const char *fmt, ...));
 int rad_packet_send(struct rad_packet_t *pck, int fd, struct sockaddr_in *addr);
 
+void dm_coa_cancel(struct radius_pd_t *pd);
 
 #endif
 

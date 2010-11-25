@@ -216,7 +216,7 @@ static void ppp_finished(struct ppp_t *ppp)
 		rad_req_free(rpd->acct_req);
 
 	if (rpd->dm_coa_req)
-		rad_packet_free(rpd->dm_coa_req);
+		dm_coa_cancel(rpd);
 
 	if (rpd->session_timeout.tpd)
 		triton_timer_del(&rpd->session_timeout);
