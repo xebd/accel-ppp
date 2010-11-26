@@ -253,7 +253,10 @@ void sigclean(int num)
 		while (!list_empty(&p->items)) {
 			it = list_entry(p->items.next, typeof(*it), entry);
 			list_del(&it->entry);
-			_free(it);
+			if (p->mmap)
+				munmap(it, size);
+			else
+				_free(it);
 			triton_stat.mempool_allocated -= size;
 			triton_stat.mempool_available -= size;
 		}
