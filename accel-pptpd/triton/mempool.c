@@ -3,6 +3,7 @@
 #include <string.h>
 #include <signal.h>
 #include <sys/mman.h>
+#include <linux/mman.h>
 
 #include "triton_p.h"
 
