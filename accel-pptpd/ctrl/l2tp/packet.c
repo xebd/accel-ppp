@@ -127,13 +127,13 @@ int l2tp_recv(int fd, struct l2tp_packet_t **p)
 	if (n < sizeof(*hdr)) {
 		if (conf_verbose)
 			log_warn("l2tp: short packet received (%i/%i)\n", n, sizeof(*hdr));
-		goto out_err;
+		goto out_err_hdr;
 	}
 
 	if (n < ntohs(hdr->length)) {
 		if (conf_verbose)
 			log_warn("l2tp: short packet received (%i/%i)\n", n, ntohs(hdr->length));
-		goto out_err;
+		goto out_err_hdr;
 	}
 
 	if (hdr->T == 0)
@@ -166,8 +166,7 @@ int l2tp_recv(int fd, struct l2tp_packet_t **p)
 	pack = mempool_alloc(pack_pool);
 	if (!pack) {
 		log_emerg("l2tp: out of memory\n");
-		mempool_free(buf);
-		return -1;
+		goto out_err_hdr;
 	}
 
 	memset(pack, 0, sizeof(*pack));
