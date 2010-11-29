@@ -596,8 +596,10 @@ static void save_seq(void)
 		opt = "/var/run/accel-pptp/seq";
 
 	f = fopen(opt, "w");
-	fprintf(f, "%llu", sid);
-	fclose(f);
+	if (f) {
+		fprintf(f, "%llu", sid);
+		fclose(f);
+	}
 }
 
 static void __init init(void)
