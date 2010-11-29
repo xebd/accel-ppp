@@ -337,7 +337,7 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 	conn->ctrl.calling_station_id = _malloc(17);
 	conn->ctrl.called_station_id = _malloc(17);
 	u_inet_ntoa(conn->addr.sin_addr.s_addr, conn->ctrl.calling_station_id);
-	u_inet_ntoa(serv->addr.sin_addr.s_addr, conn->ctrl.called_station_id);
+	u_inet_ntoa(addr.sin_addr.s_addr, conn->ctrl.called_station_id);
 
 	ppp_init(&conn->ppp);
 	conn->ppp.ctrl = &conn->ctrl;
