@@ -43,6 +43,8 @@ static const char* level_name[]={"  msg", "error", " warn", " info", "debug"};
 
 static void start_connect(struct tcp_target_t *t);
 
+static LIST_HEAD(targets);
+
 static void disconnect(struct tcp_target_t *t)
 {
 	triton_md_unregister_handler(&t->hnd);
@@ -226,6 +228,25 @@ static void start_connect(struct tcp_target_t *t)
 	triton_md_enable_handler(&t->hnd, MD_MODE_WRITE);
 }
 
+static void log_tcp_close(struct triton_context_t *ctx)
+{
+	struct tcp_target_t *t;
+
+	while (!list_empty(&targets)) {
+		t = list_entry(targets.next, typeof(*t), entry);
+		list_del(&t->entry);
+		if (t->conn_timer.tpd)
+			triton_timer_del(&t->conn_timer);
+		else {
+			t->connected = 0;
+			triton_md_unregister_handler(&t->hnd);
+			close(t->hnd.fd);
+		}
+	}
+
+	triton_context_unregister(&tcp_ctx);
+}
+
 static int start_log(const char *_opt)
 {
 	struct tcp_target_t *t;
@@ -266,12 +287,18 @@ static int start_log(const char *_opt)
 
 	log_register_target(&t->target);
 
+	list_add_tail(&t->entry, &targets);
+
 	return 0;
 
 err:
 	free(opt);
 	return -1;
 }
+
+static struct triton_context_t tcp_ctx ={
+	.close = log_tcp_close,
+};
 
 static void __init init(void)
 {
