@@ -236,7 +236,7 @@ static int serv_read(struct triton_md_handler_t *h)
 			continue;
 		}
 
-		log_info("cli: tcp: new connection from %s\n", inet_ntoa(addr.sin_addr));
+		log_info2("cli: tcp: new connection from %s\n", inet_ntoa(addr.sin_addr));
 
 		if (fcntl(sock, F_SETFL, O_NONBLOCK)) {
 			log_error("cli: tcp: failed to set nonblocking mode: %s, closing connection...\n", strerror(errno));

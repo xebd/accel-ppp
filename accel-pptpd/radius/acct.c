@@ -86,8 +86,8 @@ static int rad_acct_read(struct triton_md_handler_t *h)
 				rad_packet_free(req->reply);
 			req->reply = pack;
 			if (conf_interim_verbose) {
-				log_ppp_info("recv ");
-				rad_packet_print(req->reply, log_ppp_info);
+				log_ppp_info2("recv ");
+				rad_packet_print(req->reply, log_ppp_info2);
 			}
 		}
 

@@ -51,8 +51,8 @@ static char *conf_per_user_dir;
 static char *conf_per_session_dir;
 static int conf_copy;
 
-static const char* level_name[]={"  msg", "error", " warn", " info", "debug"};
-static const char* level_color[]={NORMAL_COLOR, RED_COLOR, YELLOW_COLOR, GREEN_COLOR, BLUE_COLOR};
+static const char* level_name[]={"  msg", "error", " warn", " info", " info", "debug"};
+static const char* level_color[]={NORMAL_COLOR, RED_COLOR, YELLOW_COLOR, GREEN_COLOR, GREEN_COLOR, BLUE_COLOR};
 
 static void *pd_key1;
 static void *pd_key2;

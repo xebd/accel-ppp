@@ -39,7 +39,7 @@ static int conf_queue_len = 1000;
 
 static struct triton_context_t tcp_ctx;
 
-static const char* level_name[]={"  msg", "error", " warn", " info", "debug"};
+static const char* level_name[]={"  msg", "error", " warn", " info", " info", "debug"};
 
 static void start_connect(struct tcp_target_t *t);
 

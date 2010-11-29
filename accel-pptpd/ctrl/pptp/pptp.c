@@ -90,8 +90,7 @@ static void disconnect(struct pptp_conn_t *conn)
 
 	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp);
 	
-	if (conf_verbose)
-		log_ppp_info("disconnected\n");
+	log_ppp_info1("disconnected\n");
 
 	triton_context_unregister(&conn->ctx);
 
@@ -120,7 +119,7 @@ static int post_msg(struct pptp_conn_t *conn, void *buf, int size)
 		else {
 			if (errno != EPIPE) {
 				if (conf_verbose)
-					log_ppp_info("pptp: write: %s\n", strerror(errno));
+					log_ppp_info2("pptp: write: %s\n", strerror(errno));
 				return -1;
 			}
 		}
@@ -142,7 +141,7 @@ static int send_pptp_stop_ctrl_conn_rqst(struct pptp_conn_t *conn, int reason)
 	};
 
 	if (conf_verbose)
-		log_ppp_info("send [PPTP Stop-Ctrl-Conn-Request <Reason %i>]\n", reason);
+		log_ppp_info2("send [PPTP Stop-Ctrl-Conn-Request <Reason %i>]\n", reason);
 
 	return post_msg(conn, &msg, sizeof(msg));
 }
@@ -156,7 +155,7 @@ static int send_pptp_stop_ctrl_conn_rply(struct pptp_conn_t *conn, int reason, i
 	};
 
 	if (conf_verbose)
-		log_ppp_info("send [PPTP Stop-Ctrl-Conn-Reply <Result %i> <Error %i>]\n", msg.reason_result, msg.error_code);
+		log_ppp_info2("send [PPTP Stop-Ctrl-Conn-Reply <Result %i> <Error %i>]\n", msg.reason_result, msg.error_code);
 
 	return post_msg(conn, &msg, sizeof(msg));
 }
@@ -164,7 +163,7 @@ static int pptp_stop_ctrl_conn_rqst(struct pptp_conn_t *conn)
 {
 	struct pptp_stop_ctrl_conn *msg = (struct pptp_stop_ctrl_conn *)conn->in_buf;
 	if (conf_verbose)
-		log_ppp_info("recv [PPTP Stop-Ctrl-Conn-Request <Reason %i>]\n", msg->reason_result);
+		log_ppp_info2("recv [PPTP Stop-Ctrl-Conn-Request <Reason %i>]\n", msg->reason_result);
 
 	send_pptp_stop_ctrl_conn_rply(conn, PPTP_CONN_STOP_OK, 0);
 
@@ -175,7 +174,7 @@ static int pptp_stop_ctrl_conn_rply(struct pptp_conn_t *conn)
 {	
 	struct pptp_stop_ctrl_conn *msg = (struct pptp_stop_ctrl_conn*)conn->in_buf;
 	if (conf_verbose)
-		log_ppp_info("recv [PPTP Stop-Ctrl-Conn-Reply <Result %i> <Error %i>]\n", msg->reason_result, msg->error_code);
+		log_ppp_info2("recv [PPTP Stop-Ctrl-Conn-Reply <Result %i> <Error %i>]\n", msg->reason_result, msg->error_code);
 	return -1;
 }
 
@@ -199,7 +198,7 @@ static int send_pptp_start_ctrl_conn_rply(struct pptp_conn_t *conn, int res_code
 	strcpy((char*)msg.vendor, PPTP_VENDOR);
 
 	if (conf_verbose)
-		log_ppp_info("send [PPTP Start-Ctrl-Conn-Reply <Version %i> <Result %i> <Error %i> <Framing %x> <Bearer %x> <Max-Chan %i>]\n", msg.version, msg.result_code, msg.error_code, ntohl(msg.framing_cap), ntohl(msg.bearer_cap), ntohs(msg.max_channels));
+		log_ppp_info2("send [PPTP Start-Ctrl-Conn-Reply <Version %i> <Result %i> <Error %i> <Framing %x> <Bearer %x> <Max-Chan %i>]\n", msg.version, msg.result_code, msg.error_code, ntohl(msg.framing_cap), ntohl(msg.bearer_cap), ntohs(msg.max_channels));
 
 	return post_msg(conn, &msg, sizeof(msg));
 }
@@ -209,7 +208,7 @@ static int pptp_start_ctrl_conn_rqst(struct pptp_conn_t *conn)
 	struct pptp_start_ctrl_conn *msg = (struct pptp_start_ctrl_conn *)conn->in_buf;
 
 	if (conf_verbose)
-		log_ppp_info("recv [PPTP Start-Ctrl-Conn-Request <Version %i> <Framing %x> <Bearer %x> <Max-Chan %i>]\n", msg->version, ntohl(msg->framing_cap), ntohl(msg->bearer_cap), ntohs(msg->max_channels));
+		log_ppp_info2("recv [PPTP Start-Ctrl-Conn-Request <Version %i> <Framing %x> <Bearer %x> <Max-Chan %i>]\n", msg->version, ntohl(msg->framing_cap), ntohl(msg->bearer_cap), ntohs(msg->max_channels));
 
 	if (conn->state != STATE_IDLE) {
 		log_ppp_warn("unexpected PPTP_START_CTRL_CONN_RQST\n");
@@ -256,7 +255,7 @@ static int send_pptp_out_call_rply(struct pptp_conn_t *conn, struct pptp_out_cal
 	};
 
 	if (conf_verbose)
-		log_ppp_info("send [PPTP Outgoing-Call-Reply <Call-ID %x> <Peer-Call-ID %x> <Result %i> <Error %i> <Cause %i> <Speed %i> <Window-Size %i> <Delay %i> <Channel %x>]\n", ntohs(msg.call_id), ntohs(msg.call_id_peer), msg.result_code, msg.error_code, ntohs(msg.cause_code), ntohl(msg.speed), ntohs(msg.recv_size), ntohs(msg.delay), ntohl(msg.channel));
+		log_ppp_info2("send [PPTP Outgoing-Call-Reply <Call-ID %x> <Peer-Call-ID %x> <Result %i> <Error %i> <Cause %i> <Speed %i> <Window-Size %i> <Delay %i> <Channel %x>]\n", ntohs(msg.call_id), ntohs(msg.call_id_peer), msg.result_code, msg.error_code, ntohs(msg.cause_code), ntohl(msg.speed), ntohs(msg.recv_size), ntohs(msg.delay), ntohl(msg.channel));
 
 	return post_msg(conn, &msg, sizeof(msg));
 }
@@ -270,7 +269,7 @@ static int pptp_out_call_rqst(struct pptp_conn_t *conn)
 	int pptp_sock;
 
 	if (conf_verbose)
-		log_ppp_info("recv [PPTP Outgoing-Call-Request <Call-ID %x> <Call-Serial %x> <Min-BPS %i> <Max-BPS %i> <Bearer %x> <Framing %x> <Window-Size %i> <Delay %i>]\n", ntohs(msg->call_id), ntohs(msg->call_sernum), ntohl(msg->bps_min), ntohl(msg->bps_max), ntohl(msg->bearer), ntohl(msg->framing), ntohs(msg->recv_size), ntohs(msg->delay));
+		log_ppp_info2("recv [PPTP Outgoing-Call-Request <Call-ID %x> <Call-Serial %x> <Min-BPS %i> <Max-BPS %i> <Bearer %x> <Framing %x> <Window-Size %i> <Delay %i>]\n", ntohs(msg->call_id), ntohs(msg->call_sernum), ntohl(msg->bps_min), ntohl(msg->bps_max), ntohl(msg->bearer), ntohl(msg->framing), ntohs(msg->recv_size), ntohs(msg->delay));
 
 	if (conn->state != STATE_ESTB) {
 		log_ppp_warn("unexpected PPTP_OUT_CALL_RQST\n");
@@ -354,7 +353,7 @@ static int send_pptp_call_disconnect_notify(struct pptp_conn_t *conn, int result
 	};
 
 	if (conf_verbose)
-		log_ppp_info("send [PPTP Call-Disconnect-Notify <Call-ID %x> <Result %i> <Error %i> <Cause %i>]\n", ntohs(msg.call_id), msg.result_code, msg.error_code, msg.cause_code);
+		log_ppp_info2("send [PPTP Call-Disconnect-Notify <Call-ID %x> <Result %i> <Error %i> <Cause %i>]\n", ntohs(msg.call_id), msg.result_code, msg.error_code, msg.cause_code);
 	
 	return post_msg(conn, &msg, sizeof(msg));
 }
@@ -364,7 +363,7 @@ static int pptp_call_clear_rqst(struct pptp_conn_t *conn)
 	struct pptp_call_clear_rqst *rqst = (struct pptp_call_clear_rqst *)conn->in_buf;
 
 	if (conf_verbose)
-		log_ppp_info("recv [PPTP Call-Clear-Request <Call-ID %x>]\n", ntohs(rqst->call_id));
+		log_ppp_info2("recv [PPTP Call-Clear-Request <Call-ID %x>]\n", ntohs(rqst->call_id));
 
 	if (conn->state == STATE_PPP) {
 		__sync_sub_and_fetch(&stat_active, 1);
@@ -450,7 +449,7 @@ static int process_packet(struct pptp_conn_t *conn)
 			return pptp_call_clear_rqst(conn);
 		case PPTP_SET_LINK_INFO:
 			if (conf_verbose)
-				log_ppp_info("recv [PPTP Set-Link-Info]\n");
+				log_ppp_info2("recv [PPTP Set-Link-Info]\n");
 			return 0;
 		default:
 			log_ppp_warn("recv [PPTP Unknown (%x)]\n", ntohs(hdr->ctrl_type));
@@ -476,7 +475,7 @@ static int pptp_read(struct triton_md_handler_t *h)
 		}
 		if (n == 0) {
 			if (conf_verbose)
-				log_ppp_info("pptp: disconnect by peer\n");
+				log_ppp_info2("pptp: disconnect by peer\n");
 			goto drop;
 		}
 		conn->in_size += n;
@@ -524,7 +523,7 @@ static int pptp_write(struct triton_md_handler_t *h)
 			else {
 				if (errno != EPIPE) {
 					if (conf_verbose)
-						log_ppp_info("pptp: post_msg: %s\n", strerror(errno));
+						log_ppp_info2("pptp: post_msg: %s\n", strerror(errno));
 				}
 				disconnect(conn);
 				return 1;
@@ -618,7 +617,7 @@ static int pptp_connect(struct triton_md_handler_t *h)
 			continue;
 		}
 
-		log_info("pptp: new connection from %s\n", inet_ntoa(addr.sin_addr));
+		log_info2("pptp: new connection from %s\n", inet_ntoa(addr.sin_addr));
 
 		if (iprange_client_check(addr.sin_addr.s_addr)) {
 			log_warn("pptp: IP is out of client-ip-range, droping connection...\n");

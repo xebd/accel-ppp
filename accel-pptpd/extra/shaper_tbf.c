@@ -603,7 +603,7 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 	if (down_speed > 0 && up_speed > 0) {
 		if (!install_shaper(ev->ppp->ifname, down_speed, down_burst, up_speed, up_burst)) {
 			if (conf_verbose)
-				log_ppp_info("tbf: installed shaper %i/%i (Kbit)\n", down_speed, up_speed);
+				log_ppp_info2("tbf: installed shaper %i/%i (Kbit)\n", down_speed, up_speed);
 		}
 	}
 }
@@ -651,11 +651,11 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 				return;
 			} else {
 				if (conf_verbose)
-					log_ppp_info("tbf: changed shaper %i/%i (Kbit)\n", down_speed, up_speed);
+					log_ppp_info2("tbf: changed shaper %i/%i (Kbit)\n", down_speed, up_speed);
 			}
 		} else {
 			if (conf_verbose)
-				log_ppp_info("tbf: removed shaper\n");
+				log_ppp_info2("tbf: removed shaper\n");
 		}
 	}
 }
@@ -678,7 +678,7 @@ static void ev_shaper(struct ev_shaper_t *ev)
 		pd->up_speed = up_speed;
 		if (!install_shaper(ev->ppp->ifname, down_speed, down_burst, up_speed, up_burst)) {
 			if (conf_verbose)
-				log_ppp_info("tbf: installed shaper %i/%i (Kbit)\n", down_speed, up_speed);
+				log_ppp_info2("tbf: installed shaper %i/%i (Kbit)\n", down_speed, up_speed);
 		}
 	}
 }

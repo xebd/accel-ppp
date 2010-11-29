@@ -137,8 +137,7 @@ static void l2tp_disconnect(struct l2tp_conn_t *conn)
 
 	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp);
 	
-	if (conf_verbose)
-		log_ppp_info("disconnected\n");
+	log_ppp_info1("disconnected\n");
 
 	triton_context_unregister(&conn->ctx);
 
@@ -351,8 +350,8 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 
 	if (conf_verbose) {
 		log_switch(&conn->ctx, &conn->ppp);
-		log_ppp_info("recv ");
-		l2tp_packet_print(pack, log_ppp_info);
+		log_ppp_info2("recv ");
+		l2tp_packet_print(pack, log_ppp_info2);
 	}
 
 	triton_context_call(&conn->ctx, (triton_event_func)l2tp_send_SCCRP, conn);
@@ -472,8 +471,8 @@ static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack, int l
 			log_ppp_debug("send ");
 			l2tp_packet_print(pack, log_ppp_debug);
 		} else {
-			log_ppp_info("send ");
-			l2tp_packet_print(pack, log_ppp_info);
+			log_ppp_info2("send ");
+			l2tp_packet_print(pack, log_ppp_info2);
 		}
 	}
 
@@ -917,8 +916,8 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 				log_ppp_debug("recv ");
 				l2tp_packet_print(pack, log_ppp_debug);
 			} else {
-				log_ppp_info("recv ");
-				l2tp_packet_print(pack, log_ppp_info);
+				log_ppp_info2("recv ");
+				l2tp_packet_print(pack, log_ppp_info2);
 			}
 		}
 

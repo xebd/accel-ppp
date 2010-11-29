@@ -94,8 +94,7 @@ static void disconnect(struct pppoe_conn_t *conn)
 
 	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp);
 
-	if (conf_verbose)
-		log_ppp_info("disconnected\n");
+	log_ppp_info1("disconnected\n");
 
 	pthread_mutex_lock(&conn->serv->lock);
 	conn->serv->conn[conn->sid] = NULL;
@@ -279,7 +278,7 @@ static void print_tag_string(struct pppoe_tag *tag)
 	int i;
 
 	for (i = 0; i < ntohs(tag->tag_len); i++)
-		log_info("%c", tag->tag_data[i]);
+		log_info2("%c", tag->tag_data[i]);
 }
 
 static void print_tag_octets(struct pppoe_tag *tag)
@@ -287,7 +286,7 @@ static void print_tag_octets(struct pppoe_tag *tag)
 	int i;
 
 	for (i = 0; i < ntohs(tag->tag_len); i++)
-		log_info("%02x", (uint8_t)tag->tag_data[i]);
+		log_info2("%02x", (uint8_t)tag->tag_data[i]);
 }
 
 static void print_packet(uint8_t *pack)
@@ -297,82 +296,82 @@ static void print_packet(uint8_t *pack)
 	struct pppoe_tag *tag;
 	int n;
 
-	log_info("[PPPoE ");
+	log_info2("[PPPoE ");
 
 	switch (hdr->code) {
 		case CODE_PADI:
-			log_info("PADI");
+			log_info2("PADI");
 			break;
 		case CODE_PADO:
-			log_info("PADO");
+			log_info2("PADO");
 			break;
 		case CODE_PADR:
-			log_info("PADR");
+			log_info2("PADR");
 			break;
 		case CODE_PADS:
-			log_info("PADS");
+			log_info2("PADS");
 			break;
 		case CODE_PADT:
-			log_info("PADT");
+			log_info2("PADT");
 			break;
 	}
 	
-	log_info(" %02x:%02x:%02x:%02x:%02x:%02x => %02x:%02x:%02x:%02x:%02x:%02x", 
+	log_info2(" %02x:%02x:%02x:%02x:%02x:%02x => %02x:%02x:%02x:%02x:%02x:%02x", 
 		ethhdr->h_source[0], ethhdr->h_source[1], ethhdr->h_source[2], ethhdr->h_source[3], ethhdr->h_source[4], ethhdr->h_source[5],
 		ethhdr->h_dest[0], ethhdr->h_dest[1], ethhdr->h_dest[2], ethhdr->h_dest[3], ethhdr->h_dest[4], ethhdr->h_dest[5]);
 
-	log_info(" sid=%04x", ntohs(hdr->sid));
+	log_info2(" sid=%04x", ntohs(hdr->sid));
 
 	for (n = 0; n < ntohs(hdr->length); n += sizeof(*tag) + ntohs(tag->tag_len)) {
 		tag = (struct pppoe_tag *)(pack + ETH_HLEN + sizeof(*hdr) + n);
 		switch (ntohs(tag->tag_type)) {
 			case TAG_END_OF_LIST:
-				log_info(" <End-Of-List>");
+				log_info2(" <End-Of-List>");
 				break;
 			case TAG_SERVICE_NAME:
-				log_info(" <Service-Name ");
+				log_info2(" <Service-Name ");
 				print_tag_string(tag);
-				log_info(">");
+				log_info2(">");
 				break;
 			case TAG_AC_NAME:
-				log_info(" <AC-Name ");
+				log_info2(" <AC-Name ");
 				print_tag_string(tag);
-				log_info(">");
+				log_info2(">");
 				break;
 			case TAG_HOST_UNIQ:
-				log_info(" <Host-Uniq ");
+				log_info2(" <Host-Uniq ");
 				print_tag_octets(tag);
-				log_info(">");
+				log_info2(">");
 				break;
 			case TAG_AC_COOKIE:
-				log_info(" <AC-Cookie ");
+				log_info2(" <AC-Cookie ");
 				print_tag_octets(tag);
-				log_info(">");
+				log_info2(">");
 				break;
 			case TAG_VENDOR_SPECIFIC:
-				log_info(" <Vendor-Specific>");
+				log_info2(" <Vendor-Specific>");
 				break;
 			case TAG_RELAY_SESSION_ID:
-				log_info(" <Relay-Session-Id");
+				log_info2(" <Relay-Session-Id");
 				print_tag_octets(tag);
-				log_info(">");
+				log_info2(">");
 				break;
 			case TAG_SERVICE_NAME_ERROR:
-				log_info(" <Service-Name-Error>");
+				log_info2(" <Service-Name-Error>");
 				break;
 			case TAG_AC_SYSTEM_ERROR:
-				log_info(" <AC-System-Error>");
+				log_info2(" <AC-System-Error>");
 				break;
 			case TAG_GENERIC_ERROR:
-				log_info(" <Generic-Error>");
+				log_info2(" <Generic-Error>");
 				break;
 			default:
-				log_info(" <Unknown (%x)>", ntohs(tag->tag_type));
+				log_info2(" <Unknown (%x)>", ntohs(tag->tag_type));
 				break;
 		}
 	}
 
-	log_info("]\n");
+	log_info2("]\n");
 }
 
 static void generate_cookie(const uint8_t *src, const uint8_t *dst, uint8_t *cookie)
@@ -464,7 +463,7 @@ static void pppoe_send_PADO(struct pppoe_serv_t *serv, const uint8_t *addr, cons
 		add_tag2(pack, relay_sid);
 
 	if (conf_verbose) {
-		log_info("send ");
+		log_info2("send ");
 		print_packet(pack);
 	}
 
@@ -487,7 +486,7 @@ static void pppoe_send_err(struct pppoe_serv_t *serv, const uint8_t *addr, const
 		add_tag2(pack, relay_sid);
 
 	if (conf_verbose) {
-		log_info("send ");
+		log_info2("send ");
 		print_packet(pack);
 	}
 
@@ -511,7 +510,7 @@ static void pppoe_send_PADS(struct pppoe_conn_t *conn)
 		add_tag2(pack, conn->relay_sid);
 
 	if (conf_verbose) {
-		log_info("send ");
+		log_info2("send ");
 		print_packet(pack);
 	}
 
@@ -535,7 +534,7 @@ static void pppoe_send_PADT(struct pppoe_conn_t *conn)
 		add_tag2(pack, conn->relay_sid);
 
 	if (conf_verbose) {
-		log_info("send ");
+		log_info2("send ");
 		print_packet(pack);
 	}
 
@@ -585,7 +584,7 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	}
 
 	if (conf_verbose) {
-		log_info("recv ");
+		log_info2("recv ");
 		print_packet(pack);
 	}
 	
@@ -686,7 +685,7 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	}
 
 	if (conf_verbose) {
-		log_info("recv ");
+		log_info2("recv ");
 		print_packet(pack);
 	}
 	
@@ -775,7 +774,7 @@ static void pppoe_recv_PADT(struct pppoe_serv_t *serv, uint8_t *pack)
 	}
 	
 	if (conf_verbose) {
-		log_info("recv ");
+		log_info2("recv ");
 		print_packet(pack);
 	}
 

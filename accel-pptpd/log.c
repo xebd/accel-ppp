@@ -115,12 +115,22 @@ void __export log_warn(const char *fmt,...)
 	}
 }
 
-void __export log_info(const char *fmt,...)
+void __export log_info1(const char *fmt,...)
 {
-	if (log_level >= LOG_INFO) {
+	if (log_level >= LOG_INFO1) {
 		va_list ap;
 		va_start(ap, fmt);
-		do_log(LOG_INFO, fmt, ap, NULL);
+		do_log(LOG_INFO1, fmt, ap, NULL);
+		va_end(ap);
+	}
+}
+
+void __export log_info2(const char *fmt,...)
+{
+	if (log_level >= LOG_INFO2) {
+		va_list ap;
+		va_start(ap, fmt);
+		do_log(LOG_INFO2, fmt, ap, NULL);
 		va_end(ap);
 	}
 }
@@ -171,12 +181,22 @@ void __export log_ppp_warn(const char *fmt,...)
 	}
 }
 
-void __export log_ppp_info(const char *fmt,...)
+void __export log_ppp_info1(const char *fmt,...)
 {
-	if (log_level >= LOG_INFO) {
+	if (log_level >= LOG_INFO1) {
 		va_list ap;
 		va_start(ap, fmt);
-		do_log(LOG_INFO, fmt, ap, cur_ppp);
+		do_log(LOG_INFO1, fmt, ap, cur_ppp);
+		va_end(ap);
+	}
+}
+
+void __export log_ppp_info2(const char *fmt,...)
+{
+	if (log_level >= LOG_INFO2) {
+		va_list ap;
+		va_start(ap, fmt);
+		do_log(LOG_INFO2, fmt, ap, cur_ppp);
 		va_end(ap);
 	}
 }

@@ -77,8 +77,8 @@ static int dm_coa_send_ack(int fd, struct rad_packet_t *req, struct sockaddr_in 
 	dm_coa_set_RA(reply, conf_dm_coa_secret);
 
 	if (conf_verbose) {
-		log_ppp_info("send ");
-		rad_packet_print(reply, log_ppp_info);
+		log_ppp_info2("send ");
+		rad_packet_print(reply, log_ppp_info2);
 	}
 
 	rad_packet_send(reply, fd, addr);
@@ -112,8 +112,8 @@ static int dm_coa_send_nak(int fd, struct rad_packet_t *req, struct sockaddr_in 
 	dm_coa_set_RA(reply, conf_dm_coa_secret);
 
 	if (conf_verbose) {
-		log_ppp_info("send ");
-		rad_packet_print(reply, log_ppp_info);
+		log_ppp_info2("send ");
+		rad_packet_print(reply, log_ppp_info2);
 	}
 
 	rad_packet_send(reply, fd, addr);
@@ -127,8 +127,8 @@ static int dm_coa_send_nak(int fd, struct rad_packet_t *req, struct sockaddr_in 
 static void disconnect_request(struct radius_pd_t *rpd)
 {
 	if (conf_verbose) {
-		log_ppp_info("recv ");
-		rad_packet_print(rpd->dm_coa_req, log_ppp_info);
+		log_ppp_info2("recv ");
+		rad_packet_print(rpd->dm_coa_req, log_ppp_info2);
 	}
 
 	dm_coa_send_ack(serv.hnd.fd, rpd->dm_coa_req, &rpd->dm_coa_addr);
@@ -150,8 +150,8 @@ static void coa_request(struct radius_pd_t *rpd)
 	};
 
 	if (conf_verbose) {
-		log_ppp_info("recv ");
-		rad_packet_print(rpd->dm_coa_req, log_ppp_info);
+		log_ppp_info2("recv ");
+		rad_packet_print(rpd->dm_coa_req, log_ppp_info2);
 	}
 
 	triton_event_fire(EV_RADIUS_COA, &ev);

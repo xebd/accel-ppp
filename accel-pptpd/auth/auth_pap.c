@@ -119,7 +119,7 @@ static void pap_timeout(struct triton_timer_t *t)
 	if (conf_ppp_verbose)
 		log_ppp_warn("pap: timeout\n");
 
-	ppp_auth_failed(d->ppp);
+	ppp_auth_failed(d->ppp, NULL);
 }
 
 static int lcp_send_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *ptr)
@@ -144,7 +144,7 @@ static void pap_send_ack(struct pap_auth_data_t *p, int id)
 	memcpy(msg->msg, MSG_SUCCESSED, sizeof(MSG_SUCCESSED));
 	
 	if (conf_ppp_verbose)
-		log_ppp_info("send [PAP AuthAck id=%x \"%s\"]\n", id, MSG_SUCCESSED);
+		log_ppp_info2("send [PAP AuthAck id=%x \"%s\"]\n", id, MSG_SUCCESSED);
 	
 	ppp_chan_send(p->ppp, msg, ntohs(msg->hdr.len) + 2);
 }
@@ -161,7 +161,7 @@ static void pap_send_nak(struct pap_auth_data_t *p, int id)
 	memcpy(msg->msg, MSG_FAILED, sizeof(MSG_FAILED));
 	
 	if (conf_ppp_verbose)
-		log_ppp_info("send [PAP AuthNak id=%x \"%s\"]\n", id, MSG_FAILED);
+		log_ppp_info2("send [PAP AuthNak id=%x \"%s\"]\n", id, MSG_FAILED);
 	
 	ppp_chan_send(p->ppp, msg, ntohs(msg->hdr.len) + 2);
 }
@@ -180,7 +180,7 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
 		triton_timer_del(&p->timeout);
 
 	if (conf_ppp_verbose)
-		log_ppp_info("recv [PAP AuthReq id=%x]\n", hdr->id);
+		log_ppp_info2("recv [PAP AuthReq id=%x]\n", hdr->id);
 
 	peer_id_len = *(uint8_t*)ptr; ptr++;
 	if (peer_id_len > ntohs(hdr->len) - sizeof(*hdr) + 2 - 1) {
@@ -222,7 +222,7 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
 		if (p->started)
 			ppp_terminate(p->ppp, TERM_AUTH_ERROR, 0);
 		else
-			ppp_auth_failed(p->ppp);
+			ppp_auth_failed(p->ppp, peer_id);
 		ret=-1;
 		_free(peer_id);
 	} else {

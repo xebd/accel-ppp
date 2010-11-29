@@ -164,11 +164,11 @@ static void print_ropt(struct recv_opt_t *ropt)
 	int i;
 	uint8_t *ptr = (uint8_t*)ropt->hdr;
 
-	log_ppp_info("<");
+	log_ppp_info2("<");
 	for (i = 0; i < ropt->len; i++) {
-		log_ppp_info(" %x", ptr[i]);
+		log_ppp_info2(" %x", ptr[i]);
 	}
-	log_ppp_info(" >");
+	log_ppp_info2(" >");
 }
 
 static int send_conf_req(struct ppp_fsm_t *fsm)
@@ -198,14 +198,14 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 	}
 
 	if (conf_ppp_verbose) {
-		log_ppp_info("send [IPCP ConfReq id=%x", ipcp_hdr->id);
+		log_ppp_info2("send [IPCP ConfReq id=%x", ipcp_hdr->id);
 		list_for_each_entry(lopt,&ipcp->options,entry) {
 			if (lopt->print) {
-				log_ppp_info(" ");
-				lopt->h->print(log_ppp_info, lopt, NULL);
+				log_ppp_info2(" ");
+				lopt->h->print(log_ppp_info2, lopt, NULL);
 			}
 		}
-		log_ppp_info("]\n");
+		log_ppp_info2("]\n");
 	}
 
 	ipcp_hdr->len = htons(ptr - buf - 2);
@@ -224,7 +224,7 @@ static void send_conf_ack(struct ppp_fsm_t *fsm)
 	hdr->code = CONFACK;
 
 	if (conf_ppp_verbose)
-		log_ppp_info("send [IPCP ConfAck id=%x]\n", ipcp->fsm.recv_id);
+		log_ppp_info2("send [IPCP ConfAck id=%x]\n", ipcp->fsm.recv_id);
 
 	ppp_unit_send(ipcp->ppp, hdr, ntohs(hdr->len) + 2);
 }
@@ -237,7 +237,7 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 	struct recv_opt_t *ropt;
 
 	if (conf_ppp_verbose)
-		log_ppp_info("send [IPCP ConfNak id=%x", ipcp->fsm.recv_id);
+		log_ppp_info2("send [IPCP ConfNak id=%x", ipcp->fsm.recv_id);
 
 	ipcp_hdr->proto = htons(PPP_IPCP);
 	ipcp_hdr->code = CONFNAK;
@@ -249,15 +249,15 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 	list_for_each_entry(ropt, &ipcp->ropt_list, entry) {
 		if (ropt->state == IPCP_OPT_NAK) {
 			if (conf_ppp_verbose) {
-				log_ppp_info(" ");
-				ropt->lopt->h->print(log_ppp_info, ropt->lopt, NULL);
+				log_ppp_info2(" ");
+				ropt->lopt->h->print(log_ppp_info2, ropt->lopt, NULL);
 			}
 			ptr += ropt->lopt->h->send_conf_nak(ipcp, ropt->lopt, ptr);
 		}
 	}
 	
 	if (conf_ppp_verbose)
-		log_ppp_info("]\n");
+		log_ppp_info2("]\n");
 
 	ipcp_hdr->len = htons(ptr-buf-2);
 	ppp_unit_send(ipcp->ppp, ipcp_hdr, ptr - buf);
@@ -273,7 +273,7 @@ static void send_conf_rej(struct ppp_fsm_t *fsm)
 	struct recv_opt_t *ropt;
 
 	if (conf_ppp_verbose)
-		log_ppp_info("send [IPCP ConfRej id=%x", ipcp->fsm.recv_id);
+		log_ppp_info2("send [IPCP ConfRej id=%x", ipcp->fsm.recv_id);
 
 	ipcp_hdr->proto = htons(PPP_IPCP);
 	ipcp_hdr->code = CONFREJ;
@@ -285,9 +285,9 @@ static void send_conf_rej(struct ppp_fsm_t *fsm)
 	list_for_each_entry(ropt, &ipcp->ropt_list, entry) {
 		if (ropt->state == IPCP_OPT_REJ) {
 			if (conf_ppp_verbose) {
-				log_ppp_info(" ");
+				log_ppp_info2(" ");
 				if (ropt->lopt)
-					ropt->lopt->h->print(log_ppp_info, ropt->lopt, (uint8_t*)ropt->hdr);
+					ropt->lopt->h->print(log_ppp_info2, ropt->lopt, (uint8_t*)ropt->hdr);
 				else
 					print_ropt(ropt);
 			}
@@ -297,7 +297,7 @@ static void send_conf_rej(struct ppp_fsm_t *fsm)
 	}
 
 	if (conf_ppp_verbose)
-		log_ppp_info("]\n");
+		log_ppp_info2("]\n");
 
 	ipcp_hdr->len = htons(ptr - buf - 2);
 	ppp_unit_send(ipcp->ppp, ipcp_hdr, ptr-buf);
@@ -336,23 +336,23 @@ static int ipcp_recv_conf_req(struct ppp_ipcp_t *ipcp, uint8_t *data, int size)
 		lopt->state=IPCP_OPT_NONE;
 
 	if (conf_ppp_verbose) {
-		log_ppp_info("recv [IPCP ConfReq id=%x", ipcp->fsm.recv_id);
+		log_ppp_info2("recv [IPCP ConfReq id=%x", ipcp->fsm.recv_id);
 
 		list_for_each_entry(ropt, &ipcp->ropt_list, entry) {
 			list_for_each_entry(lopt, &ipcp->options, entry) {
 				if (lopt->id == ropt->hdr->id) {
 					ropt->lopt = lopt;
-					log_ppp_info(" ");
-					lopt->h->print(log_ppp_info, lopt, (uint8_t*)ropt->hdr);
+					log_ppp_info2(" ");
+					lopt->h->print(log_ppp_info2, lopt, (uint8_t*)ropt->hdr);
 					break;
 				}
 			}
 			if (!ropt->lopt) {
-				log_ppp_info(" ");
+				log_ppp_info2(" ");
 				print_ropt(ropt);
 			}
 		}
-		log_ppp_info("]\n");
+		log_ppp_info2("]\n");
 	}
 
 	list_for_each_entry(ropt, &ipcp->ropt_list, entry) {
@@ -407,11 +407,11 @@ static int ipcp_recv_conf_rej(struct ppp_ipcp_t *ipcp, uint8_t *data, int size)
 	int res = 0;
 
 	if (conf_ppp_verbose)
-		log_ppp_info("recv [IPCP ConfRej id=%x", ipcp->fsm.recv_id);
+		log_ppp_info2("recv [IPCP ConfRej id=%x", ipcp->fsm.recv_id);
 
 	if (ipcp->fsm.recv_id != ipcp->fsm.id) {
 		if (conf_ppp_verbose)
-			log_ppp_info(": id mismatch ]\n");
+			log_ppp_info2(": id mismatch ]\n");
 		return 0;
 	}
 
@@ -433,7 +433,7 @@ static int ipcp_recv_conf_rej(struct ppp_ipcp_t *ipcp, uint8_t *data, int size)
 	}
 
 	if (conf_ppp_verbose)
-		log_ppp_info("]\n");
+		log_ppp_info2("]\n");
 
 	return res;
 }
@@ -445,11 +445,11 @@ static int ipcp_recv_conf_nak(struct ppp_ipcp_t *ipcp, uint8_t *data, int size)
 	int res = 0;
 
 	if (conf_ppp_verbose)
-		log_ppp_info("recv [IPCP ConfNak id=%x", ipcp->fsm.recv_id);
+		log_ppp_info2("recv [IPCP ConfNak id=%x", ipcp->fsm.recv_id);
 
 	if (ipcp->fsm.recv_id != ipcp->fsm.id) {
 		if (conf_ppp_verbose)
-			log_ppp_info(": id mismatch ]\n");
+			log_ppp_info2(": id mismatch ]\n");
 		return 0;
 	}
 
@@ -459,8 +459,8 @@ static int ipcp_recv_conf_nak(struct ppp_ipcp_t *ipcp, uint8_t *data, int size)
 		list_for_each_entry(lopt, &ipcp->options, entry) {
 			if (lopt->id == hdr->id) {
 				if (conf_ppp_verbose) {
-					log_ppp_info(" ");
-					lopt->h->print(log_ppp_info,lopt,data);
+					log_ppp_info2(" ");
+					lopt->h->print(log_ppp_info2,lopt,data);
 				}
 				if (lopt->h->recv_conf_nak && lopt->h->recv_conf_nak(ipcp, lopt, data))
 					res =- 1;
@@ -473,7 +473,7 @@ static int ipcp_recv_conf_nak(struct ppp_ipcp_t *ipcp, uint8_t *data, int size)
 	}
 
 	if (conf_ppp_verbose)
-		log_ppp_info("]\n");
+		log_ppp_info2("]\n");
 
 	return res;
 }
@@ -485,11 +485,11 @@ static int ipcp_recv_conf_ack(struct ppp_ipcp_t *ipcp, uint8_t *data, int size)
 	int res = 0;
 
 	if (conf_ppp_verbose)
-		log_ppp_info("recv [IPCP ConfAck id=%x", ipcp->fsm.recv_id);
+		log_ppp_info2("recv [IPCP ConfAck id=%x", ipcp->fsm.recv_id);
 
 	if (ipcp->fsm.recv_id != ipcp->fsm.id) {
 		if (conf_ppp_verbose)
-			log_ppp_info(": id mismatch ]\n");
+			log_ppp_info2(": id mismatch ]\n");
 		return 0;
 	}
 
@@ -499,8 +499,8 @@ static int ipcp_recv_conf_ack(struct ppp_ipcp_t *ipcp, uint8_t *data, int size)
 		list_for_each_entry(lopt, &ipcp->options, entry) {
 			if (lopt->id == hdr->id) {
 				if (conf_ppp_verbose) {
-					log_ppp_info(" ");
-					lopt->h->print(log_ppp_info, lopt, data);
+					log_ppp_info2(" ");
+					lopt->h->print(log_ppp_info2, lopt, data);
 				}
 				if (!lopt->h->recv_conf_ack)
 					break;
@@ -515,7 +515,7 @@ static int ipcp_recv_conf_ack(struct ppp_ipcp_t *ipcp, uint8_t *data, int size)
 	}
 
 	if (conf_ppp_verbose)
-		log_ppp_info("]\n");
+		log_ppp_info2("]\n");
 
 	return res;
 }
@@ -531,7 +531,7 @@ static void send_term_req(struct ppp_fsm_t *fsm)
 	};
 
 	if (conf_ppp_verbose)
-		log_ppp_info("send [IPCP TermReq id=%i]\n", hdr.id);
+		log_ppp_info2("send [IPCP TermReq id=%i]\n", hdr.id);
 
 	ppp_unit_send(ipcp->ppp, &hdr, 6);
 }
@@ -547,7 +547,7 @@ static void send_term_ack(struct ppp_fsm_t *fsm)
 	};
 
 	if (conf_ppp_verbose)
-		log_ppp_info("send [IPCP TermAck id=%i]\n", hdr.id);
+		log_ppp_info2("send [IPCP TermAck id=%i]\n", hdr.id);
 	
 	ppp_unit_send(ipcp->ppp, &hdr, 6);
 }
@@ -616,19 +616,19 @@ static void ipcp_recv(struct ppp_handler_t*h)
 			break;
 		case TERMREQ:
 			if (conf_ppp_verbose)
-				log_ppp_info("recv [IPCP TermReq id=%x]\n", hdr->id);
+				log_ppp_info2("recv [IPCP TermReq id=%x]\n", hdr->id);
 			ppp_fsm_recv_term_req(&ipcp->fsm);
 			ppp_terminate(ipcp->ppp, TERM_USER_REQUEST, 0);
 			break;
 		case TERMACK:
 			if (conf_ppp_verbose)
-				log_ppp_info("recv [IPCP TermAck id=%x]\n", hdr->id);
+				log_ppp_info2("recv [IPCP TermAck id=%x]\n", hdr->id);
 			//ppp_fsm_recv_term_ack(&ipcp->fsm);
 			//ppp_terminate(ipcp->ppp, 0);
 			break;
 		case CODEREJ:
 			if (conf_ppp_verbose)
-				log_ppp_info("recv [IPCP CodeRej id=%x]\n", hdr->id);
+				log_ppp_info2("recv [IPCP CodeRej id=%x]\n", hdr->id);
 			ppp_fsm_recv_code_rej_bad(&ipcp->fsm);
 			break;
 		default:

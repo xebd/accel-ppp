@@ -128,8 +128,7 @@ int __export establish_ppp(struct ppp_t *ppp)
 	generate_sessionid(ppp);
 	sprintf(ppp->ifname, "ppp%i", ppp->unit_idx);
 
-	if (conf_ppp_verbose)
-		log_ppp_info("connect: %s <--> %s(%s)\n", ppp->ifname, ppp->ctrl->name, ppp->chan_name);
+	log_ppp_info1("connect: %s <--> %s(%s)\n", ppp->ifname, ppp->ctrl->name, ppp->chan_name);
 	
 	init_layers(ppp);
 

@@ -305,11 +305,16 @@ void __export ppp_auth_successed(struct ppp_t *ppp, char *username)
 	log_ppp_debug("auth_layer_started\n");
 	ppp->username = username;
 	ppp_layer_started(ppp, &ad->ld);
+	log_ppp_info1("%s: authentication successed\n", username);
 	triton_event_fire(EV_PPP_AUTHORIZED, ppp);
 }
 
-void __export ppp_auth_failed(struct ppp_t *ppp)
+void __export ppp_auth_failed(struct ppp_t *ppp, const char *username)
 {
+	if (username)
+		log_ppp_info1("%s: authentication failed\n", username);
+	else
+		log_ppp_info1("authentication failed\n");
 	ppp_terminate(ppp, TERM_AUTH_ERROR, 0);
 }
 

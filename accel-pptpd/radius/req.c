@@ -178,8 +178,8 @@ int rad_req_send(struct rad_req_t *req, int verbose)
 		goto out_err;
 	
 	if (verbose) {
-		log_ppp_info("send ");
-		rad_packet_print(req->pack, log_ppp_info);
+		log_ppp_info1("send ");
+		rad_packet_print(req->pack, log_ppp_info1);
 	}
 
 	rad_packet_send(req->pack, req->hnd.fd, NULL);
@@ -247,8 +247,8 @@ int rad_req_wait(struct rad_req_t *req, int timeout)
 	triton_context_schedule(req->rpd->ppp->ctrl->ctx);
 
 	if (conf_verbose && req->reply) {
-		log_ppp_info("recv ");
-		rad_packet_print(req->reply, log_ppp_info);
+		log_ppp_info1("recv ");
+		rad_packet_print(req->reply, log_ppp_info1);
 	}
 	return 0;
 }

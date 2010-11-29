@@ -8,8 +8,9 @@
 #define LOG_MSG   0
 #define LOG_ERROR 1
 #define LOG_WARN  2
-#define LOG_INFO  3
-#define LOG_DEBUG 4
+#define LOG_INFO1 3
+#define LOG_INFO2 4
+#define LOG_DEBUG 5
 
 #define LOG_CHUNK_SIZE 128
 #define LOG_MAX_SIZE 4096
@@ -49,13 +50,15 @@ void log_emerg(const char *fmt, ...);
 
 void log_error(const char *fmt,...);
 void log_warn(const char *fmt,...);
-void log_info(const char *fmt,...);
+void log_info1(const char *fmt,...);
+void log_info2(const char *fmt,...);
 void log_debug(const char *fmt,...);
 void log_msg(const char *fmt,...);
 
 void log_ppp_error(const char *fmt,...);
 void log_ppp_warn(const char *fmt,...);
-void log_ppp_info(const char *fmt,...);
+void log_ppp_info1(const char *fmt,...);
+void log_ppp_info2(const char *fmt,...);
 void log_ppp_debug(const char *fmt,...);
 void log_ppp_msg(const char *fmt,...);
 

@@ -170,7 +170,7 @@ int main(int argc, char **argv)
 	sigaddset(&set, SIGBUS);
 	
 	sigwait(&set, &sig);
-	log_info("terminate, sig = %i\n", sig);
+	log_info1("terminate, sig = %i\n", sig);
 	
 	triton_terminate();
 
