@@ -82,11 +82,11 @@ static void disconnect(struct pptp_conn_t *conn)
 		triton_timer_del(&conn->echo_timer);
 
 	if (conn->state == STATE_PPP) {
-		stat_active--;
+		__sync_sub_and_fetch(&stat_active, 1);
 		conn->state = STATE_CLOSE;
 		ppp_terminate(&conn->ppp, TERM_USER_REQUEST, 1);
 	} else if (conn->state != STATE_CLOSE)
-		stat_starting--;
+		__sync_sub_and_fetch(&stat_starting, 1);
 
 	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp);
 	
@@ -329,8 +329,8 @@ static int pptp_out_call_rqst(struct pptp_conn_t *conn)
 		return -1;
 	}
 	conn->state = STATE_PPP;
-	stat_starting--;
-	stat_active++;
+	__sync_sub_and_fetch(&stat_starting, 1);
+	__sync_add_and_fetch(&stat_active, 1);
 	
 	if (conn->timeout_timer.tpd)
 		triton_timer_del(&conn->timeout_timer);
@@ -367,7 +367,7 @@ static int pptp_call_clear_rqst(struct pptp_conn_t *conn)
 		log_ppp_info("recv [PPTP Call-Clear-Request <Call-ID %x>]\n", ntohs(rqst->call_id));
 
 	if (conn->state == STATE_PPP) {
-		stat_active--;
+		__sync_sub_and_fetch(&stat_active, 1);
 		conn->state = STATE_CLOSE;
 		ppp_terminate(&conn->ppp, TERM_USER_REQUEST, 1);
 	}
@@ -549,7 +549,7 @@ static void pptp_close(struct triton_context_t *ctx)
 {
 	struct pptp_conn_t *conn = container_of(ctx, typeof(*conn), ctx);
 	if (conn->state == STATE_PPP) {
-		stat_active--;
+		__sync_sub_and_fetch(&stat_active, 1);
 		conn->state = STATE_CLOSE;
 		ppp_terminate(&conn->ppp, TERM_ADMIN_RESET, 1);
 		if (send_pptp_call_disconnect_notify(conn, 3)) {
@@ -579,7 +579,7 @@ static void ppp_finished(struct ppp_t *ppp)
 	if (conn->state != STATE_CLOSE) {
 		log_ppp_debug("pptp: ppp finished\n");
 		conn->state = STATE_CLOSE;
-		stat_active--;
+		__sync_sub_and_fetch(&stat_active, 1);
 
 		if (send_pptp_call_disconnect_notify(conn, 3))
 			triton_context_call(&conn->ctx, (void (*)(void*))disconnect, conn);
@@ -667,7 +667,7 @@ static int pptp_connect(struct triton_md_handler_t *h)
 
 		triton_event_fire(EV_CTRL_STARTING, &conn->ppp);
 
-		stat_starting++;
+		__sync_add_and_fetch(&stat_starting, 1);
 	}
 	return 0;
 }

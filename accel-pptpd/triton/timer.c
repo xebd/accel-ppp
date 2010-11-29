@@ -92,6 +92,7 @@ void *timer_thread(void *arg)
 				if (!t->pending) {
 					list_add_tail(&t->entry2, &t->ctx->pending_timers);
 					t->pending = 1;
+					__sync_add_and_fetch(&triton_stat.timer_pending, 1);
 					r = triton_queue_ctx(t->ctx);
 				} else
 					r = 0;

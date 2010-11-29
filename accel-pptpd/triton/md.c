@@ -86,6 +86,7 @@ static void *md_thread(void *arg)
 				if (!h->pending) {
 					list_add_tail(&h->entry2, &h->ctx->pending_handlers);
 					h->pending = 1;
+					__sync_add_and_fetch(&triton_stat.md_handler_pending, 1);
 					r = triton_queue_ctx(h->ctx);
 				} else
 					r = 0;

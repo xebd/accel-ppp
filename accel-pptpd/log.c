@@ -260,7 +260,7 @@ static struct log_msg_t *clone_msg(struct _log_msg_t *msg)
 	m->timestamp = msg->timestamp;
 	m->level = msg->level;
 
-	msg->refs++;
+	__sync_add_and_fetch(&msg->refs, 1);
 
 	//printf("clone msg %p\n", m);
 	return m;
