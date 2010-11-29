@@ -19,40 +19,41 @@ static mempool_t attr_pool;
 static mempool_t pack_pool;
 static mempool_t buf_pool;
 
-void l2tp_packet_print(struct l2tp_packet_t *pack)
+void l2tp_packet_print(struct l2tp_packet_t *pack, void (*print)(const char *fmt, ...))
 {
 	struct l2tp_attr_t *attr;
 	struct l2tp_dict_value_t *val;
 
-	if (pack->hdr.ver == 2)
-		log_ppp_info("[L2TP tid=%i sid=%i Ns=%i Nr=%i",
-			ntohs(pack->hdr.tid), ntohs(pack->hdr.sid), ntohs(pack->hdr.Ns), ntohs(pack->hdr.Nr));
-	else
-		log_ppp_info("[L2TP cid=%u Ns=%i Nr=%i",
-			pack->hdr.cid, pack->hdr.Ns, pack->hdr.Nr);
+	if (pack->hdr.ver == 2) {
+		print("[L2TP tid=%i sid=%i", ntohs(pack->hdr.tid), ntohs(pack->hdr.sid));
+		log_ppp_debug(" Ns=%i Nr=%i", ntohs(pack->hdr.Ns), ntohs(pack->hdr.Nr));
+	} else {
+		print("[L2TP cid=%u", pack->hdr.cid);
+		log_ppp_debug(" Ns=%i Nr=%i", ntohs(pack->hdr.Ns), ntohs(pack->hdr.Nr));
+	}
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
-		log_ppp_info(" <%s", attr->attr->name);
+		print(" <%s", attr->attr->name);
 		val = l2tp_dict_find_value(attr->attr, attr->val);
 		if (val)
-			log_ppp_info(" %s", val->name);
+			print(" %s", val->name);
 		else {
 			switch (attr->attr->type) {
 				case ATTR_TYPE_INT16:
-					log_ppp_info(" %i", attr->val.int16);
+					print(" %i", attr->val.int16);
 					break;
 				case ATTR_TYPE_INT32:
-					log_ppp_info(" %i", attr->val.int32);
+					print(" %i", attr->val.int32);
 					break;
 				case ATTR_TYPE_STRING:
-					log_ppp_info(" %s", attr->val.string);
+					print(" %s", attr->val.string);
 					break;
 			}
 		}
-		log_ppp_info(">");
+		print(">");
 	}
 
-	log_ppp_info("]\n");
+	print("]\n");
 }
 
 struct l2tp_packet_t *l2tp_packet_alloc(int ver, int msg_type, struct sockaddr_in *addr)

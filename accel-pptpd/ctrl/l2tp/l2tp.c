@@ -99,7 +99,7 @@ static void l2tp_timeout(struct triton_timer_t *t);
 static void l2tp_rtimeout(struct triton_timer_t *t);
 static void l2tp_send_HELLO(struct triton_timer_t *t);
 static void l2tp_send_SCCRP(struct l2tp_conn_t *conn);
-static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack);
+static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack, int log_debug);
 static int l2tp_conn_read(struct triton_md_handler_t *);
 
 static void l2tp_disconnect(struct l2tp_conn_t *conn)
@@ -173,7 +173,7 @@ static int l2tp_terminate(struct l2tp_conn_t *conn, int res, int err)
 	if (l2tp_packet_add_octets(pack, Result_Code, (uint8_t *)&rc, sizeof(rc), 0))
 		goto out_err;
 
-	l2tp_send(conn, pack);
+	l2tp_send(conn, pack, 0);
 
 	conn->state = STATE_FIN;
 
@@ -352,7 +352,7 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 	if (conf_verbose) {
 		log_switch(&conn->ctx, &conn->ppp);
 		log_ppp_info("recv ");
-		l2tp_packet_print(pack);
+		l2tp_packet_print(pack, log_ppp_info);
 	}
 
 	triton_context_call(&conn->ctx, (triton_event_func)l2tp_send_SCCRP, conn);
@@ -438,8 +438,8 @@ static void l2tp_rtimeout(struct triton_timer_t *t)
 			pack = list_entry(conn->send_queue.next, typeof(*pack), entry);
 			pack->hdr.Nr = htons(conn->Nr + 1);
 			if (conf_verbose) {
-				log_ppp_info("send ");
-				l2tp_packet_print(pack);
+				log_ppp_debug("send ");
+				l2tp_packet_print(pack, log_ppp_debug);
 			}
 			if (l2tp_packet_send(conn->hnd.fd, pack) == 0)
 				return;
@@ -455,7 +455,7 @@ static void l2tp_timeout(struct triton_timer_t *t)
 	l2tp_disconnect(conn);
 }
 
-static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
+static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack, int log_debug)
 {
 	conn->retransmit = 0;
 
@@ -468,8 +468,13 @@ static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 		conn->Ns++;
 
 	if (conf_verbose) {
-		log_ppp_info("send ");
-		l2tp_packet_print(pack);
+		if (log_debug) {
+			log_ppp_debug("send ");
+			l2tp_packet_print(pack, log_ppp_debug);
+		} else {
+			log_ppp_info("send ");
+			l2tp_packet_print(pack, log_ppp_info);
+		}
 	}
 
 	if (l2tp_packet_send(conn->hnd.fd, pack))
@@ -497,7 +502,7 @@ static int l2tp_send_ZLB(struct l2tp_conn_t *conn)
 	if (!pack)
 		return -1;
 
-	if (l2tp_send(conn, pack))
+	if (l2tp_send(conn, pack, 1))
 		return -1;
 
 	return 0;
@@ -514,7 +519,7 @@ static void l2tp_send_HELLO(struct triton_timer_t *t)
 		return;
 	}
 
-	if (l2tp_send(conn, pack))
+	if (l2tp_send(conn, pack, 1))
 		l2tp_disconnect(conn);
 }
 
@@ -535,7 +540,7 @@ static void l2tp_send_SCCRP(struct l2tp_conn_t *conn)
 	if (l2tp_packet_add_int16(pack, Assigned_Tunnel_ID, conn->tid, 1))
 		goto out_err;
 
-	if (l2tp_send(conn, pack))
+	if (l2tp_send(conn, pack, 0))
 		goto out;
 
 	if (!conn->timeout_timer.tpd)
@@ -566,7 +571,7 @@ static int l2tp_send_ICRP(struct l2tp_conn_t *conn)
 	if (l2tp_packet_add_int16(pack, Assigned_Session_ID, conn->sid, 1))
 		goto out_err;
 
-	l2tp_send(conn, pack);
+	l2tp_send(conn, pack, 0);
 
 	if (!conn->timeout_timer.tpd)
 		triton_timer_add(&conn->ctx, &conn->timeout_timer, 0);
@@ -607,7 +612,7 @@ static int l2tp_send_OCRQ(struct l2tp_conn_t *conn)
 	if (l2tp_packet_add_string(pack, Called_Number, "", 1))
 		goto out_err;
 
-	if (l2tp_send(conn, pack))
+	if (l2tp_send(conn, pack, 0))
 		return -1;
 
 	if (!conn->timeout_timer.tpd)
@@ -866,11 +871,6 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 			continue;
 		}
 
-		if (conf_verbose) {
-			log_ppp_info("recv ");
-			l2tp_packet_print(pack);
-		}
-
 		if (ntohs(pack->hdr.Ns) == conn->Nr + 1) {
 			if (!list_empty(&pack->attrs))
 				conn->Nr++;
@@ -910,6 +910,16 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 			if (conf_verbose)
 				log_ppp_error("l2tp: first attribute is not Message-Type, dropping connection...\n");
 			goto drop;
+		}
+
+		if (conf_verbose) {
+			if (msg_type->val.uint16 == Message_Type_Hello) {
+				log_ppp_debug("recv ");
+				l2tp_packet_print(pack, log_ppp_debug);
+			} else {
+				log_ppp_info("recv ");
+				l2tp_packet_print(pack, log_ppp_info);
+			}
 		}
 
 		switch (msg_type->val.uint16) {
@@ -1014,7 +1024,7 @@ static int l2tp_udp_read(struct triton_md_handler_t *h)
 		else {
 			if (conf_verbose) {
 				log_warn("recv (unexpected) ");
-				l2tp_packet_print(pack);
+				l2tp_packet_print(pack, log_ppp_warn);
 			}
 		}
 skip:
