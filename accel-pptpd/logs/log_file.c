@@ -203,6 +203,7 @@ static void send_next_chunk(void)
 		close(lf->fd);
 		lf->fd = lf->new_fd;
 		lf->new_fd = -1;
+		lf->offset = 0;
 	}
 
 	aiocb.aio_fildes = lf->fd;
@@ -335,7 +336,6 @@ static void general_reopen(void)
 		return;
 	}
 	log_file->new_fd = fd;
-	log_file->offset = 0;
 }
 
 static void free_lpd(struct log_file_pd_t *lpd)

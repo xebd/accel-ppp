@@ -2,6 +2,7 @@
 #include <string.h>
 #include <errno.h>
 #include <stdio.h>
+#include <unistd.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <sys/ioctl.h>
@@ -167,6 +168,21 @@ static void __init mru_opt_init()
 	opt = conf_get_opt("ppp", "max-mtu");
 	if (opt && atoi(opt) > 0)
 		conf_max_mtu = atoi(opt);
+	
+	if (conf_min_mtu > conf_mru) {
+		log_emerg("min-mtu cann't be greater then mtu/mru\n");
+		_exit(-1);
+	}
+
+	if (conf_min_mtu > 1500) {
+		log_emerg("min-mtu cann't be greater then 1500\n");
+		_exit(-1);
+	}
+
+	if (conf_mru > 1500 || conf_mtu > 1500) {
+		log_emerg("mtu/mru cann't be greater then 1500\n");
+		_exit(-1);
+	}
 
 	lcp_option_register(&mru_opt_hnd);
 }

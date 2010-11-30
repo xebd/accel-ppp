@@ -11,8 +11,8 @@
 #include "memdebug.h"
 
 static int conf_max_terminate = 2;
-static int conf_max_configure = 5;
-static int conf_max_failure = 5;
+static int conf_max_configure = 10;
+static int conf_max_failure = 10;
 static int conf_timeout = 5;
 
 void send_term_req(struct ppp_fsm_t *layer);
@@ -253,6 +253,10 @@ void ppp_fsm_recv_conf_req_nak(struct ppp_fsm_t *layer)
 			break;
 		case FSM_Req_Sent:
 		case FSM_Ack_Rcvd:
+			if (++layer->conf_failure == layer->max_failure) {
+				if (layer->layer_finished) layer->layer_finished(layer);
+				return;
+			}
 			if (layer->send_conf_nak) layer->send_conf_nak(layer);
 			break;
 		case FSM_Opened:
@@ -290,7 +294,7 @@ void ppp_fsm_recv_conf_req_rej(struct ppp_fsm_t *layer)
 		case FSM_Req_Sent:
 		case FSM_Ack_Rcvd:
 			if (++layer->conf_failure == layer->max_failure) {
-				if (layer->layer_down) layer->layer_down(layer);
+				if (layer->layer_finished) layer->layer_finished(layer);
 				return;
 			}
 			if (layer->send_conf_rej) layer->send_conf_rej(layer);
