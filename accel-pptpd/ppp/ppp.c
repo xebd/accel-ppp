@@ -618,7 +618,6 @@ static void __init init(void)
 	f = fopen(opt, "r");
 	if (f) {
 		fscanf(f, "%llu", &seq);
-		seq = sid;
 		fclose(f);
 	} else
 		//log_emerg("ppp: failed to open seq-file (%s): %s\n", opt, strerror(errno));
