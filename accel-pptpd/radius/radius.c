@@ -254,6 +254,8 @@ struct radius_pd_t *rad_find_session(const char *sessionid, const char *username
 	
 	pthread_rwlock_rdlock(&sessions_lock);
 	list_for_each_entry(rpd, &sessions, entry) {
+		if (!rpd->ppp->username)
+			continue;
 		if (sessionid && strcmp(sessionid, rpd->ppp->sessionid))
 			continue;
 		if (username && strcmp(username, rpd->ppp->username))

@@ -30,8 +30,7 @@ __export LIST_HEAD(ppp_list);
 static LIST_HEAD(layers);
 int __export sock_fd;
 
-static spinlock_t seq_lock = SPINLOCK_INITIALIZER;
-static uint64_t seq;
+static unsigned long long seq;
 
 struct ppp_stat_t ppp_stat;
 
@@ -70,10 +69,7 @@ static void generate_sessionid(struct ppp_t *ppp)
 {
 	unsigned long long sid;
 
-	spin_lock(&seq_lock);
-	seq++;
-	sid = seq;
-	spin_unlock(&seq_lock);
+	sid = __sync_add_and_fetch(&seq, 1);
 
 	sprintf(ppp->sessionid, "%016llx", sid);
 }
@@ -589,14 +585,13 @@ struct ppp_layer_data_t *ppp_find_layer_data(struct ppp_t *ppp, struct ppp_layer
 static void save_seq(void)
 {
 	FILE *f;
-	unsigned long long sid = seq;
 	char *opt = conf_get_opt("ppp", "seq-file");
 	if (!opt)
 		opt = "/var/run/accel-pptp/seq";
 
 	f = fopen(opt, "w");
 	if (f) {
-		fprintf(f, "%llu", sid);
+		fprintf(f, "%llu", seq);
 		fclose(f);
 	}
 }
@@ -605,7 +600,6 @@ static void __init init(void)
 {
 	char *opt;
 	FILE *f;
-	unsigned long long sid;
 
 	sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sock_fd < 0) {
@@ -623,7 +617,7 @@ static void __init init(void)
 	
 	f = fopen(opt, "r");
 	if (f) {
-		fscanf(f, "%llu", &sid);
+		fscanf(f, "%llu", &seq);
 		seq = sid;
 		fclose(f);
 	} else
