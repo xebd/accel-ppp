@@ -335,6 +335,7 @@ static void general_reopen(void)
 		return;
 	}
 	log_file->new_fd = fd;
+	log_file->offset = 0;
 }
 
 static void free_lpd(struct log_file_pd_t *lpd)
