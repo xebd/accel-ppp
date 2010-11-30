@@ -34,7 +34,7 @@ struct _log_msg_t
 	uint8_t refs;
 };
 
-static int log_level=10;
+static int log_level;
 
 static LIST_HEAD(targets);
 static mempool_t msg_pool;
@@ -454,6 +454,7 @@ static void __init log_init(void)
 		.sa_handler = sighup,
 	};
 
+
 	opt = conf_get_opt("log", "level");
 	if (opt && atoi(opt) >= 0)
 		log_level = atoi(opt);
@@ -477,5 +478,6 @@ static void __init log_init(void)
 	chunk_pool = mempool_create(sizeof(struct log_chunk_t) + LOG_CHUNK_SIZE + 1);
 
 	sigaction(SIGHUP, &sa, NULL);
+
 }
 

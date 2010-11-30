@@ -20,7 +20,6 @@
 #include "cli_p.h"
 
 #define RECV_BUF_SIZE 1024
-#define BANNER "accel-pptp-1.3-rc1\r\n"
 #define AUTH_FAILED "\r\nAuthentication failed\r\n"
 
 #define ESC_LEFT "[D"
@@ -167,7 +166,7 @@ static int cli_client_sendv(struct cli_client_t *tcln, const char *fmt, va_list 
 
 static int send_banner(struct telnet_client_t *cln)
 {
-	return telnet_send(cln, BANNER, sizeof(BANNER));
+	return telnet_send(cln, "accel-pptp version " ACCEL_PPTP_VERSION "\r\n", sizeof("accel-pptp version " ACCEL_PPTP_VERSION "\r\n"));
 }
 
 static int send_config(struct telnet_client_t *cln)

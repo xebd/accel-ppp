@@ -145,6 +145,8 @@ int main(int argc, char **argv)
 	if (triton_load_modules("modules"))
 		return EXIT_FAILURE;
 
+	log_msg("accel-pptp version %s\n", ACCEL_PPTP_VERSION);
+
 	triton_run();
 
 	sigfillset(&set);
