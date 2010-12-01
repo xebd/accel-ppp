@@ -78,7 +78,7 @@ struct rad_attr_t
 struct rad_packet_t
 {
 	int code;
-	int id;
+	uint8_t id;
 	int len;
 	struct list_head attrs;
 	void *buf;
