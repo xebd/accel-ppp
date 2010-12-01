@@ -31,6 +31,10 @@ static LIST_HEAD(layers);
 int __export sock_fd;
 
 static unsigned long long seq;
+#if __WORDSIZE == 32
+static spinlock_t seq_lock;
+#endif
+
 
 struct ppp_stat_t ppp_stat;
 
@@ -69,7 +73,13 @@ static void generate_sessionid(struct ppp_t *ppp)
 {
 	unsigned long long sid;
 
+#if __WORDSIZE == 32
+	spin_lock(&seq_lock);
+	sid = ++seq;
+	spin_unlock(&seq_lock);
+#else
 	sid = __sync_add_and_fetch(&seq, 1);
+#endif
 
 	sprintf(ppp->sessionid, "%016llx", sid);
 }
