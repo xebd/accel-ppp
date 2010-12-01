@@ -158,8 +158,10 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 	rad_packet_change_int(rpd->acct_req->pack, "Acct-Delay-Time", 0);
 	req_set_RA(rpd->acct_req, conf_acct_secret);
 	rad_req_send(rpd->acct_req, conf_interim_verbose);
-	rpd->acct_req->timeout.period = conf_timeout * 1000;
-	triton_timer_add(rpd->ppp->ctrl->ctx, &rpd->acct_req->timeout, 0);
+	if (conf_acct_timeout) {
+		rpd->acct_req->timeout.period = conf_timeout * 1000;
+		triton_timer_add(rpd->ppp->ctrl->ctx, &rpd->acct_req->timeout, 0);
+	}
 }
 
 int rad_acct_start(struct radius_pd_t *rpd)
