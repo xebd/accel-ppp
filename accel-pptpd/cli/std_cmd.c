@@ -123,10 +123,10 @@ static int show_ses_exec(const char *cmd, char * const *fields, int fields_cnt, 
 		}
 		
 		if (order == ORDER_USERNAME)
-			row->order_key = _strdup(ppp->username);
+			row->order_key = ppp->username ? _strdup(ppp->username) : _strdup("");
 
 		if (match == MATCH_USERNAME)
-			row->match_key = _strdup(ppp->username);
+			row->match_key = ppp->username ? _strdup(ppp->username) : _strdup("");
 
 		u_inet_ntoa(ppp->peer_ipaddr, ip_str);
 		
