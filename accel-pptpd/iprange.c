@@ -47,10 +47,8 @@ static struct iprange_t *parse1(const char *str)
 	
 	r = _malloc(sizeof(*r));
 	r->begin = (f4 << 24) | (f3 << 16) | (f2 << 8) | f1;
-
-	mask = 0;
-	for (n = 0; n < m ; n++)
-		mask |= 1 <<  n;
+	
+	mask = htonl(~((1 << (32 - m)) - 1));
 	r->end = ntohl(r->begin | ~mask);
 	r->begin = ntohl(r->begin);
 	
