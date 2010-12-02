@@ -1,5 +1,8 @@
-PROJECT (accel-pptpd C)
 cmake_minimum_required(VERSION 2.6)
+cmake_policy(SET CMP0005 NEW)
+cmake_policy(SET CMP0003 OLD)
+
+PROJECT (accel-pptpd C)
 
 include(cmake/cpack.cmake)
 
