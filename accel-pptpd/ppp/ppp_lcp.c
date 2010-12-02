@@ -176,7 +176,10 @@ static void lcp_layer_finished(struct ppp_fsm_t *fsm)
 	stop_echo(lcp);
 	if (lcp->started) {
 		lcp->started = 0;
-		ppp_layer_finished(lcp->ppp, &lcp->ld);
+		if (lcp->ppp->terminating)
+			ppp_layer_finished(lcp->ppp, &lcp->ld);
+		else
+			ppp_terminate(lcp->ppp, TERM_NAS_ERROR, 1);
 	} else
 		ppp_terminate(lcp->ppp, TERM_NAS_ERROR, 1);
 }

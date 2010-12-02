@@ -57,13 +57,13 @@ static void* sigchld_thread(void *arg)
 		list_for_each_entry(h, &handlers, entry) {
 			if (h->pid == pid) {
 				h0 = h;
+				list_del(&h0->entry);
 				pthread_mutex_lock(&h0->lock);
 				break;
 			}
 		}
 		pthread_mutex_unlock(&handlers_lock);
 		if (h0) {
-			list_del(&h0->entry);
 			h0->handler(h0, WEXITSTATUS(status));
 			h0->pid = 0;
 			pthread_mutex_unlock(&h0->lock);

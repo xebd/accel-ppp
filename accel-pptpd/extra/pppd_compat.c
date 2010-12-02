@@ -172,8 +172,8 @@ static void ev_ppp_started(struct ppp_t *ppp)
 	pid_t pid;
 	char *argv[8];
 	char *env[2];
-	char ipaddr[16];
-	char peer_ipaddr[16];
+	char ipaddr[17];
+	char peer_ipaddr[17];
 	char peername[64];
 	struct pppd_compat_pd_t *pd = find_pd(ppp);
 	
@@ -234,8 +234,8 @@ static void ev_ppp_finished(struct ppp_t *ppp)
 	pid_t pid;
 	char *argv[8];
 	char *env[5];
-	char ipaddr[16];
-	char peer_ipaddr[16];
+	char ipaddr[17];
+	char peer_ipaddr[17];
 	char peername[64];
 	char connect_time[24];
 	char bytes_sent[24];
