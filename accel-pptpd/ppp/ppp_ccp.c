@@ -23,6 +23,8 @@ struct recv_opt_t
 	struct ccp_option_t *lopt;
 };
 
+static int conf_ccp = 1;
+
 static struct ppp_layer_t ccp_layer;
 static LIST_HEAD(option_handlers);
 
@@ -129,7 +131,7 @@ int ccp_layer_start(struct ppp_layer_data_t *ld)
 	
 	log_ppp_debug("ccp_layer_start\n");
 
-	if (list_empty(&ccp->options)) {
+	if (list_empty(&ccp->options) || !conf_ccp) {
 		ppp_layer_started(ccp->ppp, &ccp->ld);
 		return 0;
 	}
@@ -611,8 +613,8 @@ static void ccp_recv(struct ppp_handler_t*h)
 	if (ccp->fsm.fsm_state == FSM_Initial || ccp->fsm.fsm_state == FSM_Closed) {
 		if (conf_ppp_verbose)
 			log_ppp_warn("CCP: discarding packet\n");
-		if (ccp->fsm.fsm_state == FSM_Closed)
-			lcp_send_proto_rej(ccp->ppp, htons(PPP_CCP));
+		if (ccp->fsm.fsm_state == FSM_Closed || !conf_ccp)
+			lcp_send_proto_rej(ccp->ppp, PPP_CCP);
 		return;
 	}
 
@@ -739,6 +741,12 @@ static struct ppp_layer_t ccp_layer=
 
 static void __init ccp_init(void)
 {
+	const char *opt;
+
 	ppp_register_layer("ccp", &ccp_layer);
+
+	opt = conf_get_opt("ppp", "ccp");
+	if (opt && atoi(opt) >= 0)
+		conf_ccp = atoi(opt);
 }
 
