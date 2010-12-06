@@ -1043,8 +1043,9 @@ static void l2tp_udp_close(struct triton_context_t *ctx)
 
 static struct l2tp_serv_t udp_serv =
 {
-	.hnd.read=l2tp_udp_read,
-	.ctx.close=l2tp_udp_close,
+	.hnd.read = l2tp_udp_read,
+	.ctx.close = l2tp_udp_close,
+	.ctx.before_switch = log_switch,
 };
 
 /*static struct l2tp_serv_t ip_serv =

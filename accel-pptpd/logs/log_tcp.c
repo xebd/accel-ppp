@@ -298,6 +298,7 @@ err:
 
 static struct triton_context_t tcp_ctx ={
 	.close = log_tcp_close,
+	.before_switch = log_switch,
 };
 
 static void __init init(void)

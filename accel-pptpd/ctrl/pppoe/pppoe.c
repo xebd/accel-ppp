@@ -1051,6 +1051,7 @@ void pppoe_server_start(const char *ifname, void *cli)
 	}
 
 	serv->ctx.close = pppoe_serv_close;
+	serv->ctx.before_switch = log_switch;
 	serv->hnd.fd = sock;
 	serv->hnd.read = pppoe_serv_read;
 	serv->ifname = _strdup(ifname);

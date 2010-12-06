@@ -572,6 +572,7 @@ static void serv_close(struct triton_context_t *ctx)
 
 static struct triton_context_t serv_ctx = {
 	.close = serv_close,
+	.before_switch = log_switch,
 };
 
 static struct triton_md_handler_t serv_hnd = {

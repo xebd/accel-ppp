@@ -680,8 +680,9 @@ static void pptp_serv_close(struct triton_context_t *ctx)
 
 static struct pptp_serv_t serv=
 {
-	.hnd.read=pptp_connect,
-	.ctx.close=pptp_serv_close,
+	.hnd.read = pptp_connect,
+	.ctx.close = pptp_serv_close,
+	.ctx.before_switch = log_switch,
 };
 
 static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)

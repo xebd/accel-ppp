@@ -23,6 +23,7 @@ static void pgsql_close(struct triton_context_t *ctx);
 
 static struct triton_context_t pgsql_ctx = {
 	.close = pgsql_close,
+	.before_switch = log_switch,
 };
 static struct triton_md_handler_t pgsql_hnd;
 static struct triton_timer_t connect_timer = {
