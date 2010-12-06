@@ -179,9 +179,9 @@ static void lcp_layer_finished(struct ppp_fsm_t *fsm)
 		if (lcp->ppp->terminating)
 			ppp_layer_finished(lcp->ppp, &lcp->ld);
 		else
-			ppp_terminate(lcp->ppp, TERM_NAS_ERROR, 1);
+			ppp_terminate(lcp->ppp, TERM_NAS_ERROR, 0);
 	} else
-		ppp_terminate(lcp->ppp, TERM_NAS_ERROR, 1);
+		ppp_terminate(lcp->ppp, TERM_NAS_ERROR, 0);
 }
 
 static void print_ropt(struct recv_opt_t *ropt)

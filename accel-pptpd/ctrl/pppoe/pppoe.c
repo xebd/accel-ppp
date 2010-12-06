@@ -39,6 +39,7 @@ struct pppoe_conn_t
 	struct pppoe_tag *relay_sid;
 	struct pppoe_tag *host_uniq;
 	struct pppoe_tag *service_name;
+	uint8_t cookie[COOKIE_LENGTH];
 	
 	struct ppp_ctrl_t ctrl;
 	struct ppp_t ppp;
@@ -70,14 +71,12 @@ uint32_t stat_delayed_pado;
 pthread_rwlock_t serv_lock = PTHREAD_RWLOCK_INITIALIZER;
 LIST_HEAD(serv_list);
 
-#define SECRET_SIZE 16
-static uint8_t *secret;
-
 static uint8_t bc_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
 static void pppoe_send_PADT(struct pppoe_conn_t *conn);
 static void _server_stop(struct pppoe_serv_t *serv);
 void pppoe_server_free(struct pppoe_serv_t *serv);
+static int init_secret(struct pppoe_serv_t *serv);
 
 static void disconnect(struct pppoe_conn_t *conn)
 {
@@ -147,7 +146,7 @@ static void pppoe_conn_close(struct triton_context_t *ctx)
 		disconnect(conn);
 }
 
-static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const uint8_t *addr, const struct pppoe_tag *host_uniq, const struct pppoe_tag *relay_sid, const struct pppoe_tag *service_name)
+static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const uint8_t *addr, const struct pppoe_tag *host_uniq, const struct pppoe_tag *relay_sid, const struct pppoe_tag *service_name, const uint8_t *cookie)
 {
 	struct pppoe_conn_t *conn;
 	int sid;
@@ -197,6 +196,8 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 	conn->service_name = _malloc(sizeof(*service_name) + ntohs(service_name->tag_len));
 	memcpy(conn->service_name, service_name, sizeof(*service_name) + ntohs(service_name->tag_len));
 
+	memcpy(conn->cookie, cookie, COOKIE_LENGTH);
+
 	conn->ctx.before_switch = log_switch;
 	conn->ctx.close = pppoe_conn_close;
 	conn->ctrl.ctx = &conn->ctx;
@@ -238,7 +239,7 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 	return conn;
 }
 
-static int connect_channel(struct pppoe_conn_t *conn)
+static void connect_channel(struct pppoe_conn_t *conn)
 {
 	int sock;
 	struct sockaddr_pppox sp;
@@ -246,7 +247,7 @@ static int connect_channel(struct pppoe_conn_t *conn)
 	sock = socket(AF_PPPOX, SOCK_STREAM, PX_PROTO_OE);
 	if (!sock) {
 		log_error("pppoe: socket(PPPOX): %s\n", strerror(errno));
-		return -1;
+		goto out_err;
 	}
 
 	memset(&sp, 0, sizeof(sp));
@@ -259,18 +260,34 @@ static int connect_channel(struct pppoe_conn_t *conn)
 
 	if (connect(sock, (struct sockaddr *)&sp, sizeof(sp))) {
 		log_error("pppoe: connect: %s\n", strerror(errno));
-		close(sock);
-		return -1;
+		goto out_err_close;
 	}
 
 	conn->ppp.fd = sock;
 
-	if (establish_ppp(&conn->ppp)) {
-		close(sock);
-		return -1;
-	}
+	if (establish_ppp(&conn->ppp))
+		goto out_err_close;
 	
-	return 0;
+	__sync_add_and_fetch(&stat_active, 1);
+	conn->ppp_started = 1;
+	
+	return;
+
+out_err_close:
+	close(sock);
+out_err:
+	disconnect(conn);
+}
+
+static struct pppoe_conn_t *find_channel(struct pppoe_serv_t *serv, const uint8_t *cookie)
+{
+	struct pppoe_conn_t *conn;
+
+	list_for_each_entry(conn, &serv->conn_list, entry)
+		if (!memcmp(conn->cookie, cookie, COOKIE_LENGTH))
+			return conn;
+
+	return NULL;
 }
 
 static void print_tag_string(struct pppoe_tag *tag)
@@ -374,17 +391,66 @@ static void print_packet(uint8_t *pack)
 	log_info2("]\n");
 }
 
-static void generate_cookie(const uint8_t *src, const uint8_t *dst, uint8_t *cookie)
+static void generate_cookie(struct pppoe_serv_t *serv, const uint8_t *src, uint8_t *cookie)
 {
 	MD5_CTX ctx;
+	DES_cblock key;
+	DES_key_schedule ks;
+	int i;
+	union {
+		DES_cblock b[3];
+		uint8_t raw[24];
+	} u1, u2;
+
+	DES_random_key(&key);
+	DES_set_key(&key, &ks);
 
 	MD5_Init(&ctx);
-	MD5_Update(&ctx, secret, SECRET_SIZE);
+	MD5_Update(&ctx, serv->secret, SECRET_LENGTH);
+	MD5_Update(&ctx, serv->hwaddr, ETH_ALEN);
 	MD5_Update(&ctx, src, ETH_ALEN);
-	MD5_Update(&ctx, dst, ETH_ALEN);
-	MD5_Update(&ctx, conf_ac_name, strlen(conf_ac_name));
-	MD5_Update(&ctx, secret, SECRET_SIZE);
-	MD5_Final(cookie, &ctx);
+	MD5_Update(&ctx, &key, 8);
+	MD5_Final(u1.raw, &ctx);
+
+	for (i = 0; i < 2; i++)
+		DES_ecb_encrypt(&u1.b[i], &u2.b[i], &ks, DES_ENCRYPT);
+	memcpy(u2.b[2], &key, 8);
+
+	for (i = 0; i < 3; i++)
+		DES_ecb_encrypt(&u2.b[i], &u1.b[i], &serv->des_ks, DES_ENCRYPT);
+	
+	memcpy(cookie, u1.raw, 24);
+}
+
+static int check_cookie(struct pppoe_serv_t *serv, const uint8_t *src, const uint8_t *cookie)
+{
+	MD5_CTX ctx;
+	DES_key_schedule ks;	
+	int i;
+	union {
+		DES_cblock b[3];
+		uint8_t raw[24];
+	} u1, u2;
+
+	memcpy(u1.raw, cookie, 24);
+
+	for (i = 0; i < 3; i++)
+		DES_ecb_encrypt(&u1.b[i], &u2.b[i], &serv->des_ks, DES_DECRYPT);
+	
+	if (DES_set_key_checked(&u2.b[2], &ks))
+		return -1;
+	
+	for (i = 0; i < 2; i++)
+		DES_ecb_encrypt(&u2.b[i], &u1.b[i], &ks, DES_DECRYPT);
+	
+	MD5_Init(&ctx);
+	MD5_Update(&ctx, serv->secret, SECRET_LENGTH);
+	MD5_Update(&ctx, serv->hwaddr, ETH_ALEN);
+	MD5_Update(&ctx, src, ETH_ALEN);
+	MD5_Update(&ctx, u2.b[2], 8);
+	MD5_Final(u2.raw, &ctx);
+
+	return memcmp(u1.raw, u2.raw, 16);
 }
 
 static void setup_header(uint8_t *pack, const uint8_t *src, const uint8_t *dst, int code, uint16_t sid)
@@ -442,7 +508,7 @@ static void pppoe_send(int fd, const uint8_t *pack)
 static void pppoe_send_PADO(struct pppoe_serv_t *serv, const uint8_t *addr, const struct pppoe_tag *host_uniq, const struct pppoe_tag *relay_sid, const struct pppoe_tag *service_name)
 {
 	uint8_t pack[ETHER_MAX_LEN];
-	uint8_t cookie[MD5_DIGEST_LENGTH];
+	uint8_t cookie[COOKIE_LENGTH];
 
 	setup_header(pack, serv->hwaddr, addr, CODE_PADO, 0);
 
@@ -453,8 +519,8 @@ static void pppoe_send_PADO(struct pppoe_serv_t *serv, const uint8_t *addr, cons
 	if (service_name)
 		add_tag2(pack, service_name);
 	
-	generate_cookie(serv->hwaddr, addr, cookie);
-	add_tag(pack, TAG_AC_COOKIE, cookie, MD5_DIGEST_LENGTH);
+	generate_cookie(serv, addr, cookie);
+	add_tag(pack, TAG_AC_COOKIE, cookie, COOKIE_LENGTH);
 
 	if (host_uniq)
 		add_tag2(pack, host_uniq);
@@ -668,7 +734,6 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	struct pppoe_tag *relay_sid_tag = NULL;
 	struct pppoe_tag *ac_cookie_tag = NULL;
 	struct pppoe_tag *service_name_tag = NULL;
-	uint8_t cookie[MD5_DIGEST_LENGTH];
 	int n, service_match = 0;
 	struct pppoe_conn_t *conn;
 
@@ -726,15 +791,13 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 		return;
 	}
 
-	if (ntohs(ac_cookie_tag->tag_len) != MD5_DIGEST_LENGTH) {
+	if (ntohs(ac_cookie_tag->tag_len) != COOKIE_LENGTH) {
 		if (conf_verbose)
 			log_warn("pppoe: discard PADR packet (incorrect AC-Cookie tag length)\n");
 		return;
 	}
 
-	generate_cookie(serv->hwaddr, ethhdr->h_source, cookie);
-
-	if (memcmp(cookie, ac_cookie_tag->tag_data, MD5_DIGEST_LENGTH)) {
+	if (check_cookie(serv, ethhdr->h_source, (uint8_t *)ac_cookie_tag->tag_data)) {
 		if (conf_verbose)
 			log_warn("pppoe: discard PADR packet (incorrect AC-Cookie)\n");
 		return;
@@ -747,17 +810,21 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 		return;
 	}
 
-	conn = allocate_channel(serv, ethhdr->h_source, host_uniq_tag, relay_sid_tag, service_name_tag);
+	pthread_mutex_lock(&serv->lock);
+	conn = find_channel(serv, (uint8_t *)ac_cookie_tag->tag_data);
+	if (conn && !conn->ppp.username)
+		pppoe_send_PADS(conn);
+	pthread_mutex_unlock(&serv->lock);
+
+	if (conn)
+		return;
+
+	conn = allocate_channel(serv, ethhdr->h_source, host_uniq_tag, relay_sid_tag, service_name_tag, (uint8_t *)ac_cookie_tag->tag_data);
 	if (!conn)
 		pppoe_send_err(serv, ethhdr->h_source, host_uniq_tag, relay_sid_tag, CODE_PADS, TAG_AC_SYSTEM_ERROR);
 	else {
 		pppoe_send_PADS(conn);
-		if (connect_channel(conn))
-			disconnect(conn);
-		else {
-			__sync_add_and_fetch(&stat_active, 1);
-			conn->ppp_started = 1;
-		}
+		triton_context_call(&conn->ctx, (triton_event_func)connect_channel, conn);
 	}
 }
 
@@ -896,6 +963,13 @@ void pppoe_server_start(const char *ifname, void *cli)
 
 	serv = _malloc(sizeof(*serv));
 	memset(serv, 0, sizeof(*serv));
+
+	if (init_secret(serv)) {
+		if (cli)
+			cli_sendv(cli, "init secret failed\r\n");
+		_free(serv);
+		return;
+	}
 
 	sock = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_PPP_DISC));
 	if (sock < 0) {
@@ -1061,11 +1135,10 @@ void pppoe_server_stop(const char *ifname)
 	pthread_rwlock_unlock(&serv_lock);
 }
 
-static int init_secret(void)
+static int init_secret(struct pppoe_serv_t *serv)
 {
 	int fd;
-
-	secret = malloc(SECRET_SIZE);
+	DES_cblock key;
 
 	fd = open("/dev/urandom", O_RDONLY);
 	if (fd < 0) {
@@ -1073,13 +1146,16 @@ static int init_secret(void)
 		return -1;
 	}
 
-	if (read(fd, secret, SECRET_SIZE) < 0) {
+	if (read(fd, serv->secret, SECRET_LENGTH) < 0) {
 		log_emerg("pppoe: faild to read /dev/urandom\n", strerror(errno));
 		close(fd);
 		return -1;
 	}
 
 	close(fd);
+
+	DES_random_key(&key);
+	DES_set_key(&key, &serv->des_ks);
 
 	return 0;
 }
@@ -1091,9 +1167,6 @@ static void __init pppoe_init(void)
 
 	conn_pool = mempool_create(sizeof(struct pppoe_conn_t));
 	pado_pool = mempool_create(sizeof(struct delayed_pado_t));
-
-	if (init_secret())
-		_exit(EXIT_FAILURE);
 
 	if (!s) {
 		log_emerg("pppoe: no configuration, disabled...\n");

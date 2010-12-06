@@ -2,6 +2,9 @@
 #define __PPPOE_H
 
 #include <pthread.h>
+
+#include <openssl/des.h>
+
 #include <linux/if.h>
 #include <linux/if_pppox.h>
 
@@ -39,6 +42,8 @@
 #define MAX_PPPOE_MTU (MAX_PPPOE_PAYLOAD - 2)
 
 #define MAX_SID 65534
+#define SECRET_LENGTH 16
+#define COOKIE_LENGTH 24
 
 struct pppoe_tag_t
 {
@@ -63,6 +68,9 @@ struct pppoe_serv_t
 	struct triton_md_handler_t hnd;
 	uint8_t hwaddr[ETH_ALEN];
 	char *ifname;
+
+	uint8_t secret[SECRET_LENGTH];
+	DES_key_schedule des_ks;
 
 	pthread_mutex_t lock;
 	struct pppoe_conn_t *conn[MAX_SID];
