@@ -1,8 +1,11 @@
 #include <stdio.h>
 #include <time.h>
 #include <string.h>
+#include <unistd.h>
+#include <signal.h>
 
 #include "triton.h"
+#include "events.h"
 #include "ppp.h"
 #include "cli.h"
 #include "utils.h"
@@ -281,11 +284,51 @@ static void terminate_help(char * const *fields, int fields_cnt, void *client)
 	cli_send(client, "terminate all [soft|hard]- terminate all session\r\n");
 }
 
+//=============================
+
+static void shutdown_help(char * const *fields, int fields_cnt, void *client)
+{
+	cli_send(client, "shutdown [soft|hard]- shutdown daemon\r\n");
+	cli_send(client, "\t\tdefault action - send termination signals to all clients and wait everybody disconnects\r\n");
+	cli_send(client, "\t\tsoft - wait until all clients disconnects, don't accept new connections\r\n");
+	cli_send(client, "\t\thard - shutdown now, don't wait anything\r\n");
+}
+
+static int shutdown_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
+{
+	int hard = 0;
+	struct ppp_t *ppp;
+
+	if (f_cnt == 2) {
+		if (!strcmp(f[1], "soft")) {
+			triton_event_fire(EV_SHUTDOWN_SOFT, NULL);
+			return CLI_CMD_OK;
+		} else if (!strcmp(f[1], "hard"))
+			hard = 1;
+		else
+			return CLI_CMD_SYNTAX;
+	}
+
+	triton_event_fire(EV_SHUTDOWN_SOFT, NULL);
+
+	pthread_rwlock_rdlock(&ppp_lock);
+	list_for_each_entry(ppp, &ppp_list, entry) {
+		if (hard)
+			triton_context_call(ppp->ctrl->ctx, (triton_event_func)ppp_terminate_hard, ppp);
+		else
+			triton_context_call(ppp->ctrl->ctx, (triton_event_func)ppp_terminate_soft, ppp);
+	}
+	pthread_rwlock_unlock(&ppp_lock);
+
+	return CLI_CMD_OK;
+}
+
 static void __init init(void)
 {
 	cli_register_simple_cmd2(show_stat_exec, show_stat_help, 2, "show", "stat");
 	cli_register_simple_cmd2(show_ses_exec, show_ses_help, 2, "show", "sessions");
 	cli_register_simple_cmd2(terminate_exec, terminate_help, 1, "terminate");
+	cli_register_simple_cmd2(shutdown_exec, shutdown_help, 1, "shutdown");
 	cli_register_simple_cmd2(exit_exec, exit_help, 1, "exit");
 }
 

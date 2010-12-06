@@ -56,6 +56,7 @@ static int conf_timeout = 5;
 static int conf_echo_interval = 0;
 static int conf_echo_failure = 3;
 static int conf_verbose = 0;
+static int shutdown_soft;
 
 static mempool_t conn_pool;
 
@@ -617,6 +618,11 @@ static int pptp_connect(struct triton_md_handler_t *h)
 			continue;
 		}
 
+		if (shutdown_soft) {
+			close(sock);
+			continue;
+		}
+
 		log_info2("pptp: new connection from %s\n", inet_ntoa(addr.sin_addr));
 
 		if (iprange_client_check(addr.sin_addr.s_addr)) {
@@ -694,6 +700,11 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	return CLI_CMD_OK;
 }
 
+static void ev_shutdown_soft(void)
+{
+	shutdown_soft = 1;
+}
+
 static void __init pptp_init(void)
 {
   struct sockaddr_in addr;
@@ -756,5 +767,7 @@ static void __init pptp_init(void)
 	triton_context_wakeup(&serv.ctx);
 
 	cli_register_simple_cmd2(show_stat_exec, NULL, 2, "show", "stat");
+
+	triton_event_register_handler(EV_SHUTDOWN_SOFT, (triton_event_func)ev_shutdown_soft);
 }
 

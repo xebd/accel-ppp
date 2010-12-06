@@ -50,6 +50,8 @@ int conf_retransmit = 5;
 int conf_hello_interval = 60;
 const char *conf_host_name = "accel-pptp";
 
+static int shutdown_soft;
+
 static uint32_t stat_active;
 static uint32_t stat_starting;
 
@@ -638,6 +640,9 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack)
 	struct l2tp_attr_t *framing_cap = NULL;
 	struct l2tp_attr_t *router_id = NULL;
 	
+	if (shutdown_soft)
+		return 0;
+
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch (attr->attr->id) {
 			case Protocol_Version:
@@ -1107,6 +1112,11 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	return CLI_CMD_OK;
 }
 
+static void ev_shutdown_soft(void)
+{
+	shutdown_soft = 1;
+}
+
 static void __init l2tp_init(void)
 {
 	char *opt;
@@ -1143,5 +1153,7 @@ static void __init l2tp_init(void)
 	start_udp_server();
 
 	cli_register_simple_cmd2(&show_stat_exec, NULL, 2, "show", "stat");
+
+	triton_event_register_handler(EV_SHUTDOWN_SOFT, (triton_event_func)ev_shutdown_soft);
 }
 

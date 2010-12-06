@@ -173,6 +173,8 @@ int ppp_register_layer(const char *name, struct ppp_layer_t *);
 void ppp_unregister_layer(struct ppp_layer_t *);
 struct ppp_layer_data_t *ppp_find_layer_data(struct ppp_t *, struct ppp_layer_t *);
 
+void ppp_shutdown_soft(void);
+
 extern int conf_ppp_verbose;
 
 extern pthread_rwlock_t ppp_lock;
