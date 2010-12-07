@@ -59,16 +59,16 @@ struct delayed_pado_t
 int conf_verbose;
 char *conf_service_name;
 char *conf_ac_name;
-int conf_pado_delay;
 int conf_ifname_in_sid;
+char *conf_pado_delay;
 
 static int shutdown_soft;
 
 static mempool_t conn_pool;
 static mempool_t pado_pool;
 
-uint32_t stat_active;
-uint32_t stat_delayed_pado;
+unsigned int stat_active;
+unsigned int stat_delayed_pado;
 
 pthread_rwlock_t serv_lock = PTHREAD_RWLOCK_INITIALIZER;
 LIST_HEAD(serv_list);
@@ -83,7 +83,7 @@ static int init_secret(struct pppoe_serv_t *serv);
 static void disconnect(struct pppoe_conn_t *conn)
 {
 	if (conn->ppp_started) {
-		__sync_sub_and_fetch(&stat_active, 1);
+		dpado_check_prev(__sync_fetch_and_sub(&stat_active, 1));
 		conn->ppp_started = 0;
 		ppp_terminate(&conn->ppp, TERM_USER_REQUEST, 1);
 	}
@@ -132,7 +132,7 @@ static void ppp_finished(struct ppp_t *ppp)
 	log_ppp_debug("pppoe: ppp finished\n");
 
 	if (conn->ppp_started) {
-		__sync_sub_and_fetch(&stat_active, 1);
+		dpado_check_prev(__sync_fetch_and_sub(&stat_active, 1));
 		conn->ppp_started = 0;
 		triton_context_call(&conn->ctx, (triton_event_func)disconnect, conn);
 	}
@@ -270,8 +270,9 @@ static void connect_channel(struct pppoe_conn_t *conn)
 	if (establish_ppp(&conn->ppp))
 		goto out_err_close;
 	
-	__sync_add_and_fetch(&stat_active, 1);
 	conn->ppp_started = 1;
+	
+	dpado_check_next(__sync_add_and_fetch(&stat_active, 1));
 	
 	return;
 
@@ -647,7 +648,7 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	int n, service_match = 0;
 	struct delayed_pado_t *pado;
 
-	if (shutdown_soft)
+	if (shutdown_soft || pado_delay == -1)
 		return;
 
 	if (hdr->sid) {
@@ -692,7 +693,7 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 		return;
 	}
 
-	if (conf_pado_delay) {
+	if (pado_delay) {
 		list_for_each_entry(pado, &serv->pado_list, entry) {
 			if (memcmp(pado->addr, ethhdr->h_source, ETH_ALEN))
 				continue;
@@ -721,7 +722,7 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 		}
 
 		pado->timer.expire = pado_timer;
-		pado->timer.period = conf_pado_delay;
+		pado->timer.period = pado_delay;
 
 		triton_timer_add(&serv->ctx, &pado->timer, 0);
 
@@ -1202,8 +1203,8 @@ static void __init pppoe_init(void)
 			if (opt->val && strlen(opt->val))
 				conf_service_name = _strdup(opt->val);
 		} else if (!strcmp(opt->name, "pado-delay") || !strcmp(opt->name, "PADO-delay")) {
-			if (opt->val && atoi(opt->val) > 0)
-				conf_pado_delay = atoi(opt->val);
+			if (dpado_parse(opt->val))
+				_exit(EXIT_FAILURE);
 		} else if (!strcmp(opt->name, "ifname-in-sid")) {
 			if (!opt->val)
 				continue;

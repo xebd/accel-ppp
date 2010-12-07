@@ -3,6 +3,7 @@ INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
 ADD_LIBRARY(pppoe SHARED
 	pppoe.c
 	mac_filter.c
+	dpado.c
 	cli.c
 )
 

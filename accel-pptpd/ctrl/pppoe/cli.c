@@ -77,7 +77,7 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 static void set_verbose_help(char * const *f, int f_cnt, void *cli)
 {
 	cli_send(cli, "pppoe set verbose <n> - set verbosity of pppoe logging\r\n");
-	cli_send(cli, "pppoe set PADO-delay <delay> - set PADO delay (ms)\r\n");
+	cli_send(cli, "pppoe set PADO-delay <delay[,delay1:count1[,delay2:count2[,...]]]> - set PADO delays (ms)\r\n");
 	cli_send(cli, "pppoe set Service-Name <name> - set Service-Name to respond\r\n");
 	cli_send(cli, "pppoe set Service-Name * - respond with client's Service-Name\r\n");
 	cli_send(cli, "pppoe set AC-Name <name> - set AC-Name tag value\r\n");
@@ -102,7 +102,7 @@ static int show_pado_delay_exec(const char *cmd, char * const *f, int f_cnt, voi
 	if (f_cnt != 3)
 		return CLI_CMD_SYNTAX;
 	
-	cli_sendv(cli, "%i\r\n", conf_pado_delay);
+	cli_sendv(cli, "%s\r\n", conf_pado_delay);
 	
 	return CLI_CMD_OK;
 }
@@ -147,18 +147,12 @@ static int set_verbose_exec(const char *cmd, char * const *f, int f_cnt, void *c
 
 static int set_pado_delay_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 {
-	char *endptr;
-	int d;
-
 	if (f_cnt != 4)
 		return CLI_CMD_SYNTAX;
-	
-	d = strtol(f[3], &endptr, 10);
-	if (*endptr || d < 0)
+
+	if (dpado_parse(f[3]))
 		return CLI_CMD_INVAL;
-	
-	conf_pado_delay = d;
-	
+
 	return CLI_CMD_OK;
 }
 

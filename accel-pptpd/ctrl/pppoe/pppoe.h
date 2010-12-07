@@ -85,10 +85,10 @@ struct pppoe_serv_t
 extern int conf_verbose;
 extern char *conf_service_name;
 extern char *conf_ac_name;
-extern int conf_pado_delay;
+extern char *conf_pado_delay;
 
-extern uint32_t stat_active;
-extern uint32_t stat_delayed_pado;
+extern unsigned int stat_active;
+extern unsigned int stat_delayed_pado;
 
 extern pthread_rwlock_t serv_lock;
 extern struct list_head serv_list;
@@ -96,6 +96,11 @@ extern struct list_head serv_list;
 int mac_filter_check(const uint8_t *addr);
 void pppoe_server_start(const char *intf, void *client);
 void pppoe_server_stop(const char *intf);
+
+extern int pado_delay;
+void dpado_check_next(int conn_cnt);
+void dpado_check_prev(int conn_cnt);
+int dpado_parse(const char *str);
 
 #endif
 
