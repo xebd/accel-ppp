@@ -24,6 +24,7 @@
 #include "memdebug.h"
 
 int __export conf_ppp_verbose;
+static int conf_sid_ucase;
 
 pthread_rwlock_t __export ppp_lock = PTHREAD_RWLOCK_INITIALIZER;
 __export LIST_HEAD(ppp_list);
@@ -84,7 +85,10 @@ static void generate_sessionid(struct ppp_t *ppp)
 	sid = __sync_add_and_fetch(&seq, 1);
 #endif
 
-	sprintf(ppp->sessionid, "%016llx", sid);
+	if (conf_sid_ucase)
+		sprintf(ppp->sessionid, "%016llX", sid);
+	else
+		sprintf(ppp->sessionid, "%016llx", sid);
 }
 
 int __export establish_ppp(struct ppp_t *ppp)
@@ -634,6 +638,14 @@ static void __init init(void)
 	opt = conf_get_opt("ppp", "verbose");
 	if (opt && atoi(opt) > 0)
 		conf_ppp_verbose = 1;
+
+	opt = conf_get_opt("ppp", "sid-case");
+	if (opt) {
+		if (!strcmp(opt, "upper"))
+			conf_sid_ucase = 1;
+		else if (strcmp(opt, "lower"))
+			log_emerg("ppp: sid-case: invalid format\n");
+	}
 
 	opt = conf_get_opt("ppp", "seq-file");
 	if (!opt)
