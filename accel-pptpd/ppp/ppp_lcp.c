@@ -120,15 +120,22 @@ int lcp_layer_start(struct ppp_layer_data_t *ld)
 	return 0;
 }
 
+static void _lcp_layer_finished(struct ppp_lcp_t *lcp)
+{
+	ppp_layer_finished(lcp->ppp, &lcp->ld);
+}
+
 void lcp_layer_finish(struct ppp_layer_data_t *ld)
 {
 	struct ppp_lcp_t *lcp = container_of(ld,typeof(*lcp),ld);
 	
 	log_ppp_debug("lcp_layer_finish\n");
 
-	stop_echo(lcp);
-
-	ppp_fsm_close(&lcp->fsm);
+	if (lcp->started) {
+		stop_echo(lcp);
+		ppp_fsm_close(&lcp->fsm);
+	} else
+		triton_context_call(lcp->ppp->ctrl->ctx, (triton_event_func)_lcp_layer_finished, lcp);
 }
 
 void lcp_layer_free(struct ppp_layer_data_t *ld)
