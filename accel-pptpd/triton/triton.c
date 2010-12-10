@@ -169,6 +169,7 @@ static void ctx_thread(struct _triton_context_t *ctx)
 				spin_unlock(&ctx->lock);
 				call->func(call->arg);
 				mempool_free(call);
+				continue;
 			}
 			ctx->pending = 0;
 			spin_unlock(&ctx->lock);
