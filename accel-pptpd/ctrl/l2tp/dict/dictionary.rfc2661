@@ -4,7 +4,7 @@ ATTRIBUTE     Result-Code                 1     octets    M=1 H=0
 ATTRIBUTE     Protocol-Version            2     int16     M=1 H=0
 ATTRIBUTE     Framing-Capabilities        3     int32     M=1
 ATTRIBUTE     Bearer-Capabilities         4     int32     M=1
-ATTRIBUTE     Tie-Breaker                 5     int64     M=1
+ATTRIBUTE     Tie-Breaker                 5     int64     M=0
 ATTRIBUTE     Firmware-Revision           6     int16     M=0
 ATTRIBUTE     Host-Name                   7     string    M=1
 ATTRIBUTE     Vendor-Name                 8     string    M=0
