@@ -484,6 +484,8 @@ void __export triton_run()
 		list_add_tail(&t->entry, &threads);
 	}
 
+	time(&triton_stat.start_time);
+
 	md_run();
 	timer_run();
 }

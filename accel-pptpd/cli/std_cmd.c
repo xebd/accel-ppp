@@ -14,6 +14,17 @@
 
 static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
 {
+	time_t dt;
+	int day,hour;
+
+	time(&dt);
+	dt -= triton_stat.start_time;
+	day = dt / (60 * 60 * 24);
+	dt %= 60 * 60 * 24;
+	hour = dt / (60 * 60);
+	dt %= 60 * 60;
+
+	cli_sendv(client, "uptime: %i.%02i:%02i:%02i\r\n", day, hour, dt / 60, dt % 60);
 	cli_send(client, "core:\r\n");
 	cli_sendv(client, "  mempool_allocated: %u\r\n", triton_stat.mempool_allocated);
 	cli_sendv(client, "  mempool_available: %u\r\n", triton_stat.mempool_available);

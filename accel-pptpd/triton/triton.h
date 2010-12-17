@@ -63,6 +63,7 @@ struct triton_stat_t
 	uint32_t md_handler_pending;
 	uint32_t timer_count;
 	uint32_t timer_pending;
+	time_t start_time;
 };
 
 extern struct triton_stat_t triton_stat;
