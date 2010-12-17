@@ -219,7 +219,7 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 			}
 			list_add_tail(&attr->entry, &pack->attrs);
 		} else
-			log_ppp_warn("radius:packet: unknown attribute received (%i)\n", id);
+			log_ppp_warn("radius:packet: unknown attribute received (%i,%i)\n", vendor ? vendor->id : 0, id);
 		ptr += len;
 		n -= 2 + len;
 	}
