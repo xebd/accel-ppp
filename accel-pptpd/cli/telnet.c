@@ -249,7 +249,7 @@ static int telnet_input_char(struct telnet_client_t *cln, uint8_t c)
 {
 	uint8_t buf[] = {IAC, DONT, 0};
 	struct buffer_t *b;
-	
+
 	if (c == '\n')
 		return 0;
 	
@@ -407,6 +407,9 @@ static int telnet_input_char(struct telnet_client_t *cln, uint8_t c)
 					cln->cmdline_len--;
 				}
 				return 0;
+			case 3:
+				disconnect(cln);
+				return -1;
 		}
 
 		if (isprint(c)) {
