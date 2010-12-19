@@ -32,7 +32,7 @@ __export LIST_HEAD(ppp_list);
 static LIST_HEAD(layers);
 int __export sock_fd;
 
-static int ppp_shutdown;
+int __export ppp_shutdown;
 
 static unsigned long long seq;
 #if __WORDSIZE == 32
@@ -602,7 +602,7 @@ struct ppp_layer_data_t *ppp_find_layer_data(struct ppp_t *ppp, struct ppp_layer
 	return NULL;
 }
 
-static void ev_shutdown_soft(void)
+void ppp_shutdown_soft(void)
 {
 	ppp_shutdown = 1;
 
@@ -658,8 +658,6 @@ static void __init init(void)
 	} else
 		//log_emerg("ppp: failed to open seq-file (%s): %s\n", opt, strerror(errno));
 		seq = (unsigned long long)random() * (unsigned long long)random();
-
-	triton_event_register_handler(EV_SHUTDOWN_SOFT, (triton_event_func)ev_shutdown_soft);
 
 	atexit(save_seq);
 }

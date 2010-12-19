@@ -62,8 +62,6 @@ char *conf_ac_name;
 int conf_ifname_in_sid;
 char *conf_pado_delay;
 
-static int shutdown_soft;
-
 static mempool_t conn_pool;
 static mempool_t pado_pool;
 
@@ -631,7 +629,7 @@ static void pado_timer(struct triton_timer_t *t)
 {
 	struct delayed_pado_t *pado = container_of(t, typeof(*pado), timer);
 
-	if (!shutdown_soft)
+	if (!ppp_shutdown)
 		pppoe_send_PADO(pado->serv, pado->addr, pado->host_uniq, pado->relay_sid, pado->service_name);
 
 	free_delayed_pado(pado);
@@ -648,7 +646,7 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	int n, service_match = 0;
 	struct delayed_pado_t *pado;
 
-	if (shutdown_soft || pado_delay == -1)
+	if (ppp_shutdown || pado_delay == -1)
 		return;
 
 	if (hdr->sid) {
@@ -744,7 +742,7 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	int n, service_match = 0;
 	struct pppoe_conn_t *conn;
 
-	if (shutdown_soft)
+	if (ppp_shutdown)
 		return;
 
 	if (!memcmp(ethhdr->h_dest, bc_addr, ETH_ALEN)) {
@@ -1112,11 +1110,6 @@ static void _server_stop(struct pppoe_serv_t *serv)
 	pthread_mutex_unlock(&serv->lock);
 }
 
-static void ev_shutdown_soft(void)
-{
-	shutdown_soft = 1;
-}
-
 void pppoe_server_free(struct pppoe_serv_t *serv)
 {
 	struct delayed_pado_t *pado;
@@ -1221,7 +1214,5 @@ static void __init pppoe_init(void)
 
 	if (!conf_ac_name)
 		conf_ac_name = _strdup("accel-pptp");
-	
-	triton_event_register_handler(EV_SHUTDOWN_SOFT, (triton_event_func)ev_shutdown_soft);
 }
 

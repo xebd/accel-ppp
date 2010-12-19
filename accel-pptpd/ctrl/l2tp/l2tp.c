@@ -50,10 +50,8 @@ int conf_retransmit = 5;
 int conf_hello_interval = 60;
 const char *conf_host_name = "accel-pptp";
 
-static int shutdown_soft;
-
-static uint32_t stat_active;
-static uint32_t stat_starting;
+static unsigned int stat_active;
+static unsigned int stat_starting;
 
 struct l2tp_serv_t
 {
@@ -640,7 +638,7 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack)
 	struct l2tp_attr_t *framing_cap = NULL;
 	struct l2tp_attr_t *router_id = NULL;
 	
-	if (shutdown_soft)
+	if (ppp_shutdown)
 		return 0;
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
@@ -1061,38 +1059,38 @@ static struct l2tp_serv_t udp_serv =
 
 static void start_udp_server(void)
 {
-  struct sockaddr_in addr;
+	struct sockaddr_in addr;
 	char *opt;
 
 	udp_serv.hnd.fd = socket(PF_INET, SOCK_DGRAM, 0);
-  if (udp_serv.hnd.fd < 0) {
-    log_emerg("l2tp: socket: %s\n", strerror(errno));
-    return;
-  }
+	if (udp_serv.hnd.fd < 0) {
+		log_emerg("l2tp: socket: %s\n", strerror(errno));
+		return;
+	}
 
 	memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(L2TP_PORT);
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(L2TP_PORT);
 
 	opt = conf_get_opt("l2tp", "bind");
 	if (opt)
 		addr.sin_addr.s_addr = inet_addr(opt);
 	else
 		addr.sin_addr.s_addr = htonl(INADDR_ANY);
-  
-  setsockopt(udp_serv.hnd.fd, SOL_SOCKET, SO_REUSEADDR, &udp_serv.hnd.fd, sizeof(udp_serv.hnd.fd));
-  setsockopt(udp_serv.hnd.fd, SOL_SOCKET, SO_NO_CHECK, &udp_serv.hnd.fd, sizeof(udp_serv.hnd.fd));
 
-  if (bind (udp_serv.hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
-    log_emerg("l2tp: failed to bind socket: %s\n", strerror(errno));
+	setsockopt(udp_serv.hnd.fd, SOL_SOCKET, SO_REUSEADDR, &udp_serv.hnd.fd, sizeof(udp_serv.hnd.fd));
+	setsockopt(udp_serv.hnd.fd, SOL_SOCKET, SO_NO_CHECK, &udp_serv.hnd.fd, sizeof(udp_serv.hnd.fd));
+
+	if (bind (udp_serv.hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
+		log_emerg("l2tp: failed to bind socket: %s\n", strerror(errno));
 		close(udp_serv.hnd.fd);
-    return;
-  }
+		return;
+	}
 
 	if (fcntl(udp_serv.hnd.fd, F_SETFL, O_NONBLOCK)) {
-    log_emerg("pptp: failed to set nonblocking mode: %s\n", strerror(errno));
+		log_emerg("pptp: failed to set nonblocking mode: %s\n", strerror(errno));
 		close(udp_serv.hnd.fd);
-    return;
+		return;
 	}
 
 	memcpy(&udp_serv.addr, &addr, sizeof(addr));
@@ -1110,11 +1108,6 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	cli_sendv(client, "  active: %u\r\n", stat_active);
 
 	return CLI_CMD_OK;
-}
-
-static void ev_shutdown_soft(void)
-{
-	shutdown_soft = 1;
 }
 
 static void __init l2tp_init(void)
@@ -1153,7 +1146,5 @@ static void __init l2tp_init(void)
 	start_udp_server();
 
 	cli_register_simple_cmd2(&show_stat_exec, NULL, 2, "show", "stat");
-
-	triton_event_register_handler(EV_SHUTDOWN_SOFT, (triton_event_func)ev_shutdown_soft);
 }
 

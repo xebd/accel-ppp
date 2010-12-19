@@ -13,7 +13,6 @@
 #define EV_CTRL_FINISHED    8
 #define EV_PPP_PRE_UP       9
 #define EV_PPP_ACCT_START   10
-#define EV_SHUTDOWN_SOFT    11
 #define EV_IP_CHANGED       100
 #define EV_SHAPER           101
 #define EV_MPPE_KEYS        102

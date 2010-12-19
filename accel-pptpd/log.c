@@ -31,7 +31,7 @@ struct _log_msg_t
 	int level;
 	struct timeval timestamp;
 	struct list_head chunks;
-	uint8_t refs;
+	unsigned int refs;
 };
 
 static int log_level;

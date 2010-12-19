@@ -14,6 +14,7 @@
 
 #include "triton.h"
 #include "log.h"
+#include "ppp.h"
 #include "list.h"
 #include "memdebug.h"
 
@@ -166,7 +167,13 @@ static int cli_client_sendv(struct cli_client_t *tcln, const char *fmt, va_list 
 
 static int send_banner(struct telnet_client_t *cln)
 {
-	return telnet_send(cln, "accel-pptp version " ACCEL_PPTP_VERSION "\r\n", sizeof("accel-pptp version " ACCEL_PPTP_VERSION "\r\n"));
+	if (telnet_send(cln, "accel-pptp version " ACCEL_PPTP_VERSION "\r\n", sizeof("accel-pptp version " ACCEL_PPTP_VERSION "\r\n")))
+		return -1;
+	if (cln->auth && ppp_shutdown) {
+		if (telnet_send(cln, "warning: 'shutdown soft' is in progress...\r\n", sizeof("warning: 'shutdown soft' is in progress...\r\n")))
+			return -1;
+	}
+	return 0;
 }
 
 static int send_config(struct telnet_client_t *cln)
@@ -262,6 +269,10 @@ static int telnet_input_char(struct telnet_client_t *cln, uint8_t c)
 				return -1;
 			}
 			cln->auth = 1;
+			if (ppp_shutdown) {
+				if (telnet_send(cln, "warning: 'shutdown soft' is in progress...\r\n", sizeof("warning: 'shutdown soft' is in progress...\r\n")))
+					return -1;
+			}
 		} else if (cln->cmdline_len) {
 			b = _malloc(sizeof(*b) + cln->cmdline_len);
 			memcpy(b->buf, cln->cmdline, cln->cmdline_len);

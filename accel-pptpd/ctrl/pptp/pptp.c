@@ -56,12 +56,10 @@ static int conf_timeout = 5;
 static int conf_echo_interval = 0;
 static int conf_echo_failure = 3;
 static int conf_verbose = 0;
-static int shutdown_soft;
-
 static mempool_t conn_pool;
 
-static uint32_t stat_starting;
-static uint32_t stat_active;
+static unsigned int stat_starting;
+static unsigned int stat_active;
 
 static int pptp_read(struct triton_md_handler_t *h);
 static int pptp_write(struct triton_md_handler_t *h);
@@ -618,7 +616,7 @@ static int pptp_connect(struct triton_md_handler_t *h)
 			continue;
 		}
 
-		if (shutdown_soft) {
+		if (ppp_shutdown) {
 			close(sock);
 			continue;
 		}
@@ -700,14 +698,9 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	return CLI_CMD_OK;
 }
 
-static void ev_shutdown_soft(void)
-{
-	shutdown_soft = 1;
-}
-
 static void __init pptp_init(void)
 {
-  struct sockaddr_in addr;
+	struct sockaddr_in addr;
 	char *opt;
 	
 	serv.hnd.fd = socket(PF_INET, SOCK_STREAM, 0);
@@ -767,7 +760,5 @@ static void __init pptp_init(void)
 	triton_context_wakeup(&serv.ctx);
 
 	cli_register_simple_cmd2(show_stat_exec, NULL, 2, "show", "stat");
-
-	triton_event_register_handler(EV_SHUTDOWN_SOFT, (triton_event_func)ev_shutdown_soft);
 }
 

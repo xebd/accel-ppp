@@ -299,10 +299,11 @@ static void terminate_help(char * const *fields, int fields_cnt, void *client)
 
 static void shutdown_help(char * const *fields, int fields_cnt, void *client)
 {
-	cli_send(client, "shutdown [soft|hard]- shutdown daemon\r\n");
+	cli_send(client, "shutdown [soft|hard|cancel]- shutdown daemon\r\n");
 	cli_send(client, "\t\tdefault action - send termination signals to all clients and wait everybody disconnects\r\n");
 	cli_send(client, "\t\tsoft - wait until all clients disconnects, don't accept new connections\r\n");
 	cli_send(client, "\t\thard - shutdown now, don't wait anything\r\n");
+	cli_send(client, "\t\tcancel - cancel 'shutdown soft' and return to normal operation\r\n");
 }
 
 static int shutdown_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
@@ -312,15 +313,18 @@ static int shutdown_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 
 	if (f_cnt == 2) {
 		if (!strcmp(f[1], "soft")) {
-			triton_event_fire(EV_SHUTDOWN_SOFT, NULL);
+			ppp_shutdown_soft();
 			return CLI_CMD_OK;
 		} else if (!strcmp(f[1], "hard"))
 			hard = 1;
-		else
+		else if (!strcmp(f[1], "cancel")) {
+			ppp_shutdown = 0;
+			return CLI_CMD_OK;
+		} else
 			return CLI_CMD_SYNTAX;
 	}
 
-	triton_event_fire(EV_SHUTDOWN_SOFT, NULL);
+	ppp_shutdown_soft();
 
 	pthread_rwlock_rdlock(&ppp_lock);
 	list_for_each_entry(ppp, &ppp_list, entry) {

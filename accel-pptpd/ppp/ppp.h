@@ -147,9 +147,9 @@ struct ppp_handler_t
 
 struct ppp_stat_t
 {
-	uint32_t active;
-	uint32_t starting;
-	uint32_t finishing;
+	unsigned int active;
+	unsigned int starting;
+	unsigned int finishing;
 };
 
 struct ppp_t *alloc_ppp(void);
@@ -173,6 +173,7 @@ int ppp_register_layer(const char *name, struct ppp_layer_t *);
 void ppp_unregister_layer(struct ppp_layer_t *);
 struct ppp_layer_data_t *ppp_find_layer_data(struct ppp_t *, struct ppp_layer_t *);
 
+extern int ppp_shutdown;
 void ppp_shutdown_soft(void);
 
 extern int conf_ppp_verbose;

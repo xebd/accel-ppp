@@ -52,17 +52,17 @@ struct conf_sect_t
 
 struct triton_stat_t
 {
-	uint32_t mempool_allocated;
-	uint32_t mempool_available;
-	uint32_t thread_count;
-	uint32_t thread_active;
-	uint32_t context_count;
-	uint32_t context_sleeping;
-	uint32_t context_pending;
-	uint32_t md_handler_count;
-	uint32_t md_handler_pending;
-	uint32_t timer_count;
-	uint32_t timer_pending;
+	unsigned int mempool_allocated;
+	unsigned int mempool_available;
+	unsigned int thread_count;
+	unsigned int thread_active;
+	unsigned int context_count;
+	unsigned int context_sleeping;
+	unsigned int context_pending;
+	unsigned int md_handler_count;
+	unsigned int md_handler_pending;
+	unsigned int timer_count;
+	unsigned int timer_pending;
 	time_t start_time;
 };
 
