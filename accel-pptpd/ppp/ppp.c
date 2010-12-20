@@ -290,6 +290,10 @@ cont:
 
 		//printf("ppp_chan_read: ");
 		//print_buf(ppp->chan_buf,ppp->chan_buf_size);
+		if (ppp->chan_buf_size == 0) {
+			ppp_terminate(ppp, 1, TERM_NAS_ERROR);
+			return 1;
+		}
 
 		if (ppp->chan_buf_size < 2) {
 			log_ppp_error("ppp_chan_read: short read %i\n", ppp->chan_buf_size);
@@ -325,7 +329,7 @@ cont:
 		if (ppp->unit_buf_size < 0) {
 			if (errno == EAGAIN)
 				return 0;
-			log_ppp_error("ppp_chan_read: %s\n",strerror(errno));
+			log_ppp_error("ppp_unit_read: %s\n",strerror(errno));
 			return 0;
 		}
 
@@ -333,8 +337,13 @@ cont:
 		//printf("ppp_unit_read: ");
 		//print_buf(ppp->unit_buf,ppp->unit_buf_size);
 
+		if (ppp->unit_buf_size == 0) {
+			ppp_terminate(ppp, 1, TERM_NAS_ERROR);
+			return 1;
+		}
+
 		if (ppp->unit_buf_size < 2) {
-			log_ppp_error("ppp_chan_read: short read %i\n", ppp->unit_buf_size);
+			log_ppp_error("ppp_unit_read: short read %i\n", ppp->unit_buf_size);
 			continue;
 		}
 
