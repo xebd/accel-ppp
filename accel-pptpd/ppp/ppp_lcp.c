@@ -161,9 +161,8 @@ static void lcp_layer_up(struct ppp_fsm_t *fsm)
 	if (!lcp->started) {
 		lcp->started = 1;
 		ppp_layer_started(lcp->ppp, &lcp->ld);
-
-		start_echo(lcp);
 	}
+	start_echo(lcp);
 }
 
 static void lcp_layer_down(struct ppp_fsm_t *fsm)
@@ -629,7 +628,7 @@ static void start_echo(struct ppp_lcp_t *lcp)
 
 	lcp->echo_timer.period = lcp->echo_interval * 1000;
 	lcp->echo_timer.expire = send_echo_request;
-	if (lcp->echo_timer.period)
+	if (lcp->echo_timer.period && !lcp->echo_timer.tpd)
 		triton_timer_add(lcp->ppp->ctrl->ctx, &lcp->echo_timer, 0);
 }
 static void stop_echo(struct ppp_lcp_t *lcp)
