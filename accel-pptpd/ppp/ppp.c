@@ -66,9 +66,10 @@ void __export ppp_init(struct ppp_t *ppp)
 
 static void _free_ppp(struct ppp_t *ppp)
 {
-	_free(ppp->chan_buf);
-	_free(ppp->unit_buf);
-
+	if (ppp->chan_buf)
+		free(ppp->chan_buf);
+	if (ppp->unit_buf)
+		_free(ppp->unit_buf);
 	if (ppp->username)
 		_free(ppp->username);
 }
