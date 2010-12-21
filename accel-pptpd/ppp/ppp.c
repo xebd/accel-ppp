@@ -102,29 +102,29 @@ int __export establish_ppp(struct ppp_t *ppp)
 
 	ppp->chan_fd = open("/dev/ppp", O_RDWR);
 	if (ppp->chan_fd < 0) {
-		log_ppp_error("Couldn't reopen /dev/ppp\n");
+		log_ppp_error("open(chan) /dev/ppp: %s\n", strerror(errno));
 		return -1;
 	}
 
 	if (ioctl(ppp->chan_fd, PPPIOCATTCHAN, &ppp->chan_idx) < 0) {
-		log_ppp_error("Couldn't attach to channel %d\n", ppp->chan_idx);
+		log_ppp_error("ioctl(PPPIOCATTCHAN): %s\n", strerror(errno));
 		goto exit_close_chan;
 	}
 
 	ppp->unit_fd = open("/dev/ppp", O_RDWR);
 	if (ppp->unit_fd < 0) {
-		log_ppp_error("Couldn't reopen /dev/ppp\n");
+		log_ppp_error("open(unit) /dev/ppp: %s\n", strerror(errno));
 		goto exit_close_chan;
 	}
 
 	ppp->unit_idx = -1;
 	if (ioctl(ppp->unit_fd, PPPIOCNEWUNIT, &ppp->unit_idx) < 0) {
-		log_ppp_error("Couldn't create new ppp unit\n");
+		log_ppp_error("ioctl(PPPIOCNEWUNIT): %s\n", strerror(errno));
 		goto exit_close_unit;
 	}
 
   if (ioctl(ppp->chan_fd, PPPIOCCONNECT, &ppp->unit_idx) < 0) {
-		log_ppp_error("Couldn't attach to PPP unit %d\n", ppp->unit_idx);
+		log_ppp_error("ioctl(PPPIOCCONNECT): %s\n", strerror(errno));
 		goto exit_close_unit;
 	}
 
