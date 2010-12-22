@@ -613,7 +613,7 @@ static void send_echo_request(struct triton_timer_t *t)
 
 	if (++lcp->echo_sent > lcp->echo_failure) {
 		log_ppp_warn("lcp: no echo reply\n");
-		ppp_terminate(lcp->ppp, TERM_USER_ERROR, 0);
+		ppp_terminate(lcp->ppp, TERM_USER_ERROR, 1);
 	} else {
 		if (conf_ppp_verbose)
 			log_ppp_debug("send [LCP EchoReq id=%x <magic %x>]\n", msg.hdr.id, msg.magic);
