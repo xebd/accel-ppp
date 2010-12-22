@@ -403,6 +403,7 @@ static void generate_cookie(struct pppoe_serv_t *serv, const uint8_t *src, uint8
 		uint8_t raw[24];
 	} u1, u2;
 
+	memset(&key, 0, sizeof(key));
 	DES_random_key(&key);
 	DES_set_key(&key, &ks);
 
@@ -1163,6 +1164,7 @@ static int init_secret(struct pppoe_serv_t *serv)
 
 	close(fd);
 
+	memset(key, 0, sizeof(key));
 	DES_random_key(&key);
 	DES_set_key(&key, &serv->des_ks);
 

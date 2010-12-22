@@ -11,9 +11,11 @@
 
 #ifdef VALGRIND
 #include <valgrind/memcheck.h>
-#endif
-
+#define DELAY 5
+#define MMAP_PAGE_SIZE 1
+#else
 #define MMAP_PAGE_SIZE 16
+#endif
 
 //#define MEMPOOL_DISABLE
 
@@ -35,6 +37,9 @@ struct _mempool_t
 struct _item_t
 {
 	struct list_head entry;
+#ifdef VALGRIND
+	time_t timestamp;
+#endif
 	struct _mempool_t *owner;
 #ifdef MEMDEBUG
 	const char *fname;
@@ -129,7 +134,8 @@ void __export *mempool_alloc_md(mempool_t *pool, const char *fname, int line)
 	if (!list_empty(&p->items)) {
 		it = list_entry(p->items.next, typeof(*it), entry);
 #ifdef VALGRIND
-		VALGRIND_MAKE_MEM_DEFINED(&it->owner, size - sizeof(it->entry));
+		if (it->timestamp + DELAY < time(NULL)) {
+		VALGRIND_MAKE_MEM_DEFINED(&it->owner, size - sizeof(it->entry) - sizeof(it->timestamp));
 		VALGRIND_MAKE_MEM_UNDEFINED(it->ptr, p->size);
 #endif
 		list_del(&it->entry);
@@ -144,20 +150,26 @@ void __export *mempool_alloc_md(mempool_t *pool, const char *fname, int line)
 		it->magic1 = MAGIC1;
 
 		return it->ptr;
+#ifdef VALGRIND
+		}
+#endif
 	}
 	spin_unlock(&p->lock);
 
 	if (p->mmap) {
 		it = mmap(NULL, size * MMAP_PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_32BIT, -1, 0);
+		__sync_add_and_fetch(&triton_stat.mempool_allocated, size * (MMAP_PAGE_SIZE - 1));
+		__sync_add_and_fetch(&triton_stat.mempool_available, size * (MMAP_PAGE_SIZE - 1));
 		spin_lock(&p->lock);
 		for (i = 0; i < MMAP_PAGE_SIZE - 1; i++, it) {
 			it->owner = p;
 			it->magic2 = p->magic;
 			it->magic1 = MAGIC1;
+			it->timestamp = 0;
 			*(uint64_t*)(it->ptr + p->size) = it->magic2;
 			list_add_tail(&it->entry,&p->items);
 #ifdef VALGRIND
-			VALGRIND_MAKE_MEM_NOACCESS(&it->owner, size - sizeof(it->entry));
+			VALGRIND_MAKE_MEM_NOACCESS(&it->owner, size - sizeof(it->entry) - sizeof(it->timestamp));
 #endif
 			it = (struct _item_t *)((char *)it + size);
 		}
@@ -222,7 +234,8 @@ void __export mempool_free(void *ptr)
 	list_add_tail(&it->entry,&it->owner->items);
 #endif
 #ifdef VALGRIND
-	VALGRIND_MAKE_MEM_NOACCESS(&it->owner, size - sizeof(it->entry));
+	time(&it->timestamp);
+	VALGRIND_MAKE_MEM_NOACCESS(&it->owner, size - sizeof(it->entry) - sizeof(it->timestamp));
 #endif
 	spin_unlock(&p->lock);
 
@@ -245,6 +258,10 @@ void __export mempool_clean(mempool_t *pool)
 	spin_lock(&p->lock);
 	while (!list_empty(&p->items)) {
 		it = list_entry(p->items.next, typeof(*it), entry);
+#ifdef VALGRIND
+		if (it->timestamp + DELAY < time(NULL)) {
+		VALGRIND_MAKE_MEM_DEFINED(&it->owner, size - sizeof(it->entry) - sizeof(it->timestamp));
+#endif
 		list_del(&it->entry);
 		if (p->mmap)
 			munmap(it, size);
@@ -252,6 +269,10 @@ void __export mempool_clean(mempool_t *pool)
 			_free(it);
 		__sync_sub_and_fetch(&triton_stat.mempool_allocated, size);
 		__sync_sub_and_fetch(&triton_stat.mempool_available, size);
+#ifdef VALGRIND
+		} else
+			break;
+#endif
 	}
 	spin_unlock(&p->lock);
 }
@@ -283,6 +304,10 @@ void sigclean(int num)
 		spin_lock(&p->lock);
 		while (!list_empty(&p->items)) {
 			it = list_entry(p->items.next, typeof(*it), entry);
+#ifdef VALGRIND
+			if (it->timestamp + DELAY < time(NULL)) {
+			VALGRIND_MAKE_MEM_DEFINED(&it->owner, size - sizeof(it->entry) - sizeof(it->timestamp));
+#endif
 			list_del(&it->entry);
 			if (p->mmap)
 				munmap(it, size);
@@ -290,6 +315,10 @@ void sigclean(int num)
 				_free(it);
 			__sync_sub_and_fetch(&triton_stat.mempool_allocated, size);
 			__sync_sub_and_fetch(&triton_stat.mempool_available, size);
+#ifdef VALGRIND
+			} else
+				break;
+#endif
 		}
 		spin_unlock(&p->lock);
 	}
