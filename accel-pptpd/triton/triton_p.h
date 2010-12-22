@@ -38,13 +38,13 @@ struct _triton_context_t
 
 	ucontext_t uctx;
 
-	int queued:1;
-	int sleeping:1;
-	int wakeup:1;
-	int need_close:1;
-	int need_free:1;
-	int pending:1;
-	int priority:1;
+	int queued;
+	int sleeping;
+	int wakeup;
+	int need_close;
+	int need_free;
+	int pending;
+	int priority;
 
 	struct triton_context_t *ud;
 	void *bf_arg;

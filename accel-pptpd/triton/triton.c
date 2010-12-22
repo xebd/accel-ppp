@@ -8,6 +8,8 @@
 #include "triton_p.h"
 #include "memdebug.h"
 
+#include <valgrind/drd.h>
+
 int thread_count = 2;
 int max_events = 64;
 
@@ -77,8 +79,12 @@ static void* triton_thread(struct _triton_thread_t *thread)
 			//printf("thread %p: exit sigwait\n", thread);
 			__sync_add_and_fetch(&triton_stat.thread_active, 1);
 
-			if (!thread->ctx)
+			spin_lock(&threads_lock);
+			if (!thread->ctx) {
+				spin_unlock(&threads_lock);
 				continue;
+			}
+			spin_unlock(&threads_lock);
 		}
 
 cont:

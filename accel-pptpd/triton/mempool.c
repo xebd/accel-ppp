@@ -9,6 +9,12 @@
 
 #include "memdebug.h"
 
+#ifdef VALGRIND
+#include <valgrind/memcheck.h>
+#endif
+
+#define MMAP_PAGE_SIZE 16
+
 //#define MEMPOOL_DISABLE
 
 #define MAGIC1 0x2233445566778899llu
@@ -28,8 +34,8 @@ struct _mempool_t
 
 struct _item_t
 {
-	struct _mempool_t *owner;
 	struct list_head entry;
+	struct _mempool_t *owner;
 #ifdef MEMDEBUG
 	const char *fname;
 	int line;
@@ -117,10 +123,15 @@ void __export *mempool_alloc_md(mempool_t *pool, const char *fname, int line)
 	struct _mempool_t *p = (struct _mempool_t *)pool;
 	struct _item_t *it;
 	uint32_t size = sizeof(*it) + p->size + 8;
+	int i;
 
 	spin_lock(&p->lock);
 	if (!list_empty(&p->items)) {
 		it = list_entry(p->items.next, typeof(*it), entry);
+#ifdef VALGRIND
+		VALGRIND_MAKE_MEM_DEFINED(&it->owner, size - sizeof(it->entry));
+		VALGRIND_MAKE_MEM_UNDEFINED(it->ptr, p->size);
+#endif
 		list_del(&it->entry);
 		list_add(&it->entry, &p->ditems);
 		spin_unlock(&p->lock);
@@ -136,9 +147,25 @@ void __export *mempool_alloc_md(mempool_t *pool, const char *fname, int line)
 	}
 	spin_unlock(&p->lock);
 
-	if (p->mmap)
-		it = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_32BIT, -1, 0);
-	else
+	if (p->mmap) {
+		it = mmap(NULL, size * MMAP_PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_32BIT, -1, 0);
+		spin_lock(&p->lock);
+		for (i = 0; i < MMAP_PAGE_SIZE - 1; i++, it) {
+			it->owner = p;
+			it->magic2 = p->magic;
+			it->magic1 = MAGIC1;
+			*(uint64_t*)(it->ptr + p->size) = it->magic2;
+			list_add_tail(&it->entry,&p->items);
+#ifdef VALGRIND
+			VALGRIND_MAKE_MEM_NOACCESS(&it->owner, size - sizeof(it->entry));
+#endif
+			it = (struct _item_t *)((char *)it + size);
+		}
+		spin_unlock(&p->lock);
+#ifdef VALGRIND
+		VALGRIND_MAKE_MEM_UNDEFINED(it, size);
+#endif
+	} else
 		it = md_malloc(size, fname, line);
 
 	if (!it) {
@@ -165,6 +192,7 @@ void __export *mempool_alloc_md(mempool_t *pool, const char *fname, int line)
 void __export mempool_free(void *ptr)
 {
 	struct _item_t *it = container_of(ptr, typeof(*it), ptr);
+	struct _mempool_t *p = it->owner;
 	uint32_t size = sizeof(*it) + it->owner->size + 8;
 
 #ifdef MEMDEBUG
@@ -186,14 +214,17 @@ void __export mempool_free(void *ptr)
 	it->magic1 = 0;
 #endif
 
-	spin_lock(&it->owner->lock);
+	spin_lock(&p->lock);
 #ifdef MEMDEBUG
 	list_del(&it->entry);
 #endif
 #ifndef MEMPOOL_DISABLE
 	list_add_tail(&it->entry,&it->owner->items);
 #endif
-	spin_unlock(&it->owner->lock);
+#ifdef VALGRIND
+	VALGRIND_MAKE_MEM_NOACCESS(&it->owner, size - sizeof(it->entry));
+#endif
+	spin_unlock(&p->lock);
 
 #ifdef MEMPOOL_DISABLE
 	if (it->owner->mmap)
