@@ -51,7 +51,8 @@
 #define TERM_ADMIN_RESET 3
 #define TERM_USER_ERROR 4
 #define TERM_NAS_ERROR 5
-#define TERM_AUTH_ERROR 6
+#define TERM_NAS_REQUEST 6
+#define TERM_AUTH_ERROR 7
 
 
 struct ppp_t;

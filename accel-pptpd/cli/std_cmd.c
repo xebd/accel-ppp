@@ -238,12 +238,12 @@ static void show_ses_help(char * const *fields, int fields_cnt, void *client)
 
 static void ppp_terminate_soft(struct ppp_t *ppp)
 {
-	ppp_terminate(ppp, TERM_ADMIN_RESET, 0);
+	ppp_terminate(ppp, TERM_NAS_REQUEST, 0);
 }
 
 static void ppp_terminate_hard(struct ppp_t *ppp)
 {
-	ppp_terminate(ppp, TERM_ADMIN_RESET, 1);
+	ppp_terminate(ppp, TERM_NAS_REQUEST, 1);
 }
 
 static void terminate_help(char * const *fields, int fields_cnt, void *client);
