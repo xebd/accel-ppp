@@ -220,14 +220,13 @@ static void l2tp_conn_close(struct triton_context_t *ctx)
 		l2tp_disconnect(conn);
 }
 
-static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack, struct l2tp_attr_t *assigned_tid, struct l2tp_attr_t *framing_cap)
+static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack, struct in_pktinfo *pkt_info, struct l2tp_attr_t *assigned_tid, struct l2tp_attr_t *framing_cap)
 {
 	struct l2tp_conn_t *conn;
 	struct sockaddr_in addr;
-	socklen_t addr_len = sizeof(addr);
 	uint16_t tid;
 	//char *opt;
-	int opt = 1;
+	int flag = 1;
 
 	conn = mempool_alloc(l2tp_conn_pool);
 	if (!conn) {
@@ -247,37 +246,10 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
-	addr.sin_port = 0;
-
-	/*opt = conf_get_opt("l2tp", "bind");
-	if (opt)
-		addr.sin_addr.s_addr = inet_addr(opt);
-	else
-		addr.sin_addr.s_addr = INADDR_ANY;
-	
-	if (bind(conn->hnd.fd, (struct sockaddr *)&addr, sizeof(addr))) {
-		log_error("l2tp: bind: %s\n", strerror(errno));
-		goto out_err;
-	}*/
-
-	if (connect(conn->hnd.fd, (struct sockaddr *)&pack->addr, sizeof(addr))) {
-		log_error("l2tp: connect: %s\n", strerror(errno));
-		goto out_err;
-	}
-
-	getsockname(conn->hnd.fd, &addr, &addr_len);
+	addr.sin_addr = pkt_info->ipi_addr;
 	addr.sin_port = htons(L2TP_PORT);
 
-	close(conn->hnd.fd);
-	
-	conn->hnd.fd = socket(PF_INET, SOCK_DGRAM, 0);
-	if (conn->hnd.fd < 0) {
-		log_error("l2tp: socket: %s\n", strerror(errno));
-		mempool_free(conn);
-		return -1;
-	}
-
-  setsockopt(conn->hnd.fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));  
+  setsockopt(conn->hnd.fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(flag));
 	if (bind(conn->hnd.fd, &addr, sizeof(addr))) {
 		log_error("l2tp: bind: %s\n", strerror(errno));
 		goto out_err;
@@ -629,7 +601,7 @@ out_err:
 }
 
 
-static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack)
+static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack, struct in_pktinfo *pkt_info)
 {
 	struct l2tp_attr_t *attr;
 	struct l2tp_attr_t *protocol_version = NULL;
@@ -686,7 +658,7 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack)
 			return -1;
 		}
 		
-		if (l2tp_tunnel_alloc(serv, pack, assigned_tid, framing_cap))
+		if (l2tp_tunnel_alloc(serv, pack, pkt_info, assigned_tid, framing_cap))
 			return -1;
 
 	} else if (assigned_cid) {
@@ -860,7 +832,7 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 	struct l2tp_attr_t *msg_type;
 
 	while (1) {
-		if (l2tp_recv(h->fd, &pack))
+		if (l2tp_recv(h->fd, &pack, NULL))
 			return 0;
 
 		if (!pack)
@@ -992,9 +964,10 @@ static int l2tp_udp_read(struct triton_md_handler_t *h)
 	struct l2tp_serv_t *serv = container_of(h, typeof(*serv), hnd);
 	struct l2tp_packet_t *pack;
 	struct l2tp_attr_t *msg_type;
+	struct in_pktinfo pkt_info;
 
 	while (1) {
-		if (l2tp_recv(h->fd, &pack))
+		if (l2tp_recv(h->fd, &pack, &pkt_info))
 			break;
 
 		if (!pack)
@@ -1022,7 +995,7 @@ static int l2tp_udp_read(struct triton_md_handler_t *h)
 		}
 
 		if (msg_type->val.uint16 == Message_Type_Start_Ctrl_Conn_Request)
-			l2tp_recv_SCCRQ(serv, pack);
+			l2tp_recv_SCCRQ(serv, pack, &pkt_info);
 		else {
 			if (conf_verbose) {
 				log_warn("recv (unexpected) ");
@@ -1061,6 +1034,7 @@ static void start_udp_server(void)
 {
 	struct sockaddr_in addr;
 	char *opt;
+	int flag = 1;
 
 	udp_serv.hnd.fd = socket(PF_INET, SOCK_DGRAM, 0);
 	if (udp_serv.hnd.fd < 0) {
@@ -1082,13 +1056,19 @@ static void start_udp_server(void)
 	setsockopt(udp_serv.hnd.fd, SOL_SOCKET, SO_NO_CHECK, &udp_serv.hnd.fd, sizeof(udp_serv.hnd.fd));
 
 	if (bind (udp_serv.hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
-		log_emerg("l2tp: failed to bind socket: %s\n", strerror(errno));
+		log_emerg("l2tp: bind: %s\n", strerror(errno));
 		close(udp_serv.hnd.fd);
 		return;
 	}
 
 	if (fcntl(udp_serv.hnd.fd, F_SETFL, O_NONBLOCK)) {
-		log_emerg("pptp: failed to set nonblocking mode: %s\n", strerror(errno));
+		log_emerg("l2tp: failed to set nonblocking mode: %s\n", strerror(errno));
+		close(udp_serv.hnd.fd);
+		return;
+	}
+
+	if (setsockopt(udp_serv.hnd.fd, IPPROTO_IP, IP_PKTINFO, &flag, sizeof(flag))) {
+		log_emerg("l2tp: setsockopt(IP_PKTINFO): %s\n", strerror(errno));
 		close(udp_serv.hnd.fd);
 		return;
 	}

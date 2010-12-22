@@ -95,25 +95,53 @@ void l2tp_packet_free(struct l2tp_packet_t *pack)
 	mempool_free(pack);
 }
 
-int l2tp_recv(int fd, struct l2tp_packet_t **p)
+int l2tp_recv(int fd, struct l2tp_packet_t **p, struct in_pktinfo *pkt_info)
 {
 	int n, length;
-	uint8_t *buf = mempool_alloc(buf_pool);
-	struct l2tp_hdr_t *hdr = (struct l2tp_hdr_t *)buf;
+	uint8_t *buf;
+	struct l2tp_hdr_t *hdr;
 	struct l2tp_avp_t *avp;
 	struct l2tp_dict_attr_t *da;
 	struct l2tp_attr_t *attr, *RV = NULL;
-	uint8_t *ptr = (uint8_t *)(hdr + 1);
+	uint8_t *ptr;
 	struct l2tp_packet_t *pack;
 	struct sockaddr_in addr;
 	socklen_t len = sizeof(addr);
+	struct msghdr msg;
+	char msg_control[128];
+	struct cmsghdr *cmsg;
 
   *p = NULL;
 
+	if (pkt_info) {
+		memset(&msg, 0, sizeof(msg));
+		msg.msg_control = msg_control;
+		msg.msg_controllen = 128;
+		
+		n = recvmsg(fd, &msg, MSG_PEEK);
+		
+		if (n < 0) {
+			if (errno == EAGAIN)
+				return -1;
+			log_error("l2tp: recvmsg: %s\n", strerror(errno));
+			return 0;
+		}
+		
+		for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+			if (cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_PKTINFO) {
+				memcpy(pkt_info, CMSG_DATA(cmsg), sizeof(*pkt_info));
+				break;
+			}
+		}
+	}
+
+	buf = mempool_alloc(buf_pool);
 	if (!buf) {
 		log_emerg("l2tp: out of memory\n");
 		return 0;
 	}
+	hdr = (struct l2tp_hdr_t *)buf;
+	ptr = (uint8_t *)(hdr + 1);
 
 	n = recvfrom(fd, buf, L2TP_MAX_PACKET_SIZE, 0, &addr, &len);
 
