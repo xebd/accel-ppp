@@ -277,6 +277,7 @@ static int pptp_out_call_rqst(struct pptp_conn_t *conn)
 		return 0;
 	}
 
+	memset(&src_addr, 0, sizeof(src_addr));
 	src_addr.sa_family = AF_PPPOX;
 	src_addr.sa_protocol = PX_PROTO_PPTP;
 	src_addr.sa_addr.pptp.call_id = 0;
@@ -284,6 +285,7 @@ static int pptp_out_call_rqst(struct pptp_conn_t *conn)
 	getsockname(conn->hnd.fd, (struct sockaddr*)&addr, &addrlen);
 	src_addr.sa_addr.pptp.sin_addr = addr.sin_addr;
 
+	memset(&dst_addr, 0, sizeof(dst_addr));
 	dst_addr.sa_family = AF_PPPOX;
 	dst_addr.sa_protocol = PX_PROTO_PPTP;
 	dst_addr.sa_addr.pptp.call_id = htons(msg->call_id);

@@ -8,8 +8,6 @@
 #include "triton_p.h"
 #include "memdebug.h"
 
-#include <valgrind/drd.h>
-
 int thread_count = 2;
 int max_events = 64;
 
