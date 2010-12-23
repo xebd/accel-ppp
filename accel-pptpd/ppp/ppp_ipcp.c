@@ -156,7 +156,7 @@ static void ipcp_layer_down(struct ppp_fsm_t *fsm)
 		ipcp->started = 0;
 	  ppp_layer_finished(ipcp->ppp, &ipcp->ld);
 	} else
-		ppp_terminate(ipcp->ppp, TERM_NAS_ERROR, 1);
+		ppp_terminate(ipcp->ppp, TERM_NAS_ERROR, 0);
 }
 
 static void print_ropt(struct recv_opt_t *ropt)
