@@ -167,6 +167,7 @@ void ppp_fsm_timeout0(struct ppp_fsm_t *layer)
 		case FSM_Req_Sent:
 		case FSM_Ack_Sent:
 			--layer->restart_counter;
+			--layer->id;
 			if (layer->send_conf_req) layer->send_conf_req(layer);
 			break;
 		default:
