@@ -12,12 +12,10 @@
 #ifdef VALGRIND
 #include <valgrind/memcheck.h>
 #define DELAY 5
-#define MMAP_PAGE_SIZE 1
-#else
-#define MMAP_PAGE_SIZE 16
 #endif
 
 //#define MEMPOOL_DISABLE
+#define MMAP_PAGE_SIZE 16
 
 #define MAGIC1 0x2233445566778899llu
 
