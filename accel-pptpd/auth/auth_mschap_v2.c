@@ -344,7 +344,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 {
 	struct chap_response_t *msg = (struct chap_response_t*)hdr;
 	char *name;
-	char authenticator[40];
+	char authenticator[41];
 	int r;
 
 	if (ad->timeout.tpd)
