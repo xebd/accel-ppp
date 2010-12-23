@@ -165,10 +165,10 @@ void __export *mempool_alloc_md(mempool_t *pool, const char *fname, int line)
 			it->owner = p;
 			it->magic2 = p->magic;
 			it->magic1 = MAGIC1;
-			it->timestamp = 0;
 			*(uint64_t*)(it->ptr + p->size) = it->magic2;
 			list_add_tail(&it->entry,&p->items);
 #ifdef VALGRIND
+			it->timestamp = 0;
 			VALGRIND_MAKE_MEM_NOACCESS(&it->owner, size - sizeof(it->entry) - sizeof(it->timestamp));
 #endif
 			it = (struct _item_t *)((char *)it + size);
