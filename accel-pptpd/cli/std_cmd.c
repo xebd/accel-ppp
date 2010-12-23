@@ -306,6 +306,16 @@ static void shutdown_help(char * const *fields, int fields_cnt, void *client)
 	cli_send(client, "\t\tcancel - cancel 'shutdown soft' and return to normal operation\r\n");
 }
 
+static void ppp_terminate_soft2(struct ppp_t *ppp)
+{
+	ppp_terminate(ppp, TERM_NAS_REBOOT, 0);
+}
+
+static void ppp_terminate_hard2(struct ppp_t *ppp)
+{
+	ppp_terminate(ppp, TERM_NAS_REBOOT, 1);
+}
+
 static int shutdown_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 {
 	int hard = 0;
@@ -329,9 +339,9 @@ static int shutdown_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 	pthread_rwlock_rdlock(&ppp_lock);
 	list_for_each_entry(ppp, &ppp_list, entry) {
 		if (hard)
-			triton_context_call(ppp->ctrl->ctx, (triton_event_func)ppp_terminate_hard, ppp);
+			triton_context_call(ppp->ctrl->ctx, (triton_event_func)ppp_terminate_hard2, ppp);
 		else
-			triton_context_call(ppp->ctrl->ctx, (triton_event_func)ppp_terminate_soft, ppp);
+			triton_context_call(ppp->ctrl->ctx, (triton_event_func)ppp_terminate_soft2, ppp);
 	}
 	pthread_rwlock_unlock(&ppp_lock);
 

@@ -52,7 +52,8 @@
 #define TERM_USER_ERROR 4
 #define TERM_NAS_ERROR 5
 #define TERM_NAS_REQUEST 6
-#define TERM_AUTH_ERROR 7
+#define TERM_NAS_REBOOT 7
+#define TERM_AUTH_ERROR 8
 
 
 struct ppp_t;
