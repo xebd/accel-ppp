@@ -148,6 +148,7 @@ void lcp_layer_free(struct ppp_layer_data_t *ld)
 	ppp_unregister_handler(lcp->ppp, &lcp->hnd);
 	lcp_options_free(lcp);
 	ppp_fsm_free(&lcp->fsm);
+	triton_cancel_call(lcp->ppp->ctrl->ctx, (triton_event_func)_lcp_layer_finished);
 	
 	_free(lcp);
 }
