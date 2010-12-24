@@ -182,11 +182,11 @@ static int show_ses_exec(const char *cmd, char * const *fields, int fields_cnt, 
 		min = uptime / 60;
 		sec = uptime % 60;
 		if (day)
-			sprintf(time_str, "%i.%02i:%02i:%02i", day, hour, min, sec);
+			snprintf(time_str, 12, "%i.%02i:%02i:%02i", day, hour, min, sec);
 		else
-			sprintf(time_str, "%02i:%02i:%02i", hour, min, sec);
+			snprintf(time_str, 12, "%02i:%02i:%02i", hour, min, sec);
 
-		sprintf(row->buf, "%9s  %15s  %16s %6s %6s  %10s\r\n", ppp->ifname, ppp->username ? ppp->username : "", ip_str, ppp->ctrl->name, state_str, time_str);
+		snprintf(row->buf, 128, "%9s  %15s  %16s %6s %6s  %10s\r\n", ppp->ifname, ppp->username ? ppp->username : "", ip_str, ppp->ctrl->name, state_str, time_str);
 		if (order || match)
 			list_add_tail(&row->entry, &temp_rows);
 		else
