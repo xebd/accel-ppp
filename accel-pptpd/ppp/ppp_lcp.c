@@ -698,7 +698,7 @@ static void lcp_recv(struct ppp_handler_t*h)
 	int r;
 	char *term_msg;
 	
-	if (lcp->fsm.fsm_state == FSM_Initial || lcp->fsm.fsm_state == FSM_Closed) {
+	if (lcp->fsm.fsm_state == FSM_Initial || lcp->fsm.fsm_state == FSM_Closed || lcp->ppp->terminating) {
 		/*if (conf_ppp_verbose)
 			log_ppp_warn("LCP: discaring packet\n");
 		lcp_send_proto_rej(ccp->ppp, htons(PPP_CCP));*/
