@@ -85,15 +85,16 @@ TARGET_LINK_LIBRARIES(accel-pptpd triton rt pthread crypto pcre)
 set_property(TARGET accel-pptpd PROPERTY CMAKE_SKIP_BUILD_RPATH FALSE)
 set_property(TARGET accel-pptpd PROPERTY CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
 set_property(TARGET accel-pptpd PROPERTY INSTALL_RPATH_USE_LINK_PATH FALSE)
-set_property(TARGET accel-pptpd PROPERTY INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/usr/lib/accel-pptp)
+set_property(TARGET accel-pptpd PROPERTY INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib/accel-pptp)
 
 INSTALL(TARGETS accel-pptpd
-	RUNTIME DESTINATION usr/sbin
+	RUNTIME DESTINATION sbin
 )
 
 INSTALL(FILES accel-pptp.conf DESTINATION /etc RENAME accel-pptp.conf.dist)
-INSTALL(FILES accel-pptp.conf.5 DESTINATION usr/share/man/man5)
+INSTALL(FILES accel-pptp.conf.5 DESTINATION share/man/man5)
 
 INSTALL(CODE "EXECUTE_PROCESS(COMMAND mkdir -p /var/log/accel-pptp)")
 INSTALL(CODE "EXECUTE_PROCESS(COMMAND mkdir -p /var/run/accel-pptp)")
 INSTALL(CODE "EXECUTE_PROCESS(COMMAND 'echo 0 > /var/run/accel-pptp/seq')")
+

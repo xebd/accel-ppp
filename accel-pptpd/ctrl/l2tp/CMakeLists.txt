@@ -10,8 +10,8 @@ ADD_LIBRARY(l2tp SHARED
 )
 #TARGET_LINK_LIBRARIES(l2tp nl nl-genl)
 
-INSTALL(TARGETS l2tp LIBRARY DESTINATION usr/lib/accel-pptp)
+INSTALL(TARGETS l2tp LIBRARY DESTINATION lib/accel-pptp)
 
 FILE(GLOB dict "${CMAKE_CURRENT_SOURCE_DIR}/dict/*")
-INSTALL(FILES ${dict} DESTINATION usr/share/accel-pptp/l2tp)
+INSTALL(FILES ${dict} DESTINATION share/accel-pptp/l2tp)
 
