@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
+#include <arpa/inet.h>
 
 #include "triton.h"
 #include "events.h"
@@ -259,53 +260,141 @@ static void ppp_terminate_hard(struct ppp_t *ppp)
 	ppp_terminate(ppp, TERM_NAS_REQUEST, 1);
 }
 
-static void terminate_help(char * const *fields, int fields_cnt, void *client);
+static int terminate_exec1(char * const *f, int f_cnt, void *cli)
+{
+	struct ppp_t *ppp;
+	int hard = 0;
+	pcre *re;
+	const char *pcre_err;
+	int pcre_offset;
+	
+	if (f_cnt == 5) {
+		if (!strcmp(f[4], "hard"))
+			hard = 1;
+		else if (strcmp(f[4], "soft"))
+			return CLI_CMD_SYNTAX;
+	} else if (f_cnt != 4 || f_cnt > 5)
+		return CLI_CMD_SYNTAX;
+			
+	re = pcre_compile2(f[3], 0, NULL, &pcre_err, &pcre_offset, NULL);
+	if (!re) {
+		cli_sendv(cli, "match: %s at %i\r\n", pcre_err, pcre_offset);
+		return CLI_CMD_OK;
+	}
+
+	pthread_rwlock_rdlock(&ppp_lock);
+	list_for_each_entry(ppp, &ppp_list, entry) {
+		if (pcre_exec(re, NULL, ppp->username, strlen(ppp->username), 0, 0, NULL, 0) < 0)
+			continue;
+		if (hard)
+			triton_context_call(ppp->ctrl->ctx, (triton_event_func)ppp_terminate_hard, ppp);
+		else
+			triton_context_call(ppp->ctrl->ctx, (triton_event_func)ppp_terminate_soft, ppp);
+	}
+	pthread_rwlock_unlock(&ppp_lock);
+	
+	pcre_free(re);
+	
+	return CLI_CMD_OK;
+}
+
+static int terminate_exec2(int key, char * const *f, int f_cnt, void *cli)
+{
+	struct ppp_t *ppp;
+	int hard = 0;
+	in_addr_t ipaddr;
+	
+	if (f_cnt == 4) {
+		if (!strcmp(f[3], "hard"))
+			hard = 1;
+		else if (strcmp(f[3], "soft"))
+			return CLI_CMD_SYNTAX;
+	} else if (f_cnt != 3 || f_cnt > 4)
+		return CLI_CMD_SYNTAX;
+	
+	if (key == 1)
+		ipaddr = inet_addr(f[2]);
+			
+	pthread_rwlock_rdlock(&ppp_lock);
+	list_for_each_entry(ppp, &ppp_list, entry) {
+		switch (key) {
+			case 0:
+				if (strcmp(ppp->username, f[2]))
+					continue;
+				break;
+			case 1:
+				if (ppp->peer_ipaddr != ipaddr)
+					continue;
+				break;
+			case 2:
+				if (strcmp(ppp->ctrl->calling_station_id, f[2]))
+					continue;
+				break;
+			case 3:
+				if (strcmp(ppp->sessionid, f[2]))
+					continue;
+				break;
+		}
+		if (hard)
+			triton_context_call(ppp->ctrl->ctx, (triton_event_func)ppp_terminate_hard, ppp);
+		else
+			triton_context_call(ppp->ctrl->ctx, (triton_event_func)ppp_terminate_soft, ppp);
+		break;
+	}
+	pthread_rwlock_unlock(&ppp_lock);
+
+	return CLI_CMD_OK;
+}
+
 static int terminate_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
 {
 	struct ppp_t *ppp;
 	int hard = 0;
 
 	if (fields_cnt == 1)
-		goto help;
+		return CLI_CMD_SYNTAX;
+	
+	if (!strcmp(fields[1], "match") && fields_cnt > 3 && !strcmp(fields[2], "username"))
+		return terminate_exec1(fields, fields_cnt, client);
+	else if (!strcmp(fields[1], "username"))
+		return terminate_exec2(0, fields, fields_cnt, client);
+	else if (!strcmp(fields[1], "ip"))
+		return terminate_exec2(1, fields, fields_cnt, client);
+	else if (!strcmp(fields[1], "csid"))
+		return terminate_exec2(2, fields, fields_cnt, client);
+	else if (!strcmp(fields[1], "sid"))
+		return terminate_exec2(3, fields, fields_cnt, client);
+	else if (strcmp(fields[1], "all"))
+		return CLI_CMD_SYNTAX;
 	
 	if (fields_cnt == 3) {
 		if (!strcmp(fields[2], "hard"))
 			hard = 1;
 		else if (strcmp(fields[2], "soft"))
-			goto help;
-	}
+			return CLI_CMD_SYNTAX;
+	} else if (fields_cnt != 2 && fields_cnt > 3)
+		return CLI_CMD_SYNTAX;
 	
 	pthread_rwlock_rdlock(&ppp_lock);
-	if (strcmp(fields[1], "all")) {
-		list_for_each_entry(ppp, &ppp_list, entry) {
-			if (strcmp(ppp->ifname, fields[1]))
-				continue;
-			if (hard)
-				triton_context_call(ppp->ctrl->ctx, (triton_event_func)ppp_terminate_hard, ppp);
-			else
-				triton_context_call(ppp->ctrl->ctx, (triton_event_func)ppp_terminate_soft, ppp);
-			break;
-		}
-	} else {
-		list_for_each_entry(ppp, &ppp_list, entry) {
-			if (hard)
-				triton_context_call(ppp->ctrl->ctx, (triton_event_func)ppp_terminate_hard, ppp);
-			else
-				triton_context_call(ppp->ctrl->ctx, (triton_event_func)ppp_terminate_soft, ppp);
-		}
+	list_for_each_entry(ppp, &ppp_list, entry) {
+		if (hard)
+			triton_context_call(ppp->ctrl->ctx, (triton_event_func)ppp_terminate_hard, ppp);
+		else
+			triton_context_call(ppp->ctrl->ctx, (triton_event_func)ppp_terminate_soft, ppp);
 	}
 	pthread_rwlock_unlock(&ppp_lock);
 
-	return CLI_CMD_OK;
-help:
-	terminate_help(fields, fields_cnt, client);
 	return CLI_CMD_OK;
 }
 
 static void terminate_help(char * const *fields, int fields_cnt, void *client)
 {
-	cli_send(client, "terminate <interface> [soft|hard]- terminate session\r\n");
-	cli_send(client, "terminate all [soft|hard]- terminate all session\r\n");
+	cli_send(client, "terminate <interface> [soft|hard]- terminate session by interface name\r\n");
+	cli_send(client, "\t[match] username <username> [soft|hard]- terminate session by username\r\n");
+	cli_send(client, "\tip <addresss> [soft|hard]- terminate session by ip address\r\n");
+	cli_send(client, "\tcsid <id> [soft|hard]- terminate session by calling station id\r\n");
+	cli_send(client, "\tsid <id> [soft|hard]- terminate session by session id\r\n");
+	cli_send(client, "\tall [soft|hard]- terminate all sessions\r\n");
 }
 
 //=============================
