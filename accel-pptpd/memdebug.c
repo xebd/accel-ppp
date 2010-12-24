@@ -80,7 +80,7 @@ void __export md_free(void *ptr, const char *fname, int line)
 	}
 
 	if (mem->magic2 != *(uint64_t*)(mem->data + mem->size)) {
-		printf("memory corruption:\nmalloc(%lu) at %s:%i\nfree at %s:%i\n", mem->size, mem->fname, mem->line, fname, line);
+		printf("memory corruption:\nmalloc(%lu) at %s:%i\nfree at %s:%i\n", (long unsigned)mem->size, mem->fname, mem->line, fname, line);
 		abort();
 	}
 	
@@ -106,7 +106,7 @@ void __export *md_realloc(void *ptr, size_t size, const char *fname, int line)
 	}
 
 	if (mem->magic2 != *(uint64_t*)(mem->data + mem->size)) {
-		printf("memory corruption:\nmalloc(%lu) at %s:%i\nfree at %s:%i\n", mem->size, mem->fname, mem->line, fname, line);
+		printf("memory corruption:\nmalloc(%lu) at %s:%i\nfree at %s:%i\n", (long unsigned)mem->size, mem->fname, mem->line, fname, line);
 		abort();
 	}
 
@@ -140,11 +140,11 @@ static void siginfo(int num)
 
 	spin_lock(&mem_list_lock);
 	list_for_each_entry(mem, &mem_list, entry) {
-		printf("%s:%i %lu\n", mem->fname, mem->line, mem->size);
+		printf("%s:%i %lu\n", mem->fname, mem->line, (long unsigned)mem->size);
 		total += mem->size;
 	}
 	spin_unlock(&mem_list_lock);
-	printf("total = %lu\n", total);
+	printf("total = %lu\n", (long unsigned)total);
 }
 
 static void siginfo2(int num)
@@ -154,7 +154,7 @@ static void siginfo2(int num)
 	spin_lock(&mem_list_lock);
 	list_for_each_entry(mem, &mem_list, entry) {
 		if (mem->magic1 != MAGIC1 || mem->magic2 != *(uint64_t*)(mem->data + mem->size))
-			printf("%s:%i %lu\n", mem->fname, mem->line, mem->size);
+			printf("%s:%i %lu\n", mem->fname, mem->line, (long unsigned)mem->size);
 	}
 	spin_unlock(&mem_list_lock);
 }

@@ -124,7 +124,7 @@ void __export triton_md_register_handler(struct triton_context_t *ctx, struct tr
 	if (ctx)
 		h->ctx = (struct _triton_context_t *)ctx->tpd;
 	else
-		h->ctx = (struct _triton_context_t *)default_ctx->tpd;
+		h->ctx = (struct _triton_context_t *)default_ctx.tpd;
 	ud->tpd = h;
 	spin_lock(&h->ctx->lock);
 	list_add_tail(&h->entry, &h->ctx->handlers);

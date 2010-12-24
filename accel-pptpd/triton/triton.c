@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/resource.h>
 
 #include "triton_p.h"
 #include "memdebug.h"
@@ -27,7 +28,18 @@ static mempool_t *ctx_pool;
 static mempool_t *call_pool;
 static mempool_t *ctx_stack_pool;
 
-__export struct triton_stat_t triton_stat;
+struct triton_stat_t __export triton_stat;
+
+static struct timeval ru_utime;
+static struct timeval ru_stime;
+static struct timespec ru_timestamp;
+static int ru_refs;
+static void ru_update(struct triton_timer_t *);
+static struct triton_timer_t ru_timer = {
+	.period = 1000,
+	.expire = ru_update,
+};
+struct triton_context_t default_ctx;
 
 #define log_debug2(fmt, ...)
 
@@ -325,11 +337,12 @@ void __export triton_context_unregister(struct triton_context_t *ud)
 	ctx->need_free = 1;
 	spin_lock(&ctx_list_lock);
 	list_del(&ctx->entry);
-	if (need_terminate && list_empty(&ctx_list))
-		terminate = 1;
+	if (__sync_sub_and_fetch(&triton_stat.context_count, 1) == 1) {
+		if (need_terminate)
+			terminate = 1;
+	}
 	spin_unlock(&ctx_list_lock);
 	
-	__sync_sub_and_fetch(&triton_stat.context_count, 1);
 
 	if (terminate) {
 		list_for_each_entry(t, &threads, entry)
@@ -438,6 +451,45 @@ void __export triton_cancel_call(struct triton_context_t *ud, void (*func)(void 
 	}
 }
 
+void __export triton_collect_cpu_usage(void)
+{
+	struct rusage rusage;
+
+	if (__sync_fetch_and_add(&ru_refs, 1) == 0) {
+		triton_timer_add(NULL, &ru_timer, 0);
+		getrusage(RUSAGE_SELF, &rusage);
+		clock_gettime(CLOCK_MONOTONIC, &ru_timestamp);
+		ru_utime = rusage.ru_utime;
+		ru_stime = rusage.ru_stime;
+		triton_stat.ru_utime = 0;
+		triton_stat.ru_stime = 0;
+	}
+}
+
+void __export triton_stop_collect_cpu_usage(void)
+{
+	if (__sync_sub_and_fetch(&ru_refs, 1) == 0)
+		triton_timer_del(&ru_timer);
+}
+
+static void ru_update(struct triton_timer_t *t)
+{
+	struct timespec ts;
+	struct rusage rusage;
+	unsigned int dt;
+
+	getrusage(RUSAGE_SELF, &rusage);
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+
+	dt = (ts.tv_sec - ru_timestamp.tv_sec) * 1000000 + (ts.tv_nsec - ru_timestamp.tv_nsec) / 1000000;
+	triton_stat.ru_utime = (double)((rusage.ru_utime.tv_sec - ru_utime.tv_sec) * 1000000 + (rusage.ru_utime.tv_usec - ru_utime.tv_usec)) / dt * 100;
+	triton_stat.ru_stime = (double)((rusage.ru_stime.tv_sec - ru_stime.tv_sec) * 1000000 + (rusage.ru_stime.tv_usec - ru_stime.tv_usec)) / dt * 100;
+
+	ru_timestamp = ts;
+	ru_utime = rusage.ru_utime;
+	ru_stime = rusage.ru_stime;
+}
+
 int __export triton_init(const char *conf_file)
 {
 	ctx_pool = mempool_create2(sizeof(struct _triton_context_t));
@@ -492,6 +544,9 @@ void __export triton_run()
 
 	md_run();
 	timer_run();
+
+	triton_context_register(&default_ctx, NULL);
+	triton_context_wakeup(&default_ctx);
 }
 
 void __export triton_terminate()

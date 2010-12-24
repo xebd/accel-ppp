@@ -64,6 +64,8 @@ struct triton_stat_t
 	unsigned int timer_count;
 	unsigned int timer_pending;
 	time_t start_time;
+	int ru_utime;
+	int ru_stime;
 };
 
 extern struct triton_stat_t triton_stat;
@@ -97,6 +99,9 @@ void triton_event_fire(int ev_id, void *arg);
 
 struct conf_sect_t *conf_get_section(const char *name);
 char *conf_get_opt(const char *sect, const char *name);
+
+void triton_collect_cpu_usage(void);
+void triton_stop_collect_cpu_usage(void);
 
 #define TRITON_OK          0
 #define TRITON_ERR_NOCOMP -1

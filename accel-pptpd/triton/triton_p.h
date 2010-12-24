@@ -95,7 +95,7 @@ void md_run();
 void md_terminate();
 void timer_run();
 void timer_terminate();
-struct triton_context_t *default_ctx;
+extern struct triton_context_t default_ctx;
 int triton_queue_ctx(struct _triton_context_t*);
 void triton_thread_wakeup(struct _triton_thread_t*);
 int conf_load(const char *fname);

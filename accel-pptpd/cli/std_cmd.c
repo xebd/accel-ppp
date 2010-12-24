@@ -16,6 +16,17 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 {
 	time_t dt;
 	int day,hour;
+	char statm_fname[128];
+	FILE *f;
+	unsigned long vmsize = 0, vmrss = 0;
+	unsigned long page_size_kb = sysconf(_SC_PAGE_SIZE) / 1024;
+
+	sprintf(statm_fname, "/proc/%i/statm", getpid());
+	f = fopen(statm_fname, "r");
+	if (f) {
+		fscanf(f, "%lu %lu", &vmsize, &vmrss);
+		fclose(f);
+	}
 
 	time(&dt);
 	dt -= triton_stat.start_time;
@@ -25,6 +36,8 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	dt %= 60 * 60;
 
 	cli_sendv(client, "uptime: %i.%02i:%02i:%02i\r\n", day, hour, dt / 60, dt % 60);
+	cli_sendv(client, "cpu: %i%% (%i/%i)\r\n", triton_stat.ru_utime + triton_stat.ru_stime, triton_stat.ru_utime, triton_stat.ru_stime);
+	cli_sendv(client, "mem: %lu/%lu kB\r\n", vmrss / page_size_kb, vmsize / page_size_kb);
 	cli_send(client, "core:\r\n");
 	cli_sendv(client, "  mempool_allocated: %u\r\n", triton_stat.mempool_allocated);
 	cli_sendv(client, "  mempool_available: %u\r\n", triton_stat.mempool_available);

@@ -69,6 +69,8 @@ static void disconnect(struct telnet_client_t *cln)
 
 	log_debug("cli: disconnect\n");
 
+	triton_stop_collect_cpu_usage();
+
 	list_del(&cln->entry);
 
 	triton_md_unregister_handler(&cln->hnd);
@@ -567,6 +569,7 @@ static int serv_read(struct triton_md_handler_t *h)
 			conn->auth = 1;
 			send_prompt(conn);
 		}
+		triton_collect_cpu_usage();
 	}
 	return 0;
 }
