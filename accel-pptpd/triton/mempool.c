@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
+#include <unistd.h>
 #include <sys/mman.h>
 #include <linux/mman.h>
 
@@ -15,7 +16,6 @@
 #endif
 
 //#define MEMPOOL_DISABLE
-#define MMAP_PAGE_SIZE 16
 
 #define MAGIC1 0x2233445566778899llu
 
@@ -126,7 +126,7 @@ void __export *mempool_alloc_md(mempool_t *pool, const char *fname, int line)
 	struct _mempool_t *p = (struct _mempool_t *)pool;
 	struct _item_t *it;
 	uint32_t size = sizeof(*it) + p->size + 8;
-	int i;
+	int i, n;
 
 	spin_lock(&p->lock);
 	if (!list_empty(&p->items)) {
@@ -155,11 +155,12 @@ void __export *mempool_alloc_md(mempool_t *pool, const char *fname, int line)
 	spin_unlock(&p->lock);
 
 	if (p->mmap) {
-		it = mmap(NULL, size * MMAP_PAGE_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_32BIT, -1, 0);
-		__sync_add_and_fetch(&triton_stat.mempool_allocated, size * (MMAP_PAGE_SIZE - 1));
-		__sync_add_and_fetch(&triton_stat.mempool_available, size * (MMAP_PAGE_SIZE - 1));
+		n = (sysconf(_SC_PAGE_SIZE) - 1) / size + 1;
+		it = mmap(NULL, n * size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_32BIT, -1, 0);
+		__sync_add_and_fetch(&triton_stat.mempool_allocated, size * (n - 1));
+		__sync_add_and_fetch(&triton_stat.mempool_available, size * (n - 1));
 		spin_lock(&p->lock);
-		for (i = 0; i < MMAP_PAGE_SIZE - 1; i++, it) {
+		for (i = 0; i < n - 1; i++, it) {
 			it->owner = p;
 			it->magic2 = p->magic;
 			it->magic1 = MAGIC1;
@@ -298,6 +299,8 @@ void sigclean(int num)
 
 	spin_lock(&pools_lock);
 	list_for_each_entry(p, &pools, entry) {
+		if (p->mmap)
+			continue;
 		size = sizeof(*it) + p->size + 8;
 		spin_lock(&p->lock);
 		while (!list_empty(&p->items)) {
@@ -307,10 +310,7 @@ void sigclean(int num)
 			VALGRIND_MAKE_MEM_DEFINED(&it->owner, size - sizeof(it->entry) - sizeof(it->timestamp));
 #endif
 			list_del(&it->entry);
-			if (p->mmap)
-				munmap(it, size);
-			else
-				_free(it);
+			_free(it);
 			__sync_sub_and_fetch(&triton_stat.mempool_allocated, size);
 			__sync_sub_and_fetch(&triton_stat.mempool_available, size);
 #ifdef VALGRIND
