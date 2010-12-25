@@ -11,6 +11,8 @@
 #include <arpa/telnet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include "triton.h"
 #include "log.h"
