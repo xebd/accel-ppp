@@ -53,6 +53,7 @@ struct buffer_t
 {
 	struct list_head entry;
 	int size;
+	struct buffer_t *p_buf;
 	uint8_t buf[0];
 };
 
@@ -63,9 +64,15 @@ static LIST_HEAD(clients);
 static uint8_t *recv_buf;
 static uint8_t *temp_buf;
 
+static int conf_history_len = 100;
+static const char *conf_history_file = "/var/run/accel-pptp/history";
+static LIST_HEAD(history);
+static int history_len;
+static pthread_mutex_t history_lock = PTHREAD_MUTEX_INITIALIZER;
+
 static void disconnect(struct telnet_client_t *cln)
 {
-	struct buffer_t *b;
+	struct buffer_t *b, *b2;
 
 	log_debug("cli: disconnect\n");
 
@@ -85,11 +92,22 @@ static void disconnect(struct telnet_client_t *cln)
 		_free(b);
 	}
 
+	pthread_mutex_lock(&history_lock);
 	while (!list_empty(&cln->history)) {
-		b = list_entry(cln->history.next, typeof(*b), entry);
+		b = list_entry(cln->history.prev, typeof(*b), entry);
 		list_del(&b->entry);
-		_free(b);
+		if (!b->p_buf) {
+			if (history_len == conf_history_len) {
+				b2 = list_entry(history.next, typeof(*b2), entry);
+				list_del(&b2->entry);
+				_free(b2);
+			} else
+				history_len++;
+			list_add_tail(&b->entry, &history);
+		} else
+			_free(b);
 	}
+	pthread_mutex_unlock(&history_lock);
 
 	_free(cln->cmdline);
 	_free(cln);
@@ -238,10 +256,10 @@ static int load_history(struct telnet_client_t *cln)
 		return -1;
 	if (send_prompt(cln))
 		return -1;
-	memcpy(cln->cmdline, b->buf, b->size);
+	memcpy(cln->cmdline, b->p_buf ? b->p_buf->buf : b->buf, b->size);
 	cln->cmdline_pos = b->size;
 	cln->cmdline_len = b->size;
-	if (telnet_send(cln, b->buf, b->size))
+	if (telnet_send(cln, b->p_buf ? b->p_buf->buf : b->buf, b->size))
 		return -1;
 
 	return 0;
@@ -277,6 +295,7 @@ static int telnet_input_char(struct telnet_client_t *cln, uint8_t c)
 			}
 		} else if (cln->cmdline_len) {
 			b = _malloc(sizeof(*b) + cln->cmdline_len);
+			b->p_buf = NULL;
 			memcpy(b->buf, cln->cmdline, cln->cmdline_len);
 			b->size = cln->cmdline_len;
 			list_add(&b->entry, cln->history.next);
@@ -514,7 +533,7 @@ static int serv_read(struct triton_md_handler_t *h)
 	socklen_t size = sizeof(addr);
 	int sock;
 	struct telnet_client_t *conn;
-	struct buffer_t *b;
+	struct buffer_t *b, *b2;
 
 	while(1) {
 		sock = accept(h->fd, (struct sockaddr *)&addr, &size);
@@ -543,8 +562,19 @@ static int serv_read(struct triton_md_handler_t *h)
 		INIT_LIST_HEAD(&conn->history);
 
 		b = _malloc(sizeof(*b) + RECV_BUF_SIZE);
+		b->p_buf = b;
 		b->size = 0;
 		list_add_tail(&b->entry, &conn->history);
+
+		pthread_mutex_lock(&history_lock);
+		list_for_each_entry(b, &history, entry) {
+			b2 = _malloc(sizeof(*b));
+			b2->p_buf = b;
+			b2->size = b->size;
+			list_add(&b2->entry, conn->history.next);
+		}
+		pthread_mutex_unlock(&history_lock);
+		
 		conn->history_pos = conn->history.next;
 		
 		conn->cli_client.cmdline = conn->cmdline;
@@ -644,6 +674,43 @@ static void start_server(const char *host, int port)
 	triton_context_wakeup(&serv_ctx);
 }
 
+static void save_history_file(void)
+{
+	int fd;
+	struct buffer_t *b;
+
+	fd = open(conf_history_file, O_WRONLY | O_TRUNC | O_CREAT, S_IREAD | S_IWRITE);
+	if (!fd)
+		return;
+
+	list_for_each_entry(b, &history, entry) {
+		b->buf[b->size] = '\n';
+		write(fd, b->buf, b->size + 1);
+	}
+
+	close(fd);
+}
+
+static void load_history_file(void)
+{
+	struct buffer_t *b;
+	FILE *f;
+
+	f = fopen(conf_history_file, "r");
+	if (!f)
+		return;
+	
+	while (fgets((char *)temp_buf, RECV_BUF_SIZE, f)) {
+		b = _malloc(sizeof(*b) + strlen((char *)temp_buf));
+		b->p_buf = NULL;
+		b->size = strlen((char *)temp_buf) - 1;
+		memcpy(b->buf, temp_buf, b->size);
+		list_add_tail(&b->entry, &history);
+	}
+
+	fclose(f);
+}
+
 static void __init init(void)
 {
 	const char *opt;
@@ -664,10 +731,18 @@ static void __init init(void)
 	if (port <= 0)
 		goto err_fmt;
 
+	opt = conf_get_opt("cli", "history-file");
+	if (opt)
+		conf_history_file = opt;
+
 	recv_buf = malloc(RECV_BUF_SIZE);
 	temp_buf = malloc(RECV_BUF_SIZE);
 
+	load_history_file();
+
 	start_server(host, port);
+	
+	atexit(save_history_file);
 	
 	return;
 err_fmt:
