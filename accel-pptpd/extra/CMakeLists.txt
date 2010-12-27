@@ -9,7 +9,10 @@ INSTALL(TARGETS pppd_compat ippool sigchld chap-secrets
 
 IF (SHAPER)
 	ADD_LIBRARY(shaper_tbf SHARED shaper_tbf.c)
-	TARGET_LINK_LIBRARIES(shaper_tbf nl nl-route m)
+	IF (LIBNL_PREFIX)
+		SET_PROPERTY(TARGET shaper_tbf PROPERTY COMPILE_FLAGS "-I${LIBNL_PREFIX}/include -Wl,-L${LIBNL_PREFIX}/lib")
+	ENDIF (LIBNL_PREFIX)
+	TARGET_LINK_LIBRARIES(shaper_tbf nl m)
 	INSTALL(TARGETS shaper_tbf LIBRARY DESTINATION lib/accel-pptp)
 ENDIF (SHAPER)
 

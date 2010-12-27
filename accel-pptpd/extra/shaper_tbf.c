@@ -10,12 +10,9 @@
 #include <sys/socket.h>
 #include <pthread.h>
 
-#include <netlink/netlink.h>
-#include <netlink/route/qdisc.h>
-#include <netlink/route/sch/tbf.h>
-#include <netlink/route/class.h>
-#include <netlink/route/cls/u32.h>
-#include <netlink/route/cls/police.h>
+#include "netlink/netlink.h"
+#include "netlink/socket.h"
+#include "netlink/msg.h"
 
 #include "triton.h"
 #include "events.h"
@@ -29,6 +26,7 @@
 
 #include "memdebug.h"
 
+#define RTNL_TC_RTABLE_SIZE 256
 #define TIME_UNITS_PER_SEC 1000000
 
 #define ATTR_UP 1
