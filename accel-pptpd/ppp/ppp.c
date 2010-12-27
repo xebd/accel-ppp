@@ -634,16 +634,9 @@ static void save_seq(void)
 	}
 }
 
-static void __init init(void)
+static void load_config(void)
 {
 	char *opt;
-	FILE *f;
-
-	sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (sock_fd < 0) {
-		perror("socket");
-		_exit(EXIT_FAILURE);
-	}
 
 	opt = conf_get_opt("ppp", "verbose");
 	if (opt && atoi(opt) > 0)
@@ -656,6 +649,18 @@ static void __init init(void)
 		else if (strcmp(opt, "lower"))
 			log_emerg("ppp: sid-case: invalid format\n");
 	}
+}
+
+static void __init init(void)
+{
+	char *opt;
+	FILE *f;
+
+	sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (sock_fd < 0) {
+		perror("socket");
+		_exit(EXIT_FAILURE);
+	}
 
 	opt = conf_get_opt("ppp", "seq-file");
 	if (!opt)
@@ -666,8 +671,10 @@ static void __init init(void)
 		fscanf(f, "%llu", &seq);
 		fclose(f);
 	} else
-		//log_emerg("ppp: failed to open seq-file (%s): %s\n", opt, strerror(errno));
 		seq = (unsigned long long)random() * (unsigned long long)random();
+
+	load_config();
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 
 	atexit(save_seq);
 }

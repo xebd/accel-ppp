@@ -31,7 +31,7 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 	req->hnd.fd = -1;
 	req->ctx.before_switch = log_switch;
 
-	req->server_name = conf_auth_server;
+	req->server_addr = conf_auth_server;
 	req->server_port = conf_auth_server_port;
 
 	while (1) {
@@ -83,7 +83,7 @@ out_err:
 
 int rad_req_acct_fill(struct rad_req_t *req)
 {
-	req->server_name = conf_acct_server;
+	req->server_addr = conf_acct_server;
 	req->server_port = conf_acct_server_port;
 
 	memset(req->RA, 0, sizeof(req->RA));
@@ -148,7 +148,7 @@ static int make_socket(struct rad_req_t *req)
 		}
 	}
 
-	addr.sin_addr.s_addr = inet_addr(req->server_name);
+	addr.sin_addr.s_addr = req->server_addr;
 	addr.sin_port = htons(req->server_port);
 
 	if (connect(req->hnd.fd, (struct sockaddr *) &addr, sizeof(addr))) {
@@ -244,7 +244,7 @@ int rad_req_wait(struct rad_req_t *req, int timeout)
 	
 	triton_context_wakeup(&req->ctx);
 
-	triton_context_schedule(req->rpd->ppp->ctrl->ctx);
+	triton_context_schedule();
 
 	if (conf_verbose && req->reply) {
 		log_ppp_info1("recv ");

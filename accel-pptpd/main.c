@@ -12,6 +12,7 @@
 
 #include "memdebug.h"
 #include "log.h"
+#include "events.h"
 
 static int goto_daemon;
 static char *pid_file;
@@ -103,6 +104,16 @@ static void change_limits(void)
 		log_emerg("main: failed to open '/proc/sys/fs/file-max': %s\n", strerror(errno));
 }
 
+static void config_reload_notify(int r)
+{
+	if (!r)
+		triton_event_fire(EV_CONFIG_RELOAD, NULL);
+}
+static void config_reload(int num)
+{
+	triton_conf_reload(config_reload_notify);
+}
+
 int main(int argc, char **argv)
 {
 	sigset_t set;
@@ -150,6 +161,14 @@ int main(int argc, char **argv)
 	triton_run();
 
 	sigfillset(&set);
+
+	struct sigaction sa = {
+		.sa_handler = config_reload,
+		.sa_mask = set,
+	};
+
+	sigaction(SIGUSR1, &sa, NULL);
+
 	sigdelset(&set, SIGKILL);
 	sigdelset(&set, SIGSTOP);
 	sigdelset(&set, SIGSEGV);
@@ -159,6 +178,7 @@ int main(int argc, char **argv)
 	sigdelset(&set, SIGHUP);
 	sigdelset(&set, SIGIO);
 	sigdelset(&set, SIGINT);
+	sigdelset(&set, SIGUSR1);
 	sigdelset(&set, 35);
 	sigdelset(&set, 36);
 	pthread_sigmask(SIG_SETMASK, &set, NULL);

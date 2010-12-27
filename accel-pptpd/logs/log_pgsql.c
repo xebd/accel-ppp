@@ -287,7 +287,7 @@ static void __init init(void)
 	opt = conf_get_opt("log-pgsql", "conninfo");
 	if (!opt)
 		return;
-	conf_conninfo = opt;
+	conf_conninfo = _strdup(opt);
 
 	opt = conf_get_opt("log-pgsql", "connect-inteval");
 	if (opt && atoi(opt) > 0)
@@ -295,7 +295,7 @@ static void __init init(void)
 	
 	opt = conf_get_opt("log-pgsql", "log-query");
 	if (opt)
-		conf_query = opt;
+		conf_query = _strdup(opt);
 	else {
 		opt = conf_get_opt("log-pgsql", "log-table");
 		if (!opt || strlen(opt) > 32)

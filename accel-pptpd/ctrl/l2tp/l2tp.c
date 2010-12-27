@@ -48,7 +48,7 @@ int conf_timeout = 60;
 int conf_rtimeout = 5;
 int conf_retransmit = 5;
 int conf_hello_interval = 60;
-const char *conf_host_name = "accel-pptp";
+char *conf_host_name = NULL;
 
 static unsigned int stat_active;
 static unsigned int stat_starting;
@@ -504,7 +504,7 @@ static void l2tp_send_SCCRP(struct l2tp_conn_t *conn)
 	
 	if (l2tp_packet_add_int16(pack, Protocol_Version, L2TP_V2_PROTOCOL_VERSION, 1))
 		goto out_err;
-	if (l2tp_packet_add_string(pack, Host_Name, conf_host_name, 1))
+	if (conf_host_name && l2tp_packet_add_string(pack, Host_Name, conf_host_name, 1))
 		goto out_err;
 	if (l2tp_packet_add_int32(pack, Framing_Capabilities, conn->framing_cap, 1))
 		goto out_err;
@@ -1090,14 +1090,9 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	return CLI_CMD_OK;
 }
 
-static void __init l2tp_init(void)
+static void load_config(void)
 {
 	char *opt;
-
-	l2tp_conn = malloc(L2TP_MAX_TID * sizeof(void *));
-	memset(l2tp_conn, 0, L2TP_MAX_TID * sizeof(void *));
-
-	l2tp_conn_pool = mempool_create(sizeof(struct l2tp_conn_t));
 
 	opt = conf_get_opt("l2tp", "verbose");
 	if (opt && atoi(opt) > 0)
@@ -1119,12 +1114,28 @@ static void __init l2tp_init(void)
 	if (opt && atoi(opt) > 0)
 		conf_retransmit = atoi(opt);
 
+	if (conf_host_name)
+		_free(conf_host_name);
 	opt = conf_get_opt("l2tp", "host-name");
-	if (opt && atoi(opt) > 0)
-		conf_host_name = opt;
+	if (opt)
+		conf_host_name = _strdup(opt);
+	else
+		conf_host_name = NULL;
+}
+
+static void __init l2tp_init(void)
+{
+	l2tp_conn = malloc(L2TP_MAX_TID * sizeof(void *));
+	memset(l2tp_conn, 0, L2TP_MAX_TID * sizeof(void *));
+
+	l2tp_conn_pool = mempool_create(sizeof(struct l2tp_conn_t));
+
+	load_config();
 
 	start_udp_server();
 
 	cli_register_simple_cmd2(&show_stat_exec, NULL, 2, "show", "stat");
+	
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 

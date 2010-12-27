@@ -10,6 +10,7 @@
 
 #include "ppp.h"
 #include "ppp_lcp.h"
+#include "events.h"
 
 #include "memdebug.h"
 
@@ -822,11 +823,9 @@ static struct ppp_layer_t lcp_layer=
 	.free   = lcp_layer_free,
 };
 
-static void __init lcp_init(void)
+static void load_config(void)
 {
 	char *opt;
-
-	ppp_register_layer("lcp", &lcp_layer);
 
 	opt = conf_get_opt("lcp", "echo-interval");
 	if (opt && atoi(opt) > 0)
@@ -835,5 +834,14 @@ static void __init lcp_init(void)
 	opt = conf_get_opt("lcp", "echo-failure");
 	if (opt && atoi(opt) > 0)
 		conf_echo_failure = atoi(opt);
+}
+
+static void __init lcp_init(void)
+{
+	load_config();
+
+	ppp_register_layer("lcp", &lcp_layer);
+
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 

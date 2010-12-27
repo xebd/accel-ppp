@@ -447,13 +447,10 @@ static void sighup(int n)
 			t->reopen();
 }
 
-static void __init log_init(void)
+static void load_config(void)
 {
 	char *opt;
-	struct sigaction sa = {
-		.sa_handler = sighup,
-	};
-
+	FILE *f;
 
 	opt = conf_get_opt("log", "level");
 	if (opt && atoi(opt) >= 0)
@@ -461,23 +458,45 @@ static void __init log_init(void)
 
 	opt = conf_get_opt("log", "log-emerg");
 	if (opt) {
-		emerg_file = fopen(opt, "a");
+		if (emerg_file)
+			emerg_file = freopen(opt, "a", emerg_file);
+		else
+			emerg_file = fopen(opt, "a");
 		if (!emerg_file)
 			fprintf(stderr, "log:open: %s\n", strerror(errno));
+	} else if (emerg_file) {
+		fclose(emerg_file);
+		emerg_file = NULL;
 	}
 
 	opt = conf_get_opt("log", "log-debug");
 	if (opt) {
-		debug_file = fopen(opt, "a");
-		if (!emerg_file)
+		if (debug_file)
+			debug_file = freopen(opt, "a", debug_file);
+		else
+			debug_file = fopen(opt, "a");
+		if (!debug_file)
 			fprintf(stderr, "log:open: %s\n", strerror(errno));
+	} else if (debug_file) {
+		fclose(debug_file);
+		debug_file = NULL;
 	}
+}
+
+static void __init log_init(void)
+{
+	struct sigaction sa = {
+		.sa_handler = sighup,
+	};
 
 	msg_pool = mempool_create(sizeof(struct log_msg_t));
 	_msg_pool = mempool_create(sizeof(struct _log_msg_t));
 	chunk_pool = mempool_create(sizeof(struct log_chunk_t) + LOG_CHUNK_SIZE + 1);
 
-	sigaction(SIGHUP, &sa, NULL);
+	load_config();
 
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
+
+	sigaction(SIGHUP, &sa, NULL);
 }
 

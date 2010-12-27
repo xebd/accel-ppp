@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <pthread.h>
 
 #include "triton_p.h"
 
@@ -14,7 +15,9 @@ struct sect_t
 	struct conf_sect_t *sect;
 };
 
+static pthread_mutex_t conf_lock = PTHREAD_MUTEX_INITIALIZER;
 static LIST_HEAD(sections);
+static char *conf_fname;
 
 static char* skip_space(char *str);
 static char* skip_word(char *str);
@@ -24,24 +27,18 @@ static struct conf_sect_t *create_sect(const char *name);
 static void sect_add_item(struct conf_sect_t *sect, const char *name, const char *val);
 static struct conf_option_t *find_item(struct conf_sect_t *, const char *name);
 
-int conf_load(const char *fname)
+static char *buf;
+
+int __conf_load(const char *fname, struct conf_sect_t *cur_sect)
 {
-	char *buf,*str,*str2;
-	char *path0,*path;
+	char *str,*str2;
 	int cur_line = 0;
-	static struct conf_sect_t *cur_sect = NULL;
 
 	FILE *f = fopen(fname, "r");
 	if (!f) {
 		perror("conf_file:open");
 		return -1;
 	}
-	
-	buf = _malloc(1024);
-	path0 = _malloc(4096);
-	path = _malloc(4096);
-	
-	getcwd(path0, 1024);
 	
 	while(!feof(f)) {
 		if (!fgets(buf, 1024, f))
@@ -56,7 +53,8 @@ int conf_load(const char *fname)
 		if (strncmp(str, "$include", 8) == 0)	{
 			str = skip_word(str);
 			str = skip_space(str);
-			conf_load(str);
+			if (__conf_load(str, cur_sect));
+				break;
 			continue;
 		}
 		if (*str == '[') {
@@ -104,12 +102,75 @@ int conf_load(const char *fname)
 		sect_add_item(cur_sect, str, str2);
 	}
 	
-	_free(buf);
-	_free(path);
-	_free(path0);
 	fclose(f);
 
 	return 0;
+}
+
+int conf_load(const char *fname)
+{
+	int r;
+
+	if (fname) {
+		if (conf_fname)
+			_free(conf_fname);
+		conf_fname = _strdup(fname);
+	} else
+		fname = conf_fname;
+
+	buf = _malloc(1024);
+
+	r = __conf_load(fname, NULL);
+	
+	_free(buf);
+
+	return r;
+}
+
+int conf_reload(const char *fname)
+{
+	struct sect_t *sect;
+	struct conf_option_t *opt;
+	int r;
+	LIST_HEAD(sections_bak);
+
+	pthread_mutex_lock(&conf_lock);
+
+	while (!list_empty(&sections)) {
+		sect = list_entry(sections.next, typeof(*sect), entry);
+		list_del(&sect->entry);
+		list_add_tail(&sect->entry, &sections_bak);
+	}
+
+	r = conf_load(fname);
+
+	if (r) {
+		while (!list_empty(&sections_bak)) {
+			sect = list_entry(sections_bak.next, typeof(*sect), entry);
+			list_del(&sect->entry);
+			list_add_tail(&sect->entry, &sections);
+		}
+		pthread_mutex_unlock(&conf_lock);
+	} else {
+		pthread_mutex_unlock(&conf_lock);
+		while (!list_empty(&sections_bak)) {
+			sect = list_entry(sections_bak.next, typeof(*sect), entry);
+			list_del(&sect->entry);
+			while (!list_empty(&sect->sect->items)) {
+				opt = list_entry(sect->sect->items.next, typeof(*opt), entry);
+				list_del(&opt->entry);
+				if (opt->val)
+					_free(opt->val);
+				_free(opt->name);
+				_free(opt);
+			}
+			_free((char *)sect->sect->name);
+			_free(sect->sect);
+			_free(sect);
+		}
+	}
+
+	return r;
 }
 
 static char* skip_space(char *str)
@@ -136,7 +197,7 @@ static struct conf_sect_t *create_sect(const char *name)
 	struct sect_t *s = _malloc(sizeof(struct sect_t));
 	
 	s->sect = _malloc(sizeof(struct conf_sect_t));
-	s->sect->name = (char*)strdup(name);
+	s->sect->name = (char*)_strdup(name);
 	INIT_LIST_HEAD(&s->sect->items);
 	
 	list_add_tail(&s->entry, &sections);

@@ -99,6 +99,7 @@ extern struct triton_context_t default_ctx;
 int triton_queue_ctx(struct _triton_context_t*);
 void triton_thread_wakeup(struct _triton_thread_t*);
 int conf_load(const char *fname);
+int conf_reload(const char *fname);
 void triton_log_error(const char *fmt,...);
 void triton_log_debug(const char *fmt,...);
 int load_modules(const char *name);

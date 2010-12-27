@@ -24,6 +24,9 @@ static LIST_HEAD(ctx_list);
 static int terminate;
 static int need_terminate;
 
+static int need_config_reload;
+static void (*config_reload_notify)(int);
+
 static mempool_t *ctx_pool;
 static mempool_t *call_pool;
 static mempool_t *ctx_stack_pool;
@@ -41,12 +44,31 @@ static struct triton_timer_t ru_timer = {
 };
 struct triton_context_t default_ctx;
 
+static struct triton_context_t __thread *this_ctx;
+
 #define log_debug2(fmt, ...)
 
 void triton_thread_wakeup(struct _triton_thread_t *thread)
 {
 	log_debug2("wake up thread %p\n", thread);
 	pthread_kill(thread->thread, SIGUSR1);
+}
+
+static void __config_reload(void (*notify)(int))
+{
+	struct _triton_thread_t *t;
+	int r;
+
+	log_debug2("config_reload: enter\n");
+	r = conf_reload(NULL);
+	notify(r);
+
+	spin_lock(&threads_lock);
+	need_config_reload = 0;
+	list_for_each_entry(t, &threads, entry)
+		triton_thread_wakeup(t);
+	spin_unlock(&threads_lock);
+	log_debug2("config_reload: exit\n");
 }
 
 static void* triton_thread(struct _triton_thread_t *thread)
@@ -65,7 +87,7 @@ static void* triton_thread(struct _triton_thread_t *thread)
 
 	while (1) {
 		spin_lock(&threads_lock);
-		if (!list_empty(&ctx_queue)) {
+		if (!list_empty(&ctx_queue) && !need_config_reload) {
 			thread->ctx = list_entry(ctx_queue.next, typeof(*thread->ctx), entry2);
 			log_debug2("thread: %p: dequeued ctx %p\n", thread, thread->ctx);
 			list_del(&thread->ctx->entry2);
@@ -79,18 +101,24 @@ static void* triton_thread(struct _triton_thread_t *thread)
 			log_debug2("thread: %p: sleeping\n", thread);
 			if (!terminate)
 				list_add(&thread->entry2, &sleep_threads);
-			spin_unlock(&threads_lock);
+			
+			if (--triton_stat.thread_active == 0 && need_config_reload) {
+				spin_unlock(&threads_lock);
+				__config_reload(config_reload_notify);
+			} else
+				spin_unlock(&threads_lock);
+			
 			if (terminate)
 				return NULL;
 
-			__sync_sub_and_fetch(&triton_stat.thread_active, 1);
 			//printf("thread %p: enter sigwait\n", thread);
 			sigwait(&set, &sig);
 			//printf("thread %p: exit sigwait\n", thread);
-			__sync_add_and_fetch(&triton_stat.thread_active, 1);
 
 			spin_lock(&threads_lock);
+			++triton_stat.thread_active;
 			if (!thread->ctx) {
+				list_del(&thread->entry2);
 				spin_unlock(&threads_lock);
 				continue;
 			}
@@ -99,6 +127,7 @@ static void* triton_thread(struct _triton_thread_t *thread)
 
 cont:
 		log_debug2("thread %p: ctx=%p %p\n", thread, thread->ctx, thread->ctx ? thread->ctx->thread : NULL);
+		this_ctx = thread->ctx->ud;
 		if (thread->ctx->ud->before_switch)
 			thread->ctx->ud->before_switch(thread->ctx->ud, thread->ctx->bf_arg);
 
@@ -229,7 +258,7 @@ int triton_queue_ctx(struct _triton_context_t *ctx)
 		return 0;
 
 	spin_lock(&threads_lock);
-	if (list_empty(&sleep_threads)) {
+	if (list_empty(&sleep_threads) || need_config_reload) {
 		if (ctx->priority)
 			list_add(&ctx->entry2, &ctx_queue);
 		else
@@ -343,7 +372,6 @@ void __export triton_context_unregister(struct triton_context_t *ud)
 	}
 	spin_unlock(&ctx_list_lock);
 	
-
 	if (terminate) {
 		list_for_each_entry(t, &threads, entry)
 			triton_thread_wakeup(t);
@@ -357,9 +385,9 @@ void __export triton_context_set_priority(struct triton_context_t *ud, int prio)
 	ctx->priority = prio > 0;
 }
 
-void __export triton_context_schedule(struct triton_context_t *ud)
+void __export triton_context_schedule()
 {
-	struct _triton_context_t *ctx = (struct _triton_context_t *)ud->tpd;
+	struct _triton_context_t *ctx = (struct _triton_context_t *)this_ctx->tpd;
 	ucontext_t *uctx = &ctx->thread->uctx;
 
 	spin_lock(&ctx->lock);
@@ -378,6 +406,11 @@ void __export triton_context_schedule(struct triton_context_t *ud)
 	if (swapcontext(&ctx->uctx, uctx))
 		triton_log_error("swaswpntext: %s\n", strerror(errno));
 	log_debug2("ctx %p: exit schedule\n", ctx);
+}
+
+struct triton_context_t __export *triton_context_self(void)
+{
+	return this_ctx;
 }
 
 void triton_context_print(void)
@@ -520,6 +553,18 @@ int __export triton_load_modules(const char *mod_sect)
 		return -1;
 	
 	return 0;
+}
+
+void __export triton_conf_reload(void (*notify)(int))
+{
+	spin_lock(&threads_lock);
+	need_config_reload = 1;
+	config_reload_notify = notify;
+	if (triton_stat.thread_active == 0) {
+		spin_unlock(&threads_lock);
+		__config_reload(notify);
+	} else
+		spin_unlock(&threads_lock);
 }
 
 void __export triton_run()

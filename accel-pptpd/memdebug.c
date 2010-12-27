@@ -44,6 +44,10 @@ static spinlock_t mem_list_lock = SPINLOCK_INITIALIZER;
 struct mem_t *_md_malloc(size_t size, const char *fname, int line)
 {
 	struct mem_t *mem = malloc(sizeof(*mem) + size + 8);
+
+	if (size > 4096)
+		line = 0;
+
 	strcpy(mem->fname, fname);
 	mem->line = line;
 	mem->size = size;

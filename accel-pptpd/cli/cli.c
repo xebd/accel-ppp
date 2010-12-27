@@ -9,6 +9,8 @@
 #include "cli_p.h"
 #include "log.h"
 
+#include "memdebug.h"
+
 #define MAX_CMD_ITEMS 100
 #define MSG_SYNTAX_ERROR "syntax error\r\n"
 #define MSG_INVAL_ERROR "invalid argument\r\n"
@@ -201,5 +203,5 @@ static void __init init(void)
 	conf_cli_passwd = conf_get_opt("cli", "passwd");
 	opt = conf_get_opt("cli", "prompt");
 	if (opt)
-		conf_cli_prompt = opt;
+		conf_cli_prompt = _strdup(opt);
 }

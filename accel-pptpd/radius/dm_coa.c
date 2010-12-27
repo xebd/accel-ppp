@@ -273,7 +273,7 @@ static void __init init(void)
   addr.sin_family = AF_INET;
   addr.sin_port = htons (conf_dm_coa_port);
 	if (conf_dm_coa_server)
-	  addr.sin_addr.s_addr = inet_addr(conf_dm_coa_server);
+	  addr.sin_addr.s_addr = conf_dm_coa_server;
 	else
 		addr.sin_addr.s_addr = htonl (INADDR_ANY);
   if (bind (serv.hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {

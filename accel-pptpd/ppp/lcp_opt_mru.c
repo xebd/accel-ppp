@@ -11,6 +11,7 @@
 #include "ppp.h"
 #include "ppp_lcp.h"
 #include "log.h"
+#include "events.h"
 
 #include "memdebug.h"
 
@@ -149,7 +150,7 @@ static void mru_print(void (*print)(const char *fmt,...), struct lcp_option_t *o
 		print("<mru %i>",mru_opt->mru);
 }
 
-static void __init mru_opt_init()
+static void load_config(void)
 {
 	char *opt;
 
@@ -171,19 +172,24 @@ static void __init mru_opt_init()
 	
 	if (conf_min_mtu > conf_mru) {
 		log_emerg("min-mtu cann't be greater then mtu/mru\n");
-		_exit(-1);
+		conf_min_mtu = conf_mru;
 	}
 
 	if (conf_min_mtu > 1500) {
 		log_emerg("min-mtu cann't be greater then 1500\n");
-		_exit(-1);
+		conf_min_mtu = 1500;
 	}
 
 	if (conf_mru > 1500 || conf_mtu > 1500) {
 		log_emerg("mtu/mru cann't be greater then 1500\n");
-		_exit(-1);
+		conf_mru = 1500;
 	}
+}
 
+static void __init mru_opt_init()
+{
+	load_config();
 	lcp_option_register(&mru_opt_hnd);
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 

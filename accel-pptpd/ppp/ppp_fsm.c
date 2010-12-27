@@ -7,6 +7,7 @@
 #include "ppp_fsm.h"
 #include "ppp_lcp.h"
 #include "log.h"
+#include "events.h"
 
 #include "memdebug.h"
 
@@ -514,7 +515,7 @@ static void restart_timer_func(struct triton_timer_t *t)
 		ppp_fsm_timeout1(layer);
 }
 
-void __init fsm_init(void)
+static void load_config(void)
 {
 	char *opt;
 
@@ -533,5 +534,11 @@ void __init fsm_init(void)
 	opt = conf_get_opt("ppp", "timeout");
 	if (opt && atoi(opt) > 0)
 		conf_timeout = atoi(opt);
+}
+
+void __init fsm_init(void)
+{
+	load_config();
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 

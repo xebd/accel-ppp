@@ -735,7 +735,7 @@ static void __init init(void)
 
 	opt = conf_get_opt("cli", "history-file");
 	if (opt)
-		conf_history_file = opt;
+		conf_history_file = _strdup(opt);
 
 	recv_buf = malloc(RECV_BUF_SIZE);
 	temp_buf = malloc(RECV_BUF_SIZE);

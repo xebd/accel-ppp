@@ -700,6 +700,27 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	return CLI_CMD_OK;
 }
 
+static void load_config(void)
+{
+	char *opt;
+
+	opt = conf_get_opt("pptp", "timeout");
+	if (opt && atoi(opt) > 0)
+		conf_timeout = atoi(opt);
+	
+	opt = conf_get_opt("pptp", "echo-interval");
+	if (opt && atoi(opt) >= 0)
+		conf_echo_interval = atoi(opt);
+
+	opt = conf_get_opt("pptp", "echo-failure");
+	if (opt && atoi(opt) > 0)
+		conf_echo_failure = atoi(opt);
+
+	opt = conf_get_opt("pptp", "verbose");
+	if (opt && atoi(opt) > 0)
+		conf_verbose = 1;
+}
+
 static void __init pptp_init(void)
 {
 	struct sockaddr_in addr;
@@ -738,23 +759,9 @@ static void __init pptp_init(void)
     return;
 	}
 	
-	opt = conf_get_opt("pptp", "timeout");
-	if (opt && atoi(opt) > 0)
-		conf_timeout = atoi(opt);
-	
-	opt = conf_get_opt("pptp", "echo-interval");
-	if (opt && atoi(opt) >= 0)
-		conf_echo_interval = atoi(opt);
-
-	opt = conf_get_opt("pptp", "echo-failure");
-	if (opt && atoi(opt) > 0)
-		conf_echo_failure = atoi(opt);
-
-	opt = conf_get_opt("pptp", "verbose");
-	if (opt && atoi(opt) > 0)
-		conf_verbose = 1;
-
 	conn_pool = mempool_create(sizeof(struct pptp_conn_t));
+
+	load_config();
 
 	triton_context_register(&serv.ctx, NULL);
 	triton_md_register_handler(&serv.ctx, &serv.hnd);
@@ -762,5 +769,7 @@ static void __init pptp_init(void)
 	triton_context_wakeup(&serv.ctx);
 
 	cli_register_simple_cmd2(show_stat_exec, NULL, 2, "show", "stat");
+	
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 

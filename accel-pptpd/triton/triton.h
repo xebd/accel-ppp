@@ -72,10 +72,11 @@ extern struct triton_stat_t triton_stat;
 int triton_context_register(struct triton_context_t *, void *arg);
 void triton_context_unregister(struct triton_context_t *);
 void triton_context_set_priority(struct triton_context_t *, int);
-void triton_context_schedule(struct triton_context_t *);
+void triton_context_schedule(void);
 int triton_context_wakeup(struct triton_context_t *);
 int triton_context_call(struct triton_context_t *, void (*func)(void *), void *arg);
 void triton_cancel_call(struct triton_context_t *, void (*func)(void *));
+struct triton_context_t *triton_context_self(void);
 
 #define MD_MODE_READ 1
 #define MD_MODE_WRITE 2
@@ -99,9 +100,11 @@ void triton_event_fire(int ev_id, void *arg);
 
 struct conf_sect_t *conf_get_section(const char *name);
 char *conf_get_opt(const char *sect, const char *name);
+void triton_conf_reload(void (*notify)(int));
 
 void triton_collect_cpu_usage(void);
 void triton_stop_collect_cpu_usage(void);
+
 
 #define TRITON_OK          0
 #define TRITON_ERR_NOCOMP -1

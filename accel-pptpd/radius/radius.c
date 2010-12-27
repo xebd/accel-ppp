@@ -25,21 +25,22 @@
 int conf_max_try = 3;
 int conf_timeout = 3;
 int conf_acct_timeout = 600;
-char *conf_nas_identifier = "accel-pptpd";
+char *conf_nas_identifier;
 in_addr_t conf_nas_ip_address;
 in_addr_t conf_gw_ip_address;
 in_addr_t conf_bind;
 int conf_verbose;
 int conf_interim_verbose;
 
-char *conf_auth_server;
+in_addr_t conf_auth_server;
 int conf_auth_server_port = 1812;
 char *conf_auth_secret;
 
-char *conf_acct_server;
+in_addr_t conf_acct_server;
 int conf_acct_server_port = 1813;
 char *conf_acct_secret;
-char *conf_dm_coa_server;
+
+in_addr_t conf_dm_coa_server;
 int conf_dm_coa_port = 3799;
 char *conf_dm_coa_secret;
 
@@ -344,7 +345,7 @@ static struct pwdb_t pwdb = {
 	.check = check,
 };
 
-static int parse_server(const char *opt, char **name, int *port, char **secret)
+static int parse_server(const char *opt, in_addr_t *addr, int *port, char **secret)
 {
 	char *str = _strdup(opt);
 	char *p1, *p2;
@@ -359,23 +360,28 @@ static int parse_server(const char *opt, char **name, int *port, char **secret)
 	else
 		return -1;
 	
-	*name = str;
+	*addr = inet_addr(str);
+	
 	if (p1) {
 		*port = atoi(p1 + 1);
 		if (*port <=0 )
 			return -1;
 	}
-	*secret = p2 + 1;
+
+	p1 = _strdup(p2 + 1);
+	p2 = *secret;
+	*secret = p1;
+	if (p2)
+		_free(p2);
+	
+	_free(str);
 
 	return 0;
 }
 
-static void __init radius_init(void)
+static int load_config(void)
 {
 	char *opt;
-	char *dict = DICTIONARY;
-
-	rpd_pool = mempool_create(sizeof(struct radius_pd_t));
 
 	opt = conf_get_opt("radius", "max-try");
 	if (opt && atoi(opt) > 0)
@@ -401,9 +407,13 @@ static void __init radius_init(void)
 	if (opt)
 		conf_nas_ip_address = inet_addr(opt);
 	
+	if (conf_nas_identifier)
+		_free(conf_nas_identifier);
 	opt = conf_get_opt("radius", "nas-identifier");
 	if (opt)
-		conf_nas_identifier = opt;
+		conf_nas_identifier = _strdup(opt);
+	else
+		conf_nas_identifier = NULL;
 	
 	opt = conf_get_opt("radius", "gw-ip-address");
 	if (opt)
@@ -420,10 +430,10 @@ static void __init radius_init(void)
 		opt = conf_get_opt("radius", "auth_server");
 	if (!opt) {
 		log_emerg("radius: auth-server not specified\n");
-		_exit(EXIT_FAILURE);
+		return -1;
 	} else if (parse_server(opt, &conf_auth_server, &conf_auth_server_port, &conf_auth_secret)) {
 		log_emerg("radius: failed to parse auth_server\n");
-		_exit(EXIT_FAILURE);
+		return -1;
 	}
 
 	opt = conf_get_opt("radius", "acct-server");
@@ -433,22 +443,14 @@ static void __init radius_init(void)
 		log_emerg("radius: acct-server not specified\n");
 	if (opt && parse_server(opt, &conf_acct_server, &conf_acct_server_port, &conf_acct_secret)) {
 		log_emerg("radius: failed to parse acct_server\n");
-		_exit(EXIT_FAILURE);
+		return -1;
 	}
 
 	opt = conf_get_opt("radius", "dae-server");
 	if (opt && parse_server(opt, &conf_dm_coa_server, &conf_dm_coa_port, &conf_dm_coa_secret)) {
 		log_emerg("radius: failed to parse dae-server\n");
-		_exit(EXIT_FAILURE);
-	} else {
-		opt = conf_get_opt("radius", "dm_coa_secret");
-		if (opt)
-			conf_dm_coa_secret = opt;
+		return -1;
 	}
-
-	opt = conf_get_opt("radius", "dictionary");
-	if (opt)
-		dict = opt;
 
 	opt = conf_get_opt("radius", "sid_in_auth");
 	if (opt && atoi(opt) > 0)
@@ -461,7 +463,24 @@ static void __init radius_init(void)
 	opt = conf_get_opt("radius", "acct-interim-interval");
 	if (opt && atoi(opt) > 0)
 		conf_acct_interim_interval = atoi(opt);
-	
+
+	return 0;
+}
+
+static void __init radius_init(void)
+{
+	char *opt;
+	char *dict = DICTIONARY;
+
+	rpd_pool = mempool_create(sizeof(struct radius_pd_t));
+
+	if (load_config())
+		_exit(EXIT_FAILURE);
+
+	opt = conf_get_opt("radius", "dictionary");
+	if (opt)
+		dict = opt;
+
 	if (rad_dict_load(dict))
 		_exit(EXIT_FAILURE);
 
@@ -472,4 +491,6 @@ static void __init radius_init(void)
 	triton_event_register_handler(EV_PPP_ACCT_START, (triton_event_func)ppp_acct_start);
 	triton_event_register_handler(EV_PPP_FINISHING, (triton_event_func)ppp_finishing);
 	triton_event_register_handler(EV_PPP_FINISHED, (triton_event_func)ppp_finished);
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
+
 }

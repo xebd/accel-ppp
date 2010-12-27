@@ -897,12 +897,9 @@ static int parse_vendor_opt(const char *opt)
 }
 #endif
 
-static void __init init(void)
+void load_config(void)
 {
 	const char *opt;
-
-	if (clock_init())
-		return;
 
 #ifdef RADIUS
 	opt = conf_get_opt("tbf", "vendor");
@@ -954,6 +951,14 @@ static void __init init(void)
 	opt = conf_get_opt("tbf", "verbose");
 	if (opt && atoi(opt) > 0)
 		conf_verbose = 1;
+}
+
+static void __init init(void)
+{
+	if (clock_init())
+		return;
+
+	load_config();
 
 #ifdef RADIUS
 	triton_event_register_handler(EV_RADIUS_ACCESS_ACCEPT, (triton_event_func)ev_radius_access_accept);
@@ -961,6 +966,7 @@ static void __init init(void)
 #endif
 	triton_event_register_handler(EV_CTRL_FINISHED, (triton_event_func)ev_ctrl_finished);
 	triton_event_register_handler(EV_SHAPER, (triton_event_func)ev_shaper);
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 
 	cli_register_simple_cmd2(shaper_change_exec, shaper_change_help, 2, "shaper", "change");
 	cli_register_simple_cmd2(shaper_restore_exec, shaper_restore_help, 2, "shaper", "restore");

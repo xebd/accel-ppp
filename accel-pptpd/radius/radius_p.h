@@ -48,7 +48,7 @@ struct rad_req_t
 	uint8_t RA[16];
 	struct rad_packet_t *pack;
 	struct rad_packet_t *reply;
-	const char *server_name;
+	in_addr_t server_addr;
 	int server_port;
 
 	struct radius_pd_t *rpd;
@@ -63,16 +63,16 @@ extern char *conf_nas_identifier;
 extern in_addr_t conf_nas_ip_address;
 extern in_addr_t conf_bind;
 extern in_addr_t conf_gw_ip_address;
-extern char *conf_auth_server;
+extern in_addr_t conf_auth_server;
 extern char *conf_auth_secret;
 extern int conf_auth_server_port;
-extern char *conf_acct_server;
+extern in_addr_t conf_acct_server;
 extern char *conf_acct_secret;
 extern int conf_acct_server_port;
 extern char *conf_dm_coa_secret;
 extern int conf_sid_in_auth;
 extern int conf_require_nas_ident;
-extern char *conf_dm_coa_server;
+extern in_addr_t conf_dm_coa_server;
 extern int conf_dm_coa_port;
 extern int conf_acct_interim_interval;
 

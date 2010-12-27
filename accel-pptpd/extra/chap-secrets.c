@@ -13,7 +13,8 @@
 
 #include "memdebug.h"
 
-static const char *conf_chap_secrets = "/etc/ppp/chap-secrets";
+static char *def_chap_secrets = "/etc/ppp/chap-secrets";
+static char *conf_chap_secrets;
 static in_addr_t conf_gw_ip_address = 0;
 
 static void *pd_key;
@@ -220,21 +221,32 @@ static struct pwdb_t pwdb = {
 	.get_passwd = get_passwd,
 };
 
-static void __init init(void)
+static void load_config(void)
 {
 	const char *opt;
 
+	if (conf_chap_secrets && conf_chap_secrets != def_chap_secrets)
+		_free(conf_chap_secrets);
 	opt = conf_get_opt("chap-secrets", "chap-secrets");
 	if (opt)
-		conf_chap_secrets = opt;
+		conf_chap_secrets = _strdup(opt);
+	else
+		conf_chap_secrets = def_chap_secrets;
 
 	opt = conf_get_opt("chap-secrets", "gw-ip-address");
 	if (opt)
 		conf_gw_ip_address = inet_addr(opt);
+}
+
+static void __init init(void)
+{
+	load_config();
 
 	pwdb_register(&pwdb);
 	ipdb_register(&ipdb);
 	
 	triton_event_register_handler(EV_PPP_FINISHED, (triton_event_func)ev_ppp_finished);
 	triton_event_register_handler(EV_PPP_PRE_UP, (triton_event_func)ev_ppp_pre_up);
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
+

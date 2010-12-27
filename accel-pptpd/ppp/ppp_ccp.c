@@ -8,6 +8,7 @@
 #include "triton.h"
 
 #include "log.h"
+#include "events.h"
 
 #include "ppp.h"
 #include "ppp_ccp.h"
@@ -739,14 +740,20 @@ static struct ppp_layer_t ccp_layer=
 	.free   = ccp_layer_free,
 };
 
-static void __init ccp_init(void)
+static void load_config(void)
 {
 	const char *opt;
-
-	ppp_register_layer("ccp", &ccp_layer);
 
 	opt = conf_get_opt("ppp", "ccp");
 	if (opt && atoi(opt) >= 0)
 		conf_ccp = atoi(opt);
+}
+
+static void __init ccp_init(void)
+{
+	ppp_register_layer("ccp", &ccp_layer);
+
+	load_config();
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 

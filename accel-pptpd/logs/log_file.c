@@ -583,11 +583,11 @@ static void __init init(void)
 	
 	opt = conf_get_opt("log", "per-user-dir");
 	if (opt)
-		conf_per_user_dir = opt;
+		conf_per_user_dir = _strdup(opt);
 
 	opt = conf_get_opt("log", "per-session-dir");
 	if (opt)
-		conf_per_session_dir = opt;
+		conf_per_session_dir = _strdup(opt);
 
 	opt = conf_get_opt("log", "per-session");
 	if (opt && atoi(opt) > 0)
@@ -610,4 +610,3 @@ static void __init init(void)
 	triton_event_register_handler(EV_PPP_STARTING, (triton_event_func)ev_ppp_starting);
 	triton_event_register_handler(EV_PPP_AUTHORIZED, (triton_event_func)ev_ppp_authorized);
 }
-

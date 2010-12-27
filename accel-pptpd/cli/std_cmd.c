@@ -450,11 +450,40 @@ static int shutdown_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 	return CLI_CMD_OK;
 }
 
+//==========================
+static int conf_reload_res;
+static struct triton_context_t *conf_reload_ctx;
+static void conf_reload_notify(int r)
+{
+	if (!r)
+		triton_event_fire(EV_CONFIG_RELOAD, NULL);
+	conf_reload_res = r;
+	triton_context_wakeup(conf_reload_ctx);
+}
+static int reload_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
+{
+	if (f_cnt == 1) {
+		conf_reload_ctx = triton_context_self();
+		triton_conf_reload(conf_reload_notify);
+		triton_context_schedule();
+		if (conf_reload_res)
+			cli_send(cli, "failed\r\n");
+		return CLI_CMD_OK;
+	} else
+		return CLI_CMD_SYNTAX;
+}
+
+static void reload_help(char * const *fields, int fields_cnt, void *client)
+{
+	cli_send(client, "reload - reload config file\r\n");
+}
+
 static void __init init(void)
 {
 	cli_register_simple_cmd2(show_stat_exec, show_stat_help, 2, "show", "stat");
 	cli_register_simple_cmd2(show_ses_exec, show_ses_help, 2, "show", "sessions");
 	cli_register_simple_cmd2(terminate_exec, terminate_help, 1, "terminate");
+	cli_register_simple_cmd2(reload_exec, reload_help, 1, "reload");
 	cli_register_simple_cmd2(shutdown_exec, shutdown_help, 1, "shutdown");
 	cli_register_simple_cmd2(exit_exec, exit_help, 1, "exit");
 }

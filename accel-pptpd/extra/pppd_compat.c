@@ -151,7 +151,7 @@ static void ev_ppp_pre_up(struct ppp_t *ppp)
 			if (conf_verbose)
 				log_ppp_info2("pppd_compat: ip-pre-up started (pid %i)\n", pid);
 			sigchld_unlock();
-			triton_context_schedule(pd->ppp->ctrl->ctx);
+			triton_context_schedule();
 			pthread_mutex_lock(&pd->ip_pre_up_hnd.lock);
 			pthread_mutex_unlock(&pd->ip_pre_up_hnd.lock);
 			if (pd->res != 0) {
@@ -274,7 +274,7 @@ static void ev_ppp_finished(struct ppp_t *ppp)
 		if (conf_verbose)
 			log_ppp_info2("pppd_compat: ip-down started (pid %i)\n", pid);
 		sigchld_unlock();
-		triton_context_schedule(pd->ppp->ctrl->ctx);
+		triton_context_schedule();
 		pthread_mutex_lock(&pd->ip_down_hnd.lock);
 		pthread_mutex_unlock(&pd->ip_down_hnd.lock);
 	} else if (pid == 0) {
@@ -344,7 +344,7 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 		sigchld_unlock();
 		if (conf_verbose)
 			log_ppp_info2("pppd_compat: ip-change started (pid %i)\n", pid);
-		triton_context_schedule(pd->ppp->ctrl->ctx);
+		triton_context_schedule();
 		if (!ev->res)
 			ev->res = pd->res;
 	} else if (pid == 0) {
@@ -490,23 +490,23 @@ static void __init init(void)
 
 	opt = conf_get_opt("pppd-compat", "ip-pre-up");
 	if (opt)
-		conf_ip_pre_up = opt;
+		conf_ip_pre_up = _strdup(opt);
 
 	opt = conf_get_opt("pppd-compat", "ip-up");
 	if (opt)
-		conf_ip_up = opt;
+		conf_ip_up = _strdup(opt);
 
 	opt = conf_get_opt("pppd-compat", "ip-down");
 	if (opt)
-		conf_ip_down = opt;
+		conf_ip_down = _strdup(opt);
 
 	opt = conf_get_opt("pppd-compat", "ip-change");
 	if (opt)
-		conf_ip_change = opt;
+		conf_ip_change = _strdup(opt);
 
 	opt = conf_get_opt("pppd-compat", "radattr-prefix");
 	if (opt)
-		conf_radattr_prefix = opt;
+		conf_radattr_prefix = _strdup(opt);
 
 	opt = conf_get_opt("pppd-compat", "verbose");
 	if (opt && atoi(opt) > 0)
@@ -522,4 +522,3 @@ static void __init init(void)
 	triton_event_register_handler(EV_RADIUS_COA, (triton_event_func)ev_radius_coa);
 #endif
 }
-
