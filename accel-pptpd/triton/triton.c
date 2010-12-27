@@ -494,8 +494,7 @@ void __export triton_collect_cpu_usage(void)
 		clock_gettime(CLOCK_MONOTONIC, &ru_timestamp);
 		ru_utime = rusage.ru_utime;
 		ru_stime = rusage.ru_stime;
-		triton_stat.ru_utime = 0;
-		triton_stat.ru_stime = 0;
+		triton_stat.cpu = 0;
 	}
 }
 
@@ -510,13 +509,17 @@ static void ru_update(struct triton_timer_t *t)
 	struct timespec ts;
 	struct rusage rusage;
 	unsigned int dt;
+	unsigned int val;
 
 	getrusage(RUSAGE_SELF, &rusage);
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	dt = (ts.tv_sec - ru_timestamp.tv_sec) * 1000000 + (ts.tv_nsec - ru_timestamp.tv_nsec) / 1000000;
-	triton_stat.ru_utime = (double)((rusage.ru_utime.tv_sec - ru_utime.tv_sec) * 1000000 + (rusage.ru_utime.tv_usec - ru_utime.tv_usec)) / dt * 100;
-	triton_stat.ru_stime = (double)((rusage.ru_stime.tv_sec - ru_stime.tv_sec) * 1000000 + (rusage.ru_stime.tv_usec - ru_stime.tv_usec)) / dt * 100;
+	val = (double)((rusage.ru_utime.tv_sec - ru_utime.tv_sec) * 1000000 + (rusage.ru_utime.tv_usec - ru_utime.tv_usec) + 
+	      (rusage.ru_stime.tv_sec - ru_stime.tv_sec) * 1000000 + (rusage.ru_stime.tv_usec - ru_stime.tv_usec)) / dt * 100;
+
+	if (val <= 100)
+		triton_stat.cpu = val;
 
 	ru_timestamp = ts;
 	ru_utime = rusage.ru_utime;

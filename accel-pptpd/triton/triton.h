@@ -64,8 +64,7 @@ struct triton_stat_t
 	unsigned int timer_count;
 	unsigned int timer_pending;
 	time_t start_time;
-	int ru_utime;
-	int ru_stime;
+	unsigned int cpu;
 };
 
 extern struct triton_stat_t triton_stat;

@@ -37,8 +37,8 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	dt %= 60 * 60;
 
 	cli_sendv(client, "uptime: %i.%02i:%02i:%02i\r\n", day, hour, dt / 60, dt % 60);
-	cli_sendv(client, "cpu: %i%% (%i/%i)\r\n", triton_stat.ru_utime + triton_stat.ru_stime, triton_stat.ru_utime, triton_stat.ru_stime);
-	cli_sendv(client, "mem: %lu/%lu kB\r\n", vmrss / page_size_kb, vmsize / page_size_kb);
+	cli_sendv(client, "cpu: %i%%\r\n", triton_stat.cpu);
+	cli_sendv(client, "mem: %lu/%lu kB\r\n", vmrss * page_size_kb, vmsize * page_size_kb);
 	cli_send(client, "core:\r\n");
 	cli_sendv(client, "  mempool_allocated: %u\r\n", triton_stat.mempool_allocated);
 	cli_sendv(client, "  mempool_available: %u\r\n", triton_stat.mempool_available);
@@ -273,7 +273,7 @@ static int terminate_exec1(char * const *f, int f_cnt, void *cli)
 			hard = 1;
 		else if (strcmp(f[4], "soft"))
 			return CLI_CMD_SYNTAX;
-	} else if (f_cnt != 4 || f_cnt > 5)
+	} else if (f_cnt != 4)
 		return CLI_CMD_SYNTAX;
 			
 	re = pcre_compile2(f[3], 0, NULL, &pcre_err, &pcre_offset, NULL);
@@ -309,7 +309,7 @@ static int terminate_exec2(int key, char * const *f, int f_cnt, void *cli)
 			hard = 1;
 		else if (strcmp(f[3], "soft"))
 			return CLI_CMD_SYNTAX;
-	} else if (f_cnt != 3 || f_cnt > 4)
+	} else if (f_cnt != 3)
 		return CLI_CMD_SYNTAX;
 	
 	if (key == 1)
@@ -332,6 +332,10 @@ static int terminate_exec2(int key, char * const *f, int f_cnt, void *cli)
 				break;
 			case 3:
 				if (strcmp(ppp->sessionid, f[2]))
+					continue;
+				break;
+			case 4:
+				if (strcmp(ppp->ifname, f[2]))
 					continue;
 				break;
 		}
@@ -364,6 +368,8 @@ static int terminate_exec(const char *cmd, char * const *fields, int fields_cnt,
 		return terminate_exec2(2, fields, fields_cnt, client);
 	else if (!strcmp(fields[1], "sid"))
 		return terminate_exec2(3, fields, fields_cnt, client);
+	else if (!strcmp(fields[1], "if"))
+		return terminate_exec2(4, fields, fields_cnt, client);
 	else if (strcmp(fields[1], "all"))
 		return CLI_CMD_SYNTAX;
 	
@@ -372,7 +378,7 @@ static int terminate_exec(const char *cmd, char * const *fields, int fields_cnt,
 			hard = 1;
 		else if (strcmp(fields[2], "soft"))
 			return CLI_CMD_SYNTAX;
-	} else if (fields_cnt != 2 && fields_cnt > 3)
+	} else if (fields_cnt != 2)
 		return CLI_CMD_SYNTAX;
 	
 	pthread_rwlock_rdlock(&ppp_lock);
@@ -389,7 +395,7 @@ static int terminate_exec(const char *cmd, char * const *fields, int fields_cnt,
 
 static void terminate_help(char * const *fields, int fields_cnt, void *client)
 {
-	cli_send(client, "terminate <interface> [soft|hard]- terminate session by interface name\r\n");
+	cli_send(client, "terminate if <interface> [soft|hard]- terminate session by interface name\r\n");
 	cli_send(client, "\t[match] username <username> [soft|hard]- terminate session by username\r\n");
 	cli_send(client, "\tip <addresss> [soft|hard]- terminate session by ip address\r\n");
 	cli_send(client, "\tcsid <id> [soft|hard]- terminate session by calling station id\r\n");
