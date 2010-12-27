@@ -100,7 +100,7 @@ static int show_ses_exec(const char *cmd, char * const *fields, int fields_cnt, 
 	int order = ORDER_NONE;
 	int match = MATCH_NONE;
 	struct row_t *row, *row2, *row3;
-	pcre *re;
+	pcre *re = NULL;
 	const char *pcre_err;
 	int pcre_offset;
 	LIST_HEAD(rows);
@@ -302,7 +302,7 @@ static int terminate_exec2(int key, char * const *f, int f_cnt, void *cli)
 {
 	struct ppp_t *ppp;
 	int hard = 0;
-	in_addr_t ipaddr;
+	in_addr_t ipaddr = 0;
 	
 	if (f_cnt == 4) {
 		if (!strcmp(f[3], "hard"))

@@ -6,6 +6,8 @@
 #include <unistd.h>
 #include <limits.h>
 #include <aio.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include "log.h"
 #include "events.h"

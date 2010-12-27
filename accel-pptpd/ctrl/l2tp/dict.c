@@ -117,7 +117,7 @@ static int dict_load(const char *fname)
 	struct l2tp_dict_attr_t *attr;
 	struct l2tp_dict_value_t *value;
 	struct list_head *items;
-	int r, n, i;
+	int i, r, n = 0;
 
 	f = fopen(fname, "r");
 	if (!f) {
