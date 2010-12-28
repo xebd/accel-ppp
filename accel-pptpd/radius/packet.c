@@ -310,7 +310,7 @@ void rad_packet_print(struct rad_packet_t *pack, void (*print)(const char *fmt, 
 				if (val)
 					print("%s", val->name);
 				else
-					print("%i", attr->val.integer);
+					print("%u", attr->val.integer);
 				break;
 			case ATTR_TYPE_STRING:
 				print("\"%s\"", attr->val.string);
