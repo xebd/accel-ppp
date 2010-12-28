@@ -16,7 +16,7 @@ struct cli_client_t
 int cli_process_cmd(struct cli_client_t *cln);
 
 extern char *conf_cli_passwd;
-extern const char *conf_cli_prompt;
+extern char *conf_cli_prompt;
 
 #endif
 

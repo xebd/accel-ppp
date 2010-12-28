@@ -23,7 +23,9 @@
 #include "cli_p.h"
 
 #define RECV_BUF_SIZE 1024
-#define AUTH_FAILED "\r\nAuthentication failed\r\n"
+
+#define MSG_AUTH_FAILED "\r\nAuthentication failed\r\n"
+#define MSG_SHUTDOWN_IN_PROGRESS "note: 'shutdown soft' is in progress...\r\n"
 
 #define ESC_LEFT "[D"
 #define ESC_RIGHT "[C"
@@ -191,10 +193,6 @@ static int send_banner(struct telnet_client_t *cln)
 {
 	if (telnet_send(cln, "accel-pptp version " ACCEL_PPTP_VERSION "\r\n", sizeof("accel-pptp version " ACCEL_PPTP_VERSION "\r\n")))
 		return -1;
-	if (cln->auth && ppp_shutdown) {
-		if (telnet_send(cln, "warning: 'shutdown soft' is in progress...\r\n", sizeof("warning: 'shutdown soft' is in progress...\r\n")))
-			return -1;
-	}
 	return 0;
 }
 
@@ -220,7 +218,8 @@ static int send_password_request(struct telnet_client_t *cln)
 
 static int send_prompt(struct telnet_client_t *cln)
 {
-	return telnet_send(cln, conf_cli_prompt, strlen(conf_cli_prompt));
+	sprintf((char *)temp_buf, "%s%s# ", conf_cli_prompt, ppp_shutdown ? "(shutdown)" : "");
+	return telnet_send(cln, temp_buf, strlen((char *)temp_buf));
 }
 
 /*static void print_buf(const uint8_t *buf, int size)
@@ -285,14 +284,14 @@ static int telnet_input_char(struct telnet_client_t *cln, uint8_t c)
 
 		if (!cln->auth) {
 			if (strcmp((char *)cln->cmdline, conf_cli_passwd)) {
-				if (telnet_send(cln, AUTH_FAILED, sizeof(AUTH_FAILED)))
+				if (telnet_send(cln, MSG_AUTH_FAILED, sizeof(MSG_AUTH_FAILED)))
 					return -1;
 				disconnect(cln);
 				return -1;
 			}
 			cln->auth = 1;
 			if (ppp_shutdown) {
-				if (telnet_send(cln, "warning: 'shutdown soft' is in progress...\r\n", sizeof("warning: 'shutdown soft' is in progress...\r\n")))
+				if (telnet_send(cln, MSG_SHUTDOWN_IN_PROGRESS, sizeof(MSG_SHUTDOWN_IN_PROGRESS)))
 					return -1;
 			}
 		} else if (cln->cmdline_len) {
@@ -599,6 +598,10 @@ static int serv_read(struct triton_md_handler_t *h)
 			send_password_request(conn);
 		else {
 			conn->auth = 1;
+			if (ppp_shutdown) {
+				if (telnet_send(conn, MSG_SHUTDOWN_IN_PROGRESS, sizeof(MSG_SHUTDOWN_IN_PROGRESS)))
+					continue;
+			}
 			send_prompt(conn);
 		}
 		triton_collect_cpu_usage();

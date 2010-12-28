@@ -8,6 +8,7 @@
 #include "cli.h"
 #include "cli_p.h"
 #include "log.h"
+#include "events.h"
 
 #include "memdebug.h"
 
@@ -17,7 +18,8 @@
 #define MSG_UNKNOWN_CMD "command unknown\r\n"
 
 char *conf_cli_passwd;
-const char *conf_cli_prompt = "accel-pptp# ";
+static const char *def_cli_prompt = "accel-pptp";
+char *conf_cli_prompt;
 
 static LIST_HEAD(simple_cmd_list);
 static LIST_HEAD(regexp_cmd_list);
@@ -196,12 +198,30 @@ int cli_process_cmd(struct cli_client_t *cln)
 	return 0;
 }
 
-static void __init init(void)
+static void load_config(void)
 {
 	const char *opt;
-
-	conf_cli_passwd = conf_get_opt("cli", "passwd");
+	
+	if (conf_cli_passwd)
+		_free(conf_cli_passwd);
+	opt = conf_get_opt("cli", "password");
+	if (opt)
+		conf_cli_passwd = _strdup(conf_cli_passwd);
+	else
+		conf_cli_passwd = NULL;
+	
+	if (conf_cli_prompt && conf_cli_prompt != def_cli_prompt)
+		_free(conf_cli_prompt);
 	opt = conf_get_opt("cli", "prompt");
 	if (opt)
 		conf_cli_prompt = _strdup(opt);
+	else
+		conf_cli_prompt = (char *)def_cli_prompt;
+}
+
+static void __init init(void)
+{
+	load_config();
+
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
