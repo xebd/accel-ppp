@@ -147,8 +147,6 @@ static int dict_load(const char *fname)
 					goto out_err_syntax;
 				if (!strcmp(ptr[2], "integer"))
 					attr->type = ATTR_TYPE_INTEGER;
-				else if (!strcmp(ptr[2], "uinteger"))
-					attr->type = ATTR_TYPE_UINTEGER;
 				else if (!strcmp(ptr[2], "string"))
 					attr->type = ATTR_TYPE_STRING;
 				else if (!strcmp(ptr[2], "date"))

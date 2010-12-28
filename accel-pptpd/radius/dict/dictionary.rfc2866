@@ -6,14 +6,14 @@
 #	$Id: dictionary.rfc2866,v 1.2 2005/08/08 22:23:38 aland Exp $
 #
 ATTRIBUTE	Acct-Status-Type			40	integer
-ATTRIBUTE	Acct-Delay-Time				41	uinteger
-ATTRIBUTE	Acct-Input-Octets			42	uinteger
-ATTRIBUTE	Acct-Output-Octets			43	uinteger
+ATTRIBUTE	Acct-Delay-Time				41	integer
+ATTRIBUTE	Acct-Input-Octets			42	integer
+ATTRIBUTE	Acct-Output-Octets			43	integer
 ATTRIBUTE	Acct-Session-Id				44	string
 ATTRIBUTE	Acct-Authentic				45	integer
 ATTRIBUTE	Acct-Session-Time			46	integer
-ATTRIBUTE	Acct-Input-Packets			47	uinteger
-ATTRIBUTE	Acct-Output-Packets			48	uinteger
+ATTRIBUTE	Acct-Input-Packets			47	integer
+ATTRIBUTE	Acct-Output-Packets			48	integer
 ATTRIBUTE	Acct-Terminate-Cause			49	integer
 ATTRIBUTE	Acct-Multi-Session-Id			50	string
 ATTRIBUTE	Acct-Link-Count				51	integer

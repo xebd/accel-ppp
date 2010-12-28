@@ -5,8 +5,8 @@
 #
 #	$Id: dictionary.rfc2869,v 1.2 2005/08/08 22:23:39 aland Exp $
 #
-ATTRIBUTE	Acct-Input-Gigawords			52	uinteger
-ATTRIBUTE	Acct-Output-Gigawords			53	uinteger
+ATTRIBUTE	Acct-Input-Gigawords			52	integer
+ATTRIBUTE	Acct-Output-Gigawords			53	integer
 
 ATTRIBUTE	Event-Timestamp				55	date
 
