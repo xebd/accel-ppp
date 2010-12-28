@@ -16,6 +16,8 @@
 
 #include "memdebug.h"
 
+static int conf_check_exists;
+
 static struct ipcp_option_t *ipaddr_init(struct ppp_ipcp_t *ipcp);
 static void ipaddr_free(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt);
 static int ipaddr_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt, uint8_t *ptr);
@@ -61,6 +63,24 @@ static void ipaddr_free(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt)
 	_free(ipaddr_opt);
 }
 
+static int check_exists(struct ppp_t *self_ppp, in_addr_t addr)
+{
+	struct ppp_t *ppp;
+	int r = 0;
+
+	pthread_rwlock_rdlock(&ppp_lock);
+	list_for_each_entry(ppp, &ppp_list, entry) {
+		if (!ppp->terminating && ppp->peer_ipaddr == addr && ppp != self_ppp) {
+			log_ppp_warn("ppp:ipcp: requested IP already assigned to %s\n", ppp->ifname);
+			r = 1;
+			break;
+		}
+	}
+	pthread_rwlock_unlock(&ppp_lock);
+
+	return r;
+}
+
 static int ipaddr_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt, uint8_t *ptr)
 {
 	struct ipaddr_option_t *ipaddr_opt=container_of(opt,typeof(*ipaddr_opt),opt);
@@ -73,6 +93,7 @@ static int ipaddr_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 			return -1;
 		}
 	}
+	
 	if (iprange_tunnel_check(ipaddr_opt->ip->peer_addr)) {
 		log_ppp_warn("ppp:ipcp: to avoid kernel soft lockup requested IP cannot be assigned (%i.%i.%i.%i)\n",
 			ipaddr_opt->ip->peer_addr&0xff, 
@@ -81,6 +102,9 @@ static int ipaddr_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 			(ipaddr_opt->ip->peer_addr >> 24)&0xff);
 		return -1;
 	}
+	
+	if (conf_check_exists && check_exists(ipcp->ppp, ipaddr_opt->ip->peer_addr))
+		return -1;
 	
 	opt32->hdr.id=CI_ADDR;
 	opt32->hdr.len=6;
@@ -185,8 +209,19 @@ static void ipaddr_print(void (*print)(const char *fmt,...),struct ipcp_option_t
 	print("<addr %s>",inet_ntoa(in));
 }
 
+static void load_config(void)
+{
+	const char *opt;
+
+	opt = conf_get_opt("ppp", "check-ip");
+	if (opt && atoi(opt) > 0)
+		conf_check_exists = 1;
+}
+
 static void __init ipaddr_opt_init()
 {
 	ipcp_option_register(&ipaddr_opt_hnd);
+	load_config();
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 
