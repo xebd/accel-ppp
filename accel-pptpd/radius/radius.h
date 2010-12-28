@@ -6,10 +6,11 @@
 #define REQ_LENGTH_MAX 4096
 
 #define ATTR_TYPE_INTEGER 0
-#define ATTR_TYPE_STRING  1
-#define ATTR_TYPE_OCTETS  2
-#define ATTR_TYPE_DATE    3
-#define ATTR_TYPE_IPADDR  4
+#define ATTR_TYPE_UINTEGER 1
+#define ATTR_TYPE_STRING  2
+#define ATTR_TYPE_OCTETS  3
+#define ATTR_TYPE_DATE    4
+#define ATTR_TYPE_IPADDR  5
 
 #define CODE_ACCESS_REQUEST 1
 #define CODE_ACCESS_ACCEPT  2
@@ -29,6 +30,7 @@
 typedef union
 {
 		int integer;
+		unsigned int uinteger;
 		char *string;
 		uint8_t *octets;
 		time_t date;

@@ -74,6 +74,7 @@ int rad_packet_build(struct rad_packet_t *pack, uint8_t *RA)
 		*ptr = attr->len + 2; ptr++;
 		switch(attr->attr->type) {
 			case ATTR_TYPE_INTEGER:
+			case ATTR_TYPE_UINTEGER:
 				*(uint32_t*)ptr = htonl(attr->val.integer);
 				break;
 			case ATTR_TYPE_OCTETS:
@@ -211,6 +212,7 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 					break;				
 				case ATTR_TYPE_DATE:
 				case ATTR_TYPE_INTEGER:
+				case ATTR_TYPE_UINTEGER:
 					attr->val.integer = ntohl(*(uint32_t*)ptr);
 					break;
 				case ATTR_TYPE_IPADDR:
@@ -306,11 +308,14 @@ void rad_packet_print(struct rad_packet_t *pack, void (*print)(const char *fmt, 
 			print(" <%s ", attr->attr->name);
 		switch (attr->attr->type) {
 			case ATTR_TYPE_INTEGER:
+			case ATTR_TYPE_UINTEGER:
 				val = rad_dict_find_val(attr->attr, attr->val);
 				if (val)
 					print("%s", val->name);
-				else
+				else if (attr->attr->type == ATTR_TYPE_INTEGER)
 					print("%i", attr->val.integer);
+				else
+					print("%u", attr->val.uinteger);
 				break;
 			case ATTR_TYPE_STRING:
 				print("\"%s\"", attr->val.string);
