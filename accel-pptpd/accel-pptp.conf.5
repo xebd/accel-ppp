@@ -98,8 +98,11 @@ Prefered MRU.
 Disable CCP negotiation if this parameter is zero.
 .TP
 .TP
-.BI "sid-case=" [upper|lower]
+.BI "sid-case=" upper|lower
 Specifies in which case generate session identifier (default lower).
+.TP
+.BI "check-ip=" 0|1
+Specifies whether accel-pptp should check if IP already assigned to other ppp interface (default 0).
 .TP
 .SH [lcp]
 .br
