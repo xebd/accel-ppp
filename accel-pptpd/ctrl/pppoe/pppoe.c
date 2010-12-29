@@ -22,6 +22,10 @@
 #include "mempool.h"
 #include "cli.h"
 
+#ifdef RADIUS
+#include "radius.h"
+#endif
+
 #include "pppoe.h"
 
 #include "memdebug.h"
@@ -39,10 +43,14 @@ struct pppoe_conn_t
 	struct pppoe_tag *relay_sid;
 	struct pppoe_tag *host_uniq;
 	struct pppoe_tag *service_name;
+	struct pppoe_tag *tr101;
 	uint8_t cookie[COOKIE_LENGTH];
 	
 	struct ppp_ctrl_t ctrl;
 	struct ppp_t ppp;
+#ifdef RADIUS
+	struct rad_plugin_t radius;
+#endif
 };
 
 struct delayed_pado_t
@@ -146,7 +154,29 @@ static void pppoe_conn_close(struct triton_context_t *ctx)
 		disconnect(conn);
 }
 
-static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const uint8_t *addr, const struct pppoe_tag *host_uniq, const struct pppoe_tag *relay_sid, const struct pppoe_tag *service_name, const uint8_t *cookie)
+#ifdef RADIUS
+static int pppoe_rad_send_access_request(struct rad_plugin_t *rad, struct rad_packet_t *pack)
+{
+	struct pppoe_conn_t *conn = container_of(rad, typeof(*conn), radius);
+
+	if (conn->tr101)
+		return tr101_send_access_request(conn->tr101, pack);
+	
+	return 0;
+}
+
+static int pppoe_rad_send_accounting_request(struct rad_plugin_t *rad, struct rad_packet_t *pack)
+{
+	struct pppoe_conn_t *conn = container_of(rad, typeof(*conn), radius);
+
+	if (conn->tr101)
+		return tr101_send_accounting_request(conn->tr101, pack);
+	
+	return 0;
+}
+#endif
+
+static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const uint8_t *addr, const struct pppoe_tag *host_uniq, const struct pppoe_tag *relay_sid, const struct pppoe_tag *service_name, const struct pppoe_tag *tr101, const uint8_t *cookie)
 {
 	struct pppoe_conn_t *conn;
 	int sid;
@@ -191,6 +221,11 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 	if (relay_sid) {
 		conn->relay_sid = _malloc(sizeof(*relay_sid) + ntohs(relay_sid->tag_len));
 		memcpy(conn->relay_sid, relay_sid, sizeof(*relay_sid) + ntohs(relay_sid->tag_len));
+	}
+
+	if (tr101) {
+		conn->tr101 = _malloc(sizeof(*tr101) + ntohs(tr101->tag_len));
+		memcpy(conn->tr101, tr101, sizeof(*tr101) + ntohs(tr101->tag_len));
 	}
 
 	conn->service_name = _malloc(sizeof(*service_name) + ntohs(service_name->tag_len));
@@ -268,6 +303,14 @@ static void connect_channel(struct pppoe_conn_t *conn)
 	if (establish_ppp(&conn->ppp))
 		goto out_err_close;
 	
+#ifdef RADIUS
+	if (conn->tr101) {
+		conn->radius.send_access_request = pppoe_rad_send_access_request;
+		conn->radius.send_accounting_request = pppoe_rad_send_accounting_request;
+		rad_register_plugin(&conn->ppp, &conn->radius);
+	}
+#endif
+
 	conn->ppp_started = 1;
 	
 	dpado_check_next(__sync_add_and_fetch(&stat_active, 1));
@@ -367,7 +410,10 @@ static void print_packet(uint8_t *pack)
 				log_info2(">");
 				break;
 			case TAG_VENDOR_SPECIFIC:
-				log_info2(" <Vendor-Specific>");
+				if (ntohs(tag->tag_len) < 4)
+					log_info2(" <Vendor-Specific invalid>");
+				else
+					log_info2(" <Vendor-Specific %x>", ntohl(*(uint32_t *)tag->tag_data));
 				break;
 			case TAG_RELAY_SESSION_ID:
 				log_info2(" <Relay-Session-Id");
@@ -740,8 +786,10 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	struct pppoe_tag *relay_sid_tag = NULL;
 	struct pppoe_tag *ac_cookie_tag = NULL;
 	struct pppoe_tag *service_name_tag = NULL;
+	struct pppoe_tag *tr101_tag = NULL;
 	int n, service_match = 0;
 	struct pppoe_conn_t *conn;
+	int vendor_id;
 
 	if (ppp_shutdown)
 		return;
@@ -791,6 +839,13 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 			case TAG_RELAY_SESSION_ID:
 				relay_sid_tag = tag;
 				break;
+			case TAG_VENDOR_SPECIFIC:
+				if (ntohs(tag->tag_len) < 4)
+					continue;
+				vendor_id = ntohl(*(uint32_t *)tag->tag_data);
+				if (vendor_id == VENDOR_ADSL_FORUM)
+					tr101_tag = tag;
+				break;
 		}
 	}
 
@@ -828,7 +883,7 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	if (conn)
 		return;
 
-	conn = allocate_channel(serv, ethhdr->h_source, host_uniq_tag, relay_sid_tag, service_name_tag, (uint8_t *)ac_cookie_tag->tag_data);
+	conn = allocate_channel(serv, ethhdr->h_source, host_uniq_tag, relay_sid_tag, service_name_tag, tr101_tag, (uint8_t *)ac_cookie_tag->tag_data);
 	if (!conn)
 		pppoe_send_err(serv, ethhdr->h_source, host_uniq_tag, relay_sid_tag, CODE_PADS, TAG_AC_SYSTEM_ERROR);
 	else {

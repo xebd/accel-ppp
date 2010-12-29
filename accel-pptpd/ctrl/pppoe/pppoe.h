@@ -41,6 +41,8 @@
 #define MAX_PPPOE_PAYLOAD (ETH_DATA_LEN - PPPOE_OVERHEAD)
 #define MAX_PPPOE_MTU (MAX_PPPOE_PAYLOAD - 2)
 
+#define VENDOR_ADSL_FORUM 0xde9
+
 #define MAX_SID 65534
 #define SECRET_LENGTH 16
 #define COOKIE_LENGTH 24
@@ -101,6 +103,10 @@ extern int pado_delay;
 void dpado_check_next(int conn_cnt);
 void dpado_check_prev(int conn_cnt);
 int dpado_parse(const char *str);
+
+struct rad_packet_t;
+int tr101_send_access_request(struct pppoe_tag *tr101, struct rad_packet_t *pack);
+int tr101_send_accounting_request(struct pppoe_tag *tr101, struct rad_packet_t *pack);
 
 #endif
 
