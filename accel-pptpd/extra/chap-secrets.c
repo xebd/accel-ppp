@@ -30,9 +30,28 @@ struct cs_pd_t
 
 static char *skip_word(char *ptr)
 {
-	for(; *ptr; ptr++)
-		if (*ptr == ' ' || *ptr == '\t' || *ptr == '\n') 
+	char quote = 0;
+
+	if (*ptr == '\'' || *ptr == '"') {
+		quote = *ptr;
+		ptr++;
+	}
+
+	for(; *ptr; ptr++) {
+		if (quote) {
+			if (*ptr == '\n')
+				break;
+			if (*ptr == '\\' && ptr[1] && ptr[1] != '\n') {
+				memmove(ptr, ptr + 1, strlen(ptr));
+				continue;
+			}
+			if (*ptr == quote) {
+				*ptr = ' ';
+				break;
+			}
+		} else if (*ptr == ' ' || *ptr == '\t' || *ptr == '\n') 
 			break;
+	}
 	return ptr;
 }
 static char *skip_space(char *ptr)
@@ -50,14 +69,17 @@ static int split(char *buf, char **ptr)
 		buf = skip_word(buf);
 		if (!*buf)
 			return i;
-		
+	
 		*buf = 0;
 		
 		buf = skip_space(buf + 1);
 		if (!*buf)
 			return i;
 
-		ptr[i] = buf;
+		if (*buf == '"' || *buf == '\'')
+			ptr[i] = buf + 1;
+		else
+			ptr[i] = buf;
 	}
 
 	buf = skip_word(buf);
@@ -95,11 +117,18 @@ static struct cs_pd_t *create_pd(struct ppp_t *ppp, const char *username)
 	}
 	
 	while (fgets(buf, 4096, f)) {
+		if (buf[0] == '#')
+			continue;
 		n = split(buf, ptr);
 		if (n < 3)
 			continue;
-		if (!strcmp(buf, username))
-			goto found;
+		if (*buf == '\'' || *buf == '"') {
+			if (!strcmp(buf + 1, username))
+				goto found;
+		} else {
+			if (!strcmp(buf, username))
+				goto found;
+		}
 	}
 
 out:
