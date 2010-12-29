@@ -140,8 +140,10 @@ void __export triton_md_unregister_handler(struct triton_md_handler_t *ud)
 	spin_lock(&h->ctx->lock);
 	h->ud = NULL;
 	list_del(&h->entry);
-	if (h->pending)
+	if (h->pending) {
 		list_del(&h->entry2);
+		__sync_sub_and_fetch(&triton_stat.md_handler_pending, 1);
+	}
 	spin_unlock(&h->ctx->lock);
 
 	sched_yield();

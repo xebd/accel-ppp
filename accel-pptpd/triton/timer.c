@@ -202,8 +202,10 @@ void __export triton_timer_del(struct triton_timer_t *ud)
 	spin_lock(&t->ctx->lock);
 	t->ud = NULL;
 	list_del(&t->entry);
-	if (t->pending)
+	if (t->pending) {
 		list_del(&t->entry2);
+		__sync_sub_and_fetch(&triton_stat.timer_pending, 1);
+	}
 	spin_unlock(&t->ctx->lock);
 
 	sched_yield();
