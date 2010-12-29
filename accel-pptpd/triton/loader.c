@@ -48,7 +48,7 @@ int load_modules(const char *name)
 			}
 		}
 
-		if (!dlopen(fname, RTLD_NOW | RTLD_GLOBAL)) {
+		if (!dlopen(fname, RTLD_LAZY | RTLD_GLOBAL)) {
 			triton_log_error("loader: failed to load '%s': %s\n", opt->name, dlerror());
 			_free(fname);
 			return -1;

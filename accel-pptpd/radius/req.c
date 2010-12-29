@@ -21,6 +21,7 @@ static void rad_req_timeout(struct triton_timer_t *t);
 
 struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *username)
 {
+	struct rad_plugin_t *plugin;
 	struct rad_req_t *req = _malloc(sizeof(*req));
 
 	if (!req)
@@ -48,31 +49,44 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 	if (!req->pack)
 		goto out_err;
 
-	if (rad_packet_add_str(req->pack, "User-Name", username, strlen(username)))
+	if (rad_packet_add_str(req->pack, NULL, "User-Name", username))
 		goto out_err;
 	if (conf_nas_identifier)
-		if (rad_packet_add_str(req->pack, "NAS-Identifier", conf_nas_identifier, strlen(conf_nas_identifier)))
+		if (rad_packet_add_str(req->pack, NULL, "NAS-Identifier", conf_nas_identifier))
 			goto out_err;
 	if (conf_nas_ip_address)
-		if (rad_packet_add_ipaddr(req->pack, "NAS-IP-Address", conf_nas_ip_address))
+		if (rad_packet_add_ipaddr(req->pack, NULL, "NAS-IP-Address", conf_nas_ip_address))
 			goto out_err;
-	if (rad_packet_add_int(req->pack, "NAS-Port", rpd->ppp->unit_idx))
+	if (rad_packet_add_int(req->pack, NULL, "NAS-Port", rpd->ppp->unit_idx))
 		goto out_err;
-	if (rad_packet_add_val(req->pack, "NAS-Port-Type", "Virtual"))
+	if (rad_packet_add_val(req->pack, NULL, "NAS-Port-Type", "Virtual"))
 		goto out_err;
-	if (rad_packet_add_val(req->pack, "Service-Type", "Framed-User"))
+	if (rad_packet_add_val(req->pack, NULL, "Service-Type", "Framed-User"))
 		goto out_err;
-	if (rad_packet_add_val(req->pack, "Framed-Protocol", "PPP"))
+	if (rad_packet_add_val(req->pack, NULL, "Framed-Protocol", "PPP"))
 		goto out_err;
 	if (rpd->ppp->ctrl->calling_station_id)
-		if (rad_packet_add_str(req->pack, "Calling-Station-Id", rpd->ppp->ctrl->calling_station_id, strlen(rpd->ppp->ctrl->calling_station_id)))
+		if (rad_packet_add_str(req->pack, NULL, "Calling-Station-Id", rpd->ppp->ctrl->calling_station_id))
 			goto out_err;
 	if (rpd->ppp->ctrl->called_station_id)
-		if (rad_packet_add_str(req->pack, "Called-Station-Id", rpd->ppp->ctrl->called_station_id, strlen(rpd->ppp->ctrl->called_station_id)))
+		if (rad_packet_add_str(req->pack, NULL, "Called-Station-Id", rpd->ppp->ctrl->called_station_id))
 			goto out_err;
 	if (rpd->attr_class)
-		if (rad_packet_add_octets(req->pack, "Class", rpd->attr_class, rpd->attr_class_len))
+		if (rad_packet_add_octets(req->pack, NULL, "Class", rpd->attr_class, rpd->attr_class_len))
 			goto out_err;
+
+	list_for_each_entry(plugin, &req->rpd->plugin_list, entry) {
+		switch (code) {
+			case CODE_ACCESS_REQUEST:
+				if (plugin->send_access_request && plugin->send_access_request(plugin, req->pack))
+					goto out_err;
+				break;
+			case CODE_ACCOUNTING_REQUEST:
+				if (plugin->send_accounting_request && plugin->send_accounting_request(plugin, req->pack))
+					goto out_err;
+				break;
+		}
+	}
 
 	return req;
 
@@ -88,29 +102,29 @@ int rad_req_acct_fill(struct rad_req_t *req)
 
 	memset(req->RA, 0, sizeof(req->RA));
 
-	if (rad_packet_add_val(req->pack, "Acct-Status-Type", "Start"))
+	if (rad_packet_add_val(req->pack, NULL, "Acct-Status-Type", "Start"))
 		return -1;
-	if (rad_packet_add_val(req->pack, "Acct-Authentic", "RADIUS"))
+	if (rad_packet_add_val(req->pack, NULL, "Acct-Authentic", "RADIUS"))
 		return -1;
-	if (rad_packet_add_str(req->pack, "Acct-Session-Id", req->rpd->ppp->sessionid, PPP_SESSIONID_LEN))
+	if (rad_packet_add_str(req->pack, NULL, "Acct-Session-Id", req->rpd->ppp->sessionid))
 		return -1;
-	if (rad_packet_add_int(req->pack, "Acct-Session-Time", 0))
+	if (rad_packet_add_int(req->pack, NULL, "Acct-Session-Time", 0))
 		return -1;
-	if (rad_packet_add_int(req->pack, "Acct-Input-Octets", 0))
+	if (rad_packet_add_int(req->pack, NULL, "Acct-Input-Octets", 0))
 		return -1;
-	if (rad_packet_add_int(req->pack, "Acct-Output-Octets", 0))
+	if (rad_packet_add_int(req->pack, NULL, "Acct-Output-Octets", 0))
 		return -1;
-	if (rad_packet_add_int(req->pack, "Acct-Input-Packets", 0))
+	if (rad_packet_add_int(req->pack, NULL, "Acct-Input-Packets", 0))
 		return -1;
-	if (rad_packet_add_int(req->pack, "Acct-Output-Packets", 0))
+	if (rad_packet_add_int(req->pack, NULL, "Acct-Output-Packets", 0))
 		return -1;
-	if (rad_packet_add_int(req->pack, "Acct-Input-Gigawords", 0))
+	if (rad_packet_add_int(req->pack, NULL, "Acct-Input-Gigawords", 0))
 		return -1;
-	if (rad_packet_add_int(req->pack, "Acct-Output-Gigawords", 0))
+	if (rad_packet_add_int(req->pack, NULL, "Acct-Output-Gigawords", 0))
 		return -1;
-	if (rad_packet_add_int(req->pack, "Acct-Delay-Time", 0))
+	if (rad_packet_add_int(req->pack, NULL, "Acct-Delay-Time", 0))
 		return -1;
-	if (rad_packet_add_ipaddr(req->pack, "Framed-IP-Address", req->rpd->ppp->peer_ipaddr))
+	if (rad_packet_add_ipaddr(req->pack, NULL, "Framed-IP-Address", req->rpd->ppp->peer_ipaddr))
 		return -1;
 
 	return 0;

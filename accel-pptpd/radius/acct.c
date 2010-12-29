@@ -58,13 +58,13 @@ static void req_set_stat(struct rad_req_t *req, struct ppp_t *ppp)
 		req->rpd->acct_output_gigawords++;
 	req->rpd->acct_output_octets = ifreq.stats.p.ppp_obytes;
 
-	rad_packet_change_int(req->pack, "Acct-Input-Octets", ifreq.stats.p.ppp_ibytes);
-	rad_packet_change_int(req->pack, "Acct-Output-Octets", ifreq.stats.p.ppp_obytes);
-	rad_packet_change_int(req->pack, "Acct-Input-Packets", ifreq.stats.p.ppp_ipackets);
-	rad_packet_change_int(req->pack, "Acct-Output-Packets", ifreq.stats.p.ppp_opackets);
-	rad_packet_change_int(req->pack, "Acct-Input-Gigawords", req->rpd->acct_input_gigawords);
-	rad_packet_change_int(req->pack, "Acct-Output-Gigawords", req->rpd->acct_output_gigawords);
-	rad_packet_change_int(req->pack, "Acct-Session-Time", stop_time - ppp->start_time);
+	rad_packet_change_int(req->pack, NULL, "Acct-Input-Octets", ifreq.stats.p.ppp_ibytes);
+	rad_packet_change_int(req->pack, NULL, "Acct-Output-Octets", ifreq.stats.p.ppp_obytes);
+	rad_packet_change_int(req->pack, NULL, "Acct-Input-Packets", ifreq.stats.p.ppp_ipackets);
+	rad_packet_change_int(req->pack, NULL, "Acct-Output-Packets", ifreq.stats.p.ppp_opackets);
+	rad_packet_change_int(req->pack, NULL, "Acct-Input-Gigawords", req->rpd->acct_input_gigawords);
+	rad_packet_change_int(req->pack, NULL, "Acct-Output-Gigawords", req->rpd->acct_output_gigawords);
+	rad_packet_change_int(req->pack, NULL, "Acct-Session-Time", stop_time - ppp->start_time);
 }
 
 static int rad_acct_read(struct triton_md_handler_t *h)
@@ -135,7 +135,7 @@ static void rad_acct_timeout(struct triton_timer_t *t)
 
 	req->pack->id++;
 	
-	rad_packet_change_int(req->pack, "Acct-Delay-Time", dt);
+	rad_packet_change_int(req->pack, NULL, "Acct-Delay-Time", dt);
 	req_set_RA(req, conf_acct_secret);
 	rad_req_send(req, conf_interim_verbose);
 }
@@ -154,8 +154,8 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 	time(&rpd->acct_timestamp);
 	rpd->acct_req->pack->id++;
 
-	rad_packet_change_val(rpd->acct_req->pack, "Acct-Status-Type", "Interim-Update");
-	rad_packet_change_int(rpd->acct_req->pack, "Acct-Delay-Time", 0);
+	rad_packet_change_val(rpd->acct_req->pack, NULL, "Acct-Status-Type", "Interim-Update");
+	rad_packet_change_int(rpd->acct_req->pack, NULL, "Acct-Delay-Time", 0);
 	req_set_RA(rpd->acct_req, conf_acct_secret);
 	rad_req_send(rpd->acct_req, conf_interim_verbose);
 	if (conf_acct_timeout) {
@@ -194,7 +194,7 @@ int rad_acct_start(struct radius_pd_t *rpd)
 	
 	for (i = 0; i < conf_max_try; i++) {
 		time(&ts);
-		rad_packet_change_int(rpd->acct_req->pack, "Acct-Delay-Time", ts - rpd->acct_timestamp);
+		rad_packet_change_int(rpd->acct_req->pack, NULL, "Acct-Delay-Time", ts - rpd->acct_timestamp);
 		if (req_set_RA(rpd->acct_req, conf_acct_secret))
 			goto out_err;
 		if (rad_req_send(rpd->acct_req, conf_verbose))
@@ -256,29 +256,29 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 
 		switch (rpd->ppp->terminate_cause) {
 			case TERM_USER_REQUEST:
-				rad_packet_add_val(rpd->acct_req->pack, "Acct-Terminate-Cause", "User-Request");
+				rad_packet_add_val(rpd->acct_req->pack, NULL, "Acct-Terminate-Cause", "User-Request");
 				break;
 			case TERM_SESSION_TIMEOUT:
-				rad_packet_add_val(rpd->acct_req->pack, "Acct-Terminate-Cause", "Session-Timeout");
+				rad_packet_add_val(rpd->acct_req->pack, NULL, "Acct-Terminate-Cause", "Session-Timeout");
 				break;
 			case TERM_ADMIN_RESET:
-				rad_packet_add_val(rpd->acct_req->pack, "Acct-Terminate-Cause", "Admin-Reset");
+				rad_packet_add_val(rpd->acct_req->pack, NULL, "Acct-Terminate-Cause", "Admin-Reset");
 				break;
 			case TERM_USER_ERROR:
 			case TERM_AUTH_ERROR:
-				rad_packet_add_val(rpd->acct_req->pack, "Acct-Terminate-Cause", "User-Error");
+				rad_packet_add_val(rpd->acct_req->pack, NULL, "Acct-Terminate-Cause", "User-Error");
 				break;
 			case TERM_NAS_ERROR:
-				rad_packet_add_val(rpd->acct_req->pack, "Acct-Terminate-Cause", "NAS-Error");
+				rad_packet_add_val(rpd->acct_req->pack, NULL, "Acct-Terminate-Cause", "NAS-Error");
 				break;
 			case TERM_NAS_REQUEST:
-				rad_packet_add_val(rpd->acct_req->pack, "Acct-Terminate-Cause", "NAS-Request");
+				rad_packet_add_val(rpd->acct_req->pack, NULL, "Acct-Terminate-Cause", "NAS-Request");
 				break;
 			case TERM_NAS_REBOOT:
-				rad_packet_add_val(rpd->acct_req->pack, "Acct-Terminate-Cause", "NAS-Reboot");
+				rad_packet_add_val(rpd->acct_req->pack, NULL, "Acct-Terminate-Cause", "NAS-Reboot");
 				break;
 		}
-		rad_packet_change_val(rpd->acct_req->pack, "Acct-Status-Type", "Stop");
+		rad_packet_change_val(rpd->acct_req->pack, NULL, "Acct-Status-Type", "Stop");
 		req_set_stat(rpd->acct_req, rpd->ppp);
 		req_set_RA(rpd->acct_req, conf_acct_secret);
 		/// !!! rad_req_add_val(rpd->acct_req, "Acct-Terminate-Cause", "");
@@ -292,7 +292,7 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 
 		for(i = 0; i < conf_max_try; i++) {
 			time(&ts);
-			rad_packet_change_int(rpd->acct_req->pack, "Acct-Delay-Time", ts - rpd->acct_timestamp);
+			rad_packet_change_int(rpd->acct_req->pack, NULL, "Acct-Delay-Time", ts - rpd->acct_timestamp);
 			rpd->acct_req->pack->id++;
 			if (req_set_RA(rpd->acct_req, conf_acct_secret))
 				break;

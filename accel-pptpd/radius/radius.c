@@ -173,6 +173,7 @@ static void ppp_starting(struct ppp_t *ppp)
 	rpd->pd.key = &pd_key;
 	rpd->ppp = ppp;
 	pthread_mutex_init(&rpd->lock, NULL);
+	INIT_LIST_HEAD(&rpd->plugin_list);
 	list_add_tail(&rpd->pd.entry, &ppp->pd_list);
 
 	pthread_rwlock_wrlock(&sessions_lock);
@@ -331,10 +332,21 @@ int rad_check_nas_pack(struct rad_packet_t *pack)
 
 	if (conf_nas_identifier && ident && strcmp(conf_nas_identifier, ident))
 		return -1;
+
 	if (conf_nas_ip_address && ipaddr && conf_nas_ip_address != ipaddr)
 		return -1;
 	
 	return 0;
+}
+
+void __export rad_register_plugin(struct ppp_t *ppp, struct rad_plugin_t *plugin)
+{
+	struct radius_pd_t *rpd = find_pd(ppp);
+
+	if (!rpd)
+		return;
+
+	list_add_tail(&plugin->entry, &rpd->plugin_list);
 }
 
 static struct ipdb_t ipdb = {

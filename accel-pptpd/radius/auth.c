@@ -190,7 +190,7 @@ int rad_auth_pap(struct radius_pd_t *rpd, const char *username, va_list args)
 	if (!epasswd)
 		goto out;
 
-	if (rad_packet_add_octets(req->pack, "User-Password", epasswd, epasswd_len)) {
+	if (rad_packet_add_octets(req->pack, NULL, "User-Password", epasswd, epasswd_len)) {
 		if (epasswd_len)
 			_free(epasswd);
 		goto out;
@@ -200,7 +200,7 @@ int rad_auth_pap(struct radius_pd_t *rpd, const char *username, va_list args)
 		_free(epasswd);
 
 	if (conf_sid_in_auth)
-		if (rad_packet_add_str(req->pack, "Acct-Session-Id", rpd->ppp->sessionid, PPP_SESSIONID_LEN))
+		if (rad_packet_add_str(req->pack, NULL, "Acct-Session-Id", rpd->ppp->sessionid))
 			return -1;
 
 	r = rad_auth_send(req);
@@ -240,29 +240,29 @@ int rad_auth_chap_md5(struct radius_pd_t *rpd, const char *username, va_list arg
 		if (challenge_len == 16)
 			memcpy(rpd->auth_req->RA, challenge, 16);
 		else {
-			if (rad_packet_add_octets(rpd->auth_req->pack, "CHAP-Challenge", challenge, challenge_len))
+			if (rad_packet_add_octets(rpd->auth_req->pack, NULL, "CHAP-Challenge", challenge, challenge_len))
 			goto out;
 		}
 
-		if (rad_packet_add_octets(rpd->auth_req->pack, "CHAP-Password", chap_password, 17))
+		if (rad_packet_add_octets(rpd->auth_req->pack, NULL, "CHAP-Password", chap_password, 17))
 			goto out;
 	} else {
 		if (challenge_len == 16)
 			memcpy(rpd->auth_req->RA, challenge, 16);
 		else {
-			if (rad_packet_change_octets(rpd->auth_req->pack, "CHAP-Challenge", challenge, challenge_len))
+			if (rad_packet_change_octets(rpd->auth_req->pack, NULL, "CHAP-Challenge", challenge, challenge_len))
 			goto out;
 		}
 
-		if (rad_packet_change_octets(rpd->auth_req->pack, "CHAP-Password", chap_password, 17))
+		if (rad_packet_change_octets(rpd->auth_req->pack, NULL, "CHAP-Password", chap_password, 17))
 			goto out;
 		
 		if (rpd->attr_state) {
-			if (rad_packet_find_attr(rpd->auth_req->pack, "State")) {
-				if (rad_packet_change_octets(rpd->auth_req->pack, "State", rpd->attr_state, rpd->attr_state_len))
+			if (rad_packet_find_attr(rpd->auth_req->pack, NULL, "State")) {
+				if (rad_packet_change_octets(rpd->auth_req->pack, NULL, "State", rpd->attr_state, rpd->attr_state_len))
 					goto out;
 			} else {
-				if (rad_packet_add_octets(rpd->auth_req->pack, "State", rpd->attr_state, rpd->attr_state_len))
+				if (rad_packet_add_octets(rpd->auth_req->pack, NULL, "State", rpd->attr_state, rpd->attr_state_len))
 					goto out;
 			}
 		}
@@ -272,7 +272,7 @@ int rad_auth_chap_md5(struct radius_pd_t *rpd, const char *username, va_list arg
 	}
 	
 	if (conf_sid_in_auth)
-		if (rad_packet_add_str(rpd->auth_req->pack, "Acct-Session-Id", rpd->ppp->sessionid, PPP_SESSIONID_LEN))
+		if (rad_packet_add_str(rpd->auth_req->pack, NULL, "Acct-Session-Id", rpd->ppp->sessionid))
 			goto out;
 
 	r = rad_auth_send(rpd->auth_req);
@@ -358,24 +358,24 @@ int rad_auth_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list ar
 		if (!rpd->auth_req)
 			return PWDB_DENIED;
 		
-		if (rad_packet_add_vendor_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP-Challenge", challenge, challenge_len))
+		if (rad_packet_add_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP-Challenge", challenge, challenge_len))
 			goto out;
 		
-		if (rad_packet_add_vendor_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP-Response", response, sizeof(response)))
+		if (rad_packet_add_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP-Response", response, sizeof(response)))
 			goto out;
 	} else {
-		if (rad_packet_change_vendor_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP-Challenge", challenge, challenge_len))
+		if (rad_packet_change_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP-Challenge", challenge, challenge_len))
 			goto out;
 		
-		if (rad_packet_change_vendor_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP-Response", response, sizeof(response)))
+		if (rad_packet_change_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP-Response", response, sizeof(response)))
 			goto out;
 
 		if (rpd->attr_state) {
-			if (rad_packet_find_attr(rpd->auth_req->pack, "State")) {
-				if (rad_packet_change_octets(rpd->auth_req->pack, "State", rpd->attr_state, rpd->attr_state_len))
+			if (rad_packet_find_attr(rpd->auth_req->pack, NULL, "State")) {
+				if (rad_packet_change_octets(rpd->auth_req->pack, NULL, "State", rpd->attr_state, rpd->attr_state_len))
 					goto out;
 			} else {
-				if (rad_packet_add_octets(rpd->auth_req->pack, "State", rpd->attr_state, rpd->attr_state_len))
+				if (rad_packet_add_octets(rpd->auth_req->pack, NULL, "State", rpd->attr_state, rpd->attr_state_len))
 					goto out;
 			}
 		}
@@ -385,7 +385,7 @@ int rad_auth_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list ar
 	}
 
 	if (conf_sid_in_auth)
-		if (rad_packet_add_str(rpd->auth_req->pack, "Acct-Session-Id", rpd->ppp->sessionid, PPP_SESSIONID_LEN))
+		if (rad_packet_add_str(rpd->auth_req->pack, NULL, "Acct-Session-Id", rpd->ppp->sessionid))
 			goto out;
 
 	r = rad_auth_send(rpd->auth_req);
@@ -433,24 +433,24 @@ int rad_auth_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list ar
 		if (!rpd->auth_req)
 			return PWDB_DENIED;
 
-		if (rad_packet_add_vendor_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP-Challenge", challenge, 16))
+		if (rad_packet_add_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP-Challenge", challenge, 16))
 			goto out;
 		
-		if (rad_packet_add_vendor_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP2-Response", mschap_response, sizeof(mschap_response)))
+		if (rad_packet_add_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP2-Response", mschap_response, sizeof(mschap_response)))
 			goto out;
 	} else {
-		if (rad_packet_change_vendor_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP-Challenge", challenge, 16))
+		if (rad_packet_change_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP-Challenge", challenge, 16))
 			goto out;
 		
-		if (rad_packet_change_vendor_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP2-Response", mschap_response, sizeof(mschap_response)))
+		if (rad_packet_change_octets(rpd->auth_req->pack, "Microsoft", "MS-CHAP2-Response", mschap_response, sizeof(mschap_response)))
 			goto out;
 
 		if (rpd->attr_state) {
-			if (rad_packet_find_attr(rpd->auth_req->pack, "State")) {
-				if (rad_packet_change_octets(rpd->auth_req->pack, "State", rpd->attr_state, rpd->attr_state_len))
+			if (rad_packet_find_attr(rpd->auth_req->pack, NULL, "State")) {
+				if (rad_packet_change_octets(rpd->auth_req->pack, NULL, "State", rpd->attr_state, rpd->attr_state_len))
 					goto out;
 			} else {
-				if (rad_packet_add_octets(rpd->auth_req->pack, "State", rpd->attr_state, rpd->attr_state_len))
+				if (rad_packet_add_octets(rpd->auth_req->pack, NULL, "State", rpd->attr_state, rpd->attr_state_len))
 					goto out;
 			}
 		}
@@ -460,12 +460,12 @@ int rad_auth_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list ar
 	}
 	
 	if (conf_sid_in_auth)
-		if (rad_packet_add_str(rpd->auth_req->pack, "Acct-Session-Id", rpd->ppp->sessionid, PPP_SESSIONID_LEN))
+		if (rad_packet_add_str(rpd->auth_req->pack, NULL, "Acct-Session-Id", rpd->ppp->sessionid))
 			goto out;
 
 	r = rad_auth_send(rpd->auth_req);
 	if (r == PWDB_SUCCESS) {
-		ra = rad_packet_find_vendor_attr(rpd->auth_req->reply, "Microsoft", "MS-CHAP2-Success");
+		ra = rad_packet_find_attr(rpd->auth_req->reply, "Microsoft", "MS-CHAP2-Success");
 		if (!ra) {
 			log_error("radius:auth:mschap-v2: 'MS-CHAP-Success' not found in radius response\n");
 			r = PWDB_DENIED;

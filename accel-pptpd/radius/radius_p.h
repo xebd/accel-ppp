@@ -38,6 +38,8 @@ struct radius_pd_t
 	uint8_t *attr_state;
 	int attr_state_len;
 	int termination_action;	
+
+	struct list_head plugin_list;
 };
 
 struct rad_req_t

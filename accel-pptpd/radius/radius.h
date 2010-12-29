@@ -84,6 +84,17 @@ struct rad_packet_t
 	void *buf;
 };
 
+struct rad_plugin_t
+{
+	struct list_head entry;
+	int (*send_access_request)(struct rad_plugin_t *, struct rad_packet_t *pack);
+	int (*send_accounting_request)(struct rad_plugin_t *, struct rad_packet_t *pack);
+};
+
+struct ppp_t;
+
+void rad_register_plugin(struct ppp_t *, struct rad_plugin_t *);
+
 struct rad_dict_attr_t *rad_dict_find_attr(const char *name);
 struct rad_dict_attr_t *rad_dict_find_attr_id(struct rad_dict_vendor_t *vendor, int type);
 struct rad_dict_value_t *rad_dict_find_val_name(struct rad_dict_attr_t *, const char *name);
@@ -92,18 +103,15 @@ struct rad_dict_vendor_t *rad_dict_find_vendor_name(const char *name);
 struct rad_dict_vendor_t *rad_dict_find_vendor_id(int id);
 struct rad_dict_attr_t *rad_dict_find_vendor_attr(struct rad_dict_vendor_t *vendor, const char *name);
 
-struct rad_attr_t *rad_packet_find_attr(struct rad_packet_t *pack, const char *name);
-int rad_packet_add_int(struct rad_packet_t *pack, const char *name, int val);
-int rad_packet_add_val(struct rad_packet_t *pack, const char *name, const char *val);
-int rad_packet_add_str(struct rad_packet_t *pack, const char *name, const char *val, int len);
-int rad_packet_add_octets(struct rad_packet_t *pack, const char *name, const uint8_t *val, int len);
-int rad_packet_change_int(struct rad_packet_t *pack, const char *name, int val);
-int rad_packet_change_val(struct rad_packet_t *pack, const char *name, const char *val);
-int rad_packet_change_octets(struct rad_packet_t *pack, const char *name, const uint8_t *val, int len);
-int rad_packet_add_ipaddr(struct rad_packet_t *pack, const char *name, in_addr_t ipaddr);
-int rad_packet_add_vendor_octets(struct rad_packet_t *pack, const char *vendor_name, const char *name, const uint8_t *val, int len);
-int rad_packet_change_vendor_octets(struct rad_packet_t *pack, const char *vendor_name, const char *name, const uint8_t *val, int len);
-struct rad_attr_t *rad_packet_find_vendor_attr(struct rad_packet_t *pack, const char *vendor_name, const char *name);
+struct rad_attr_t *rad_packet_find_attr(struct rad_packet_t *pack, const char *vendor, const char *name);
+int rad_packet_add_int(struct rad_packet_t *pack, const char *vendor, const char *name, int val);
+int rad_packet_add_val(struct rad_packet_t *pack, const char *vendor, const char *name, const char *val);
+int rad_packet_add_str(struct rad_packet_t *pack, const char *vendor, const char *name, const char *val);
+int rad_packet_add_octets(struct rad_packet_t *pack, const char *vendor, const char *name, const uint8_t *val, int len);
+int rad_packet_change_int(struct rad_packet_t *pack, const char *vendor, const char *name, int val);
+int rad_packet_change_val(struct rad_packet_t *pack, const char *vendor, const char *name, const char *val);
+int rad_packet_change_octets(struct rad_packet_t *pack, const char *vendor, const char *name, const uint8_t *val, int len);
+int rad_packet_add_ipaddr(struct rad_packet_t *pack, const char *vendor, const char *name, in_addr_t ipaddr);
 
 #endif
 

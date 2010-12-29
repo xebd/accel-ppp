@@ -102,7 +102,7 @@ static int dm_coa_send_nak(int fd, struct rad_packet_t *req, struct sockaddr_in 
 	reply->id = req->id;
 
 	if (err_code)
-		rad_packet_add_int(reply, "Error-Cause", err_code);
+		rad_packet_add_int(reply, NULL, "Error-Cause", err_code);
 
 	if (rad_packet_build(reply, RA)) {
 		rad_packet_free(reply);
