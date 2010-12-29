@@ -120,7 +120,7 @@ static void disconnect(struct telnet_client_t *cln)
 static void cli_client_disconnect(struct cli_client_t *tcln)
 {
 	struct telnet_client_t *cln = container_of(tcln, typeof(*cln), cli_client);
-	disconnect(cln);
+	cln->disconnect = 1;
 }
 
 static void queue_buffer(struct telnet_client_t *cln, struct buffer_t *b)
