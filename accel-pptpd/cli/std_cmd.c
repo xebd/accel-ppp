@@ -38,7 +38,7 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 
 	cli_sendv(client, "uptime: %i.%02i:%02i:%02i\r\n", day, hour, dt / 60, dt % 60);
 	cli_sendv(client, "cpu: %i%%\r\n", triton_stat.cpu);
-	cli_sendv(client, "mem: %lu/%lu kB\r\n", vmrss * page_size_kb, vmsize * page_size_kb);
+	cli_sendv(client, "mem(rss/virt): %lu/%lu kB\r\n", vmrss * page_size_kb, vmsize * page_size_kb);
 	cli_send(client, "core:\r\n");
 	cli_sendv(client, "  mempool_allocated: %u\r\n", triton_stat.mempool_allocated);
 	cli_sendv(client, "  mempool_available: %u\r\n", triton_stat.mempool_available);
@@ -487,7 +487,7 @@ static void reload_help(char * const *fields, int fields_cnt, void *client)
 static void __init init(void)
 {
 	cli_register_simple_cmd2(show_stat_exec, show_stat_help, 2, "show", "stat");
-	cli_register_simple_cmd2(show_ses_exec, show_ses_help, 2, "show", "sessions");
+	cli_register_simple_cmd2(show_ses_exec, show_ses_help, 2, "show", "sessions_old");
 	cli_register_simple_cmd2(terminate_exec, terminate_help, 1, "terminate");
 	cli_register_simple_cmd2(reload_exec, reload_help, 1, "reload");
 	cli_register_simple_cmd2(shutdown_exec, shutdown_help, 1, "shutdown");
