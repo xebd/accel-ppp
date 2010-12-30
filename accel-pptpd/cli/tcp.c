@@ -184,7 +184,7 @@ static int cln_read(struct triton_md_handler_t *h)
 
 drop:
 	disconnect(cln);
-	return 0;
+	return -1;
 }
 
 static int cln_write(struct triton_md_handler_t *h)

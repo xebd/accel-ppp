@@ -181,7 +181,7 @@ int cli_process_cmd(struct cli_client_t *cln)
 			case CLI_CMD_EXIT:
 				cln->disconnect(cln);
 			case CLI_CMD_FAILED:
-				return -1;
+				return 0;
 			case CLI_CMD_SYNTAX:
 				cli_send(cln, MSG_SYNTAX_ERROR);
 				return 0;
@@ -206,7 +206,7 @@ static void load_config(void)
 		_free(conf_cli_passwd);
 	opt = conf_get_opt("cli", "password");
 	if (opt)
-		conf_cli_passwd = _strdup(conf_cli_passwd);
+		conf_cli_passwd = _strdup(opt);
 	else
 		conf_cli_passwd = NULL;
 	

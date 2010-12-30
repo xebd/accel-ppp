@@ -286,7 +286,7 @@ static int telnet_input_char(struct telnet_client_t *cln, uint8_t c)
 			if (strcmp((char *)cln->cmdline, conf_cli_passwd)) {
 				if (telnet_send(cln, MSG_AUTH_FAILED, sizeof(MSG_AUTH_FAILED)))
 					return -1;
-				disconnect(cln);
+				cln->disconnect = 1;
 				return -1;
 			}
 			cln->auth = 1;
@@ -473,7 +473,7 @@ static int cln_read(struct triton_md_handler_t *h)
 		n = read(h->fd, recv_buf, RECV_BUF_SIZE);
 		if (n == 0) {
 			disconnect(cln);
-			return 0;
+			return -1;
 		}
 		if (n < 0) {
 			if (errno != EAGAIN)
@@ -484,11 +484,11 @@ static int cln_read(struct triton_md_handler_t *h)
 		print_buf(cln->recv_buf + cln->recv_pos, n);*/
 		for (i = 0; i < n; i++) {
 			if (telnet_input_char(cln, recv_buf[i]))
-				return -1;
+				break;
 		}
 		if (cln->disconnect) {
 			disconnect(cln);
-			return 0;
+			return -1;
 		}
 	}
 
