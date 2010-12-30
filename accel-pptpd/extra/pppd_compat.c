@@ -476,8 +476,7 @@ static void fill_env(char **env, struct pppd_compat_pd_t *pd)
 {
 	snprintf(env[0], 64, "PEERNAME=%s", pd->ppp->username);
 	
-	if (pd->ppp->stop_time) {
-
+	if (pd->ppp->stop_time && env[1]) {
 		snprintf(env[1], 24, "CONNECT_TIME=%lu", pd->ppp->stop_time - pd->ppp->start_time);
 		snprintf(env[2], 24, "BYTES_SENT=%u", pd->bytes_sent);
 		snprintf(env[3], 24, "BYTES_RCVD=%u", pd->bytes_rcvd);
