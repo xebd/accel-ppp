@@ -823,6 +823,16 @@ static int shaper_restore_exec(const char *cmd, char * const *f, int f_cnt, void
 	return CLI_CMD_OK;
 }
 
+static void print_rate(const struct ppp_t *ppp, char *buf)
+{
+	struct shaper_pd_t *pd = find_pd((struct ppp_t *)ppp, 0);
+
+	if (pd && (pd->down_speed || pd->up_speed))
+		sprintf(buf, "%i/%i", pd->down_speed, pd->up_speed);
+	else
+		*buf = 0;
+}
+
 static int clock_init(void)
 {
 	FILE *fp;
@@ -968,5 +978,6 @@ static void __init init(void)
 
 	cli_register_simple_cmd2(shaper_change_exec, shaper_change_help, 2, "shaper", "change");
 	cli_register_simple_cmd2(shaper_restore_exec, shaper_restore_help, 2, "shaper", "restore");
+	cli_show_ses_register("rate-limit", "rate limit down-stream/up-stream (Kbit)", print_rate);
 }
 

@@ -29,6 +29,8 @@ struct cli_regexp_cmd_t
 	int (*help)(char * const *fields, int field_cnt, void *client);
 };
 
+struct ppp_t;
+
 void cli_register_simple_cmd(struct cli_simple_cmd_t *cmd);
 void cli_register_simple_cmd2(
 	int (*exec)(const char *cmd, char * const *fields, int fields_cnt, void *client),
@@ -37,6 +39,7 @@ void cli_register_simple_cmd2(
 	...
 	);
 void cli_register_regexp_cmd(struct cli_regexp_cmd_t *cmd);
+void cli_show_ses_register(const char *name, const char *desc, void (*print)(const struct ppp_t *ppp, char *buf));
 
 int cli_send(void *client, const char *data);
 int cli_sendv(void *client, const char *fmt, ...);
