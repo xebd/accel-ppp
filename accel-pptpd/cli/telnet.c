@@ -430,7 +430,7 @@ static int telnet_input_char(struct telnet_client_t *cln, uint8_t c)
 				}
 				return 0;
 			case 3:
-				disconnect(cln);
+				cln->disconnect = 1;
 				return -1;
 		}
 

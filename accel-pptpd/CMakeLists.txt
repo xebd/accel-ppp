@@ -65,6 +65,7 @@ ADD_EXECUTABLE(accel-pptpd
 	ppp/ccp_mppe.c
 
 	cli/std_cmd.c
+	cli/show_sessions.c
 	cli/telnet.c
 	cli/tcp.c
 	cli/cli.c
