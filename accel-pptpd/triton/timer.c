@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <signal.h>
 
 #ifdef HAVE_TIMERFD
 #include <sys/timerfd.h>

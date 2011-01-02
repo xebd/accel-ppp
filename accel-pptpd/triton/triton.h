@@ -72,7 +72,7 @@ int triton_context_register(struct triton_context_t *, void *arg);
 void triton_context_unregister(struct triton_context_t *);
 void triton_context_set_priority(struct triton_context_t *, int);
 void triton_context_schedule(void);
-int triton_context_wakeup(struct triton_context_t *);
+void triton_context_wakeup(struct triton_context_t *);
 int triton_context_call(struct triton_context_t *, void (*func)(void *), void *arg);
 void triton_cancel_call(struct triton_context_t *, void (*func)(void *));
 struct triton_context_t *triton_context_self(void);

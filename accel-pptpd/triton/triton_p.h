@@ -3,23 +3,19 @@
 
 #include <pthread.h>
 #include <sys/epoll.h>
-#include <ucontext.h>
 
 #include "triton.h"
 #include "list.h"
 #include "spinlock.h"
 #include "mempool.h"
 
-#define CTX_STACK_SIZE 8196
-
 struct _triton_thread_t
 {
 	struct list_head entry;
 	struct list_head entry2;
 	pthread_t thread;
-	int terminate:1;
+	int terminate;
 	struct _triton_context_t *ctx;
-	ucontext_t uctx;
 };
 
 struct _triton_context_t
@@ -36,15 +32,16 @@ struct _triton_context_t
 	struct list_head pending_timers;
 	struct list_head pending_calls;
 
-	ucontext_t uctx;
-
+	int init;
 	int queued;
-	int sleeping;
 	int wakeup;
 	int need_close;
 	int need_free;
 	int pending;
 	int priority;
+
+	pthread_mutex_t sleep_lock;
+	pthread_cond_t sleep_cond;
 
 	struct triton_context_t *ud;
 	void *bf_arg;
