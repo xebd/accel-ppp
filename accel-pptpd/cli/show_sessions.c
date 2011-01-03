@@ -14,7 +14,7 @@
 #include "memdebug.h"
 
 #define CELL_SIZE 128
-#define DEF_COLUMNS "ifname,username,calling-sid,ip,type,state,uptime"
+#define DEF_COLUMNS "ifname,username,calling-sid,ip,rate-limit,type,state,uptime"
 
 struct column_t
 {
@@ -128,7 +128,7 @@ static int show_ses_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 	struct row_t *row;
 	struct cell_t *cell;
 	char *ptr1, *ptr2;
-	int i, n, total_width = 0;
+	int i, n, total_width, def_columns = 0;
 	struct ppp_t *ppp;
 	char *buf = NULL;
 	LIST_HEAD(c_list);
@@ -167,8 +167,10 @@ static int show_ses_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 		}
 	}
 
-	if (!columns)
+	if (!columns) {
 		columns = DEF_COLUMNS;
+		def_columns = 1;
+	}
 	
 	columns = _strdup(columns);
 	ptr1 = columns;
@@ -177,15 +179,18 @@ static int show_ses_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 		if (ptr2)
 			*ptr2 = 0;
 		column = find_column(ptr1);
-		if (!column) {
-			cli_sendv(cli, "unknown column %s\r\n", ptr1);
-			_free(columns);
-			goto out;
+		if (column) {
+			col = _malloc(sizeof(*col));
+			col->column = column;
+			col->width = strlen(column->name);
+			list_add_tail(&col->entry, &c_list);
+		} else {
+			if (!def_columns) {
+				cli_sendv(cli, "unknown column %s\r\n", ptr1);
+				_free(columns);
+				goto out;
+			}
 		}
-		col = _malloc(sizeof(*col));
-		col->column = column;
-		col->width = strlen(column->name);
-		list_add_tail(&col->entry, &c_list);
 		if (!ptr2)
 			break;
 		ptr1 = ptr2 + 1;
