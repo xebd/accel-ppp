@@ -16,6 +16,8 @@ struct _triton_thread_t
 	pthread_t thread;
 	int terminate;
 	struct _triton_context_t *ctx;
+	pthread_mutex_t sleep_lock;
+	pthread_cond_t sleep_cond;
 };
 
 struct _triton_context_t
@@ -39,9 +41,6 @@ struct _triton_context_t
 	int need_free;
 	int pending;
 	int priority;
-
-	pthread_mutex_t sleep_lock;
-	pthread_cond_t sleep_cond;
 
 	struct triton_context_t *ud;
 	void *bf_arg;

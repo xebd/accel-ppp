@@ -85,6 +85,9 @@ static void* triton_thread(struct _triton_thread_t *thread)
 	sigaddset(&set, SIGUSR1);
 	sigaddset(&set, SIGQUIT);
 
+	pthread_mutex_lock(&thread->sleep_lock);
+	pthread_mutex_unlock(&thread->sleep_lock);
+
 	while (1) {
 		spin_lock(&threads_lock);
 		if (!list_empty(&ctx_queue) && !need_config_reload) {
@@ -105,6 +108,7 @@ static void* triton_thread(struct _triton_thread_t *thread)
 				spin_unlock(&threads_lock);
 				pthread_detach(pthread_self());
 				log_debug2("thread: %p: exit\n", thread);
+				_free(thread);
 				return NULL;
 			}
 			log_debug2("thread: %p: sleeping\n", thread);
@@ -222,11 +226,14 @@ static void ctx_thread(struct _triton_context_t *ctx)
 
 struct _triton_thread_t *create_thread()
 {
-	struct _triton_thread_t *thread = malloc(sizeof(*thread));
+	struct _triton_thread_t *thread = _malloc(sizeof(*thread));
 	if (!thread)
 		return NULL;
 
 	memset(thread, 0, sizeof(*thread));
+	pthread_mutex_init(&thread->sleep_lock, NULL);
+	pthread_cond_init(&thread->sleep_cond, NULL);
+	pthread_mutex_lock(&thread->sleep_lock);
 	if (pthread_create(&thread->thread, NULL, (void*(*)(void*))triton_thread, thread)) {
 		triton_log_error("pthread_create: %s", strerror(errno));
 		return NULL;
@@ -284,8 +291,6 @@ int __export triton_context_register(struct triton_context_t *ud, void *bf_arg)
 	INIT_LIST_HEAD(&ctx->pending_handlers);
 	INIT_LIST_HEAD(&ctx->pending_timers);
 	INIT_LIST_HEAD(&ctx->pending_calls);
-	pthread_mutex_init(&ctx->sleep_lock, NULL);
-	pthread_cond_init(&ctx->sleep_cond, NULL);
 
 	ud->tpd = ctx;
 
@@ -366,7 +371,7 @@ void __export triton_context_schedule()
 	log_debug2("ctx %p: enter schedule\n", ctx);
 	__sync_add_and_fetch(&triton_stat.context_sleeping, 1);
 	__sync_sub_and_fetch(&triton_stat.thread_active, 1);
-	pthread_mutex_lock(&ctx->sleep_lock);
+	pthread_mutex_lock(&ctx->thread->sleep_lock);
 	while (1) {
 		if (ctx->wakeup) {
 			ctx->wakeup = 0;
@@ -377,11 +382,12 @@ void __export triton_context_schedule()
 				spin_lock(&threads_lock);
 				list_add_tail(&t->entry, &threads);
 				spin_unlock(&threads_lock);
+				pthread_mutex_unlock(&t->sleep_lock);
 			}
-			pthread_cond_wait(&ctx->sleep_cond, &ctx->sleep_lock);
+			pthread_cond_wait(&ctx->thread->sleep_cond, &ctx->thread->sleep_lock);
 		}
 	}
-	pthread_mutex_unlock(&ctx->sleep_lock);
+	pthread_mutex_unlock(&ctx->thread->sleep_lock);
 	__sync_sub_and_fetch(&triton_stat.context_sleeping, 1);
 	__sync_add_and_fetch(&triton_stat.thread_active, 1);
 	log_debug2("ctx %p: exit schedule\n", ctx);
@@ -419,10 +425,10 @@ void __export triton_context_wakeup(struct triton_context_t *ud)
 		return;
 	}
 
-	pthread_mutex_lock(&ctx->sleep_lock);
+	pthread_mutex_lock(&ctx->thread->sleep_lock);
 	ctx->wakeup = 1;
-	pthread_cond_signal(&ctx->sleep_cond);
-	pthread_mutex_unlock(&ctx->sleep_lock);
+	pthread_cond_signal(&ctx->thread->sleep_cond);
+	pthread_mutex_unlock(&ctx->thread->sleep_lock);
 }
 
 int __export triton_context_call(struct triton_context_t *ud, void (*func)(void *), void *arg)
@@ -564,6 +570,7 @@ void __export triton_run()
 			_exit(-1);
 
 		list_add_tail(&t->entry, &threads);
+		pthread_mutex_unlock(&t->sleep_lock);
 	}
 
 	time(&triton_stat.start_time);
