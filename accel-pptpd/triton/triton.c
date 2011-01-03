@@ -365,6 +365,7 @@ void __export triton_context_schedule()
 	
 	log_debug2("ctx %p: enter schedule\n", ctx);
 	__sync_add_and_fetch(&triton_stat.context_sleeping, 1);
+	__sync_sub_and_fetch(&triton_stat.thread_active, 1);
 	pthread_mutex_lock(&ctx->sleep_lock);
 	while (1) {
 		if (ctx->wakeup) {
@@ -382,6 +383,7 @@ void __export triton_context_schedule()
 	}
 	pthread_mutex_unlock(&ctx->sleep_lock);
 	__sync_sub_and_fetch(&triton_stat.context_sleeping, 1);
+	__sync_add_and_fetch(&triton_stat.thread_active, 1);
 	log_debug2("ctx %p: exit schedule\n", ctx);
 }
 
