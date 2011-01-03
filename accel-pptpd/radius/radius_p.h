@@ -78,6 +78,13 @@ extern in_addr_t conf_dm_coa_server;
 extern int conf_dm_coa_port;
 extern int conf_acct_interim_interval;
 
+extern unsigned long stat_auth_sent;
+extern unsigned long stat_auth_lost;
+extern unsigned long stat_acct_sent;
+extern unsigned long stat_acct_lost;
+extern unsigned long stat_interim_sent;
+extern unsigned long stat_interim_lost;
+
 int rad_check_nas_pack(struct rad_packet_t *pack);
 struct radius_pd_t *rad_find_session(const char *sessionid, const char *username, int port_id, in_addr_t ipaddr, const char *csid);
 struct radius_pd_t *rad_find_session_pack(struct rad_packet_t *pack);

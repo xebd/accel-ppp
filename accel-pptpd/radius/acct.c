@@ -114,6 +114,8 @@ static void rad_acct_timeout(struct triton_timer_t *t)
 	struct rad_req_t *req = container_of(t, typeof(*req), timeout);
 	time_t ts, dt;
 
+	__sync_add_and_fetch(&stat_interim_lost, 1);
+	
 	time(&ts);
 
 	dt = ts - req->rpd->acct_timestamp;
@@ -138,6 +140,7 @@ static void rad_acct_timeout(struct triton_timer_t *t)
 	rad_packet_change_int(req->pack, NULL, "Acct-Delay-Time", dt);
 	req_set_RA(req, conf_acct_secret);
 	rad_req_send(req, conf_interim_verbose);
+	__sync_add_and_fetch(&stat_interim_sent, 1);
 }
 
 static void rad_acct_interim_update(struct triton_timer_t *t)
@@ -158,6 +161,7 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 	rad_packet_change_int(rpd->acct_req->pack, NULL, "Acct-Delay-Time", 0);
 	req_set_RA(rpd->acct_req, conf_acct_secret);
 	rad_req_send(rpd->acct_req, conf_interim_verbose);
+	__sync_add_and_fetch(&stat_interim_sent, 1);
 	if (conf_acct_timeout) {
 		rpd->acct_req->timeout.period = conf_timeout * 1000;
 		triton_timer_add(rpd->ppp->ctrl->ctx, &rpd->acct_req->timeout, 0);
@@ -199,15 +203,18 @@ int rad_acct_start(struct radius_pd_t *rpd)
 			goto out_err;
 		if (rad_req_send(rpd->acct_req, conf_verbose))
 			goto out_err;
+		__sync_add_and_fetch(&stat_acct_sent, 1);
 		rad_req_wait(rpd->acct_req, conf_timeout);
 		if (!rpd->acct_req->reply) {
 			rpd->acct_req->pack->id++;
+			__sync_add_and_fetch(&stat_acct_lost, 1);
 			continue;
 		}
 		if (rpd->acct_req->reply->id != rpd->acct_req->pack->id || rpd->acct_req->reply->code != CODE_ACCOUNTING_RESPONSE) {
 			rad_packet_free(rpd->acct_req->reply);
 			rpd->acct_req->reply = NULL;
 			rpd->acct_req->pack->id++;
+			__sync_add_and_fetch(&stat_acct_lost, 1);
 		} else
 			break;
 	}
@@ -298,12 +305,16 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 				break;
 			if (rad_req_send(rpd->acct_req, conf_verbose))
 				break;
+			__sync_add_and_fetch(&stat_acct_sent, 1);
 			rad_req_wait(rpd->acct_req, conf_timeout);
-			if (!rpd->acct_req->reply)
+			if (!rpd->acct_req->reply) {
+				__sync_add_and_fetch(&stat_acct_lost, 1);
 				continue;
+			}
 			if (rpd->acct_req->reply->id != rpd->acct_req->pack->id || rpd->acct_req->reply->code != CODE_ACCOUNTING_RESPONSE) {
 				rad_packet_free(rpd->acct_req->reply);
 				rpd->acct_req->reply = NULL;
+				__sync_add_and_fetch(&stat_acct_lost, 1);
 			} else
 				break;
 		}

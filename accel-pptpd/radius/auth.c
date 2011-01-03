@@ -147,6 +147,7 @@ static int rad_auth_send(struct rad_req_t *req)
 	int i;
 
 	for(i = 0; i < conf_max_try; i++) {
+		__sync_add_and_fetch(&stat_auth_sent, 1);
 		if (rad_req_send(req, conf_verbose))
 			goto out;
 
@@ -154,11 +155,13 @@ static int rad_auth_send(struct rad_req_t *req)
 
 		if (req->reply) {
 			if (req->reply->id != req->pack->id) {
+				__sync_add_and_fetch(&stat_auth_lost, 1);
 				rad_packet_free(req->reply);
 				req->reply = NULL;
 			} else
 				break;
-		}
+		} else
+			__sync_add_and_fetch(&stat_auth_lost, 1);
 	}
 
 	if (!req->reply)

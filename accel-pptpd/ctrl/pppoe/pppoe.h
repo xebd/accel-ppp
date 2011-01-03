@@ -91,6 +91,11 @@ extern char *conf_pado_delay;
 
 extern unsigned int stat_active;
 extern unsigned int stat_delayed_pado;
+extern unsigned long stat_PADI_recv;
+extern unsigned long stat_PADO_sent;
+extern unsigned long stat_PADR_recv;
+extern unsigned long stat_PADR_dup_recv;
+extern unsigned long stat_PADS_sent;
 
 extern pthread_rwlock_t serv_lock;
 extern struct list_head serv_list;

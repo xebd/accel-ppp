@@ -75,6 +75,11 @@ static mempool_t pado_pool;
 
 unsigned int stat_active;
 unsigned int stat_delayed_pado;
+unsigned long stat_PADI_recv;
+unsigned long stat_PADO_sent;
+unsigned long stat_PADR_recv;
+unsigned long stat_PADR_dup_recv;
+unsigned long stat_PADS_sent;
 
 pthread_rwlock_t serv_lock = PTHREAD_RWLOCK_INITIALIZER;
 LIST_HEAD(serv_list);
@@ -581,6 +586,7 @@ static void pppoe_send_PADO(struct pppoe_serv_t *serv, const uint8_t *addr, cons
 		print_packet(pack);
 	}
 
+	__sync_add_and_fetch(&stat_PADO_sent, 1);
 	pppoe_send(serv->hnd.fd, pack);
 }
 
@@ -628,6 +634,7 @@ static void pppoe_send_PADS(struct pppoe_conn_t *conn)
 		print_packet(pack);
 	}
 
+	__sync_add_and_fetch(&stat_PADS_sent, 1);
 	pppoe_send(conn->disc_sock, pack);
 }
 
@@ -692,6 +699,8 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	struct pppoe_tag *service_name_tag = NULL;
 	int n, service_match = 0;
 	struct delayed_pado_t *pado;
+
+	__sync_add_and_fetch(&stat_PADI_recv, 1);
 
 	if (ppp_shutdown || pado_delay == -1)
 		return;
@@ -791,6 +800,8 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	struct pppoe_conn_t *conn;
 	int vendor_id;
 
+	__sync_add_and_fetch(&stat_PADR_recv, 1);
+
 	if (ppp_shutdown)
 		return;
 
@@ -876,8 +887,10 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 
 	pthread_mutex_lock(&serv->lock);
 	conn = find_channel(serv, (uint8_t *)ac_cookie_tag->tag_data);
-	if (conn && !conn->ppp.username)
+	if (conn && !conn->ppp.username) {
+		__sync_add_and_fetch(&stat_PADR_dup_recv, 1);
 		pppoe_send_PADS(conn);
+	}
 	pthread_mutex_unlock(&serv->lock);
 
 	if (conn)
