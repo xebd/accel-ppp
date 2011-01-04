@@ -1101,8 +1101,13 @@ static void load_time_ranges(void)
 		r = parse_range(opt->val);
 		if (r) {
 			list_add_tail(&r->entry, &time_range_list);
-			if (ts >= r->begin.expire_tv.tv_sec && ts <= r->end.expire_tv.tv_sec)
-				time_range_begin_timer(&r->begin);
+			if (r->begin.expire_tv.tv_sec > r->end.expire_tv.tv_sec) {
+				if (ts >= r->begin.expire_tv.tv_sec - 24*60*60 && ts <= r->end.expire_tv.tv_sec)
+					time_range_begin_timer(&r->begin);
+			} else {
+				if (ts >= r->begin.expire_tv.tv_sec && ts <= r->end.expire_tv.tv_sec)
+					time_range_begin_timer(&r->begin);
+			}
 			if (r->begin.expire_tv.tv_sec < ts)
 				r->begin.expire_tv.tv_sec += 24 * 60 * 60;
 			if (r->end.expire_tv.tv_sec < ts)
