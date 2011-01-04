@@ -61,6 +61,61 @@ Configuration
 -------------
 read man accel-pptp.conf
 
+Built-in shaper
+--------------
+accel-pptp supports tbf based shaper manager.
+To enable it uncomment shaper_tbf in [modules] section.
+It accepts radius attrbutes in various formats: rate, down-rate/up-rate and cisco-like. Values have to be in kilobits except cisco-like.
+For example:
+Filter-Id=1000 (means 1000Kbit both up-stream and down-stream rate)
+Filter-Id=2000/3000 (means 2000Kbit down-stream rate and 3000Kbit up-stream rate)
+To change radius attribute which containes rate information use 'attr' option, for example:
+[tbf]
+attr=My-Custom-Rate-Attribute
+of course this attribute have to be in radius dictionary.
+To specify different attributes for down-stream and up-stream rates use 'attr-down' and 'attr-up' options, for example:
+[tbf]
+attr-down=PPPD-Downstream-Speed
+attr-up=PPPD-Upstream-Speed
+
+If you want to use cisco-like format configure accel-pptp as following:
+[tbf]
+vendor=Cisco
+attr=Cisco-AVPair
+and send two attributes:
+Cisco-AVPair=lcp:interface-config#1=rate-limit input 2000000 8000 8000 conform-action transmit exceed-action drop (which means 2000Kbit up-stream rate and 8Kb burst)
+Cisco-AVPair=lcp:interface-config#1=rate-limit output 2000000 8000 8000 conform-action transmit exceed-action drop (which means 2000Kbit down-stream rate and 8Kb burst)
+
+Advanced shaper using
+---------------------
+1. Burst configuration.
+If you not using cisco-format then burst calculates from rate and specified burst factors.
+To specify burst factors use 'down-burst-factor' and 'up-burst-factor' options, for example:
+[tbf]
+down-burst-factor=1.0
+up-burst-factor=10.0
+which means that burst for tbf qdisc will be calculated as down-stream rate multiply to 1.0 and burst for policer will be calculated as up-stream rate multiply to 10.0.
+
+2. Time ranges.
+You can specify time ranges to authomatic rate reconfiguration.
+To specify time ranges use following sample configuration:
+[tbf]
+time-range=1,1:00-3:00
+time-range=2,3:00-5:00
+time-range=3,5:00-7:00
+first number is time range identifier.
+To specify time range specific rates use following format of radius attributes: range-id,rate, range-id,down-rate/up-rate or cisco-like, for example:
+Filter-Id=1000
+Filter-Id=1,2000
+Filter-Id=2,3000
+Filter-Id=3,4000
+which means: set 1000Kbit by default, set 2000Kbit in time range 1, set 3000Kbit in time range 2, set 4000Kbit in time range 3.
+You have to pass multiple Filter-Id attributes to utilize this functionality.
+Or cisco-like:
+Cisco-AVPair=lcp:interface-config#1=rate-limit output access-group 1 1000000 8000 8000 conform-action transmit exceed-action drop
+Cisco-AVPair=lcp:interface-config#1=rate-limit input access-group 1 1000000 8000 8000 conform-action transmit exceed-action drop
+ans so on...
+
 
 Warning !!!
 -----------

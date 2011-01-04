@@ -52,20 +52,48 @@ static LIST_HEAD(shaper_list);
 static double tick_in_usec = 1;
 static double clock_factor = 1;
 
+struct time_range_pd_t;
 struct shaper_pd_t
 {
 	struct list_head entry;
 	struct ppp_t *ppp;
 	struct ppp_pd_t pd;
+	int temp_down_speed;
+	int temp_up_speed;
+	int down_speed;
+	int up_speed;
+	struct list_head tr_list;
+	struct time_range_pd_t *cur_tr;
+};
+
+struct time_range_pd_t
+{
+	struct list_head entry;
+	int id;
 	int down_speed;
 	int down_burst;
 	int up_speed;
 	int up_burst;
-	int temp_down_speed;
-	int temp_up_speed;
+};
+
+struct time_range_t
+{
+	struct list_head entry;
+	int id;
+	struct triton_timer_t begin;
+	struct triton_timer_t end;
 };
 
 static void *pd_key;
+
+static LIST_HEAD(time_range_list);
+static int time_range_id;
+
+static void shaper_ctx_close(struct triton_context_t *);
+static struct triton_context_t shaper_ctx = {
+	.close = shaper_ctx_close,
+	.before_switch = log_switch,
+};
 
 static unsigned tc_time2tick(unsigned time)
 {
@@ -413,6 +441,7 @@ static struct shaper_pd_t *find_pd(struct ppp_t *ppp, int create)
 		spd->ppp = ppp;
 		list_add_tail(&spd->pd.entry, &ppp->pd_list);
 		spd->pd.key = &pd_key;
+		INIT_LIST_HEAD(&spd->tr_list);
 
 		pthread_rwlock_wrlock(&shaper_lock);
 		list_add_tail(&spd->entry, &shaper_list);
@@ -511,13 +540,31 @@ out_err:
 	return -1;
 }
 
-static void parse_string(const char *str, int dir, int *speed, int *burst)
+static void parse_string(const char *str, int dir, int *speed, int *burst, int *tr_id)
 {
 	char *endptr;
 	long int val;
 	unsigned int n1, n2, n3;
 
-	if (strstr(str, "lcp:interface-config#1=rate-limit output") == str) {
+	if (strstr(str, "lcp:interface-config#1=rate-limit output access-group") == str) {
+		if (dir == ATTR_DOWN) {
+			val = sscanf(str, "lcp:interface-config#1=rate-limit output access-group %i %u %u %u conform-action transmit exceed-action drop", tr_id, &n1, &n2, &n3);
+			if (val == 4) {
+				*speed = n1/1000;
+				*burst = n2;
+			}
+		}
+		return;
+	} else if (strstr(str, "lcp:interface-config#1=rate-limit input access-group") == str) {
+		if (dir == ATTR_UP) {
+			val = sscanf(str, "lcp:interface-config#1=rate-limit input access-group %i %u %u %u conform-action transmit exceed-action drop", tr_id, &n1, &n2, &n3);
+			if (val == 4) {
+				*speed = n1/1000;
+				*burst = n2;
+			}
+		}
+		return;
+	}	else if (strstr(str, "lcp:interface-config#1=rate-limit output") == str) {
 		if (dir == ATTR_DOWN) {
 			val = sscanf(str, "lcp:interface-config#1=rate-limit output %u %u %u conform-action transmit exceed-action drop", &n1, &n2, &n3);
 			if (val == 3) {
@@ -526,8 +573,7 @@ static void parse_string(const char *str, int dir, int *speed, int *burst)
 			}
 		}
 		return;
-	}
-	else if (strstr(str, "lcp:interface-config#1=rate-limit input") == str) {
+	}	else if (strstr(str, "lcp:interface-config#1=rate-limit input") == str) {
 		if (dir == ATTR_UP) {
 			val = sscanf(str, "lcp:interface-config#1=rate-limit input %u %u %u conform-action transmit exceed-action drop", &n1, &n2, &n3);
 			if (val == 3) {
@@ -539,9 +585,18 @@ static void parse_string(const char *str, int dir, int *speed, int *burst)
 	}
 
 	val = strtol(str, &endptr, 10);
-	if (*endptr == 0)
+	if (*endptr == 0) {
 		*speed = val;
-	else {
+		return;
+	}
+	if (*endptr == ',') {
+		*tr_id = val;
+		val = strtol(endptr + 1, &endptr, 10);
+	}
+	if (*endptr == 0) {
+		*speed = val;
+		return;
+	} else {
 		if (*endptr == '/' || *endptr == '\\' || *endptr == ':') {
 			if (dir == ATTR_DOWN)
 				*speed = val;
@@ -552,50 +607,111 @@ static void parse_string(const char *str, int dir, int *speed, int *burst)
 }
 
 #ifdef RADIUS
-static void parse_attr(struct rad_attr_t *attr, int dir, int *speed, int *burst)
+static void parse_attr(struct rad_attr_t *attr, int dir, int *speed, int *burst, int *tr_id)
 {
 	if (attr->attr->type == ATTR_TYPE_STRING)
-		parse_string(attr->val.string, dir, speed, burst);
+		parse_string(attr->val.string, dir, speed, burst, tr_id);
 	else if (attr->attr->type == ATTR_TYPE_INTEGER)
 		*speed = attr->val.integer;
 }
 
-static void ev_radius_access_accept(struct ev_radius_t *ev)
+static struct time_range_pd_t *get_tr_pd(struct shaper_pd_t *pd, int id)
+{
+	struct time_range_pd_t *tr_pd;
+	
+	list_for_each_entry(tr_pd, &pd->tr_list, entry) {
+		if (tr_pd->id == id)
+			return tr_pd;
+	}
+
+	tr_pd = _malloc(sizeof(*tr_pd));
+	memset(tr_pd, 0, sizeof(*tr_pd));
+	tr_pd->id = id;
+
+	if (id == time_range_id)
+		pd->cur_tr = tr_pd;
+	
+	list_add_tail(&tr_pd->entry, &pd->tr_list);
+
+	return tr_pd;
+}
+
+static void clear_tr_pd(struct shaper_pd_t *pd)
+{
+	struct time_range_pd_t *tr_pd;
+
+	while (!list_empty(&pd->tr_list)) {
+		tr_pd = list_entry(pd->tr_list.next, typeof(*tr_pd), entry);
+		list_del(&tr_pd->entry);
+		_free(tr_pd);
+	}
+}
+
+static void check_radius_attrs(struct shaper_pd_t *pd, struct rad_packet_t *pack)
 {
 	struct rad_attr_t *attr;
-	int down_speed = 0, down_burst = 0;
-	int up_speed = 0, up_burst = 0;
+	int down_speed, down_burst;
+	int up_speed, up_burst;
+	int tr_id;
+	struct time_range_pd_t *tr_pd;
+
+	list_for_each_entry(attr, &pack->attrs, entry) {
+		if (attr->vendor && attr->vendor->id != conf_vendor)
+			continue;
+		if (!attr->vendor && conf_vendor)
+			continue;
+		if (attr->attr->id != conf_attr_down && attr->attr->id != conf_attr_up)
+			continue;
+		tr_id = 0;
+		down_speed = 0;
+		down_burst = 0;
+		up_speed = 0;
+		up_burst = 0;
+		if (attr->attr->id == conf_attr_down)
+			parse_attr(attr, ATTR_DOWN, &down_speed, &down_burst, &tr_id);
+		if (attr->attr->id == conf_attr_up)
+			parse_attr(attr, ATTR_UP, &up_speed, &up_burst, &tr_id);
+		tr_pd = get_tr_pd(pd, tr_id);
+		if (down_speed)
+			tr_pd->down_speed = down_speed;
+		if (down_burst)
+			tr_pd->down_burst = down_burst;
+		if (up_speed)
+			tr_pd->up_speed = up_speed;
+		if (up_burst)
+			tr_pd->up_burst = up_burst;
+	}
+}
+
+static void ev_radius_access_accept(struct ev_radius_t *ev)
+{
+	int down_speed, down_burst;
+	int up_speed, up_burst;
 	struct shaper_pd_t *pd = find_pd(ev->ppp, 1);
 
 	if (!pd)
 		return;
 
-	list_for_each_entry(attr, &ev->reply->attrs, entry) {
-		if (attr->vendor && attr->vendor->id != conf_vendor)
-			continue;
-		if (!attr->vendor && conf_vendor)
-			continue;
-		if (attr->attr->id == conf_attr_down)
-			parse_attr(attr, ATTR_DOWN, &down_speed, &down_burst);
-		if (attr->attr->id == conf_attr_up)
-			parse_attr(attr, ATTR_UP, &up_speed, &up_burst);
-	}
+	check_radius_attrs(pd, ev->reply);
 
-	pd->down_speed = down_speed;
-	pd->down_burst = down_burst;
-	pd->up_speed = up_speed;
-	pd->up_burst = up_burst;
-
-	if (temp_down_speed) {
+	if (temp_down_speed || temp_up_speed) {
 		pd->temp_down_speed = temp_down_speed;
 		pd->temp_up_speed = temp_up_speed;
+		pd->down_speed = temp_down_speed;
+		pd->up_speed = temp_up_speed;
 		down_speed = temp_down_speed;
-		down_burst = 0;
-	}
-
-	if (temp_up_speed) {
 		up_speed = temp_up_speed;
+		down_burst = 0;
 		up_burst = 0;
+	} else {
+		if (!pd->cur_tr)
+			return;
+		pd->down_speed = pd->cur_tr->down_speed;
+		pd->up_speed = pd->cur_tr->up_speed;
+		down_speed = pd->cur_tr->down_speed;
+		up_speed = pd->cur_tr->up_speed;
+		down_burst = pd->cur_tr->down_burst;
+		up_burst = pd->cur_tr->up_speed;
 	}
 
 	if (down_speed > 0 && up_speed > 0) {
@@ -608,48 +724,46 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 
 static void ev_radius_coa(struct ev_radius_t *ev)
 {
-	struct rad_attr_t *attr;
-	int down_speed = 0, down_burst = 0;
-	int up_speed = 0, up_burst = 0;
-	struct shaper_pd_t *pd = find_pd(ev->ppp, 1);
+	struct shaper_pd_t *pd = find_pd(ev->ppp, 0);
 
 	if (!pd) {
 		ev->res = -1;
 		return;
 	}
-
-	list_for_each_entry(attr, &ev->request->attrs, entry) {
-		if (attr->vendor && attr->vendor->id != conf_vendor)
-			continue;
-		if (!attr->vendor && conf_vendor)
-			continue;
-		if (attr->attr->id == conf_attr_down)
-			parse_attr(attr, ATTR_DOWN, &down_speed, &down_burst);
-		if (attr->attr->id == conf_attr_up)
-			parse_attr(attr, ATTR_UP, &up_speed, &up_burst);
-	}
 	
-	if (pd->down_speed != down_speed || pd->up_speed != up_speed || pd->down_burst != down_burst || pd->up_burst != up_burst) {
-		pd->down_speed = down_speed;
-		pd->down_burst = down_burst;
-		pd->up_speed = up_speed;
-		pd->up_burst = up_burst;
+	clear_tr_pd(pd);
+	check_radius_attrs(pd, ev->request);
+		
+	if (pd->temp_down_speed || pd->temp_up_speed)
+		return;
+	
+	if (!pd->cur_tr) {
+		if (pd->down_speed || pd->up_speed) {
+			pd->down_speed = 0;
+			pd->up_speed = 0;
+			if (conf_verbose)
+				log_ppp_info2("tbf: removed shaper\n");
+			remove_shaper(ev->ppp->ifname);
+		}
+		return;
+	}
 
-		if (temp_down_speed ||  temp_up_speed)
-			return;
+	if (pd->down_speed != pd->cur_tr->down_speed || pd->up_speed != pd->cur_tr->up_speed) {
+		pd->down_speed = pd->cur_tr->down_speed;
+		pd->up_speed = pd->cur_tr->up_speed;
 
 		if (remove_shaper(ev->ppp->ifname)) {
 			ev->res = -1;
 			return;
 		}
 		
-		if (down_speed > 0 || up_speed > 0) {
-			if (install_shaper(ev->ppp->ifname, down_speed, down_burst, up_speed, up_burst)) {
+		if (pd->down_speed > 0 || pd->up_speed > 0) {
+			if (install_shaper(ev->ppp->ifname, pd->cur_tr->down_speed, pd->cur_tr->down_burst, pd->cur_tr->up_speed, pd->cur_tr->up_burst)) {
 				ev->res= -1;
 				return;
 			} else {
 				if (conf_verbose)
-					log_ppp_info2("tbf: changed shaper %i/%i (Kbit)\n", down_speed, up_speed);
+					log_ppp_info2("tbf: changed shaper %i/%i (Kbit)\n", pd->down_speed, pd->up_speed);
 			}
 		} else {
 			if (conf_verbose)
@@ -664,12 +778,13 @@ static void ev_shaper(struct ev_shaper_t *ev)
 	struct shaper_pd_t *pd = find_pd(ev->ppp, 1);
 	int down_speed = 0, down_burst = 0;
 	int up_speed = 0, up_burst = 0;
+	int tr_id;
 
 	if (!pd)
 		return;
 
-	parse_string(ev->val, ATTR_DOWN, &down_speed, &down_burst);
-	parse_string(ev->val, ATTR_UP, &up_speed, &up_burst);
+	parse_string(ev->val, ATTR_DOWN, &down_speed, &down_burst, &tr_id);
+	parse_string(ev->val, ATTR_UP, &up_speed, &up_burst, &tr_id);
 
 	if (down_speed > 0 && up_speed > 0) {
 		pd->down_speed = down_speed;
@@ -686,6 +801,7 @@ static void ev_ctrl_finished(struct ppp_t *ppp)
 	struct shaper_pd_t *pd = find_pd(ppp, 0);
 
 	if (pd) {
+		clear_tr_pd(pd);
 		pthread_rwlock_wrlock(&shaper_lock);
 		list_del(&pd->entry);
 		pthread_rwlock_unlock(&shaper_lock);
@@ -708,7 +824,7 @@ static void shaper_change(struct shaper_pd_t *pd)
 	if (pd->temp_down_speed && pd->temp_up_speed)
 		install_shaper(pd->ppp->ifname, pd->temp_down_speed, 0, pd->temp_up_speed, 0);
 	else if (pd->down_speed && pd->up_speed)
-		install_shaper(pd->ppp->ifname, pd->down_speed, pd->down_burst, pd->up_speed, pd->up_burst);
+		install_shaper(pd->ppp->ifname, pd->cur_tr->down_speed, pd->cur_tr->down_burst, pd->cur_tr->up_speed, pd->cur_tr->up_burst);
 }
 
 static int shaper_change_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
@@ -716,12 +832,13 @@ static int shaper_change_exec(const char *cmd, char * const *f, int f_cnt, void 
 	struct shaper_pd_t *pd;
 	int down_speed = 0, up_speed = 0, down_burst = 0, up_burst = 0;
 	int all = 0, temp = 0, found = 0;
+	int tr_id;
 
 	if (f_cnt < 4)
 		return CLI_CMD_SYNTAX;
 
-	parse_string(f[3], ATTR_DOWN, &down_speed, &down_burst);
-	parse_string(f[3], ATTR_UP, &up_speed, &up_burst);
+	parse_string(f[3], ATTR_DOWN, &down_speed, &down_burst, &tr_id);
+	parse_string(f[3], ATTR_UP, &up_speed, &up_burst, &tr_id);
 
 	if (down_speed == 0 || up_speed == 0)
 		return CLI_CMD_INVAL;
@@ -750,10 +867,12 @@ static int shaper_change_exec(const char *cmd, char * const *f, int f_cnt, void 
 			} else {
 				pd->temp_down_speed = 0;
 				pd->temp_up_speed = 0;
-				pd->down_speed = down_speed;
-				pd->down_burst = down_burst;
-				pd->up_speed = up_speed;
-				pd->up_burst = up_burst;
+				if (!pd->cur_tr)
+					pd->cur_tr = get_tr_pd(pd, 0);
+				pd->cur_tr->down_speed = down_speed;
+				pd->cur_tr->down_burst = down_burst;
+				pd->cur_tr->up_speed = up_speed;
+				pd->cur_tr->up_burst = up_burst;
 			}
 			triton_context_call(pd->ppp->ctrl->ctx, (triton_event_func)shaper_change, pd);
 			if (!all) {
@@ -780,8 +899,8 @@ static void shaper_restore(struct shaper_pd_t *pd)
 {
 	remove_shaper(pd->ppp->ifname);
 
-	if (pd->down_speed && pd->up_speed)
-		install_shaper(pd->ppp->ifname, pd->down_speed, pd->down_burst, pd->up_speed, pd->up_burst);
+	if (pd->cur_tr)
+		install_shaper(pd->ppp->ifname, pd->cur_tr->down_speed, pd->cur_tr->down_burst, pd->cur_tr->up_speed, pd->cur_tr->up_burst);
 }
 
 static int shaper_restore_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
@@ -833,39 +952,166 @@ static void print_rate(const struct ppp_t *ppp, char *buf)
 		*buf = 0;
 }
 
-static int clock_init(void)
+static void shaper_ctx_close(struct triton_context_t *ctx)
 {
-	FILE *fp;
-	uint32_t clock_res;
-	uint32_t t2us;
-	uint32_t us2t;
+	struct time_range_t *r;
 
-	fp = fopen("/proc/net/psched", "r");
-
-	if (!fp) {
-		log_emerg("tbf: failed to open /proc/net/psched: %s\n", strerror(errno));
-		return -1;
+	while (!list_empty(&time_range_list)) {
+		r = list_entry(time_range_list.next, typeof(*r), entry);
+		list_del(&r->entry);
+		if (r->begin.tpd)
+			triton_timer_del(&r->begin);
+		if (r->end.tpd)
+			triton_timer_del(&r->end);
+		_free(r);
 	}
 
-	if (fscanf(fp, "%08x%08x%08x", &t2us, &us2t, &clock_res) != 3) {
-		log_emerg("tbf: failed to parse /proc/net/psched\n");
-		fclose(fp);
-		return -1;
+	triton_context_unregister(ctx);
+}
+
+static void update_shaper_tr(struct shaper_pd_t *pd)
+{
+	struct time_range_pd_t *tr;
+
+	list_for_each_entry(tr, &pd->tr_list, entry) {
+		if (tr->id != time_range_id)
+			continue;
+		pd->cur_tr = tr;
+		break;
 	}
 
-	fclose(fp);
+	if (pd->temp_down_speed || pd->temp_up_speed)
+		return;
 
-	/* compatibility hack: for old iproute binaries (ignoring
-	* the kernel clock resolution) the kernel advertises a
-	* tick multiplier of 1000 in case of nano-second resolution,
-	* which really is 1. */
-	if (clock_res == 1000000000)
-		t2us = us2t;
+	if (pd->down_speed || pd->up_speed) {
+		if (pd->cur_tr && pd->down_speed == pd->cur_tr->down_speed && pd->up_speed == pd->cur_tr->up_speed)
+			return;
+		remove_shaper(pd->ppp->ifname);
+	}
+	
+	if (pd->cur_tr && (pd->cur_tr->down_speed || pd->cur_tr->up_speed)) {
+		pd->down_speed = pd->cur_tr->down_speed;
+		pd->up_speed = pd->cur_tr->up_speed;
+		if (!install_shaper(pd->ppp->ifname, pd->cur_tr->down_speed, pd->cur_tr->down_burst, pd->cur_tr->up_speed, pd->cur_tr->up_burst)) {
+			if (conf_verbose)
+				log_ppp_info2("tbf: changed shaper %i/%i (Kbit)\n", pd->cur_tr->down_speed, pd->cur_tr->up_speed);
+		}
+	} else
+		if (conf_verbose)
+			log_ppp_info2("tbf: removed shaper\n");
+		
+}
 
-	clock_factor  = (double)clock_res / TIME_UNITS_PER_SEC;
-	tick_in_usec = (double)t2us / us2t * clock_factor;
+static void time_range_begin_timer(struct triton_timer_t *t)
+{
+	struct time_range_t *tr = container_of(t, typeof(*tr), begin);
+	struct shaper_pd_t *pd;
 
-	return 0;
+	time_range_id = tr->id;
+
+	log_debug("tbf: time_range_begin_timer: id=%i\n", time_range_id);
+
+	pthread_rwlock_rdlock(&shaper_lock);
+	list_for_each_entry(pd, &shaper_list, entry)
+		triton_context_call(pd->ppp->ctrl->ctx, (triton_event_func)update_shaper_tr, pd);
+	pthread_rwlock_unlock(&shaper_lock);
+}
+
+static void time_range_end_timer(struct triton_timer_t *t)
+{
+	struct shaper_pd_t *pd;
+
+	time_range_id = 0;
+	
+	log_debug("tbf: time_range_end_timer\n");
+
+	pthread_rwlock_rdlock(&shaper_lock);
+	list_for_each_entry(pd, &shaper_list, entry)
+		triton_context_call(pd->ppp->ctrl->ctx, (triton_event_func)update_shaper_tr, pd);
+	pthread_rwlock_unlock(&shaper_lock);
+}
+
+static struct time_range_t *parse_range(const char *val)
+{
+	char *endptr;
+	int id;
+	time_t t;
+	struct tm begin_tm, end_tm;
+	struct time_range_t *r;
+
+	id = strtol(val, &endptr, 10);
+	if (*endptr != ',')
+		return NULL;
+	if (id <= 0)
+		return NULL;
+	
+	time(&t);
+	localtime_r(&t, &begin_tm);
+	begin_tm.tm_sec = 1;
+	end_tm = begin_tm;
+	end_tm.tm_sec = 0;
+
+	endptr = strptime(endptr + 1, "%H:%M", &begin_tm);
+	if (*endptr != '-')
+		return NULL;
+	
+	endptr = strptime(endptr + 1, "%H:%M", &end_tm);
+	if (*endptr)
+		return NULL;
+	
+	r = _malloc(sizeof(*r));
+	memset(r, 0, sizeof(*r));
+
+	r->id = id;
+	r->begin.expire_tv.tv_sec = mktime(&begin_tm);
+	r->begin.period = 24 * 60 * 60 * 1000;
+	r->begin.expire = time_range_begin_timer;
+	r->end.expire_tv.tv_sec = mktime(&end_tm);
+	r->end.period = 24 * 60 * 60 * 1000;
+	r->end.expire = time_range_end_timer;
+
+	return r;
+}
+
+static void load_time_ranges(void)
+{
+	struct conf_sect_t *s = conf_get_section("tbf");
+	struct conf_option_t *opt;
+	struct time_range_t *r;
+	time_t ts;
+
+	if (!s)
+		return;
+	
+	time(&ts);
+
+	while (!list_empty(&time_range_list)) {
+		r = list_entry(time_range_list.next, typeof(*r), entry);
+		list_del(&r->entry);
+		if (r->begin.tpd)
+			triton_timer_del(&r->begin);
+		if (r->end.tpd)
+			triton_timer_del(&r->end);
+		_free(r);
+	}
+
+	list_for_each_entry(opt, &s->items, entry) {
+		if (strcmp(opt->name, "time-range"))
+			continue;
+		r = parse_range(opt->val);
+		if (r) {
+			list_add_tail(&r->entry, &time_range_list);
+			if (ts >= r->begin.expire_tv.tv_sec && ts <= r->end.expire_tv.tv_sec)
+				time_range_begin_timer(&r->begin);
+			if (r->begin.expire_tv.tv_sec < ts)
+				r->begin.expire_tv.tv_sec += 24 * 60 * 60;
+			if (r->end.expire_tv.tv_sec < ts)
+				r->end.expire_tv.tv_sec += 24 * 60 * 60;
+			triton_timer_add(&shaper_ctx, &r->begin, 1);
+			triton_timer_add(&shaper_ctx, &r->end, 1);
+		} else
+			log_emerg("tbf: failed to parse time-range '%s'\n", opt->val);
+	}
 }
 
 #ifdef RADIUS
@@ -905,7 +1151,7 @@ static int parse_vendor_opt(const char *opt)
 }
 #endif
 
-void load_config(void)
+static void load_config(void)
 {
 	const char *opt;
 
@@ -959,12 +1205,52 @@ void load_config(void)
 	opt = conf_get_opt("tbf", "verbose");
 	if (opt && atoi(opt) > 0)
 		conf_verbose = 1;
+	
+	triton_context_call(&shaper_ctx, (triton_event_func)load_time_ranges, NULL);
+}
+
+static int clock_init(void)
+{
+	FILE *fp;
+	uint32_t clock_res;
+	uint32_t t2us;
+	uint32_t us2t;
+
+	fp = fopen("/proc/net/psched", "r");
+
+	if (!fp) {
+		log_emerg("tbf: failed to open /proc/net/psched: %s\n", strerror(errno));
+		return -1;
+	}
+
+	if (fscanf(fp, "%08x%08x%08x", &t2us, &us2t, &clock_res) != 3) {
+		log_emerg("tbf: failed to parse /proc/net/psched\n");
+		fclose(fp);
+		return -1;
+	}
+
+	fclose(fp);
+
+	/* compatibility hack: for old iproute binaries (ignoring
+	* the kernel clock resolution) the kernel advertises a
+	* tick multiplier of 1000 in case of nano-second resolution,
+	* which really is 1. */
+	if (clock_res == 1000000000)
+		t2us = us2t;
+
+	clock_factor  = (double)clock_res / TIME_UNITS_PER_SEC;
+	tick_in_usec = (double)t2us / us2t * clock_factor;
+
+	return 0;
 }
 
 static void __init init(void)
 {
 	if (clock_init())
 		return;
+
+	triton_context_register(&shaper_ctx, NULL);
+	triton_context_wakeup(&shaper_ctx);
 
 	load_config();
 

@@ -135,7 +135,7 @@ int __export triton_timer_add(struct triton_context_t *ctx, struct triton_timer_
 		t->ctx = (struct _triton_context_t *)ctx->tpd;
 	else
 		t->ctx = (struct _triton_context_t *)default_ctx.tpd;
-	t->fd = timerfd_create(CLOCK_MONOTONIC, 0);
+	t->fd = timerfd_create(abs_time ? CLOCK_REALTIME : CLOCK_MONOTONIC, 0);
 	if (t->fd < 0) {
 		triton_log_error("timer:timerfd_create: %s", strerror(errno));
 		mempool_free(t);
