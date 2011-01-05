@@ -8,6 +8,6 @@ TARGET_LINK_LIBRARIES(auth_mschap_v1 crypto)
 TARGET_LINK_LIBRARIES(auth_mschap_v2 crypto)
 
 INSTALL(TARGETS auth_pap auth_chap_md5 auth_mschap_v1 auth_mschap_v2
-	LIBRARY DESTINATION lib/accel-pptp
+	LIBRARY DESTINATION lib/accel-ppp
 )
 

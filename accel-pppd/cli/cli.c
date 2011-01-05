@@ -18,7 +18,7 @@
 #define MSG_UNKNOWN_CMD "command unknown\r\n"
 
 char *conf_cli_passwd;
-static const char *def_cli_prompt = "accel-pptp";
+static const char *def_cli_prompt = "accel-ppp";
 char *conf_cli_prompt;
 
 static LIST_HEAD(simple_cmd_list);

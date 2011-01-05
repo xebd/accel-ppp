@@ -77,7 +77,7 @@ static void __init __main(void)
 	return;
 
 usage:
-	printf("usage: pptpd [-d] [-p <file>] -c <file>\n\
+	printf("usage: accel-pppd [-d] [-p <file>] -c <file>\n\
 	where:\n\
 		-d - daemon mode\n\
 		-p - write pid to <file>\n\
@@ -156,7 +156,7 @@ int main(int argc, char **argv)
 	if (triton_load_modules("modules"))
 		return EXIT_FAILURE;
 
-	log_msg("accel-pptp version %s\n", ACCEL_PPTP_VERSION);
+	log_msg("accel-ppp version %s\n", ACCEL_PPP_VERSION);
 
 	triton_run();
 

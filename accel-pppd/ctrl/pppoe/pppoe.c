@@ -1283,6 +1283,6 @@ static void __init pppoe_init(void)
 	}
 
 	if (!conf_ac_name)
-		conf_ac_name = _strdup("accel-pptp");
+		conf_ac_name = _strdup("accel-ppp");
 }
 

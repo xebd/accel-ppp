@@ -69,7 +69,7 @@ static uint8_t *recv_buf;
 static uint8_t *temp_buf;
 
 static int conf_history_len = 100;
-static const char *conf_history_file = "/var/run/accel-pptp/history";
+static const char *conf_history_file = "/var/run/accel-ppp/history";
 static LIST_HEAD(history);
 static int history_len;
 static pthread_mutex_t history_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -191,7 +191,7 @@ static int cli_client_sendv(struct cli_client_t *tcln, const char *fmt, va_list 
 
 static int send_banner(struct telnet_client_t *cln)
 {
-	if (telnet_send(cln, "accel-pptp version " ACCEL_PPTP_VERSION "\r\n", sizeof("accel-pptp version " ACCEL_PPTP_VERSION "\r\n")))
+	if (telnet_send(cln, "accel-ppp version " ACCEL_PPP_VERSION "\r\n", sizeof("accel-ppp version " ACCEL_PPP_VERSION "\r\n")))
 		return -1;
 	return 0;
 }

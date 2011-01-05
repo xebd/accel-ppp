@@ -23,18 +23,18 @@ ELSE (HAVE_TIMERFD)
 		syscall(SYS_timerfd_create);
 	}" HAVE_SYSCALL)
 	IF (NOT HAVE_SYSCALL)
-		MESSAGE(FATAL_ERROR "Your system is too old and is not supported by accel-pptp, sorry...")
+		MESSAGE(FATAL_ERROR "Your system is too old and is not supported by accel-ppp, sorry...")
 	ENDIF (NOT HAVE_SYSCALL)
 	SET(sources_c ${sources_c} timerfd.c)
 ENDIF (HAVE_TIMERFD)
 
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
 
-ADD_DEFINITIONS(-DMODULE_PATH="${CMAKE_INSTALL_PREFIX}/lib/accel-pptp")
+ADD_DEFINITIONS(-DMODULE_PATH="${CMAKE_INSTALL_PREFIX}/lib/accel-ppp")
 
 ADD_LIBRARY(triton SHARED ${sources_c})
 TARGET_LINK_LIBRARIES(triton dl)
 
 INSTALL(TARGETS triton
-	LIBRARY DESTINATION lib/accel-pptp
+	LIBRARY DESTINATION lib/accel-ppp
 )

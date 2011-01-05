@@ -1,11 +1,11 @@
-.TH ACCEL-PPTP.CONF 5 "6 October 2010"
+.TH ACCEL-PPP.CONF 5 "6 October 2010"
 .SH NAME
-.B accel-pptp.conf
-- ACCEL-PPTP VPN daemon configuration
+.B accel-ppp.conf
+- ACCEL-PPP VPN daemon configuration
 .SH DESCRIPTION
-.BR accel-pptpd (8)
+.BR accel-pppd (8)
 reads options from this file, usually
-.IR /etc/accel-pptp.conf
+.IR /etc/accel-ppp.conf
 .TP
 Configuration file consists of sections in form:
 .TP
@@ -102,7 +102,7 @@ Disable CCP negotiation if this parameter is zero.
 Specifies in which case generate session identifier (default lower).
 .TP
 .BI "check-ip=" 0|1
-Specifies whether accel-pptp should check if IP already assigned to other ppp interface (default 0).
+Specifies whether accel-ppp should check if IP already assigned to other ppp interface (default 0).
 .TP
 .SH [lcp]
 .br

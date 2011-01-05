@@ -625,7 +625,7 @@ static void save_seq(void)
 	FILE *f;
 	char *opt = conf_get_opt("ppp", "seq-file");
 	if (!opt)
-		opt = "/var/run/accel-pptp/seq";
+		opt = "/var/run/accel-ppp/seq";
 
 	f = fopen(opt, "w");
 	if (f) {
@@ -664,7 +664,7 @@ static void __init init(void)
 
 	opt = conf_get_opt("ppp", "seq-file");
 	if (!opt)
-		opt = "/var/run/accel-pptp/seq";
+		opt = "/var/run/accel-ppp/seq";
 	
 	f = fopen(opt, "r");
 	if (f) {
