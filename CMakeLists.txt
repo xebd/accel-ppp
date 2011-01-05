@@ -7,7 +7,7 @@ PROJECT (accel-pptpd C)
 include(cmake/cpack.cmake)
 
 if (NOT BUILD_DRIVER_ONLY)
-	ADD_SUBDIRECTORY(accel-pptpd)
+	ADD_SUBDIRECTORY(accel-pppd)
 endif (NOT BUILD_DRIVER_ONLY)
 
 if (BUILD_DRIVER OR BUILD_DRIVER_ONLY)
