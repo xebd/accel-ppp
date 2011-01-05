@@ -30,24 +30,24 @@ static int tr101_send_request(struct pppoe_tag *tr101, struct rad_packet_t *pack
 			goto inval;
 		id = *ptr++;
 		len = *ptr++;
-		if (ptr + len - 2 > endptr)
+		if (ptr + len > endptr)
 			goto inval;
 		if (type && id > 0x80)
 			continue;
 		switch (id) {
 			case OPT_CIRCUIT_ID:
-				if (len - 2 > 63)
+				if (len > 63)
 					goto inval;
 				memcpy(str, ptr, len);
-				str[len - 2] = 0;
+				str[len] = 0;
 				if (rad_packet_add_str(pack, "ADSL-Forum", "ADSL-Agent-Circuit-Id", str))
 					return -1;
 				break;
 			case OPT_REMOTE_AGENT_ID:
-				if (len - 2 > 63)
+				if (len > 63)
 					goto inval;
 				memcpy(str, ptr, len);
-				str[len - 2] = 0;
+				str[len] = 0;
 				if (rad_packet_add_str(pack, "ADSL-Forum", "ADSL-Agent-Remote-Id", str))
 					return -1;
 				break;
@@ -76,7 +76,7 @@ static int tr101_send_request(struct pppoe_tag *tr101, struct rad_packet_t *pack
 					return -1;
 				break;
 		}
-		ptr += len - 2;
+		ptr += len;
 	}
 
 	return 0;

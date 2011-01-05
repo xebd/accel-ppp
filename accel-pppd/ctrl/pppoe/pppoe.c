@@ -125,6 +125,8 @@ static void disconnect(struct pppoe_conn_t *conn)
 		_free(conn->host_uniq);
 	if (conn->relay_sid)
 		_free(conn->relay_sid);
+	if (conn->tr101)
+		_free(conn->tr101);
 
 	triton_context_unregister(&conn->ctx);
 
