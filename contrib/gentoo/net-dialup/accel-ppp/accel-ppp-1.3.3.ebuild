@@ -5,20 +5,20 @@ EAPI=2
 
 inherit eutils linux-mod cmake-utils
 
-DESCRIPTION="PPtP/L2TP/PPPoE server for Linux"
+DESCRIPTION="PPtP/L2TP/PPPoE Server for Linux"
 SRC_URI="http://sourceforge.net/projects/accel-ppp/files/accel-ppp/${P}.tar.bz2"
 HOMEPAGE="http://accel-ppp.sourceforge.net/"
 
 SLOT="0"
 LICENSE="GPL"
 KEYWORDS="~amd64 ~x86"
-IUSE="postgres debug shaper pptp_driver"
+IUSE="postgres debug shaper pptp_driver radius"
 
 DEPEND=">=sys-libs/glibc-2.8
 	dev-libs/openssl
 	dev-libs/libaio
-	shaper? ( =dev-libs/libnl-2 )
-	postgres? ( >=dev-db/postgresql-base-8.1 )"
+	shaper? ( =dev-libs/libnl-2* )
+	postgres? ( dev-db/postgresql-base )"
 
 RDEPEND="$DEPEND
          pptp_driver? ( virtual/modutils )"
@@ -32,6 +32,7 @@ MODULE_NAMES="pptp(extra:${S}/driver/)"
 
 src_prepare() {
 	sed -i -e "/mkdir/d" "${S}/accel-pppd/CMakeLists.txt"
+	sed -i -e "/echo/d" "${S}/accel-pppd/CMakeLists.txt"
 	sed -i -e "/INSTALL/d" "${S}/driver/CMakeLists.txt"
 }
 
@@ -43,19 +44,26 @@ src_configure() {
 	if  use postgres; then
 		mycmakeargs+=( "-DLOG_PGSQL=TRUE" )
 	fi
-
+	
 	if use shaper; then
 		mycmakeargs+=( "-DSHAPER=TRUE" )
 	fi
+
+	if ! use radius; then
+		mycmakeargs+=( "-DRADIUS=FALSE" )
+	fi
+
+	mycmakeargs+=( "-DCMAKE_INSTALL_PREFIX=/usr" )
 
 	cmake-utils_src_configure
 }
 
 src_compile() {
 	cmake-utils_src_compile
-
+	
 	if use pptp_driver; then
 		cd ${S}/driver
+		#convert_to_m Makefile
 		linux-mod_src_compile || die "failed to build driver"
 	fi
 }
@@ -72,7 +80,7 @@ src_install() {
 	newexe "${S}/contrib/gentoo/net-dialup/accel-ppp/files/accel-pppd-init" accel-pppd
 
 	insinto /etc/conf.d
-	newins "${S}/contrib/gentoo/net-dialup/accel-ppp/files/pppd-confd" accel-pppd
+	newins "${S}/contrib/gentoo/net-dialup/accel-ppp/files/accel-pppd-confd" accel-pppd
 
 	dodir /var/log/accel-ppp
 	dodir /var/run/accel-ppp
