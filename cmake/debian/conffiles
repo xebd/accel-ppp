@@ -1,0 +1,3 @@
+/etc/init.d/accel-ppp
+/etc/accel-ppp.conf.dist
+/etc/default/accel-ppp
