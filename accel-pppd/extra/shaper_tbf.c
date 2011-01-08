@@ -606,15 +606,6 @@ static void parse_string(const char *str, int dir, int *speed, int *burst, int *
 	}
 }
 
-#ifdef RADIUS
-static void parse_attr(struct rad_attr_t *attr, int dir, int *speed, int *burst, int *tr_id)
-{
-	if (attr->attr->type == ATTR_TYPE_STRING)
-		parse_string(attr->val.string, dir, speed, burst, tr_id);
-	else if (attr->attr->type == ATTR_TYPE_INTEGER)
-		*speed = attr->val.integer;
-}
-
 static struct time_range_pd_t *get_tr_pd(struct shaper_pd_t *pd, int id)
 {
 	struct time_range_pd_t *tr_pd;
@@ -645,6 +636,15 @@ static void clear_tr_pd(struct shaper_pd_t *pd)
 		list_del(&tr_pd->entry);
 		_free(tr_pd);
 	}
+}
+
+#ifdef RADIUS
+static void parse_attr(struct rad_attr_t *attr, int dir, int *speed, int *burst, int *tr_id)
+{
+	if (attr->attr->type == ATTR_TYPE_STRING)
+		parse_string(attr->val.string, dir, speed, burst, tr_id);
+	else if (attr->attr->type == ATTR_TYPE_INTEGER)
+		*speed = attr->val.integer;
 }
 
 static void check_radius_attrs(struct shaper_pd_t *pd, struct rad_packet_t *pack)
@@ -1102,7 +1102,7 @@ static void load_time_ranges(void)
 		if (r) {
 			list_add_tail(&r->entry, &time_range_list);
 			if (r->begin.expire_tv.tv_sec > r->end.expire_tv.tv_sec) {
-				if (ts >= r->begin.expire_tv.tv_sec - 24*60*60 && ts <= r->end.expire_tv.tv_sec)
+				if (ts >= r->begin.expire_tv.tv_sec && ts <= r->end.expire_tv.tv_sec + 24*60*60)
 					time_range_begin_timer(&r->begin);
 			} else {
 				if (ts >= r->begin.expire_tv.tv_sec && ts <= r->end.expire_tv.tv_sec)
