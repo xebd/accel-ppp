@@ -14,13 +14,13 @@ HOMEPAGE="http://accel-ppp.sourceforge.net/"
 SLOT="0"
 LICENSE="GPL"
 KEYWORDS="~amd64 ~x86"
-IUSE="postgres debug shaper pptp_driver"
+IUSE="postgres debug shaper pptp_driver radius"
 
 DEPEND=">=sys-libs/glibc-2.8
 	dev-libs/openssl
 	dev-libs/libaio
-	shaper? ( =dev-libs/libnl-2 )
-	postgres? ( >=dev-db/postgresql-base-8.1 )"
+	shaper? ( =dev-libs/libnl-2* )
+	postgres? ( dev-db/postgresql-base )"
 
 RDEPEND="$DEPEND
          pptp_driver? ( virtual/modutils )"
@@ -54,6 +54,12 @@ src_configure() {
 	if use shaper; then
 		mycmakeargs+=( "-DSHAPER=TRUE" )
 	fi
+
+	if ! use radius; then
+		mycmakeargs+=( "-DRADIUS=FALSE" )
+	fi
+
+	mycmakeargs+=( "-DCMAKE_INSTALL_PREFIX=/usr" )
 
 	cmake-utils_src_configure
 }
