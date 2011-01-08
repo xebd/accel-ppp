@@ -3,18 +3,16 @@
 
 EAPI=2
 
-inherit eutils git linux-mod cmake-utils
+inherit eutils linux-mod cmake-utils
 
-EGIT_REPO_URI="git://accel-pptp.git.sourceforge.net/gitroot/accel-pptp/accel-pptp"
-
-DESCRIPTION="Point-to-Point Tunnelling Protocol Client/Server for Linux"
-SRC_URI=""
-HOMEPAGE="http://accel-pptp.sourceforge.net/"
+DESCRIPTION="PPtP/L2TP/PPPoE server for Linux"
+SRC_URI="http://sourceforge.net/projects/accel-ppp/files/accel-ppp/${P}.tar.bz2"
+HOMEPAGE="http://accel-ppp.sourceforge.net/"
 
 SLOT="0"
 LICENSE="GPL"
 KEYWORDS="~amd64 ~x86"
-IUSE="postgres debug shaper"
+IUSE="postgres debug shaper pptp_driver"
 
 DEPEND=">=sys-libs/glibc-2.8
 	dev-libs/openssl
@@ -23,7 +21,7 @@ DEPEND=">=sys-libs/glibc-2.8
 	postgres? ( >=dev-db/postgresql-base-8.1 )"
 
 RDEPEND="$DEPEND
-         virtual/modutils"
+         pptp_driver? ( virtual/modutils )"
 
 BUILD_TARGETS="default"
 BUILD_PARAMS="KDIR=${KERNEL_DIR}"
@@ -32,13 +30,8 @@ MODULESD_PPTP_ALIASES=("net-pf-24 pptp")
 PREFIX="/"
 MODULE_NAMES="pptp(extra:${S}/driver/)"
 
-src_unpack () {
-	git_src_unpack
-}
-
 src_prepare() {
-	sed -i -e "/mkdir/d" "${S}/accel-pptpd/CMakeLists.txt"
-	sed -i -e "/echo/d" "${S}/accel-pptpd/CMakeLists.txt"
+	sed -i -e "/mkdir/d" "${S}/accel-pppd/CMakeLists.txt"
 	sed -i -e "/INSTALL/d" "${S}/driver/CMakeLists.txt"
 }
 
@@ -50,7 +43,7 @@ src_configure() {
 	if  use postgres; then
 		mycmakeargs+=( "-DLOG_PGSQL=TRUE" )
 	fi
-	
+
 	if use shaper; then
 		mycmakeargs+=( "-DSHAPER=TRUE" )
 	fi
@@ -60,25 +53,28 @@ src_configure() {
 
 src_compile() {
 	cmake-utils_src_compile
-	
-	cd ${S}/driver
-	#convert_to_m Makefile
-	linux-mod_src_compile || die "failed to build driver"
+
+	if use pptp_driver; then
+		cd ${S}/driver
+		linux-mod_src_compile || die "failed to build driver"
+	fi
 }
 
 src_install() {
 	cmake-utils_src_install
 
-	cd ${S}/driver
-	linux-mod_src_install
+	if use pptp_driver; then
+		cd ${S}/driver
+		linux-mod_src_install
+	fi
 
 	exeinto /etc/init.d
-	newexe "${S}/contrib/gentoo/net-dialup/accel-pptp/files/pptpd-init" accel-pptpd
+	newexe "${S}/contrib/gentoo/net-dialup/accel-ppp/files/accel-pppd-init" accel-pppd
 
 	insinto /etc/conf.d
-	newins "${S}/contrib/gentoo/net-dialup/accel-pptp/files/pptpd-confd" accel-pptpd
+	newins "${S}/contrib/gentoo/net-dialup/accel-ppp/files/pppd-confd" accel-pppd
 
-	dodir /var/log/accel-pptp
-	dodir /var/run/accel-pptp
+	dodir /var/log/accel-ppp
+	dodir /var/run/accel-ppp
 	dodir /var/run/radattr
 }
