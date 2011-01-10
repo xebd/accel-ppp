@@ -88,7 +88,7 @@ int rad_proc_attrs(struct rad_req_t *req)
 				req->rpd->acct_interim_interval = attr->val.integer;
 				break;
 			case Session_Timeout:
-				req->rpd->session_timeout.period = attr->val.integer * 1000;
+				req->rpd->session_timeout.expire_tv.tv_sec = attr->val.integer;
 				break;
 			case Class:
 				if (!req->rpd->attr_class)
@@ -198,7 +198,7 @@ static void ppp_acct_start(struct ppp_t *ppp)
 		return;
 	}
 	
-	if (rpd->session_timeout.period) {
+	if (rpd->session_timeout.expire_tv.tv_sec) {
 		rpd->session_timeout.expire = session_timeout;
 		triton_timer_add(ppp->ctrl->ctx, &rpd->session_timeout, 0);
 	}

@@ -15,6 +15,7 @@
 #include "memdebug.h"
 
 #define STAT_UPDATE_INTERVAL (10 * 60 * 1000)
+#define INTERIM_SAFE_TIME 10
 
 static int req_set_RA(struct rad_req_t *req, const char *secret)
 {
@@ -149,6 +150,10 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 
 	if (rpd->acct_req->timeout.tpd)
 		return;
+
+	if (rpd->session_timeout.expire_tv.tv_sec && 
+			rpd->session_timeout.expire_tv.tv_sec - (time(NULL) - rpd->ppp->start_time) < INTERIM_SAFE_TIME)
+			return;
 
 	req_set_stat(rpd->acct_req, rpd->ppp);
 	if (!rpd->acct_interim_interval)
