@@ -44,6 +44,7 @@ static mempool_t chunk_pool;
 static __thread struct ppp_t *cur_ppp;
 static __thread struct _log_msg_t *cur_msg;
 static __thread char *stat_buf;
+static pthread_key_t stat_buf_key;
 
 static FILE *emerg_file;
 static FILE *debug_file;
@@ -54,13 +55,20 @@ static int add_msg(struct _log_msg_t *msg, const char *buf);
 //static struct log_pd_t *find_pd(struct ppp_t *ppp);
 static void write_msg(FILE *f, struct _log_msg_t *msg, struct ppp_t *ppp);
 
+static void stat_buf_free(void *ptr)
+{
+	_free(ptr);
+}
+
 static void do_log(int level, const char *fmt, va_list ap, struct ppp_t *ppp)
 {
 	struct log_target_t *t;
 	struct log_msg_t *m;
 
-	if (!stat_buf)
+	if (!stat_buf) {
 		stat_buf = _malloc(LOG_MAX_SIZE + 1);
+		pthread_setspecific(stat_buf_key, stat_buf);
+	}
 
 	vsnprintf(stat_buf, LOG_MAX_SIZE, fmt, ap);
 
@@ -487,6 +495,8 @@ static void __init log_init(void)
 	struct sigaction sa = {
 		.sa_handler = sighup,
 	};
+
+	pthread_key_create(&stat_buf_key, stat_buf_free);
 
 	msg_pool = mempool_create(sizeof(struct log_msg_t));
 	_msg_pool = mempool_create(sizeof(struct _log_msg_t));
