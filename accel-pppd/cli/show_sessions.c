@@ -344,13 +344,13 @@ static void print_username(const struct ppp_t *ppp, char *buf)
 {
 	if (ppp->username)
 		snprintf(buf, CELL_SIZE, "%s", ppp->username);
+	else
+		*buf = 0;
 }
 
 static void print_ip(const struct ppp_t *ppp, char *buf)
 {
-	char str[17];
-	u_inet_ntoa(ppp->peer_ipaddr, str);
-	sprintf(buf, "%s", str);
+	u_inet_ntoa(ppp->peer_ipaddr, buf);
 }
 
 static void print_type(const struct ppp_t *ppp, char *buf)
