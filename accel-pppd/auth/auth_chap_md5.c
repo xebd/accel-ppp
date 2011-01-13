@@ -272,15 +272,18 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 
 	if (msg->hdr.id != ad->id) {
 		if (conf_ppp_verbose)
-			log_ppp_error("chap-md5: id mismatch\n");
-		chap_send_failure(ad);
-		ppp_terminate(ad->ppp, TERM_USER_ERROR, 0);
+			log_ppp_warn("chap-md5: id mismatch\n");
+		return;
 	}
 
 	if (msg->val_size != VALUE_SIZE) {
 		log_ppp_error("chap-md5: incorrect value-size (%i)\n", msg->val_size);
 		chap_send_failure(ad);
-		ppp_terminate(ad->ppp, TERM_USER_ERROR, 0);
+		if (ad->started)
+			ppp_terminate(ad->ppp, TERM_USER_ERROR, 0);
+		else
+			ppp_auth_failed(ad->ppp, NULL);
+		return;
 	}
 
 	name = _strndup(msg->name,ntohs(msg->hdr.len) - sizeof(*msg) + 2);

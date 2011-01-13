@@ -288,21 +288,17 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 
 	if (msg->hdr.id != ad->id) {
 		if (conf_ppp_verbose)
-			log_ppp_error("mschap-v1: id mismatch\n");
-		chap_send_failure(ad);
-		if (ad->started)
-			ppp_terminate(ad->ppp, TERM_USER_ERROR, 0);
-		else
-			ppp_auth_failed(ad->ppp, NULL);
+			log_ppp_warn("mschap-v1: id mismatch\n");
+		return;
 	}
 
 	if (msg->val_size != RESPONSE_VALUE_SIZE)	{
 		log_ppp_error("mschap-v1: incorrect value-size (%i)\n", msg->val_size);
-		chap_send_failure(ad);
 		if (ad->started)
 			ppp_terminate(ad->ppp, TERM_AUTH_ERROR, 0);
 		else
 			ppp_auth_failed(ad->ppp, NULL);
+		return;
 	}
 
 	name = _strndup(msg->name, ntohs(msg->hdr.len) - sizeof(*msg) + 2);
