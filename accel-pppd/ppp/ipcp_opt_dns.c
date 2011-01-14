@@ -6,6 +6,7 @@
 #include "ppp_ipcp.h"
 #include "log.h"
 #include "ipdb.h"
+#include "events.h"
 
 #include "memdebug.h"
 
@@ -138,7 +139,7 @@ static void dns2_print(void (*print)(const char *fmt,...),struct ipcp_option_t *
 	print("<dns2 %s>",inet_ntoa(in));
 }
 
-static void __init dns_opt_init()
+static void load_config(void)
 {
 	char *opt;
 	
@@ -149,7 +150,13 @@ static void __init dns_opt_init()
 	opt = conf_get_opt("dns", "dns2");
 	if (opt)
 		conf_dns2 = inet_addr(opt);
-	
+}
+
+static void __init dns_opt_init()
+{
 	ipcp_option_register(&dns1_opt_hnd);
 	ipcp_option_register(&dns2_opt_hnd);
+
+	load_config();
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
