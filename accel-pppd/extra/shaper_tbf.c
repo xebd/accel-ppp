@@ -711,7 +711,7 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 		down_speed = pd->cur_tr->down_speed;
 		up_speed = pd->cur_tr->up_speed;
 		down_burst = pd->cur_tr->down_burst;
-		up_burst = pd->cur_tr->up_speed;
+		up_burst = pd->cur_tr->up_burst;
 	}
 
 	if (down_speed > 0 && up_speed > 0) {
