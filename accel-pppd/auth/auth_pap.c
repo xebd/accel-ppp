@@ -242,9 +242,9 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
 static void pap_recv(struct ppp_handler_t *h)
 {
 	struct pap_auth_data_t *d = container_of(h, typeof(*d), h);
-	struct pap_hdr_t *hdr = (struct pap_hdr_t *)d->ppp->chan_buf;
+	struct pap_hdr_t *hdr = (struct pap_hdr_t *)d->ppp->buf;
 
-	if (d->ppp->chan_buf_size < sizeof(*hdr) || ntohs(hdr->len) < HDR_LEN || ntohs(hdr->len) < d->ppp->chan_buf_size - 2)	{
+	if (d->ppp->buf_size < sizeof(*hdr) || ntohs(hdr->len) < HDR_LEN || ntohs(hdr->len) < d->ppp->buf_size - 2)	{
 		log_ppp_warn("PAP: short packet received\n");
 		return;
 	}

@@ -22,6 +22,8 @@ void md_check(void *ptr);
 #define _malloc(size) malloc(size)
 #define _realloc(ptr, size) realloc(ptr, size)
 #define _free(ptr) free(ptr)
+#define _strdup(str) strdup(str)
+#define _strndup(str, size) strndup(str, size)
 #endif
 
 #endif

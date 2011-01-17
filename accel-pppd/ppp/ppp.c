@@ -20,6 +20,7 @@
 #include "ppp_fsm.h"
 #include "log.h"
 #include "spinlock.h"
+#include "mempool.h"
 
 #include "memdebug.h"
 
@@ -29,16 +30,18 @@ static int conf_sid_ucase;
 pthread_rwlock_t __export ppp_lock = PTHREAD_RWLOCK_INITIALIZER;
 __export LIST_HEAD(ppp_list);
 
-static LIST_HEAD(layers);
 int __export sock_fd;
 
 int __export ppp_shutdown;
+
+static mempool_t buf_pool;
+
+static LIST_HEAD(layers);
 
 static unsigned long long seq;
 #if __WORDSIZE == 32
 static spinlock_t seq_lock;
 #endif
-
 
 struct ppp_stat_t ppp_stat;
 
@@ -62,16 +65,6 @@ void __export ppp_init(struct ppp_t *ppp)
 	INIT_LIST_HEAD(&ppp->chan_handlers);
 	INIT_LIST_HEAD(&ppp->unit_handlers);
 	INIT_LIST_HEAD(&ppp->pd_list);
-}
-
-static void _free_ppp(struct ppp_t *ppp)
-{
-	if (ppp->chan_buf)
-		free(ppp->chan_buf);
-	if (ppp->unit_buf)
-		_free(ppp->unit_buf);
-	if (ppp->username)
-		_free(ppp->username);
 }
 
 static void generate_sessionid(struct ppp_t *ppp)
@@ -151,8 +144,7 @@ int __export establish_ppp(struct ppp_t *ppp)
 		goto exit_close_unit;
 	}
 
-	ppp->chan_buf = _malloc(PPP_MRU);
-	ppp->unit_buf = _malloc(PPP_MRU);
+	ppp->buf = mempool_alloc(buf_pool);
 
 	ppp->chan_hnd.fd = ppp->chan_fd;
 	ppp->chan_hnd.read = ppp_chan_read;
@@ -184,7 +176,8 @@ exit_close_unit:
 exit_close_chan:
 	close(ppp->chan_fd);
 
-	_free_ppp(ppp);
+	if (ppp->buf)
+		mempool_free(ppp->buf);
 
 	return -1;
 }
@@ -218,9 +211,6 @@ static void destablish_ppp(struct ppp_t *ppp)
 	ppp->chan_fd = -1;
 	ppp->fd = -1;
 
-	_free(ppp->unit_buf);
-	_free(ppp->chan_buf);
-
 	_free_layers(ppp);
 	
 	ppp->terminated = 1;
@@ -229,6 +219,8 @@ static void destablish_ppp(struct ppp_t *ppp)
 
 	triton_event_fire(EV_PPP_FINISHED, ppp);
 	ppp->ctrl->finished(ppp);
+
+	mempool_free(ppp->buf);
 
 	if (ppp->username) {
 		_free(ppp->username);
@@ -281,8 +273,8 @@ static int ppp_chan_read(struct triton_md_handler_t *h)
 
 	while(1) {
 cont:
-		ppp->chan_buf_size = read(h->fd, ppp->chan_buf, PPP_MRU);
-		if (ppp->chan_buf_size < 0) {
+		ppp->buf_size = read(h->fd, ppp->buf, PPP_MRU);
+		if (ppp->buf_size < 0) {
 			if (errno == EAGAIN)
 				return 0;
 			log_ppp_error("ppp_chan_read: %s\n", strerror(errno));
@@ -290,18 +282,18 @@ cont:
 		}
 
 		//printf("ppp_chan_read: ");
-		//print_buf(ppp->chan_buf,ppp->chan_buf_size);
-		if (ppp->chan_buf_size == 0) {
+		//print_buf(ppp->buf,ppp->buf_size);
+		if (ppp->buf_size == 0) {
 			ppp_terminate(ppp, 1, TERM_NAS_ERROR);
 			return 1;
 		}
 
-		if (ppp->chan_buf_size < 2) {
-			log_ppp_error("ppp_chan_read: short read %i\n", ppp->chan_buf_size);
+		if (ppp->buf_size < 2) {
+			log_ppp_error("ppp_chan_read: short read %i\n", ppp->buf_size);
 			continue;
 		}
 
-		proto = ntohs(*(uint16_t*)ppp->chan_buf);
+		proto = ntohs(*(uint16_t*)ppp->buf);
 		list_for_each_entry(ppp_h, &ppp->chan_handlers, entry) {
 			if (ppp_h->proto == proto) {
 				ppp_h->recv(ppp_h);
@@ -326,29 +318,28 @@ static int ppp_unit_read(struct triton_md_handler_t *h)
 
 	while (1) {
 cont:
-		ppp->unit_buf_size = read(h->fd, ppp->unit_buf, PPP_MRU);
-		if (ppp->unit_buf_size < 0) {
+		ppp->buf_size = read(h->fd, ppp->buf, PPP_MRU);
+		if (ppp->buf_size < 0) {
 			if (errno == EAGAIN)
 				return 0;
 			log_ppp_error("ppp_unit_read: %s\n",strerror(errno));
 			return 0;
 		}
 
-		md_check(ppp->unit_buf);
 		//printf("ppp_unit_read: ");
-		//print_buf(ppp->unit_buf,ppp->unit_buf_size);
+		//print_buf(ppp->buf,ppp->buf_size);
 
-		if (ppp->unit_buf_size == 0) {
+		if (ppp->buf_size == 0) {
 			ppp_terminate(ppp, 1, TERM_NAS_ERROR);
 			return 1;
 		}
 
-		if (ppp->unit_buf_size < 2) {
-			log_ppp_error("ppp_unit_read: short read %i\n", ppp->unit_buf_size);
+		if (ppp->buf_size < 2) {
+			log_ppp_error("ppp_unit_read: short read %i\n", ppp->buf_size);
 			continue;
 		}
 
-		proto=ntohs(*(uint16_t*)ppp->unit_buf);
+		proto=ntohs(*(uint16_t*)ppp->buf);
 		list_for_each_entry(ppp_h, &ppp->unit_handlers, entry) {
 			if (ppp_h->proto == proto) {
 				ppp_h->recv(ppp_h);
@@ -655,6 +646,8 @@ static void __init init(void)
 {
 	char *opt;
 	FILE *f;
+
+	buf_pool = mempool_create(PPP_MRU);
 
 	sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sock_fd < 0) {

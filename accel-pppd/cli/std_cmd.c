@@ -3,6 +3,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <signal.h>
+#include <malloc.h>
 #include <arpa/inet.h>
 
 #include "triton.h"
@@ -21,6 +22,9 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	FILE *f;
 	unsigned long vmsize = 0, vmrss = 0;
 	unsigned long page_size_kb = sysconf(_SC_PAGE_SIZE) / 1024;
+#ifdef MEMDEBUG
+	struct mallinfo mi = mallinfo();
+#endif
 
 	sprintf(statm_fname, "/proc/%i/statm", getpid());
 	f = fopen(statm_fname, "r");
@@ -38,7 +42,16 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 
 	cli_sendv(client, "uptime: %i.%02i:%02i:%02i\r\n", day, hour, dt / 60, dt % 60);
 	cli_sendv(client, "cpu: %i%%\r\n", triton_stat.cpu);
+#ifdef MEMDEBUG
+	cli_send(client,  "memory:\r\n");
+	cli_sendv(client, "  rss/virt: %lu/%lu kB\r\n", vmrss * page_size_kb, vmsize * page_size_kb);
+	cli_sendv(client, "  arena: %lu kB\r\n", mi.arena / 1024);
+	cli_sendv(client, "  mmaped: %lu kB\r\n", mi.hblkhd / 1024);
+	cli_sendv(client, "  uordblks: %lu kB\r\n", mi.uordblks / 1024);
+	cli_sendv(client, "  fordblks: %lu kB\r\n", mi.fordblks / 1024);
+#else
 	cli_sendv(client, "mem(rss/virt): %lu/%lu kB\r\n", vmrss * page_size_kb, vmsize * page_size_kb);
+#endif
 	cli_send(client, "core:\r\n");
 	cli_sendv(client, "  mempool_allocated: %u\r\n", triton_stat.mempool_allocated);
 	cli_sendv(client, "  mempool_available: %u\r\n", triton_stat.mempool_available);

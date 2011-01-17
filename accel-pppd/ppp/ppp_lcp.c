@@ -252,7 +252,7 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 static void send_conf_ack(struct ppp_fsm_t *fsm)
 {
 	struct ppp_lcp_t *lcp = container_of(fsm, typeof(*lcp), fsm);
-	struct lcp_hdr_t *hdr = (struct lcp_hdr_t*)lcp->ppp->chan_buf;
+	struct lcp_hdr_t *hdr = (struct lcp_hdr_t*)lcp->ppp->buf;
 
 	hdr->code = CONFACK;
 
@@ -265,7 +265,7 @@ static void send_conf_ack(struct ppp_fsm_t *fsm)
 static void send_code_rej(struct ppp_fsm_t *fsm)
 {
 	struct ppp_lcp_t *lcp = container_of(fsm, typeof(*lcp), fsm);
-	struct lcp_hdr_t *hdr = (struct lcp_hdr_t*)lcp->ppp->chan_buf;
+	struct lcp_hdr_t *hdr = (struct lcp_hdr_t*)lcp->ppp->buf;
 
 	hdr->code = CONFACK;
 
@@ -586,7 +586,7 @@ static void lcp_recv_echo_repl(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 
 static void send_echo_reply(struct ppp_lcp_t *lcp)
 {
-	struct lcp_hdr_t *hdr = (struct lcp_hdr_t*)lcp->ppp->chan_buf;
+	struct lcp_hdr_t *hdr = (struct lcp_hdr_t*)lcp->ppp->buf;
 	uint32_t magic = *(uint32_t *)(hdr + 1);
 
 	hdr->code = ECHOREP;
@@ -706,12 +706,12 @@ static void lcp_recv(struct ppp_handler_t*h)
 		return;
 	}
 
-	if (lcp->ppp->chan_buf_size < PPP_HEADERLEN + 2) {
+	if (lcp->ppp->buf_size < PPP_HEADERLEN + 2) {
 		log_ppp_warn("LCP: short packet received\n");
 		return;
 	}
 
-	hdr = (struct lcp_hdr_t *)lcp->ppp->chan_buf;
+	hdr = (struct lcp_hdr_t *)lcp->ppp->buf;
 	if (ntohs(hdr->len) < PPP_HEADERLEN) {
 		log_ppp_warn("LCP: short packet received\n");
 		return;

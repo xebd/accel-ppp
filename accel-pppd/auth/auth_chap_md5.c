@@ -384,9 +384,9 @@ static struct ppp_auth_handler_t chap=
 static void chap_recv(struct ppp_handler_t *h)
 {
 	struct chap_auth_data_t *d = container_of(h, typeof(*d), h);
-	struct chap_hdr_t *hdr = (struct chap_hdr_t *)d->ppp->chan_buf;
+	struct chap_hdr_t *hdr = (struct chap_hdr_t *)d->ppp->buf;
 
-	if (d->ppp->chan_buf_size < sizeof(*hdr) || ntohs(hdr->len) < HDR_LEN || ntohs(hdr->len) < d->ppp->chan_buf_size - 2)	{
+	if (d->ppp->buf_size < sizeof(*hdr) || ntohs(hdr->len) < HDR_LEN || ntohs(hdr->len) < d->ppp->buf_size - 2)	{
 		log_ppp_warn("chap-md5: short packet received\n");
 		return;
 	}

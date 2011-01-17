@@ -271,7 +271,7 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 static void send_conf_ack(struct ppp_fsm_t *fsm)
 {
 	struct ppp_ccp_t *ccp = container_of(fsm, typeof(*ccp), fsm);
-	struct ccp_hdr_t *hdr = (struct ccp_hdr_t*)ccp->ppp->unit_buf;
+	struct ccp_hdr_t *hdr = (struct ccp_hdr_t*)ccp->ppp->buf;
 
 	hdr->code = CONFACK;
 
@@ -619,12 +619,12 @@ static void ccp_recv(struct ppp_handler_t*h)
 		return;
 	}
 
-	if (ccp->ppp->unit_buf_size < PPP_HEADERLEN + 2) {
+	if (ccp->ppp->buf_size < PPP_HEADERLEN + 2) {
 		log_ppp_warn("CCP: short packet received\n");
 		return;
 	}
 
-	hdr = (struct ccp_hdr_t *)ccp->ppp->unit_buf;
+	hdr = (struct ccp_hdr_t *)ccp->ppp->buf;
 	if (ntohs(hdr->len) < PPP_HEADERLEN) {
 		log_ppp_warn("CCP: short packet received\n");
 		return;

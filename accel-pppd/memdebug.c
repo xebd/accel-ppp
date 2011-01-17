@@ -30,7 +30,7 @@
 struct mem_t
 {
 	struct list_head entry;
-	char fname[PATH_MAX];
+	const char *fname;
 	int line;
 	size_t size;
 	uint64_t magic2;
@@ -48,7 +48,7 @@ struct mem_t *_md_malloc(size_t size, const char *fname, int line)
 	if (size > 4096)
 		line = 0;
 
-	strcpy(mem->fname, fname);
+	mem->fname = fname;
 	mem->line = line;
 	mem->size = size;
 	mem->magic1 = MAGIC1;

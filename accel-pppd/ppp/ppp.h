@@ -103,10 +103,8 @@ struct ppp_t
 	int terminated:1;
 	int terminate_cause;
 
-	void *chan_buf;
-	int chan_buf_size;
-	void *unit_buf;
-	int unit_buf_size;
+	void *buf;
+	int buf_size;
 
 	struct list_head chan_handlers;
 	struct list_head unit_handlers;

@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <sys/mman.h>
+#include <linux/mman.h>
 
 #include "log.h"
 #include "mempool.h"
@@ -48,17 +50,18 @@ int rad_packet_build(struct rad_packet_t *pack, uint8_t *RA)
 	struct rad_attr_t *attr;
 	uint8_t *ptr;
 
-	if (pack->buf)
-		ptr = _realloc(pack->buf, pack->len);
-	else
-		ptr = _malloc(pack->len);
+	if (!pack->buf) {
+		ptr = mmap(NULL, REQ_LENGTH_MAX, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
 
-	if (!ptr) {
-		log_emerg("radius:packet: out of memory\n");
-		return -1;
-	}
-	
-	pack->buf = ptr;
+		if (ptr == MAP_FAILED) {
+			log_emerg("radius:packet: out of memory\n");
+			return -1;
+		}
+		
+		pack->buf = ptr;
+	} else
+		ptr = pack->buf;
+
 	*ptr = pack->code; ptr++;
 	*ptr = pack->id; ptr++;
 	*(uint16_t*)ptr = htons(pack->len); ptr+= 2;
@@ -113,11 +116,13 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 	if (!pack)
 		return 0;
 
-	pack->buf = _malloc(REQ_LENGTH_MAX);
-	if (!pack->buf) {
+	ptr = mmap(NULL, REQ_LENGTH_MAX, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+	if (ptr == MAP_FAILED) {
 		log_emerg("radius:packet: out of memory\n");
 		goto out_err;
 	}
+	
+	pack->buf = ptr;
 
 	while (1) {
 		if (addr)
@@ -140,8 +145,6 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 		log_ppp_warn("radius:packet: short packed received (%i)\n", n);
 		goto out_err;
 	}
-
-	ptr = (uint8_t *)pack->buf;
 
 	pack->code = *ptr; ptr++;
 	pack->id = *ptr; ptr++;
@@ -224,6 +227,9 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 		n -= 2 + len;
 	}
 
+	munmap(pack->buf, REQ_LENGTH_MAX);
+	pack->buf = NULL;
+
 	*p = pack;
 
 	return 0;
@@ -238,7 +244,7 @@ void rad_packet_free(struct rad_packet_t *pack)
 	struct rad_attr_t *attr;
 	
 	if (pack->buf)
-		_free(pack->buf);
+		munmap(pack->buf, REQ_LENGTH_MAX);
 
 	while(!list_empty(&pack->attrs)) {
 		attr = list_entry(pack->attrs.next, typeof(*attr), entry);

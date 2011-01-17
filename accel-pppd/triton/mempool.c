@@ -18,6 +18,7 @@
 //#define MEMPOOL_DISABLE
 
 #define MAGIC1 0x2233445566778899llu
+#define PAGE_ORDER 5
 
 struct _mempool_t
 {
@@ -50,6 +51,11 @@ struct _item_t
 
 static LIST_HEAD(pools);
 static spinlock_t pools_lock = SPINLOCK_INITIALIZER;
+static spinlock_t mmap_lock = SPINLOCK_INITIALIZER;
+static void *mmap_ptr;
+static void *mmap_endptr;
+
+static int mmap_grow(void);
 
 mempool_t __export *mempool_create(int size)
 {
@@ -63,6 +69,7 @@ mempool_t __export *mempool_create(int size)
 	spinlock_init(&p->lock);
 	p->size = size;
 	p->magic = (uint64_t)random() * (uint64_t)random();
+	p->mmap = 1;
 
 	spin_lock(&pools_lock);
 	list_add_tail(&p->entry, &pools);
@@ -92,41 +99,51 @@ void __export *mempool_alloc(mempool_t *pool)
 		it = list_entry(p->items.next, typeof(*it), entry);
 		list_del(&it->entry);
 		spin_unlock(&p->lock);
-		
+
 		__sync_sub_and_fetch(&triton_stat.mempool_available, size);
 		
 		it->magic1 = MAGIC1;
 
 		return it->ptr;
+#ifdef VALGRIND
+		}
+#endif
 	}
 	spin_unlock(&p->lock);
 
-	if (p->mmap)
-		it = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_32BIT, -1, 0);
-	else
+	if (p->mmap) {
+		spin_lock(&mmap_lock);
+		if (mmap_ptr + size >= mmap_endptr) {
+			if (mmap_grow())
+				return NULL;
+		}
+		it = (struct _item_t *)mmap_ptr;
+		mmap_ptr += size;
+		spin_unlock(&mmap_lock);
+		__sync_sub_and_fetch(&triton_stat.mempool_available, size);
+	}	else {
 		it = _malloc(size);
+		__sync_add_and_fetch(&triton_stat.mempool_allocated, size);
+	}
 
 	if (!it) {
 		triton_log_error("mempool: out of memory\n");
 		return NULL;
 	}
 	it->owner = p;
-	it->magic1 = MAGIC1;
 	it->magic2 = p->magic;
-	*(uint64_t*)(it->data + p->size) = it->magic2;
-
-	__sync_add_and_fetch(&triton_stat.mempool_allocated, size);
+	it->magic1 = MAGIC1;
+	*(uint64_t*)(it->ptr + p->size) = it->magic2;
 
 	return it->ptr;
 }
-#endif
+#else
 
 void __export *mempool_alloc_md(mempool_t *pool, const char *fname, int line)
 {
 	struct _mempool_t *p = (struct _mempool_t *)pool;
 	struct _item_t *it;
 	uint32_t size = sizeof(*it) + p->size + 8;
-	int i, n;
 
 	spin_lock(&p->lock);
 	if (!list_empty(&p->items)) {
@@ -155,29 +172,17 @@ void __export *mempool_alloc_md(mempool_t *pool, const char *fname, int line)
 	spin_unlock(&p->lock);
 
 	if (p->mmap) {
-		n = (sysconf(_SC_PAGE_SIZE) - 1) / size + 1;
-		it = mmap(NULL, n * size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_32BIT, -1, 0);
-		__sync_add_and_fetch(&triton_stat.mempool_allocated, size * (n - 1));
-		__sync_add_and_fetch(&triton_stat.mempool_available, size * (n - 1));
-		spin_lock(&p->lock);
-		for (i = 0; i < n - 1; i++, it) {
-			it->owner = p;
-			it->magic2 = p->magic;
-			it->magic1 = MAGIC1;
-			*(uint64_t*)(it->ptr + p->size) = it->magic2;
-			list_add_tail(&it->entry,&p->items);
-#ifdef VALGRIND
-			it->timestamp = 0;
-			VALGRIND_MAKE_MEM_NOACCESS(&it->owner, size - sizeof(it->entry) - sizeof(it->timestamp));
-#endif
-			it = (struct _item_t *)((char *)it + size);
-		}
-		spin_unlock(&p->lock);
-#ifdef VALGRIND
-		VALGRIND_MAKE_MEM_UNDEFINED(it, size);
-#endif
-	} else
+		spin_lock(&mmap_lock);
+		if (mmap_ptr + size >= mmap_endptr)
+			mmap_grow();
+		it = (struct _item_t *)mmap_ptr;
+		mmap_ptr += size;
+		spin_unlock(&mmap_lock);
+		__sync_sub_and_fetch(&triton_stat.mempool_available, size);
+	}	else {
 		it = md_malloc(size, fname, line);
+		__sync_add_and_fetch(&triton_stat.mempool_allocated, size);
+	}
 
 	if (!it) {
 		triton_log_error("mempool: out of memory\n");
@@ -194,11 +199,9 @@ void __export *mempool_alloc_md(mempool_t *pool, const char *fname, int line)
 	list_add(&it->entry, &p->ditems);
 	spin_unlock(&p->lock);
 
-	__sync_add_and_fetch(&triton_stat.mempool_allocated, size);
-
 	return it->ptr;
 }
-
+#endif
 
 void __export mempool_free(void *ptr)
 {
@@ -323,6 +326,35 @@ void sigclean(int num)
 	spin_unlock(&pools_lock);
 }
 
+static int mmap_grow(void)
+{
+	int size = sysconf(_SC_PAGE_SIZE) * (1 << PAGE_ORDER);
+	void *ptr;
+
+	if (mmap_endptr) {
+		ptr = mmap(mmap_endptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+		if (ptr == MAP_FAILED)
+			goto oom;
+		if (ptr != mmap_endptr)
+			mmap_ptr = ptr;
+	} else {
+		ptr = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+		if (ptr == MAP_FAILED)
+			goto oom;
+		mmap_ptr = ptr;
+	}
+
+	mmap_endptr = ptr + size;
+		
+	__sync_add_and_fetch(&triton_stat.mempool_allocated, size);
+	__sync_add_and_fetch(&triton_stat.mempool_available, size);
+
+	return 0;
+oom:
+	triton_log_error("mempool: out of memory\n");
+	return -1;
+}
+
 static void __init init(void)
 {
 	sigset_t set;
@@ -334,5 +366,7 @@ static void __init init(void)
 	};
 
 	sigaction(35, &sa, NULL);
+
+	mmap_grow();
 }
 
