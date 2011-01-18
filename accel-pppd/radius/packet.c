@@ -227,9 +227,6 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 		n -= 2 + len;
 	}
 
-	munmap(pack->buf, REQ_LENGTH_MAX);
-	pack->buf = NULL;
-
 	*p = pack;
 
 	return 0;
