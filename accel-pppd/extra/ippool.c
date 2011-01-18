@@ -59,12 +59,12 @@ static int parse1(const char *str, uint32_t *begin, uint32_t *end)
 	if (m == 0 || m > 32)
 		return -1;
 	
-	for (n = 0; n < m ; n++)
-		mask |= 1 <<  n;
-
 	*begin = (f4 << 24) | (f3 << 16) | (f2 << 8) | f1;
-	*end = *begin | ~mask;
-	
+
+	mask = htonl(~((1 << (32 - m)) - 1));
+	*end = ntohl(*begin | ~mask);
+	*begin = ntohl(*begin);
+
 	return 0;
 }
 
@@ -87,8 +87,8 @@ static int parse2(const char *str, uint32_t *begin, uint32_t *end)
 	if (m < f4 || m > 255)
 		return -1;
 	
-	*begin = (f4 << 24) | (f3 << 16) | (f2 << 8) | f1;
-	*end = (m << 24) | (f3 << 16) | (f2 << 8) | f1;
+	*begin = ntohl((f4 << 24) | (f3 << 16) | (f2 << 8) | f1);
+	*end = ntohl((m << 24) | (f3 << 16) | (f2 << 8) | f1);
 
 	return 0;
 }
@@ -104,7 +104,7 @@ static void add_range(struct list_head *list, const char *name)
 			_exit(EXIT_FAILURE);
 		}
 
-	for (i = ntohl(startip); i <= ntohl(endip); i++) {
+	for (i = startip; i <= endip; i++) {
 		ip = malloc(sizeof(*ip));
 		ip->addr = htonl(i);
 		list_add_tail(&ip->entry, list);
