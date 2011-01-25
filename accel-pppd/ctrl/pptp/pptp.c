@@ -83,7 +83,7 @@ static void disconnect(struct pptp_conn_t *conn)
 	if (conn->state == STATE_PPP) {
 		__sync_sub_and_fetch(&stat_active, 1);
 		conn->state = STATE_CLOSE;
-		ppp_terminate(&conn->ppp, TERM_USER_REQUEST, 1);
+		ppp_terminate(&conn->ppp, TERM_LOST_CARRIER, 1);
 	} else if (conn->state != STATE_CLOSE)
 		__sync_sub_and_fetch(&stat_starting, 1);
 
@@ -365,6 +365,9 @@ static int pptp_call_clear_rqst(struct pptp_conn_t *conn)
 
 	if (conf_verbose)
 		log_ppp_info2("recv [PPTP Call-Clear-Request <Call-ID %x>]\n", ntohs(rqst->call_id));
+
+	if (conn->echo_timer.tpd)
+		triton_timer_del(&conn->echo_timer);
 
 	if (conn->state == STATE_PPP) {
 		__sync_sub_and_fetch(&stat_active, 1);

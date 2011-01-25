@@ -54,6 +54,7 @@
 #define TERM_NAS_REQUEST 6
 #define TERM_NAS_REBOOT 7
 #define TERM_AUTH_ERROR 8
+#define TERM_LOST_CARRIER 9
 
 
 struct ppp_t;

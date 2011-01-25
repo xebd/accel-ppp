@@ -289,6 +289,9 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 			case TERM_NAS_REBOOT:
 				rad_packet_add_val(rpd->acct_req->pack, NULL, "Acct-Terminate-Cause", "NAS-Reboot");
 				break;
+			case TERM_LOST_CARRIER:
+				rad_packet_add_val(rpd->acct_req->pack, NULL, "Acct-Terminate-Cause", "Lost-Carrier");
+				break;
 		}
 		rad_packet_change_val(rpd->acct_req->pack, NULL, "Acct-Status-Type", "Stop");
 		req_set_stat(rpd->acct_req, rpd->ppp);
