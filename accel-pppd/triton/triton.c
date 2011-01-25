@@ -90,7 +90,7 @@ static void* triton_thread(struct _triton_thread_t *thread)
 
 	while (1) {
 		spin_lock(&threads_lock);
-		if (!list_empty(&ctx_queue) && !need_config_reload) {
+		if (!list_empty(&ctx_queue) && !need_config_reload && triton_stat.thread_active <= thread_count) {
 			thread->ctx = list_entry(ctx_queue.next, typeof(*thread->ctx), entry2);
 			log_debug2("thread: %p: dequeued ctx %p\n", thread, thread->ctx);
 			list_del(&thread->ctx->entry2);
@@ -252,7 +252,7 @@ int triton_queue_ctx(struct _triton_context_t *ctx)
 		return 0;
 
 	spin_lock(&threads_lock);
-	if (list_empty(&sleep_threads) || need_config_reload) {
+	if (list_empty(&sleep_threads) || need_config_reload || triton_stat.thread_active > thread_count) {
 		if (ctx->priority)
 			list_add(&ctx->entry2, &ctx_queue);
 		else
@@ -513,7 +513,7 @@ static void ru_update(struct triton_timer_t *t)
 
 int __export triton_init(const char *conf_file)
 {
-	ctx_pool = mempool_create2(sizeof(struct _triton_context_t));
+	ctx_pool = mempool_create(sizeof(struct _triton_context_t));
 	call_pool = mempool_create(sizeof(struct _triton_ctx_call_t));
 
 	if (conf_load(conf_file))

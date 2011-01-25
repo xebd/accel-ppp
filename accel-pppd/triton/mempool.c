@@ -20,6 +20,8 @@
 #define MAGIC1 0x2233445566778899llu
 #define PAGE_ORDER 5
 
+static int conf_mempool_min = 128;
+
 struct _mempool_t
 {
 	struct list_head entry;
@@ -31,6 +33,7 @@ struct _mempool_t
 	spinlock_t lock;
 	uint64_t magic;
 	int mmap:1;
+	int objects;
 };
 
 struct _item_t
@@ -56,6 +59,7 @@ static void *mmap_ptr;
 static void *mmap_endptr;
 
 static int mmap_grow(void);
+static void mempool_clean(void);
 
 mempool_t __export *mempool_create(int size)
 {
@@ -69,7 +73,6 @@ mempool_t __export *mempool_create(int size)
 	spinlock_init(&p->lock);
 	p->size = size;
 	p->magic = (uint64_t)random() * (uint64_t)random();
-	p->mmap = 1;
 
 	spin_lock(&pools_lock);
 	list_add_tail(&p->entry, &pools);
@@ -100,6 +103,7 @@ void __export *mempool_alloc(mempool_t *pool)
 		list_del(&it->entry);
 		spin_unlock(&p->lock);
 
+		--p->objects;
 		__sync_sub_and_fetch(&triton_stat.mempool_available, size);
 		
 		it->magic1 = MAGIC1;
@@ -160,6 +164,7 @@ void __export *mempool_alloc_md(mempool_t *pool, const char *fname, int line)
 		it->fname = fname;
 		it->line = line;
 		
+		--p->objects;
 		__sync_sub_and_fetch(&triton_stat.mempool_available, size);
 		
 		it->magic1 = MAGIC1;
@@ -208,6 +213,7 @@ void __export mempool_free(void *ptr)
 	struct _item_t *it = container_of(ptr, typeof(*it), ptr);
 	struct _mempool_t *p = it->owner;
 	uint32_t size = sizeof(*it) + it->owner->size + 8;
+	int need_free = 0;
 
 #ifdef MEMDEBUG
 	if (it->magic1 != MAGIC1) {
@@ -233,7 +239,11 @@ void __export mempool_free(void *ptr)
 	list_del(&it->entry);
 #endif
 #ifndef MEMPOOL_DISABLE
-	list_add_tail(&it->entry,&it->owner->items);
+	if (p->objects < conf_mempool_min) {
+		++p->objects;
+		list_add_tail(&it->entry,&it->owner->items);
+	} else
+		need_free = 1;
 #endif
 #ifdef VALGRIND
 	time(&it->timestamp);
@@ -242,41 +252,15 @@ void __export mempool_free(void *ptr)
 	spin_unlock(&p->lock);
 
 #ifdef MEMPOOL_DISABLE
-	if (it->owner->mmap)
-		munmap(it, size);
-	else
+	_free(it);
+#else
+	if (need_free) {
 		_free(it);
-#endif
-
-	__sync_add_and_fetch(&triton_stat.mempool_available, size);
-}
-
-void __export mempool_clean(mempool_t *pool)
-{
-	struct _mempool_t *p = (struct _mempool_t *)pool;
-	struct _item_t *it;
-	uint32_t size = sizeof(*it) + p->size + 8;
-
-	spin_lock(&p->lock);
-	while (!list_empty(&p->items)) {
-		it = list_entry(p->items.next, typeof(*it), entry);
-#ifdef VALGRIND
-		if (it->timestamp + DELAY < time(NULL)) {
-		VALGRIND_MAKE_MEM_DEFINED(&it->owner, size - sizeof(it->entry) - sizeof(it->timestamp));
-#endif
-		list_del(&it->entry);
-		if (p->mmap)
-			munmap(it, size);
-		else
-			_free(it);
 		__sync_sub_and_fetch(&triton_stat.mempool_allocated, size);
-		__sync_sub_and_fetch(&triton_stat.mempool_available, size);
-#ifdef VALGRIND
-		} else
-			break;
+	} else
+		__sync_add_and_fetch(&triton_stat.mempool_available, size);
 #endif
-	}
-	spin_unlock(&p->lock);
+
 }
 
 #ifdef MEMDEBUG
@@ -292,7 +276,7 @@ void __export mempool_show(mempool_t *pool)
 }
 #endif
 
-void sigclean(int num)
+static void mempool_clean(void)
 {
 	struct _mempool_t *p;
 	struct _item_t *it;
@@ -324,6 +308,11 @@ void sigclean(int num)
 		spin_unlock(&p->lock);
 	}
 	spin_unlock(&pools_lock);
+}
+
+static void sigclean(int num)
+{
+	mempool_clean();
 }
 
 static int mmap_grow(void)

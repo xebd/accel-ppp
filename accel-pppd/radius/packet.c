@@ -17,6 +17,7 @@
 
 static mempool_t packet_pool;
 static mempool_t attr_pool;
+static mempool_t buf_pool;
 
 struct rad_packet_t *rad_packet_alloc(int code)
 {
@@ -51,9 +52,11 @@ int rad_packet_build(struct rad_packet_t *pack, uint8_t *RA)
 	uint8_t *ptr;
 
 	if (!pack->buf) {
-		ptr = mmap(NULL, REQ_LENGTH_MAX, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+		//ptr = mmap(NULL, REQ_LENGTH_MAX, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+		ptr = mempool_alloc(buf_pool);
 
-		if (ptr == MAP_FAILED) {
+		//if (ptr == MAP_FAILED) {
+		if (!ptr) {
 			log_emerg("radius:packet: out of memory\n");
 			return -1;
 		}
@@ -116,7 +119,8 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 	if (!pack)
 		return 0;
 
-	ptr = mmap(NULL, REQ_LENGTH_MAX, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+	//ptr = mmap(NULL, REQ_LENGTH_MAX, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+	ptr = mempool_alloc(buf_pool);
 	if (ptr == MAP_FAILED) {
 		log_emerg("radius:packet: out of memory\n");
 		goto out_err;
@@ -241,7 +245,8 @@ void rad_packet_free(struct rad_packet_t *pack)
 	struct rad_attr_t *attr;
 	
 	if (pack->buf)
-		munmap(pack->buf, REQ_LENGTH_MAX);
+		mempool_free(pack->buf);
+		//munmap(pack->buf, REQ_LENGTH_MAX);
 
 	while(!list_empty(&pack->attrs)) {
 		attr = list_entry(pack->attrs.next, typeof(*attr), entry);
@@ -644,4 +649,5 @@ static void __init init(void)
 {
 	attr_pool = mempool_create(sizeof(struct rad_attr_t));
 	packet_pool = mempool_create(sizeof(struct rad_packet_t));
+	buf_pool = mempool_create(REQ_LENGTH_MAX);
 }
