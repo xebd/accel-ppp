@@ -311,7 +311,7 @@ static void connect_channel(struct pppoe_conn_t *conn)
 		goto out_err_close;
 	
 #ifdef RADIUS
-	if (conn->tr101) {
+	if (conn->tr101 && triton_module_loaded("radius")) {
 		conn->radius.send_access_request = pppoe_rad_send_access_request;
 		conn->radius.send_accounting_request = pppoe_rad_send_accounting_request;
 		rad_register_plugin(&conn->ppp, &conn->radius);

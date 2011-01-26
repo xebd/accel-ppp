@@ -15,6 +15,7 @@ struct radius_pd_t
 	struct ppp_pd_t pd;
 	struct ppp_t *ppp;
 	pthread_mutex_t lock;
+	int authenticated:1;
 
 	struct rad_req_t *auth_req;
 	struct rad_req_t *acct_req;
@@ -37,7 +38,7 @@ struct radius_pd_t
 	int attr_class_len;
 	uint8_t *attr_state;
 	int attr_state_len;
-	int termination_action;	
+	int termination_action;
 
 	struct list_head plugin_list;
 };

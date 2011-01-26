@@ -104,6 +104,8 @@ void triton_conf_reload(void (*notify)(int));
 void triton_collect_cpu_usage(void);
 void triton_stop_collect_cpu_usage(void);
 
+int triton_module_loaded(const char *name);
+
 
 #define TRITON_OK          0
 #define TRITON_ERR_NOCOMP -1

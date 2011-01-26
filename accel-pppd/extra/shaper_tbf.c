@@ -1161,27 +1161,29 @@ static void load_config(void)
 	const char *opt;
 
 #ifdef RADIUS
-	opt = conf_get_opt("tbf", "vendor");
-	if (opt)
-		conf_vendor = parse_vendor_opt(opt);
+	if (triton_module_loaded("radius")) {
+		opt = conf_get_opt("tbf", "vendor");
+		if (opt)
+			conf_vendor = parse_vendor_opt(opt);
 
-	opt = conf_get_opt("tbf", "attr");
-	if (opt) {
-		conf_attr_down = parse_attr_opt(opt);
-		conf_attr_up = parse_attr_opt(opt);
-	}
+		opt = conf_get_opt("tbf", "attr");
+		if (opt) {
+			conf_attr_down = parse_attr_opt(opt);
+			conf_attr_up = parse_attr_opt(opt);
+		}
 
-	opt = conf_get_opt("tbf", "attr-down");
-	if (opt)
-		conf_attr_down = parse_attr_opt(opt);
-	
-	opt = conf_get_opt("tbf", "attr-up");
-	if (opt)
-		conf_attr_up = parse_attr_opt(opt);
+		opt = conf_get_opt("tbf", "attr-down");
+		if (opt)
+			conf_attr_down = parse_attr_opt(opt);
+		
+		opt = conf_get_opt("tbf", "attr-up");
+		if (opt)
+			conf_attr_up = parse_attr_opt(opt);
 
-	if (conf_attr_up <= 0 || conf_attr_down <= 0) {
-		log_emerg("tbf: incorrect attribute(s), tbf disabled...\n");
-		return;
+		if (conf_attr_up <= 0 || conf_attr_down <= 0) {
+			log_emerg("tbf: incorrect attribute(s), tbf disabled...\n");
+			return;
+		}
 	}
 #endif
 	
@@ -1260,8 +1262,10 @@ static void __init init(void)
 	load_config();
 
 #ifdef RADIUS
-	triton_event_register_handler(EV_RADIUS_ACCESS_ACCEPT, (triton_event_func)ev_radius_access_accept);
-	triton_event_register_handler(EV_RADIUS_COA, (triton_event_func)ev_radius_coa);
+	if (triton_module_loaded("radius")) {
+		triton_event_register_handler(EV_RADIUS_ACCESS_ACCEPT, (triton_event_func)ev_radius_access_accept);
+		triton_event_register_handler(EV_RADIUS_COA, (triton_event_func)ev_radius_coa);
+	}
 #endif
 	triton_event_register_handler(EV_CTRL_FINISHED, (triton_event_func)ev_ctrl_finished);
 	triton_event_register_handler(EV_SHAPER, (triton_event_func)ev_shaper);

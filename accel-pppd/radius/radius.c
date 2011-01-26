@@ -146,6 +146,9 @@ static int check(struct pwdb_t *pwdb, struct ppp_t *ppp, const char *username, i
 
 	va_end(args);
 
+	if (r == PWDB_SUCCESS)
+		rpd->authenticated = 1;
+
 	return r;
 }
 
@@ -192,6 +195,9 @@ static void ppp_starting(struct ppp_t *ppp)
 static void ppp_acct_start(struct ppp_t *ppp)
 {
 	struct radius_pd_t *rpd = find_pd(ppp);
+	
+	if (!rpd->authenticated)
+		return;
 
 	if (rad_acct_start(rpd)) {
 		ppp_terminate(rpd->ppp, TERM_NAS_ERROR, 0);
@@ -206,6 +212,9 @@ static void ppp_acct_start(struct ppp_t *ppp)
 static void ppp_finishing(struct ppp_t *ppp)
 {
 	struct radius_pd_t *rpd = find_pd(ppp);
+
+	if (!rpd->authenticated)
+		return;
 
 	rad_acct_stop(rpd);
 }
