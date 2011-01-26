@@ -74,6 +74,7 @@ static LIST_HEAD(history);
 static int history_len;
 static pthread_mutex_t history_lock = PTHREAD_MUTEX_INITIALIZER;
 
+static void save_history_file(void);
 static void disconnect(struct telnet_client_t *cln)
 {
 	struct buffer_t *b, *b2;
@@ -111,6 +112,7 @@ static void disconnect(struct telnet_client_t *cln)
 		} else
 			_free(b);
 	}
+	save_history_file();
 	pthread_mutex_unlock(&history_lock);
 
 	_free(cln->cmdline);
