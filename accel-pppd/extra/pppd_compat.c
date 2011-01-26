@@ -159,6 +159,10 @@ static void ev_ppp_pre_up(struct ppp_t *ppp)
 				return;
 			}
 		} else if (pid == 0) {
+			sigset_t set;
+			sigfillset(&set);
+			pthread_sigmask(SIG_UNBLOCK, &set, NULL);
+
 			execve(conf_ip_pre_up, argv, env);
 			log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_pre_up, strerror(errno));
 			_exit(EXIT_FAILURE);
@@ -198,6 +202,10 @@ static void ev_ppp_started(struct ppp_t *ppp)
 				log_ppp_info2("pppd_compat: ip-up started (pid %i)\n", pid);
 			sigchld_unlock();
 		} else if (pid == 0) {
+			sigset_t set;
+			sigfillset(&set);
+			pthread_sigmask(SIG_UNBLOCK, &set, NULL);
+
 			execve(conf_ip_up, argv, env);
 			log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_up, strerror(errno));
 			_exit(EXIT_FAILURE);
@@ -266,23 +274,29 @@ static void ev_ppp_finished(struct ppp_t *ppp)
 	env[4] = NULL;
 	fill_env(env, pd);
 
-	sigchld_lock();
-	pid = fork();
-	if (pid > 0) {
-		pd->ip_down_hnd.pid = pid;
-		sigchld_register_handler(&pd->ip_down_hnd);
-		if (conf_verbose)
-			log_ppp_info2("pppd_compat: ip-down started (pid %i)\n", pid);
-		sigchld_unlock();
-		triton_context_schedule();
-		pthread_mutex_lock(&pd->ip_down_hnd.lock);
-		pthread_mutex_unlock(&pd->ip_down_hnd.lock);
-	} else if (pid == 0) {
-		execve(conf_ip_down, argv, env);
-		log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_down, strerror(errno));
-		_exit(EXIT_FAILURE);
-	} else
-		log_error("pppd_compat: fork: %s\n", strerror(errno));
+	if (conf_ip_down) {
+		sigchld_lock();
+		pid = fork();
+		if (pid > 0) {
+			pd->ip_down_hnd.pid = pid;
+			sigchld_register_handler(&pd->ip_down_hnd);
+			if (conf_verbose)
+				log_ppp_info2("pppd_compat: ip-down started (pid %i)\n", pid);
+			sigchld_unlock();
+			triton_context_schedule();
+			pthread_mutex_lock(&pd->ip_down_hnd.lock);
+			pthread_mutex_unlock(&pd->ip_down_hnd.lock);
+		} else if (pid == 0) {
+			sigset_t set;
+			sigfillset(&set);
+			pthread_sigmask(SIG_UNBLOCK, &set, NULL);
+
+			execve(conf_ip_down, argv, env);
+			log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_down, strerror(errno));
+			_exit(EXIT_FAILURE);
+		} else
+			log_error("pppd_compat: fork: %s\n", strerror(errno));
+	}
 
 	pthread_mutex_lock(&pd->ip_up_hnd.lock);
 	if (pd->ip_up_hnd.pid) {
