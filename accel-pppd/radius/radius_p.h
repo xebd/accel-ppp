@@ -3,6 +3,7 @@
 
 #include <netinet/in.h>
 #include <pthread.h>
+#include <stdarg.h>
 
 #include "triton.h"
 #include "radius.h"
@@ -56,6 +57,7 @@ struct rad_req_t
 
 	struct radius_pd_t *rpd;
 };
+
 
 extern int conf_max_try;
 extern int conf_timeout;
@@ -119,5 +121,25 @@ int rad_packet_send(struct rad_packet_t *pck, int fd, struct sockaddr_in *addr);
 
 void dm_coa_cancel(struct radius_pd_t *pd);
 
+struct stat_accm_t;
+struct stat_accm_t *stat_accm_create(unsigned int time);
+void stat_accm_add(struct stat_accm_t *, unsigned int);
+unsigned long stat_accm_get_cnt(struct stat_accm_t *);
+unsigned long stat_accm_get_avg(struct stat_accm_t *);
+
+extern struct stat_accm_t *stat_auth_lost_1m;
+extern struct stat_accm_t *stat_auth_lost_5m;
+extern struct stat_accm_t *stat_auth_query_1m;
+extern struct stat_accm_t *stat_auth_query_5m;
+
+extern struct stat_accm_t *stat_acct_lost_1m;
+extern struct stat_accm_t *stat_acct_lost_5m;
+extern struct stat_accm_t *stat_acct_query_1m;
+extern struct stat_accm_t *stat_acct_query_5m;
+
+extern struct stat_accm_t *stat_interim_lost_1m;
+extern struct stat_accm_t *stat_interim_lost_5m;
+extern struct stat_accm_t *stat_interim_query_1m;
+extern struct stat_accm_t *stat_interim_query_5m;
 #endif
 

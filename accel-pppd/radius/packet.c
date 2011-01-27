@@ -127,6 +127,7 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 	}
 	
 	pack->buf = ptr;
+	gettimeofday(&pack->tv, NULL);
 
 	while (1) {
 		if (addr)
@@ -624,6 +625,8 @@ struct rad_attr_t __export *rad_packet_find_attr(struct rad_packet_t *pack, cons
 int rad_packet_send(struct rad_packet_t *pack, int fd, struct sockaddr_in *addr)
 {
 	int n;
+
+	gettimeofday(&pack->tv, NULL);
 
 	while (1) {
 		if (addr)

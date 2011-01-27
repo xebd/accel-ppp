@@ -1,4 +1,5 @@
 SET(sources
+	stat_accm.c
 	dict.c
 	req.c
 	packet.c

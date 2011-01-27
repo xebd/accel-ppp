@@ -73,6 +73,7 @@ static int rad_acct_read(struct triton_md_handler_t *h)
 	struct rad_req_t *req = container_of(h, typeof(*req), hnd);
 	struct rad_packet_t *pack;
 	int r;
+	unsigned int dt;
 
 	if (req->reply) {
 		rad_packet_free(req->reply);
@@ -99,6 +100,11 @@ static int rad_acct_read(struct triton_md_handler_t *h)
 	if (!req->reply)
 		return 0;
 
+	dt = (req->reply->tv.tv_sec - req->pack->tv.tv_sec) * 1000 + 
+		(req->reply->tv.tv_usec - req->pack->tv.tv_usec) / 1000;
+	stat_accm_add(stat_interim_query_1m, dt);
+	stat_accm_add(stat_interim_query_5m, dt);
+
 	if (req->reply->code != CODE_ACCOUNTING_RESPONSE || req->reply->id != req->pack->id) {
 		rad_packet_free(req->reply);
 		req->reply = NULL;
@@ -116,6 +122,8 @@ static void rad_acct_timeout(struct triton_timer_t *t)
 	time_t ts, dt;
 
 	__sync_add_and_fetch(&stat_interim_lost, 1);
+	stat_accm_add(stat_interim_lost_1m, 1);
+	stat_accm_add(stat_interim_lost_5m, 1);
 	
 	time(&ts);
 
@@ -177,6 +185,7 @@ int rad_acct_start(struct radius_pd_t *rpd)
 {
 	int i;
 	time_t ts;
+	unsigned int dt;
 
 	rpd->acct_req = rad_req_alloc(rpd, CODE_ACCOUNTING_REQUEST, rpd->ppp->username);
 	if (!rpd->acct_req) {
@@ -213,13 +222,23 @@ int rad_acct_start(struct radius_pd_t *rpd)
 		if (!rpd->acct_req->reply) {
 			rpd->acct_req->pack->id++;
 			__sync_add_and_fetch(&stat_acct_lost, 1);
+			stat_accm_add(stat_acct_lost_1m, 1);
+			stat_accm_add(stat_acct_lost_5m, 1);
 			continue;
 		}
+
+		dt = (rpd->acct_req->reply->tv.tv_sec - rpd->acct_req->pack->tv.tv_sec) * 1000 + 
+			(rpd->acct_req->reply->tv.tv_usec - rpd->acct_req->pack->tv.tv_usec) / 1000;
+		stat_accm_add(stat_acct_query_1m, dt);
+		stat_accm_add(stat_acct_query_5m, dt);
+
 		if (rpd->acct_req->reply->id != rpd->acct_req->pack->id || rpd->acct_req->reply->code != CODE_ACCOUNTING_RESPONSE) {
 			rad_packet_free(rpd->acct_req->reply);
 			rpd->acct_req->reply = NULL;
 			rpd->acct_req->pack->id++;
 			__sync_add_and_fetch(&stat_acct_lost, 1);
+			stat_accm_add(stat_acct_lost_1m, 1);
+			stat_accm_add(stat_acct_lost_5m, 1);
 		} else
 			break;
 	}
@@ -257,6 +276,7 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 {
 	int i;
 	time_t ts;
+	unsigned int dt;
 
 	if (rpd->acct_interim_timer.tpd)
 		triton_timer_del(&rpd->acct_interim_timer);
@@ -317,12 +337,22 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 			rad_req_wait(rpd->acct_req, conf_timeout);
 			if (!rpd->acct_req->reply) {
 				__sync_add_and_fetch(&stat_acct_lost, 1);
+				stat_accm_add(stat_acct_lost_1m, 1);
+				stat_accm_add(stat_acct_lost_5m, 1);
 				continue;
 			}
+
+			dt = (rpd->acct_req->reply->tv.tv_sec - rpd->acct_req->pack->tv.tv_sec) * 1000 + 
+				(rpd->acct_req->reply->tv.tv_usec - rpd->acct_req->pack->tv.tv_usec) / 1000;
+			stat_accm_add(stat_acct_query_1m, dt);
+			stat_accm_add(stat_acct_query_5m, dt);
+
 			if (rpd->acct_req->reply->id != rpd->acct_req->pack->id || rpd->acct_req->reply->code != CODE_ACCOUNTING_RESPONSE) {
 				rad_packet_free(rpd->acct_req->reply);
 				rpd->acct_req->reply = NULL;
 				__sync_add_and_fetch(&stat_acct_lost, 1);
+				stat_accm_add(stat_acct_lost_1m, 1);
+				stat_accm_add(stat_acct_lost_5m, 1);
 			} else
 				break;
 		}

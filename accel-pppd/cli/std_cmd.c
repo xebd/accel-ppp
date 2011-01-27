@@ -67,7 +67,7 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 
 //===========
 	cli_send(client, "ppp:\r\n");
-	cli_sendv(client, "  staring: %u\r\n", ppp_stat.starting);
+	cli_sendv(client, "  starting: %u\r\n", ppp_stat.starting);
 	cli_sendv(client, "  active: %u\r\n", ppp_stat.active);
 	cli_sendv(client, "  finishing: %u\r\n", ppp_stat.finishing);
 

@@ -2,6 +2,7 @@
 #define __RADIUS_H
 
 #include <stdint.h>
+#include <sys/time.h>
 
 #define REQ_LENGTH_MAX 4096
 
@@ -80,6 +81,7 @@ struct rad_packet_t
 	int code;
 	uint8_t id;
 	int len;
+	struct timeval tv;
 	struct list_head attrs;
 	void *buf;
 };
