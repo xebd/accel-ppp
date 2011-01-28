@@ -1,4 +1,5 @@
 #include <string.h>
+#include <stdlib.h>
 
 #include "radius_p.h"
 #include "mempool.h"

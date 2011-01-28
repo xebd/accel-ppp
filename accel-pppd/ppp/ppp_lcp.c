@@ -281,6 +281,7 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 	uint8_t *buf = _malloc(lcp->conf_req_len), *ptr = buf;
 	struct lcp_hdr_t *lcp_hdr = (struct lcp_hdr_t*)ptr;
 	struct lcp_option_t *lopt;
+	int n;
 
 	if (conf_ppp_verbose)
 		log_ppp_info2("send [LCP ConfNak id=%x", lcp->fsm.recv_id);
@@ -294,12 +295,14 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 
 	list_for_each_entry(lopt, &lcp->options, entry) {
 		if (lopt->state == LCP_OPT_NAK) {
-			ptr+=lopt->h->send_conf_nak(lcp,lopt,ptr);
+			n = lopt->h->send_conf_nak(lcp, lopt, ptr);
 			
-			if (conf_ppp_verbose) {
+			if (conf_ppp_verbose && n) {
 				log_ppp_info2(" ");
-				lopt->h->print(log_ppp_info2, lopt, NULL);
+				lopt->h->print(log_ppp_info2, lopt, ptr);
 			}
+
+			ptr += n;
 		}
 	}
 	
