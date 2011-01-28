@@ -143,7 +143,7 @@ int __export triton_timer_add(struct triton_context_t *ctx, struct triton_timer_
 	}
 
 	if (fcntl(t->fd, F_SETFL, O_NONBLOCK)) { 
-    triton_log_error("timer: failed to set nonblocking mode: %s\n", strerror(errno));
+    triton_log_error("timer: failed to set nonblocking mode: %s", strerror(errno));
     goto out_err;
 	}
 	

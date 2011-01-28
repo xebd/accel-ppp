@@ -45,6 +45,7 @@ static void do_log(FILE *f, const char *fmt, va_list ap)
 	pthread_mutex_lock(&lock);
 	fprintf(f, "[%s.%i]", date, (int)tv.tv_usec / 1000);
 	vfprintf(f, fmt,ap);
+	fprintf(f, "\n");
 	pthread_mutex_unlock(&lock);
 
 	fflush(f);

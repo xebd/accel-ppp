@@ -40,7 +40,7 @@ int __export triton_event_register_handler(int ev_id, triton_event_func func)
 	if (!ev) {
 		ev = malloc(sizeof(*ev));
 		if (!ev) {
-			triton_log_error("event: out of memory\n");
+			triton_log_error("event: out of memory");
 			return -1;
 		}
 		INIT_LIST_HEAD(&ev->handlers);
@@ -49,7 +49,7 @@ int __export triton_event_register_handler(int ev_id, triton_event_func func)
 
 	h = malloc(sizeof(*h));
 	if (!h) {
-		triton_log_error("event: out of memory\n");
+		triton_log_error("event: out of memory");
 		return -1;
 	}
 

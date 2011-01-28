@@ -131,7 +131,7 @@ void __export *mempool_alloc(mempool_t *pool)
 	}
 
 	if (!it) {
-		triton_log_error("mempool: out of memory\n");
+		triton_log_error("mempool: out of memory");
 		return NULL;
 	}
 	it->owner = p;
@@ -190,7 +190,7 @@ void __export *mempool_alloc_md(mempool_t *pool, const char *fname, int line)
 	}
 
 	if (!it) {
-		triton_log_error("mempool: out of memory\n");
+		triton_log_error("mempool: out of memory");
 		return NULL;
 	}
 	it->owner = p;
@@ -282,7 +282,7 @@ static void mempool_clean(void)
 	struct _item_t *it;
 	uint32_t size;
 
-	triton_log_error("mempool: clean\n");
+	triton_log_error("mempool: clean");
 
 	spin_lock(&pools_lock);
 	list_for_each_entry(p, &pools, entry) {
@@ -340,7 +340,7 @@ static int mmap_grow(void)
 
 	return 0;
 oom:
-	triton_log_error("mempool: out of memory\n");
+	triton_log_error("mempool: out of memory");
 	return -1;
 }
 

@@ -227,8 +227,10 @@ static void ctx_thread(struct _triton_context_t *ctx)
 struct _triton_thread_t *create_thread()
 {
 	struct _triton_thread_t *thread = _malloc(sizeof(*thread));
-	if (!thread)
+	if (!thread) {
+		triton_log_error("out of memory");
 		return NULL;
+	}
 
 	memset(thread, 0, sizeof(*thread));
 	pthread_mutex_init(&thread->sleep_lock, NULL);

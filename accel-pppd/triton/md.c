@@ -72,7 +72,7 @@ static void *md_thread(void *arg)
 		if (n < 0) {
 			if (errno == EINTR)
 				continue;
-			triton_log_error("md:epoll_wait: %s\n", strerror(errno));
+			triton_log_error("md:epoll_wait: %s", strerror(errno));
 			_exit(-1);
 		}
 		
@@ -174,7 +174,7 @@ int __export triton_md_enable_handler(struct triton_md_handler_t *ud, int mode)
 		r = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, h->ud->fd, &h->epoll_event);
 
 	if (r) {
-		triton_log_error("md:epoll_ctl: %s\n",strerror(errno));
+		triton_log_error("md:epoll_ctl: %s",strerror(errno));
 		abort();
 	}
 
@@ -201,7 +201,7 @@ int __export triton_md_disable_handler(struct triton_md_handler_t *ud,int mode)
 	}
 
 	if (r) {
-		triton_log_error("md:epoll_ctl: %s\n",strerror(errno));
+		triton_log_error("md:epoll_ctl: %s",strerror(errno));
 		abort();
 	}
 

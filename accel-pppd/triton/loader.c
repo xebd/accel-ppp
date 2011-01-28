@@ -54,7 +54,7 @@ int load_modules(const char *name)
 			if (access(fname, F_OK)) {
 				strcpy(fname, opt->name);
 				if (access(opt->name, F_OK)) {
-					triton_log_error("loader: '%s' not found\n", opt->name);
+					triton_log_error("loader: '%s' not found", opt->name);
 					continue;
 				}
 			}
@@ -62,7 +62,7 @@ int load_modules(const char *name)
 
 		h = dlopen(fname, RTLD_LAZY | RTLD_GLOBAL);
 		if (!h) {
-			triton_log_error("loader: failed to load '%s': %s\n", opt->name, dlerror());
+			triton_log_error("loader: failed to load '%s': %s", opt->name, dlerror());
 			_free(fname);
 			return -1;
 		}
