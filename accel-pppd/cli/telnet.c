@@ -297,7 +297,7 @@ static int telnet_input_char(struct telnet_client_t *cln, uint8_t c)
 					return -1;
 			}
 		} else if (cln->cmdline_len) {
-			b = _malloc(sizeof(*b) + cln->cmdline_len);
+			b = _malloc(sizeof(*b) + cln->cmdline_len + 1);
 			b->p_buf = NULL;
 			memcpy(b->buf, cln->cmdline, cln->cmdline_len);
 			b->size = cln->cmdline_len;
@@ -708,7 +708,7 @@ static void load_history_file(void)
 		return;
 	
 	while (fgets((char *)temp_buf, RECV_BUF_SIZE, f)) {
-		b = _malloc(sizeof(*b) + strlen((char *)temp_buf));
+		b = _malloc(sizeof(*b) + strlen((char *)temp_buf) + 1);
 		b->p_buf = NULL;
 		b->size = strlen((char *)temp_buf) - 1;
 		memcpy(b->buf, temp_buf, b->size);
