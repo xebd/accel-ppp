@@ -31,7 +31,8 @@ struct radius_pd_t
 	struct rad_packet_t *dm_coa_req;
 	struct sockaddr_in dm_coa_addr;
 
-	struct ipdb_item_t ipaddr;
+	struct ipv4db_item_t ipv4_addr;
+	struct ipv6db_item_t ipv6_addr;
 	int acct_interim_interval;
 	time_t acct_timestamp;
 

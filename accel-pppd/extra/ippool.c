@@ -14,7 +14,7 @@
 struct ippool_item_t
 {
 	struct list_head entry;
-	struct ipdb_item_t it;
+	struct ipv4db_item_t it;
 };
 
 struct ipaddr_t
@@ -153,7 +153,7 @@ static void generate_pool(void)
 	}
 }
 
-static struct ipdb_item_t *get_ip(struct ppp_t *ppp)
+static struct ipv4db_item_t *get_ip(struct ppp_t *ppp)
 {
 	struct ippool_item_t *it;
 
@@ -168,7 +168,7 @@ static struct ipdb_item_t *get_ip(struct ppp_t *ppp)
 	return it ? &it->it : NULL;
 }
 
-static void put_ip(struct ppp_t *ppp, struct ipdb_item_t *it)
+static void put_ip(struct ppp_t *ppp, struct ipv4db_item_t *it)
 {
 	struct ippool_item_t *pit = container_of(it, typeof(*pit), it);
 
@@ -178,8 +178,8 @@ static void put_ip(struct ppp_t *ppp, struct ipdb_item_t *it)
 }
 
 static struct ipdb_t ipdb = {
-	.get = get_ip,
-	.put = put_ip,
+	.get_ipv4 = get_ip,
+	.put_ipv4 = put_ip,
 };
 
 static void __init ipool_init(void)

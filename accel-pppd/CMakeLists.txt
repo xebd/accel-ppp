@@ -65,6 +65,7 @@ ADD_EXECUTABLE(accel-pppd
 	ppp/ppp_ipcp.c
 	ppp/ipcp_opt_ipaddr.c
 	ppp/ipcp_opt_dns.c
+	ppp/ppp_ipv6cp.c
 	ppp/ppp_ccp.c	
 	ppp/ccp_mppe.c
 

@@ -24,7 +24,7 @@ static struct ipdb_t ipdb;
 struct cs_pd_t
 {
 	struct ppp_pd_t pd;
-	struct ipdb_item_t ip;
+	struct ipv4db_item_t ip;
 	char *passwd;
 	char *rate;
 };
@@ -212,7 +212,7 @@ static void ev_ppp_pre_up(struct ppp_t *ppp)
 	}
 }
 
-static struct ipdb_item_t *get_ip(struct ppp_t *ppp)
+static struct ipv4db_item_t *get_ip(struct ppp_t *ppp)
 {
 	struct cs_pd_t *pd;
 	
@@ -244,7 +244,7 @@ static char* get_passwd(struct pwdb_t *pwdb, struct ppp_t *ppp, const char *user
 }
 
 static struct ipdb_t ipdb = {
-	.get = get_ip,
+	.get_ipv4 = get_ip,
 };
 
 static struct pwdb_t pwdb = {

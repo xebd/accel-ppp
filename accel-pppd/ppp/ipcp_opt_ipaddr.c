@@ -29,7 +29,7 @@ static void ipaddr_print(void (*print)(const char *fmt,...),struct ipcp_option_t
 struct ipaddr_option_t
 {
 	struct ipcp_option_t opt;
-	struct ipdb_item_t *ip;
+	struct ipv4db_item_t *ip;
 	int started:1;
 };
 
@@ -58,7 +58,7 @@ static void ipaddr_free(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt)
 	struct ipaddr_option_t *ipaddr_opt=container_of(opt,typeof(*ipaddr_opt),opt);
 
 	if (ipaddr_opt->ip)
-		ipdb_put(ipcp->ppp, ipaddr_opt->ip);
+		ipdb_put_ipv4(ipcp->ppp, ipaddr_opt->ip);
 
 	_free(ipaddr_opt);
 }
@@ -87,7 +87,7 @@ static int ipaddr_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 	struct ipcp_opt32_t *opt32=(struct ipcp_opt32_t*)ptr;
 	
 	if (!ipaddr_opt->ip) {
-		ipaddr_opt->ip = ipdb_get(ipcp->ppp);
+		ipaddr_opt->ip = ipdb_get_ipv4(ipcp->ppp);
 		if (!ipaddr_opt->ip) {
 			log_ppp_warn("ppp:ipcp: no free IP address\n");
 			return -1;
