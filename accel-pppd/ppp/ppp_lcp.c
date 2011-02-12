@@ -569,19 +569,21 @@ static int lcp_recv_conf_ack(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 
 static void lcp_recv_echo_repl(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 {
-	uint32_t magic = *(uint32_t *)data;
+	uint32_t magic;
 
 	if (size != 4) {
-		log_ppp_error("lcp:echo: magic number size mismatch\n");
-		ppp_terminate(lcp->ppp, TERM_USER_ERROR, 0);
-	}
+		if (conf_ppp_verbose)
+			log_ppp_debug("recv [LCP EchoRep id=%x]\n", lcp->fsm.recv_id);
+	} else {
+		magic = *(uint32_t *)data;
 
-	if (conf_ppp_verbose)
-		log_ppp_debug("recv [LCP EchoRep id=%x <magic %x>]\n", lcp->fsm.recv_id, magic);
+		if (conf_ppp_verbose)
+			log_ppp_debug("recv [LCP EchoRep id=%x <magic %x>]\n", lcp->fsm.recv_id, magic);
 
-	if (magic == lcp->magic) {
-		log_ppp_error("lcp: echo: loop-back detected\n");
-		ppp_terminate(lcp->ppp, TERM_NAS_ERROR, 0);
+		if (magic == lcp->magic) {
+			log_ppp_error("lcp: echo: loop-back detected\n");
+			ppp_terminate(lcp->ppp, TERM_NAS_ERROR, 0);
+		}
 	}
 
 	lcp->echo_sent = 0;
