@@ -161,7 +161,7 @@ static int terminate_exec2(int key, char * const *f, int f_cnt, void *cli)
 	list_for_each_entry(ppp, &ppp_list, entry) {
 		switch (key) {
 			case 0:
-				if (strcmp(ppp->username, f[2]))
+				if (!ppp->username || strcmp(ppp->username, f[2]))
 					continue;
 				break;
 			case 1:
