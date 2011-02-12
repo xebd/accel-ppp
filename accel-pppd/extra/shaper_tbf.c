@@ -818,13 +818,18 @@ static void shaper_change_help(char * const *f, int f_cnt, void *cli)
 
 static void shaper_change(struct shaper_pd_t *pd)
 {
-	if ((pd->temp_down_speed && pd->temp_up_speed) || (pd->down_speed && pd->up_speed))
+	if (pd->down_speed && pd->up_speed)
 		remove_shaper(pd->ppp->ifname);
 
-	if (pd->temp_down_speed && pd->temp_up_speed)
+	if (pd->temp_down_speed && pd->temp_up_speed) {
+		pd->down_speed = pd->temp_down_speed;
+		pd->up_speed = pd->temp_up_speed;
 		install_shaper(pd->ppp->ifname, pd->temp_down_speed, 0, pd->temp_up_speed, 0);
-	else if (pd->down_speed && pd->up_speed)
+	} else if (pd->cur_tr->down_speed && pd->cur_tr->up_speed) {
+		pd->down_speed = pd->cur_tr->down_speed;
+		pd->up_speed = pd->cur_tr->up_speed;
 		install_shaper(pd->ppp->ifname, pd->cur_tr->down_speed, pd->cur_tr->down_burst, pd->cur_tr->up_speed, pd->cur_tr->up_burst);
+	}
 }
 
 static int shaper_change_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
