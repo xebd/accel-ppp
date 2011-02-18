@@ -171,7 +171,7 @@ static void lcp_layer_down(struct ppp_fsm_t *fsm)
 {
 	struct ppp_lcp_t *lcp = container_of(fsm, typeof(*lcp), fsm);
 	//ppp_fsm_close(&lcp->fsm);
-	stop_echo(lcp);
+	//stop_echo(lcp);
 	//ppp_layer_finished(lcp->ppp,&lcp->ld);
 }
 
