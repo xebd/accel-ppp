@@ -187,6 +187,9 @@ int rad_acct_start(struct radius_pd_t *rpd)
 	time_t ts;
 	unsigned int dt;
 
+	if (!conf_acct_secret)
+		return 0;
+
 	rpd->acct_req = rad_req_alloc(rpd, CODE_ACCOUNTING_REQUEST, rpd->ppp->username);
 	if (!rpd->acct_req) {
 		log_emerg("radius: out of memory\n");
@@ -277,6 +280,9 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 	int i;
 	time_t ts;
 	unsigned int dt;
+
+	if (!conf_acct_secret)
+		return;
 
 	if (rpd->acct_interim_timer.tpd)
 		triton_timer_del(&rpd->acct_interim_timer);

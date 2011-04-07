@@ -188,7 +188,8 @@ static void ctx_thread(struct _triton_context_t *ctx)
 			spin_unlock(&ctx->lock);
 			__sync_sub_and_fetch(&triton_stat.timer_pending, 1);
 			read(t->fd, &tt, sizeof(tt));
-			t->ud->expire(t->ud);
+			if (t->ud)
+				t->ud->expire(t->ud);
 			continue;
 		}
 		if (!list_empty(&ctx->pending_handlers)) {
