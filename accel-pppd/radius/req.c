@@ -209,7 +209,8 @@ out_err:
 static void req_wakeup(struct rad_req_t *req)
 {
 	struct triton_context_t *ctx = req->rpd->ppp->ctrl->ctx;
-	triton_timer_del(&req->timeout);
+	if (req->timeout.tpd)
+		triton_timer_del(&req->timeout);
 	triton_md_unregister_handler(&req->hnd);
 	triton_context_unregister(&req->ctx);
 	triton_context_wakeup(ctx);
