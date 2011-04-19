@@ -253,20 +253,16 @@ int rad_auth_chap_md5(struct radius_pd_t *rpd, const char *username, va_list arg
 	
 		if (challenge_len == 16)
 			memcpy(rpd->auth_req->RA, challenge, 16);
-		else {
-			if (rad_packet_add_octets(rpd->auth_req->pack, NULL, "CHAP-Challenge", challenge, challenge_len))
+		if (rad_packet_add_octets(rpd->auth_req->pack, NULL, "CHAP-Challenge", challenge, challenge_len))
 			goto out;
-		}
 
 		if (rad_packet_add_octets(rpd->auth_req->pack, NULL, "CHAP-Password", chap_password, 17))
 			goto out;
 	} else {
 		if (challenge_len == 16)
 			memcpy(rpd->auth_req->RA, challenge, 16);
-		else {
-			if (rad_packet_change_octets(rpd->auth_req->pack, NULL, "CHAP-Challenge", challenge, challenge_len))
+		if (rad_packet_change_octets(rpd->auth_req->pack, NULL, "CHAP-Challenge", challenge, challenge_len))
 			goto out;
-		}
 
 		if (rad_packet_change_octets(rpd->auth_req->pack, NULL, "CHAP-Password", chap_password, 17))
 			goto out;
