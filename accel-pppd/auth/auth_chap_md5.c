@@ -289,9 +289,14 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	name = _strndup(msg->name,ntohs(msg->hdr.len) - sizeof(*msg) + 2);
 
 	if (conf_any_login) {
+		if (ppp_auth_successed(ad->ppp, name)) {
+			chap_send_failure(ad);
+			ppp_terminate(ad->ppp, TERM_AUTH_ERROR, 0);
+			_free(name);
+			return;
+		}
 		chap_send_success(ad);
 		ad->started = 1;
-		ppp_auth_successed(ad->ppp, name);
 		return;
 	}
 
@@ -325,12 +330,17 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 				ppp_auth_failed(ad->ppp, name);
 			_free(name);
 		} else {
-			chap_send_success(ad);
 			if (!ad->started) {
-				ad->started = 1;
-				if (conf_interval)
-					triton_timer_add(ad->ppp->ctrl->ctx, &ad->interval, 0);
-				ppp_auth_successed(ad->ppp, name);
+				if (ppp_auth_successed(ad->ppp, name)) {
+					chap_send_failure(ad);
+					ppp_terminate(ad->ppp, TERM_AUTH_ERROR, 0);
+					_free(name);
+				} else {
+					chap_send_success(ad);
+					ad->started = 1;
+					if (conf_interval)
+						triton_timer_add(ad->ppp->ctrl->ctx, &ad->interval, 0);
+				}
 			} else
 				_free(name);
 		}
@@ -343,14 +353,21 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 			ppp_auth_failed(ad->ppp, name);
 		_free(name);
 	} else {
-		chap_send_success(ad);
 		if (!ad->started) {
-			ad->started = 1;
-			if (conf_interval)
-				triton_timer_add(ad->ppp->ctrl->ctx, &ad->interval, 0);
-			ppp_auth_successed(ad->ppp, name);
-		} else
+			if (ppp_auth_successed(ad->ppp, name)) {
+				chap_send_failure(ad);
+				ppp_terminate(ad->ppp, TERM_AUTH_ERROR, 0);
+				_free(name);
+			} else {
+				chap_send_success(ad);
+				ad->started = 1;
+				if (conf_interval)
+					triton_timer_add(ad->ppp->ctrl->ctx, &ad->interval, 0);
+			}
+		} else {
+			chap_send_success(ad);
 			_free(name);
+		}
 	}
 }
 

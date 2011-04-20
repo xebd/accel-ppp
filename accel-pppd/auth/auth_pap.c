@@ -198,9 +198,14 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
 	peer_id = _strndup((const char*)peer_id, peer_id_len);
 	
 	if (conf_any_login) {
+		if (ppp_auth_successed(p->ppp, peer_id)) {
+			pap_send_nak(p, hdr->id);
+			ppp_terminate(p->ppp, TERM_AUTH_ERROR, 0);
+			_free(peer_id);
+			return -1;
+		}
 		pap_send_ack(p, hdr->id);
 		p->started = 1;
-		ppp_auth_successed(p->ppp, peer_id);
 		return 0;
 	}
 
@@ -223,15 +228,19 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
 			ppp_terminate(p->ppp, TERM_AUTH_ERROR, 0);
 		else
 			ppp_auth_failed(p->ppp, peer_id);
-		ret=-1;
+		ret = -1;
 		_free(peer_id);
 	} else {
-		pap_send_ack(p, hdr->id);
-		if (!p->started) {
+		if (ppp_auth_successed(p->ppp, peer_id)) {
+			pap_send_nak(p, hdr->id);
+			ppp_terminate(p->ppp, TERM_AUTH_ERROR, 0);
+			_free(peer_id);
+			ret = -1;
+		} else {
+			pap_send_ack(p, hdr->id);
 			p->started = 1;
-			ppp_auth_successed(p->ppp, peer_id);
+			ret = 0;
 		}
-		ret = 0;
 	}
 
 	_free(passwd);

@@ -25,7 +25,8 @@
 #include "memdebug.h"
 
 int __export conf_ppp_verbose;
-static int conf_sid_ucase;
+int conf_sid_ucase;
+int conf_single_session = -1;
 
 pthread_rwlock_t __export ppp_lock = PTHREAD_RWLOCK_INITIALIZER;
 __export LIST_HEAD(ppp_list);
@@ -640,6 +641,15 @@ static void load_config(void)
 		else if (strcmp(opt, "lower"))
 			log_emerg("ppp: sid-case: invalid format\n");
 	}
+	
+	opt = conf_get_opt("ppp", "single-session");
+	if (opt) {
+		if (!strcmp(opt, "deny"))
+			conf_single_session = 0;
+		else if (!strcmp(opt, "replace"))
+			conf_single_session = 1;
+	} else 
+		conf_single_session = -1;
 }
 
 static void __init init(void)

@@ -404,14 +404,21 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 			ppp_auth_failed(ad->ppp, name);
 		_free(name);
 	} else {
-		chap_send_success(ad, msg, authenticator);
 		if (!ad->started) {
-			ad->started = 1;
-			if (conf_interval)
-				triton_timer_add(ad->ppp->ctrl->ctx, &ad->interval, 0);
-			ppp_auth_successed(ad->ppp, name);
-		} else
+			if (ppp_auth_successed(ad->ppp, name)) {
+				chap_send_failure(ad);
+				ppp_terminate(ad->ppp, TERM_AUTH_ERROR, 0);
+				_free(name);
+			} else {
+				chap_send_success(ad, msg, authenticator);
+				ad->started = 1;
+				if (conf_interval)
+					triton_timer_add(ad->ppp->ctrl->ctx, &ad->interval, 0);
+			}
+		} else {
+			chap_send_success(ad, msg, authenticator);
 			_free(name);
+		}
 	}
 }
 

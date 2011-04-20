@@ -178,6 +178,7 @@ extern int ppp_shutdown;
 void ppp_shutdown_soft(void);
 
 extern int conf_ppp_verbose;
+extern int conf_single_session;
 
 extern pthread_rwlock_t ppp_lock;
 extern struct list_head ppp_list;

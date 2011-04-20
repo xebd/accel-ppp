@@ -104,6 +104,17 @@ Specifies in which case generate session identifier (default lower).
 .BI "check-ip=" 0|1
 Specifies whether accel-ppp should check if IP already assigned to other ppp interface (default 0).
 .TP
+.BI "single-session=" replace|deny
+Specifies whether accel-ppp should control sessions count.
+.br
+If this option is absent session count control is turned off.
+If this option is 
+.B replace
+then accel-ppp will terminate first session when second is authorized.
+If this option is 
+.B deny
+then accel-ppp will deny second session authorization.
+.TP
 .SH [lcp]
 .br
 PPP LCP module configuration
