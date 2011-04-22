@@ -29,6 +29,8 @@ static int mppe_recv_conf_nak(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, u
 static int mppe_recv_conf_rej(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, uint8_t *ptr);
 static void mppe_print(void (*print)(const char *fmt,...),struct ccp_option_t*, uint8_t *ptr);
 
+static int conf_mppe = -1;
+
 struct mppe_option_t
 {
 	struct ccp_option_t opt;
@@ -53,7 +55,11 @@ static struct ccp_option_t *mppe_init(struct ppp_ccp_t *ccp)
 {
 	struct mppe_option_t *mppe_opt = _malloc(sizeof(*mppe_opt));
 	memset(mppe_opt, 0, sizeof(*mppe_opt));
-	mppe_opt->mppe = -1;
+	mppe_opt->policy = conf_mppe;
+	if (conf_mppe)
+		mppe_opt->mppe = conf_mppe;
+	else
+		mppe_opt->mppe = -1;
 	mppe_opt->opt.id = CI_MPPE;
 	mppe_opt->opt.len = 6;
 
@@ -245,15 +251,34 @@ static void ev_mppe_keys(struct ev_mppe_keys_t *ev)
 	
 	memcpy(mppe_opt->recv_key, ev->recv_key, 16);
 	memcpy(mppe_opt->send_key, ev->send_key, 16);
-	mppe_opt->policy = ev->policy;
+	//mppe_opt->policy = ev->policy;
 
 	if (ev->policy == 2)
 		mppe_opt->mppe = 1;
+}
+
+static void load_config(void)
+{
+	const char *opt;
+
+	opt = conf_get_opt("ppp", "mppe");
+	if (opt) {
+		if (!strcmp(opt,"require"))
+			conf_mppe = 2;
+		else if (!strcmp(opt,"prefere"))
+			conf_mppe = 1;
+		else if (!strcmp(opt,"deny"))
+			conf_mppe = 0;
+	} else
+		conf_mppe = -1;
 }
 
 static void __init mppe_opt_init()
 {
 	ccp_option_register(&mppe_opt_hnd);
 	triton_event_register_handler(EV_MPPE_KEYS, (triton_event_func)ev_mppe_keys);
+	
+	load_config();
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 

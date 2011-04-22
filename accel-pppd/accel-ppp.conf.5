@@ -115,6 +115,19 @@ If this option is
 .B deny
 then accel-ppp will deny second session authorization.
 .TP
+.BI "mppe=" allow|prefere|require
+Specifies mppe negotioation preference.
+.br
+.B allow
+- allow mppe negotiation if client requests it.
+.br
+.B prefere
+- ask client for mppe, if it rejects don't fail.
+.br
+.B require
+- ask client for mppe, if it rejects drop connection
+Please note that RADIUS may override this option by MS-MPPE-Encryption-Policy.
+.TP
 .SH [lcp]
 .br
 PPP LCP module configuration
