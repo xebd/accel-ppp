@@ -57,7 +57,7 @@ static struct ccp_option_t *mppe_init(struct ppp_ccp_t *ccp)
 	memset(mppe_opt, 0, sizeof(*mppe_opt));
 	mppe_opt->policy = conf_mppe;
 	if (conf_mppe)
-		mppe_opt->mppe = conf_mppe;
+		mppe_opt->mppe = 1;
 	else
 		mppe_opt->mppe = -1;
 	mppe_opt->opt.id = CI_MPPE;
@@ -251,10 +251,16 @@ static void ev_mppe_keys(struct ev_mppe_keys_t *ev)
 	
 	memcpy(mppe_opt->recv_key, ev->recv_key, 16);
 	memcpy(mppe_opt->send_key, ev->send_key, 16);
-	//mppe_opt->policy = ev->policy;
+	mppe_opt->policy = ev->policy;
 
 	if (ev->policy == 2)
 		mppe_opt->mppe = 1;
+	else if (ev->policy == 1) {
+		if (conf_mppe == 1)
+			mppe_opt->mppe = 1;
+		else
+			mppe_opt->mppe = -1;
+	}
 }
 
 static void load_config(void)
