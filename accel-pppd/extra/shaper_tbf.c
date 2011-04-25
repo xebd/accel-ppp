@@ -87,7 +87,7 @@ struct time_range_t
 static void *pd_key;
 
 static LIST_HEAD(time_range_list);
-static int time_range_id;
+static int time_range_id = 0;
 
 static void shaper_ctx_close(struct triton_context_t *);
 static struct triton_context_t shaper_ctx = {
@@ -619,7 +619,7 @@ static struct time_range_pd_t *get_tr_pd(struct shaper_pd_t *pd, int id)
 	memset(tr_pd, 0, sizeof(*tr_pd));
 	tr_pd->id = id;
 
-	if (id == time_range_id)
+	if (id == time_range_id || id == 0)
 		pd->cur_tr = tr_pd;
 	
 	list_add_tail(&tr_pd->entry, &pd->tr_list);
