@@ -180,9 +180,8 @@ static void ccp_layer_up(struct ppp_fsm_t *fsm)
 {
 	struct ppp_ccp_t *ccp = container_of(fsm, typeof(*ccp), fsm);
 
-	log_ppp_debug("ccp_layer_started\n");
-
 	if (!ccp->started) {
+		log_ppp_debug("ccp_layer_started\n");
 		ccp->started = 1;
 		if (ccp_set_flags(ccp->ppp->unit_fd, 1, 1)) {
 			ppp_terminate(ccp->ppp, TERM_NAS_ERROR, 0);
@@ -236,7 +235,7 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 
 	ccp_hdr->proto = htons(PPP_CCP);
 	ccp_hdr->code = CONFREQ;
-	ccp_hdr->id = ++ccp->fsm.id;
+	ccp_hdr->id = ccp->fsm.id;
 	ccp_hdr->len = 0;
 	
 	ptr = (uint8_t*)(ccp_hdr + 1);
@@ -286,7 +285,7 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 	struct ppp_ccp_t *ccp = container_of(fsm, typeof(*ccp), fsm);
 	uint8_t *buf = _malloc(ccp->conf_req_len), *ptr = buf;
 	struct ccp_hdr_t *ccp_hdr = (struct ccp_hdr_t*)ptr;
-	struct recv_opt_t *ropt;
+	struct ccp_option_t *lopt;
 
 	if (conf_ppp_verbose)
 		log_ppp_info2("send [CCP ConfNak id=%x", ccp->fsm.recv_id);
@@ -298,13 +297,13 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 	
 	ptr += sizeof(*ccp_hdr);
 
-	list_for_each_entry(ropt, &ccp->ropt_list, entry) {
-		if (ropt->state == CCP_OPT_NAK) {
+	list_for_each_entry(lopt, &ccp->options, entry) {
+		if (lopt->state == CCP_OPT_NAK) {
 			if (conf_ppp_verbose) {
 				log_ppp_info2(" ");
-				ropt->lopt->h->print(log_ppp_info2, ropt->lopt, NULL);
+				lopt->h->print(log_ppp_info2, lopt, NULL);
 			}
-			ptr += ropt->lopt->h->send_conf_nak(ccp, ropt->lopt, ptr);
+			ptr += lopt->h->send_conf_nak(ccp, lopt, ptr);
 		}
 	}
 	
@@ -427,15 +426,14 @@ static int ccp_recv_conf_req(struct ppp_ccp_t *ccp, uint8_t *data, int size)
 	if (conf_ppp_verbose)
 		log_ppp_info2("]\n");
 
-	/*list_for_each_entry(lopt,&ccp->options,entry)
-	{
-		if (lopt->state==CCP_OPT_NONE)
-		{
-			r=lopt->h->recv_conf_req(ccp,lopt,NULL);
-			lopt->state=r;
-			if (r<ret) ret=r;
+	list_for_each_entry(lopt, &ccp->options, entry) {
+		if (lopt->state == CCP_OPT_NONE) {
+			r = lopt->h->recv_conf_req(ccp, lopt, NULL);
+			lopt->state = r;
+			if (r < ret)
+				ret = r;
 		}
-	}*/
+	}
 
 	return ret;
 }

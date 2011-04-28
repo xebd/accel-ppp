@@ -30,7 +30,6 @@ struct ppp_fsm_t
 	int max_terminate;
 	int max_configure;
 	int max_failure;
-	int timeout;
 	int conf_failure;
 
 	int id;

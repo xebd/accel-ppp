@@ -35,6 +35,7 @@ struct mppe_option_t
 {
 	struct ccp_option_t opt;
 	int mppe;
+	int enabled;
 	uint8_t recv_key[16];
 	uint8_t send_key[16];
 	int policy; // 1 - allowed, 2 - required
@@ -55,11 +56,17 @@ static struct ccp_option_t *mppe_init(struct ppp_ccp_t *ccp)
 {
 	struct mppe_option_t *mppe_opt = _malloc(sizeof(*mppe_opt));
 	memset(mppe_opt, 0, sizeof(*mppe_opt));
-	mppe_opt->policy = conf_mppe;
-	if (conf_mppe)
+
+	if (conf_mppe != -1)
+		mppe_opt->policy = conf_mppe;
+	else
+		mppe_opt->policy = 1;
+
+	if (conf_mppe > 0)
 		mppe_opt->mppe = 1;
 	else
 		mppe_opt->mppe = -1;
+
 	mppe_opt->opt.id = CI_MPPE;
 	mppe_opt->opt.len = 6;
 
@@ -142,11 +149,11 @@ static int mppe_recv_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, u
 	struct mppe_option_t *mppe_opt = container_of(opt, typeof(*mppe_opt), opt);
 	struct ccp_opt32_t *opt32 = (struct ccp_opt32_t *)ptr;
 
-	/*if (!ptr) {
+	if (!ptr) {
 		if (mppe_opt->policy == 2)
 			return CCP_OPT_NAK;
 		return CCP_OPT_ACK;
-	}*/
+	}
 	
 	if (opt32->hdr.len != 6)
 		return CCP_OPT_REJ;
@@ -157,7 +164,7 @@ static int mppe_recv_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, u
 	} else if (mppe_opt->policy == 1) {
 		if (ntohl(opt32->val)  == (MPPE_S | MPPE_H))
 			mppe_opt->mppe = 1;
-		else if ((ntohl(opt32->val) & (MPPE_S | MPPE_H)) == (MPPE_S | MPPE_H)) {
+		else if (((ntohl(opt32->val) & (MPPE_S | MPPE_H)) == (MPPE_S | MPPE_H)) || conf_mppe == 1) {
 			mppe_opt->mppe = 1;
 			return CCP_OPT_NAK;
 		} else if (opt32->val) {
@@ -172,7 +179,10 @@ static int mppe_recv_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, u
 		if (setup_mppe_key(ccp->ppp->unit_fd, 1, mppe_opt->send_key))
 			return CCP_OPT_REJ;
 
-		decrease_mtu(ccp->ppp);
+		if (!mppe_opt->enabled) {
+			decrease_mtu(ccp->ppp);
+			mppe_opt->enabled = 1;
+		}
 
 		log_ppp_debug(" (mppe enabled)");
 	}
@@ -184,7 +194,7 @@ static int mppe_recv_conf_rej(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, u
 {
 	struct mppe_option_t *mppe_opt = container_of(opt, typeof(*mppe_opt), opt);
 
-	if (mppe_opt->mppe != 2) {
+	if (mppe_opt->policy != 2) {
 		mppe_opt->mppe = -1;
 		return 0;
 	}

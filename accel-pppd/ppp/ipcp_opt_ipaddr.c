@@ -126,15 +126,16 @@ static int ipaddr_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 {
 	struct ipaddr_option_t *ipaddr_opt = container_of(opt,typeof(*ipaddr_opt), opt);
 	struct ipcp_opt32_t *opt32 = (struct ipcp_opt32_t*)ptr;
-	struct ifreq ifr;
-	struct sockaddr_in addr;
-	struct npioctl np;
 
 	if (opt32->hdr.len != 6)
 		return IPCP_OPT_REJ;
 
-	if (ipaddr_opt->ip->peer_addr == opt32->val)
-		goto ack;
+	if (ipaddr_opt->ip->peer_addr == opt32->val) {
+		ipcp->ppp->ipaddr = ipaddr_opt->ip->addr;
+		ipcp->ppp->peer_ipaddr = ipaddr_opt->ip->peer_addr;
+		ipcp->delay_ack = 1;
+		return IPCP_OPT_ACK;
+	}
 		
 	/*if (!ipaddr_opt->peer_addr) {
 		ipaddr_opt->peer_addr = opt32->val;
@@ -142,28 +143,19 @@ static int ipaddr_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 	}*/
 	
 	return IPCP_OPT_NAK;
+}
 
-ack:
-	if (ipaddr_opt->started)
-		return IPCP_OPT_ACK;
+static void if_up(struct ppp_t *ppp)
+{
+	struct ipaddr_option_t *ipaddr_opt = container_of(ipcp_find_option(ppp, &ipaddr_opt_hnd), typeof(*ipaddr_opt), opt);
+	struct ifreq ifr;
+	struct sockaddr_in addr;
+	struct npioctl np;
 	
-	ipaddr_opt->started = 1;
-
-	ipcp->ppp->ipaddr = ipaddr_opt->ip->addr;
-	ipcp->ppp->peer_ipaddr = ipaddr_opt->ip->peer_addr;
-
-	triton_event_fire(EV_PPP_ACCT_START, ipcp->ppp);
-	if (ipcp->ppp->stop_time)
-		return IPCP_OPT_ACK;
-
-	triton_event_fire(EV_PPP_PRE_UP, ipcp->ppp);
-	if (ipcp->ppp->stop_time)
-		return IPCP_OPT_ACK;
-
 	memset(&ifr, 0, sizeof(ifr));
 	memset(&addr, 0, sizeof(addr));
 
-	strcpy(ifr.ifr_name, ipcp->ppp->ifname);
+	strcpy(ifr.ifr_name, ppp->ifname);
 
 	addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = ipaddr_opt->ip->addr;
@@ -177,6 +169,14 @@ ack:
 	
 	if (ioctl(sock_fd, SIOCSIFDSTADDR, &ifr))
 		log_ppp_error("ipcp: failed to set remote PA address: %s\n", strerror(errno));
+	
+	triton_event_fire(EV_PPP_ACCT_START, ppp);
+	if (ppp->stop_time)
+		return;
+
+	triton_event_fire(EV_PPP_PRE_UP, ppp);
+	if (ppp->stop_time)
+		return;
 
 	if (ioctl(sock_fd, SIOCGIFFLAGS, &ifr))
 		log_ppp_error("ipcp: failed to get interface flags: %s\n", strerror(errno));
@@ -189,10 +189,10 @@ ack:
 	np.protocol = PPP_IP;
 	np.mode = NPMODE_PASS;
 
-	if (ioctl(ipcp->ppp->unit_fd, PPPIOCSNPMODE, &np))
+	if (ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
 		log_ppp_error("ipcp: failed to set NP mode: %s\n", strerror(errno));
-
-	return IPCP_OPT_ACK;
+	
+	ipcp_send_ack(ppp);
 }
 
 static void ipaddr_print(void (*print)(const char *fmt,...),struct ipcp_option_t *opt, uint8_t *ptr)
@@ -223,5 +223,6 @@ static void __init ipaddr_opt_init()
 	ipcp_option_register(&ipaddr_opt_hnd);
 	load_config();
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
+	triton_event_register_handler(EV_PPP_STARTED, (triton_event_func)if_up);
 }
 

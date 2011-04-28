@@ -14,7 +14,7 @@
 static int conf_max_terminate = 2;
 static int conf_max_configure = 10;
 static int conf_max_failure = 10;
-static int conf_timeout = 5;
+static int conf_timeout = 1;
 
 void send_term_req(struct ppp_fsm_t *layer);
 void send_term_ack(struct ppp_fsm_t *layer);
@@ -35,7 +35,8 @@ void ppp_fsm_init(struct ppp_fsm_t *layer)
 	layer->max_terminate = conf_max_terminate;
 	layer->max_configure = conf_max_configure;
 	layer->max_failure = conf_max_failure;
-	layer->timeout = conf_timeout;
+
+	layer->id = 1;
 }
 void ppp_fsm_free(struct ppp_fsm_t *layer)
 {
@@ -168,7 +169,6 @@ void ppp_fsm_timeout0(struct ppp_fsm_t *layer)
 		case FSM_Req_Sent:
 		case FSM_Ack_Sent:
 			--layer->restart_counter;
-			--layer->id;
 			if (layer->send_conf_req) layer->send_conf_req(layer);
 			break;
 		default:
@@ -315,6 +315,7 @@ void ppp_fsm_recv_conf_req_rej(struct ppp_fsm_t *layer)
 
 void ppp_fsm_recv_conf_ack(struct ppp_fsm_t *layer)
 {
+	++layer->id;
 	switch(layer->fsm_state)
 	{
 		case FSM_Closed:
@@ -351,6 +352,7 @@ void ppp_fsm_recv_conf_ack(struct ppp_fsm_t *layer)
 
 void ppp_fsm_recv_conf_rej(struct ppp_fsm_t *layer)
 {
+	++layer->id;
 	switch(layer->fsm_state)
 	{
 		case FSM_Closed:

@@ -214,7 +214,7 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 
 	lcp_hdr->proto = htons(PPP_LCP);
 	lcp_hdr->code = CONFREQ;
-	lcp_hdr->id = ++lcp->fsm.id;
+	lcp_hdr->id = lcp->fsm.id;
 	lcp_hdr->len = 0;
 	
 	ptr += sizeof(*lcp_hdr);

@@ -23,6 +23,7 @@ struct recv_opt_t
 };
 
 static LIST_HEAD(option_handlers);
+static struct ppp_layer_t ipcp_layer;
 
 static void ipcp_layer_up(struct ppp_fsm_t*);
 static void ipcp_layer_down(struct ppp_fsm_t*);
@@ -60,6 +61,9 @@ static void ipcp_options_free(struct ppp_ipcp_t *ipcp)
 		list_del(&lopt->entry);
 		lopt->h->free(ipcp, lopt);
 	}
+
+	if (ipcp->buf)
+		_free(ipcp->buf);
 }
 
 static struct ppp_layer_data_t *ipcp_layer_init(struct ppp_t *ppp)
@@ -181,7 +185,7 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 
 	ipcp_hdr->proto = htons(PPP_IPCP);
 	ipcp_hdr->code = CONFREQ;
-	ipcp_hdr->id = ++ipcp->fsm.id;
+	ipcp_hdr->id = ipcp->fsm.id;
 	ipcp_hdr->len = 0;
 	
 	ptr += sizeof(*ipcp_hdr);
@@ -220,6 +224,27 @@ static void send_conf_ack(struct ppp_fsm_t *fsm)
 {
 	struct ppp_ipcp_t *ipcp = container_of(fsm, typeof(*ipcp), fsm);
 	struct ipcp_hdr_t *hdr = (struct ipcp_hdr_t*)ipcp->ppp->buf;
+
+	if (ipcp->delay_ack) {
+		if (!ipcp->buf) {
+			ipcp->buf = _malloc(ntohs(hdr->len) + 2);
+			memcpy(ipcp->buf, ipcp->ppp->buf, ntohs(hdr->len) + 2);
+		}
+		return;
+	}
+
+	hdr->code = CONFACK;
+
+	if (conf_ppp_verbose)
+		log_ppp_info2("send [IPCP ConfAck id=%x]\n", ipcp->fsm.recv_id);
+
+	ppp_unit_send(ipcp->ppp, hdr, ntohs(hdr->len) + 2);
+}
+
+void ipcp_send_ack(struct ppp_t *ppp)
+{
+	struct ppp_ipcp_t *ipcp = container_of(ppp_find_layer_data(ppp, &ipcp_layer), typeof(*ipcp), ld);
+	struct ipcp_hdr_t *hdr = (struct ipcp_hdr_t*)ipcp->buf;
 
 	hdr->code = CONFACK;
 
@@ -648,6 +673,19 @@ int ipcp_option_register(struct ipcp_option_handler_t *h)
 	list_add_tail(&h->entry, &option_handlers);
 
 	return 0;
+}
+
+struct ipcp_option_t *ipcp_find_option(struct ppp_t *ppp, struct ipcp_option_handler_t *h)
+{
+	struct ppp_ipcp_t *ipcp = container_of(ppp_find_layer_data(ppp, &ipcp_layer), typeof(*ipcp), ld);
+	struct ipcp_option_t *opt;
+	
+	list_for_each_entry(opt, &ipcp->options, entry)
+		if (opt->h == h)
+			return opt;
+	
+	log_emerg("ipcp: BUG: option not found\n");
+	abort();
 }
 
 static struct ppp_layer_t ipcp_layer =

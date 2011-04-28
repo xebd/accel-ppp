@@ -82,15 +82,19 @@ struct ppp_ipcp_t
 	struct ppp_fsm_t fsm;
 	struct ppp_t *ppp;
 	struct list_head options;
+	void *buf;
 
 	struct list_head ropt_list; // last received ConfReq
 	int ropt_len;
 	
 	int conf_req_len;
 	int started:1;
+	int delay_ack:1;
 };
 
 int ipcp_option_register(struct ipcp_option_handler_t *h);
+struct ipcp_option_t *ipcp_find_option(struct ppp_t *ppp, struct ipcp_option_handler_t *h);
+void ipcp_send_ack(struct ppp_t *);
 
 #endif
 
