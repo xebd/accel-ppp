@@ -45,6 +45,7 @@ struct log_file_pd_t
 	struct ppp_pd_t pd;
 	struct log_file_t lf;
 	unsigned long tmp;
+	int authorized;
 };
 
 static int conf_color;
@@ -362,6 +363,57 @@ static void free_lpd(struct log_file_pd_t *lpd)
 	}
 }
 
+static void ev_ppp_authorized(struct ppp_t *ppp)
+{
+	struct log_file_pd_t *lpd;
+	char *fname;
+
+	lpd = find_pd(ppp, &pd_key1);
+	if (!lpd)
+		return;
+	
+	if (lpd->authorized)
+		return;
+	
+	lpd->authorized = 1;
+
+	fname = _malloc(PATH_MAX);
+	if (!fname) {
+		log_emerg("log_file: out of memory\n");
+		return;
+	}
+
+	strcpy(fname, conf_per_user_dir);
+	strcat(fname, "/");
+	strcat(fname, ppp->username);
+	if (conf_per_session) {
+		if (mkdir(fname, S_IRWXU) && errno != EEXIST) {
+			log_emerg("log_file: mkdir '%s': %s'\n", fname, strerror(errno));
+			goto out_err;
+		}
+		strcat(fname, "/");
+		strcat(fname, ppp->sessionid);
+	}
+	strcat(fname, ".log");
+
+	if (log_file_open(&lpd->lf, fname))
+		goto out_err;
+
+	_free(fname);
+
+	if (!list_empty(&lpd->lf.msgs)) {
+		lpd->lf.queued = 1;
+		queue_lf(&lpd->lf);
+	}
+
+	return;
+
+out_err:
+	_free(fname);
+	list_del(&lpd->pd.entry);
+	free_lpd(lpd);
+}
+
 static void ev_ctrl_started(struct ppp_t *ppp)
 {
 	struct log_file_pd_t *lpd;
@@ -424,7 +476,6 @@ static void ev_ctrl_finished(struct ppp_t *ppp)
 	if (lpd)
 		free_lpd(lpd);
 
-
 	lpd = find_pd(ppp, &pd_key2);
 	if (lpd) {
 		if (lpd->tmp) {
@@ -481,52 +532,6 @@ static void ev_ppp_starting(struct ppp_t *ppp)
 
 	_free(fname1);
 	_free(fname2);
-}
-
-static void ev_ppp_authorized(struct ppp_t *ppp)
-{
-	struct log_file_pd_t *lpd;
-	char *fname;
-
-	lpd = find_pd(ppp, &pd_key1);
-	if (!lpd)
-		return;
-
-	fname = _malloc(PATH_MAX);
-	if (!fname) {
-		log_emerg("log_file: out of memory\n");
-		return;
-	}
-
-	strcpy(fname, conf_per_user_dir);
-	strcat(fname, "/");
-	strcat(fname, ppp->username);
-	if (conf_per_session) {
-		if (mkdir(fname, S_IRWXU) && errno != EEXIST) {
-			log_emerg("log_file: mkdir '%s': %s'\n", fname, strerror(errno));
-			goto out_err;
-		}
-		strcat(fname, "/");
-		strcat(fname, ppp->sessionid);
-	}
-	strcat(fname, ".log");
-
-	if (log_file_open(&lpd->lf, fname))
-		goto out_err;
-
-	_free(fname);
-
-	if (!list_empty(&lpd->lf.msgs)) {
-		lpd->lf.queued = 1;
-		queue_lf(&lpd->lf);
-	}
-
-	return;
-
-out_err:
-	_free(fname);
-	list_del(&lpd->pd.entry);
-	free_lpd(lpd);
 }
 
 static struct log_target_t general_target = 
@@ -611,4 +616,5 @@ static void __init init(void)
 	triton_event_register_handler(EV_CTRL_FINISHED, (triton_event_func)ev_ctrl_finished);
 	triton_event_register_handler(EV_PPP_STARTING, (triton_event_func)ev_ppp_starting);
 	triton_event_register_handler(EV_PPP_AUTHORIZED, (triton_event_func)ev_ppp_authorized);
+	triton_event_register_handler(EV_PPP_AUTH_FAILED, (triton_event_func)ev_ppp_authorized);
 }
