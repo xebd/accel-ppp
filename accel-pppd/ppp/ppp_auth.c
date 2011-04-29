@@ -339,9 +339,10 @@ int __export ppp_auth_successed(struct ppp_t *ppp, char *username)
 
 void __export ppp_auth_failed(struct ppp_t *ppp, const char *username)
 {
-	if (username)
+	if (username) {
 		log_ppp_info1("%s: authentication failed\n", username);
-	else
+		log_info1("%s: authentication failed\n", username);
+	} else
 		log_ppp_info1("authentication failed\n");
 	ppp_terminate(ppp, TERM_AUTH_ERROR, 0);
 }
