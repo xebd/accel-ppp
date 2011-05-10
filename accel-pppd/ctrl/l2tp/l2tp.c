@@ -48,6 +48,7 @@ int conf_timeout = 60;
 int conf_rtimeout = 5;
 int conf_retransmit = 5;
 int conf_hello_interval = 60;
+int conf_dir300_quirk = 0;
 char *conf_host_name = NULL;
 
 static unsigned int stat_active;
@@ -838,7 +839,7 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 		if (!pack)
 			continue;
 
-		if (ntohs(pack->hdr.tid) != conn->tid) {
+		if (ntohs(pack->hdr.tid) != conn->tid && (pack->hdr.tid || !conf_dir300_quirk)) {
 			if (conf_verbose)
 				log_warn("l2tp: incorrect tid %i in tunnel %i\n", ntohs(pack->hdr.tid), conn->tid);
 			l2tp_packet_free(pack);
@@ -1121,6 +1122,10 @@ static void load_config(void)
 		conf_host_name = _strdup(opt);
 	else
 		conf_host_name = NULL;
+	
+	opt = conf_get_opt("l2tp", "dir300_quirk");
+	if (opt)
+		conf_dir300_quirk = atoi(opt);
 }
 
 static void __init l2tp_init(void)
