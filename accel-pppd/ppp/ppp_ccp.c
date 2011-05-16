@@ -458,11 +458,11 @@ static int ccp_recv_conf_rej(struct ppp_ccp_t *ccp, uint8_t *data, int size)
 	if (conf_ppp_verbose)
 		log_ppp_info2("recv [CCP ConfRej id=%x", ccp->fsm.recv_id);
 
-	if (ccp->fsm.recv_id != ccp->fsm.id) {
+	/*if (ccp->fsm.recv_id != ccp->fsm.id) {
 		if (conf_ppp_verbose)
 			log_ppp_info2(": id mismatch ]\n");
 		return 0;
-	}
+	}*/
 
 	while (size > 0) {
 		hdr = (struct ccp_opt_hdr_t *)data;
@@ -496,11 +496,11 @@ static int ccp_recv_conf_nak(struct ppp_ccp_t *ccp, uint8_t *data, int size)
 	if (conf_ppp_verbose)
 		log_ppp_info2("recv [CCP ConfNak id=%x", ccp->fsm.recv_id);
 
-	if (ccp->fsm.recv_id != ccp->fsm.id) {
+	/*if (ccp->fsm.recv_id != ccp->fsm.id) {
 		if (conf_ppp_verbose)
 			log_ppp_info2(": id mismatch ]\n");
 		return 0;
-	}
+	}*/
 
 	while (size > 0) {
 		hdr = (struct ccp_opt_hdr_t *)data;
@@ -538,11 +538,11 @@ static int ccp_recv_conf_ack(struct ppp_ccp_t *ccp, uint8_t *data, int size)
 	if (conf_ppp_verbose)
 		log_ppp_info2("recv [CCP ConfAck id=%x", ccp->fsm.recv_id);
 
-	if (ccp->fsm.recv_id != ccp->fsm.id) {
+	/*if (ccp->fsm.recv_id != ccp->fsm.id) {
 		if (conf_ppp_verbose)
 			log_ppp_info2(": id mismatch ]\n");
 		return 0;
-	}
+	}*/
 
 	while (size > 0) {
 		hdr = (struct ccp_opt_hdr_t *)data;
@@ -609,7 +609,7 @@ static void ccp_recv(struct ppp_handler_t*h)
 	struct ppp_ccp_t *ccp = container_of(h, typeof(*ccp), hnd);
 	int r;
 
-	if (ccp->fsm.fsm_state == FSM_Initial || ccp->fsm.fsm_state == FSM_Closed || ccp->ppp->terminating) {
+	if (ccp->fsm.fsm_state == FSM_Initial || ccp->fsm.fsm_state == FSM_Closed || ccp->fsm.fsm_state == FSM_Opened || ccp->ppp->terminating) {
 		if (conf_ppp_verbose)
 			log_ppp_warn("CCP: discarding packet\n");
 		if (ccp->fsm.fsm_state == FSM_Closed || !conf_ccp)
@@ -628,7 +628,11 @@ static void ccp_recv(struct ppp_handler_t*h)
 		return;
 	}
 
+	if ((hdr->code == CONFACK || hdr->code == CONFNAK || hdr->code == CONFREJ) && hdr->id != ccp->fsm.id)
+		return;
+
 	ccp->fsm.recv_id = hdr->id;
+	
 	switch(hdr->code) {
 		case CONFREQ:
 			r = ccp_recv_conf_req(ccp, (uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN);

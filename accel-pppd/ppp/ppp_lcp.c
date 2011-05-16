@@ -704,25 +704,29 @@ static void lcp_recv(struct ppp_handler_t*h)
 	int r;
 	char *term_msg;
 	
-	if (lcp->fsm.fsm_state == FSM_Initial || lcp->fsm.fsm_state == FSM_Closed || lcp->ppp->terminating) {
+	if (lcp->ppp->buf_size < PPP_HEADERLEN + 2) {
+		log_ppp_warn("LCP: short packet received\n");
+		return;
+	}
+
+	hdr = (struct lcp_hdr_t *)lcp->ppp->buf;	
+	if (ntohs(hdr->len) < PPP_HEADERLEN) {
+		log_ppp_warn("LCP: short packet received\n");
+		return;
+	}
+
+	if ((hdr->code == CONFACK || hdr->code == CONFNAK || hdr->code == CONFREJ) && hdr->id != lcp->fsm.id)
+		return;
+
+	if (lcp->fsm.fsm_state == FSM_Initial || lcp->fsm.fsm_state == FSM_Closed || (lcp->ppp->terminating && (hdr->code != TERMACK && hdr->code != TERMREQ))) {
 		/*if (conf_ppp_verbose)
 			log_ppp_warn("LCP: discaring packet\n");
 		lcp_send_proto_rej(ccp->ppp, htons(PPP_CCP));*/
 		return;
 	}
 
-	if (lcp->ppp->buf_size < PPP_HEADERLEN + 2) {
-		log_ppp_warn("LCP: short packet received\n");
-		return;
-	}
-
-	hdr = (struct lcp_hdr_t *)lcp->ppp->buf;
-	if (ntohs(hdr->len) < PPP_HEADERLEN) {
-		log_ppp_warn("LCP: short packet received\n");
-		return;
-	}
-
 	lcp->fsm.recv_id = hdr->id;
+
 	switch(hdr->code) {
 		case CONFREQ:
 			r = lcp_recv_conf_req(lcp, (uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN);

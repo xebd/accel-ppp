@@ -434,11 +434,11 @@ static int ipcp_recv_conf_rej(struct ppp_ipcp_t *ipcp, uint8_t *data, int size)
 	if (conf_ppp_verbose)
 		log_ppp_info2("recv [IPCP ConfRej id=%x", ipcp->fsm.recv_id);
 
-	if (ipcp->fsm.recv_id != ipcp->fsm.id) {
+	/*if (ipcp->fsm.recv_id != ipcp->fsm.id) {
 		if (conf_ppp_verbose)
 			log_ppp_info2(": id mismatch ]\n");
 		return 0;
-	}
+	}*/
 
 	while (size > 0) {
 		hdr = (struct ipcp_opt_hdr_t *)data;
@@ -472,11 +472,11 @@ static int ipcp_recv_conf_nak(struct ppp_ipcp_t *ipcp, uint8_t *data, int size)
 	if (conf_ppp_verbose)
 		log_ppp_info2("recv [IPCP ConfNak id=%x", ipcp->fsm.recv_id);
 
-	if (ipcp->fsm.recv_id != ipcp->fsm.id) {
+	/*if (ipcp->fsm.recv_id != ipcp->fsm.id) {
 		if (conf_ppp_verbose)
 			log_ppp_info2(": id mismatch ]\n");
 		return 0;
-	}
+	}*/
 
 	while (size > 0) {
 		hdr = (struct ipcp_opt_hdr_t *)data;
@@ -512,11 +512,11 @@ static int ipcp_recv_conf_ack(struct ppp_ipcp_t *ipcp, uint8_t *data, int size)
 	if (conf_ppp_verbose)
 		log_ppp_info2("recv [IPCP ConfAck id=%x", ipcp->fsm.recv_id);
 
-	if (ipcp->fsm.recv_id != ipcp->fsm.id) {
+	/*if (ipcp->fsm.recv_id != ipcp->fsm.id) {
 		if (conf_ppp_verbose)
 			log_ppp_info2(": id mismatch ]\n");
 		return 0;
-	}
+	}*/
 
 	while (size > 0) {
 		hdr = (struct ipcp_opt_hdr_t *)data;
@@ -583,7 +583,7 @@ static void ipcp_recv(struct ppp_handler_t*h)
 	struct ppp_ipcp_t *ipcp = container_of(h, typeof(*ipcp), hnd);
 	int r;
 
-	if (ipcp->fsm.fsm_state == FSM_Initial || ipcp->fsm.fsm_state == FSM_Closed || ipcp->ppp->terminating) {
+	if (ipcp->fsm.fsm_state == FSM_Initial || ipcp->fsm.fsm_state == FSM_Closed || ipcp->fsm.fsm_state == FSM_Opened || ipcp->ppp->terminating) {
 		if (conf_ppp_verbose)
 			log_ppp_warn("IPCP: discarding packet\n");
 		return;
@@ -599,8 +599,12 @@ static void ipcp_recv(struct ppp_handler_t*h)
 		log_ppp_warn("IPCP: short packet received\n");
 		return;
 	}
+	
+	if ((hdr->code == CONFACK || hdr->code == CONFNAK || hdr->code == CONFREJ) && hdr->id != ipcp->fsm.id)
+		return;
 
 	ipcp->fsm.recv_id = hdr->id;
+	
 	switch(hdr->code) {
 		case CONFREQ:
 			r = ipcp_recv_conf_req(ipcp,(uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN);
