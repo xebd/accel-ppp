@@ -133,7 +133,7 @@ static int ipaddr_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 	if (ipaddr_opt->ip->peer_addr == opt32->val) {
 		ipcp->ppp->ipaddr = ipaddr_opt->ip->addr;
 		ipcp->ppp->peer_ipaddr = ipaddr_opt->ip->peer_addr;
-		ipcp->delay_ack = 1;
+		ipcp->delay_ack = !ipcp->started;
 		return IPCP_OPT_ACK;
 	}
 		
@@ -191,8 +191,6 @@ static void if_up(struct ppp_t *ppp)
 
 	if (ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
 		log_ppp_error("ipcp: failed to set NP mode: %s\n", strerror(errno));
-	
-	ipcp_send_ack(ppp);
 }
 
 static void ipaddr_print(void (*print)(const char *fmt,...),struct ipcp_option_t *opt, uint8_t *ptr)
