@@ -45,23 +45,34 @@ struct log_file_pd_t
 	struct ppp_pd_t pd;
 	struct log_file_t lf;
 	unsigned long tmp;
-	int authorized;
 };
+
+struct fail_log_pd_t
+{
+	struct ppp_pd_t pd;
+	struct list_head msgs;
+};
+
 
 static int conf_color;
 static int conf_per_session;
 static char *conf_per_user_dir;
 static char *conf_per_session_dir;
 static int conf_copy;
+static int conf_fail_log;
 
 static const char* level_name[]={"  msg", "error", " warn", " info", " info", "debug"};
 static const char* level_color[]={NORMAL_COLOR, RED_COLOR, YELLOW_COLOR, GREEN_COLOR, GREEN_COLOR, BLUE_COLOR};
 
 static void *pd_key1;
 static void *pd_key2;
+static void *pd_key3;
+
 static struct log_file_t *log_file;
+static struct log_file_t *fail_log_file;
 
 static mempool_t lpd_pool;
+static mempool_t fpd_pool;
 static char *log_buf;
 
 static struct aiocb aiocb = {
@@ -249,6 +260,29 @@ static void queue_log(struct log_file_t *lf, struct log_msg_t *msg)
 		queue_lf(lf);
 }
 
+static void queue_log_list(struct log_file_t *lf, struct list_head *l)
+{
+	int r;
+	struct log_msg_t *msg;
+
+	spin_lock(&lf->lock);
+	while (!list_empty(l)) {
+		msg = list_entry(l->next, typeof(*msg), entry);
+		list_del(&msg->entry);
+		list_add_tail(&msg->entry, &lf->msgs);
+	}
+	if (lf->fd != -1) {
+		r = lf->queued;
+		lf->queued = 1;
+	} else
+		r = 1;
+	spin_unlock(&lf->lock);
+
+	if (!r)
+		queue_lf(lf);
+}
+
+
 static void set_hdr(struct log_msg_t *msg, struct ppp_t *ppp)
 {
 	struct tm tm;
@@ -276,19 +310,39 @@ static void general_log(struct log_target_t *t, struct log_msg_t *msg, struct pp
 	queue_log(log_file, msg);
 }
 
-static struct log_file_pd_t *find_pd(struct ppp_t *ppp, void *pd_key)
+static struct ppp_pd_t *find_pd(struct ppp_t *ppp, void *pd_key)
 {
 	struct ppp_pd_t *pd;
-	struct log_file_pd_t *lpd;
 
 	list_for_each_entry(pd, &ppp->pd_list, entry) {
 		if (pd->key == pd_key) {
-			lpd = container_of(pd, typeof(*lpd), pd);
-			return lpd;
+			return pd;
 		}
 	}
+
 	return NULL;
 }
+
+static struct log_file_pd_t *find_lpd(struct ppp_t *ppp, void *pd_key)
+{
+	struct ppp_pd_t *pd = find_pd(ppp, pd_key);
+
+	if (!pd)
+		return NULL;
+
+	return container_of(pd, struct log_file_pd_t, pd);
+}
+
+static struct fail_log_pd_t *find_fpd(struct ppp_t *ppp, void *pd_key)
+{
+	struct ppp_pd_t *pd = find_pd(ppp, pd_key);
+
+	if (!pd)
+		return NULL;
+
+	return container_of(pd, struct fail_log_pd_t, pd);
+}
+
 
 static void per_user_log(struct log_target_t *t, struct log_msg_t *msg, struct ppp_t *ppp)
 {
@@ -299,7 +353,7 @@ static void per_user_log(struct log_target_t *t, struct log_msg_t *msg, struct p
 		return;
 	}
 
-	lpd = find_pd(ppp, &pd_key1);
+	lpd = find_lpd(ppp, &pd_key1);
 
 	if (!lpd) {
 		log_free_msg(msg);
@@ -319,7 +373,7 @@ static void per_session_log(struct log_target_t *t, struct log_msg_t *msg, struc
 		return;
 	}
 
-	lpd = find_pd(ppp, &pd_key2);
+	lpd = find_lpd(ppp, &pd_key2);
 
 	if (!lpd) {
 		log_free_msg(msg);
@@ -329,6 +383,38 @@ static void per_session_log(struct log_target_t *t, struct log_msg_t *msg, struc
 	set_hdr(msg, ppp);
 	queue_log(&lpd->lf, msg);
 }
+
+static void fail_log(struct log_target_t *t, struct log_msg_t *msg, struct ppp_t *ppp)
+{
+	struct fail_log_pd_t *fpd;
+	
+	if (!ppp || !conf_fail_log) {
+		log_free_msg(msg);
+		return;
+	}
+
+	fpd = find_fpd(ppp, &pd_key3);
+
+	if (!fpd) {
+		log_free_msg(msg);
+		return;
+	}
+
+	set_hdr(msg, ppp);
+	list_add_tail(&msg->entry, &fpd->msgs);
+}
+
+static void fail_reopen(void)
+{
+	char *fname = conf_get_opt("log", "log-fail-file");
+ 	int fd = open(fname, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
+	if (fd < 0) {
+		log_emerg("log_file: open '%s': %s\n", fname, strerror(errno));
+		return;
+	}
+	fail_log_file->new_fd = fd;
+}
+
 
 static void general_reopen(void)
 {
@@ -363,20 +449,34 @@ static void free_lpd(struct log_file_pd_t *lpd)
 	}
 }
 
-static void ev_ppp_authorized(struct ppp_t *ppp)
+static void ev_ppp_authorized2(struct ppp_t *ppp)
+{
+	struct fail_log_pd_t *fpd;
+	struct log_msg_t *msg;
+
+	fpd = find_fpd(ppp, &pd_key3);
+	if (!fpd)
+		return;
+	
+	while (!list_empty(&fpd->msgs)) {
+		msg = list_entry(fpd->msgs.next, typeof(*msg), entry);
+		list_del(&msg->entry);
+		log_free_msg(msg);
+	}
+
+	list_del(&fpd->pd.entry);
+	mempool_free(fpd);
+}
+
+static void ev_ppp_authorized1(struct ppp_t *ppp)
 {
 	struct log_file_pd_t *lpd;
 	char *fname;
 
-	lpd = find_pd(ppp, &pd_key1);
+	lpd = find_lpd(ppp, &pd_key1);
 	if (!lpd)
 		return;
 	
-	if (lpd->authorized)
-		return;
-	
-	lpd->authorized = 1;
-
 	fname = _malloc(PATH_MAX);
 	if (!fname) {
 		log_emerg("log_file: out of memory\n");
@@ -417,6 +517,7 @@ out_err:
 static void ev_ctrl_started(struct ppp_t *ppp)
 {
 	struct log_file_pd_t *lpd;
+	struct fail_log_pd_t *fpd;
 	char *fname;
 
 	if (conf_per_user_dir) {
@@ -465,18 +566,38 @@ static void ev_ctrl_started(struct ppp_t *ppp)
 
 		list_add_tail(&lpd->pd.entry, &ppp->pd_list);
 	}
+
+	if (conf_fail_log) {
+		fpd = mempool_alloc(fpd_pool);
+		if (!fpd) {
+			log_emerg("log_file: out of memory\n");
+			return;
+		}
+		memset(fpd, 0, sizeof(*fpd));
+		fpd->pd.key = &pd_key3;
+		list_add_tail(&fpd->pd.entry, &ppp->pd_list);
+		INIT_LIST_HEAD(&fpd->msgs);
+	}
 }
 
 static void ev_ctrl_finished(struct ppp_t *ppp)
 {
 	struct log_file_pd_t *lpd;
+	struct fail_log_pd_t *fpd;
 	char *fname;
 
-	lpd = find_pd(ppp, &pd_key1);
+	fpd = find_fpd(ppp, &pd_key3);
+	if (fpd) {
+		queue_log_list(fail_log_file, &fpd->msgs);
+		list_del(&fpd->pd.entry);
+		mempool_free(fpd);
+	}
+
+	lpd = find_lpd(ppp, &pd_key1);
 	if (lpd)
 		free_lpd(lpd);
 
-	lpd = find_pd(ppp, &pd_key2);
+	lpd = find_lpd(ppp, &pd_key2);
 	if (lpd) {
 		if (lpd->tmp) {
 			fname = _malloc(PATH_MAX);
@@ -499,7 +620,7 @@ static void ev_ppp_starting(struct ppp_t *ppp)
 	struct log_file_pd_t *lpd;
 	char *fname1, *fname2;
 
-	lpd = find_pd(ppp, &pd_key2);
+	lpd = find_lpd(ppp, &pd_key2);
 	if (!lpd)
 		return;
 	
@@ -550,6 +671,13 @@ static struct log_target_t per_session_target =
 	.log = per_session_log,
 };
 
+static struct log_target_t fail_log_target = 
+{
+	.log = fail_log,
+	.reopen = fail_reopen,
+};
+
+
 static void __init init(void)
 {
 	char *opt;
@@ -565,6 +693,7 @@ static void __init init(void)
 	};
 
 	lpd_pool = mempool_create(sizeof(struct log_file_pd_t));
+	fpd_pool = mempool_create(sizeof(struct fail_log_pd_t));
 	log_buf = malloc(LOG_BUF_SIZE);
 	aiocb.aio_buf = log_buf;
 
@@ -582,6 +711,18 @@ static void __init init(void)
 			free(log_file);
 			_exit(EXIT_FAILURE);
 		}
+	}
+	
+	opt = conf_get_opt("log", "log-fail-file");
+	if (opt) {
+		fail_log_file = malloc(sizeof(*fail_log_file));
+		memset(fail_log_file, 0, sizeof(*fail_log_file));
+		log_file_init(fail_log_file);
+		if (log_file_open(fail_log_file, opt)) {
+			free(fail_log_file);
+			_exit(EXIT_FAILURE);
+		}
+		conf_fail_log = 1;
 	}
 	
 	opt = conf_get_opt("log","color");
@@ -606,15 +747,21 @@ static void __init init(void)
 
 	log_register_target(&general_target);
 	
-	if (conf_per_user_dir)
+	if (conf_per_user_dir) {
 		log_register_target(&per_user_target);
+		triton_event_register_handler(EV_PPP_AUTHORIZED, (triton_event_func)ev_ppp_authorized1);
+	}
 	
-	if (conf_per_session_dir)
+	if (conf_per_session_dir) {
 		log_register_target(&per_session_target);
+		triton_event_register_handler(EV_PPP_STARTING, (triton_event_func)ev_ppp_starting);
+	}
+	
+	if (conf_fail_log) {
+		log_register_target(&fail_log_target);
+		triton_event_register_handler(EV_PPP_AUTHORIZED, (triton_event_func)ev_ppp_authorized2);
+	}
 
 	triton_event_register_handler(EV_CTRL_STARTED, (triton_event_func)ev_ctrl_started);
 	triton_event_register_handler(EV_CTRL_FINISHED, (triton_event_func)ev_ctrl_finished);
-	triton_event_register_handler(EV_PPP_STARTING, (triton_event_func)ev_ppp_starting);
-	triton_event_register_handler(EV_PPP_AUTHORIZED, (triton_event_func)ev_ppp_authorized);
-	triton_event_register_handler(EV_PPP_AUTH_FAILED, (triton_event_func)ev_ppp_authorized);
 }
