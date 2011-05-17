@@ -133,6 +133,7 @@ int ccp_layer_start(struct ppp_layer_data_t *ld)
 	log_ppp_debug("ccp_layer_start\n");
 
 	if (list_empty(&ccp->options) || !conf_ccp) {
+		ccp->ppp->ccp_started = 1;
 		ppp_layer_started(ccp->ppp, &ccp->ld);
 		return 0;
 	}
@@ -183,6 +184,7 @@ static void ccp_layer_up(struct ppp_fsm_t *fsm)
 	if (!ccp->started) {
 		log_ppp_debug("ccp_layer_started\n");
 		ccp->started = 1;
+		ccp->ppp->ccp_started = 1;
 		if (ccp_set_flags(ccp->ppp->unit_fd, 1, 1)) {
 			ppp_terminate(ccp->ppp, TERM_NAS_ERROR, 0);
 			return;

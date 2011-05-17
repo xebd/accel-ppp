@@ -103,6 +103,7 @@ struct ppp_t
 	int terminating:1;
 	int terminated:1;
 	int terminate_cause;
+	int ccp_started:1;
 
 	void *buf;
 	int buf_size;

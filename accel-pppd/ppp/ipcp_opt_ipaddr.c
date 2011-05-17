@@ -133,7 +133,7 @@ static int ipaddr_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 	if (ipaddr_opt->ip->peer_addr == opt32->val) {
 		ipcp->ppp->ipaddr = ipaddr_opt->ip->addr;
 		ipcp->ppp->peer_ipaddr = ipaddr_opt->ip->peer_addr;
-		ipcp->delay_ack = !ipcp->started;
+		ipcp->delay_ack = !ipcp->ppp->ccp_started;
 		return IPCP_OPT_ACK;
 	}
 		
