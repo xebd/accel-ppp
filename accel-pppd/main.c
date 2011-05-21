@@ -89,19 +89,28 @@ static void change_limits(void)
 {
 	FILE *f;
 	struct rlimit lim;
-	unsigned int file_max;
+	unsigned int file_max = 1024*1024;
+	unsigned int nr_open = 1024*1024;
+
+	f = fopen("/proc/sys/fs/nr_open", "r");
+	if (f) {
+		fscanf(f, "%d", &nr_open);
+		fclose(f);
+	}
 
 	f = fopen("/proc/sys/fs/file-max", "r");
 	if (f) {
 		fscanf(f, "%d", &file_max);
 		fclose(f);
+	}
 
-		lim.rlim_cur = file_max;
-		lim.rlim_max = file_max;
-		if (setrlimit(RLIMIT_NOFILE, &lim))
-			log_emerg("main: setrlimit: %s\n", strerror(errno));
-	} else
-		log_emerg("main: failed to open '/proc/sys/fs/file-max': %s\n", strerror(errno));
+	if (file_max > nr_open)
+		file_max = nr_open;
+
+	lim.rlim_cur = file_max;
+	lim.rlim_max = file_max;
+	if (setrlimit(RLIMIT_NOFILE, &lim))
+		log_emerg("main: setrlimit: %s\n", strerror(errno));
 }
 
 static void config_reload_notify(int r)
