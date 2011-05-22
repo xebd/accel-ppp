@@ -200,6 +200,7 @@ static void ccp_layer_down(struct ppp_fsm_t *fsm)
 
 	log_ppp_debug("ccp_layer_finished\n");
 
+	ccp->ppp->ccp_started = 1;
 	if (!ccp->started)
 		ppp_layer_started(ccp->ppp, &ccp->ld);
 	ccp->started = 0;
