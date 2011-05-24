@@ -121,8 +121,12 @@ static void* triton_thread(struct _triton_thread_t *thread)
 			} else
 				spin_unlock(&threads_lock);
 			
-			if (terminate)
+			if (terminate) {
+				spin_lock(&threads_lock);
+				list_del(&thread->entry);
+				spin_unlock(&threads_lock);
 				return NULL;
+			}
 
 			//printf("thread %p: enter sigwait\n", thread);
 			sigwait(&set, &sig);
@@ -588,7 +592,6 @@ void __export triton_run()
 void __export triton_terminate()
 {
 	struct _triton_context_t *ctx;
-	struct _triton_thread_t *t;
 	int r;
 
 	need_terminate = 1;
@@ -604,8 +607,15 @@ void __export triton_terminate()
 	}
 	spin_unlock(&ctx_list_lock);
 
-	list_for_each_entry(t, &threads, entry)
-		pthread_join(t->thread, NULL);
+	while (1) {
+		spin_lock(&threads_lock);
+		if (list_empty(&threads)) {
+			spin_unlock(&threads_lock);
+			break;
+		}
+		spin_unlock(&threads_lock);
+		sleep(1);
+	}
 	
 	md_terminate();
 	timer_terminate();
