@@ -25,7 +25,7 @@
 
 int conf_max_try = 3;
 int conf_timeout = 3;
-int conf_acct_timeout = 600;
+int conf_acct_timeout = 3;
 char *conf_nas_identifier;
 in_addr_t conf_nas_ip_address;
 in_addr_t conf_gw_ip_address;
@@ -460,7 +460,7 @@ static int load_config(void)
 		conf_timeout = atoi(opt);
 
 	opt = conf_get_opt("radius", "acct-timeout");
-	if (opt && atoi(opt) > 0)
+	if (opt && atoi(opt) >= 0)
 		conf_acct_timeout = atoi(opt);
 
 	opt = conf_get_opt("radius", "verbose");

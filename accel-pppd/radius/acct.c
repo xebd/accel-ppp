@@ -176,7 +176,7 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 	rad_req_send(rpd->acct_req, conf_interim_verbose);
 	__sync_add_and_fetch(&stat_interim_sent, 1);
 	if (conf_acct_timeout) {
-		rpd->acct_req->timeout.period = conf_timeout * 1000;
+		rpd->acct_req->timeout.period = conf_acct_timeout * 1000;
 		triton_timer_add(rpd->ppp->ctrl->ctx, &rpd->acct_req->timeout, 0);
 	}
 }
