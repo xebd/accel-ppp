@@ -688,8 +688,9 @@ static struct ppp_layer_t ipcp_layer =
 	.free   = ipcp_layer_free,
 };
 
-static void __init ipcp_init(void)
+static void ipcp_init(void)
 {
 	ppp_register_layer("ipcp", &ipcp_layer);
 }
 
+DEFINE_INIT(3, ipcp_init);

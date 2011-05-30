@@ -372,9 +372,10 @@ int __export ppp_auth_restart(struct ppp_t *ppp)
 	return 0;
 }
 
-static void __init ppp_auth_init()
+static void ppp_auth_init()
 {
 	ppp_register_layer("auth", &auth_layer);
 	lcp_option_register(&auth_opt_hnd);
 }
 
+DEFINE_INIT(3, ppp_auth_init);

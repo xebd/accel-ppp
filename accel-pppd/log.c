@@ -490,7 +490,7 @@ static void load_config(void)
 	}
 }
 
-static void __init log_init(void)
+static void log_init(void)
 {
 	struct sigaction sa = {
 		.sa_handler = sighup,
@@ -509,3 +509,4 @@ static void __init log_init(void)
 	sigaction(SIGHUP, &sa, NULL);
 }
 
+DEFINE_INIT(0, log_init);

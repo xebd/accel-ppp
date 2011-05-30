@@ -538,9 +538,10 @@ static void load_config(void)
 		conf_timeout = atoi(opt);
 }
 
-void __init fsm_init(void)
+static void fsm_init(void)
 {
 	load_config();
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 
+DEFINE_INIT(3, fsm_init);

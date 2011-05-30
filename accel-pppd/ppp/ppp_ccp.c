@@ -762,7 +762,7 @@ static void load_config(void)
 		conf_ccp = atoi(opt);
 }
 
-static void __init ccp_init(void)
+static void ccp_init(void)
 {
 	ppp_register_layer("ccp", &ccp_layer);
 
@@ -770,3 +770,4 @@ static void __init ccp_init(void)
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 
+DEFINE_INIT(3, ccp_init);

@@ -289,7 +289,7 @@ static void load_config(void)
 		conf_mppe = -1;
 }
 
-static void __init mppe_opt_init()
+static void mppe_opt_init()
 {
 	ccp_option_register(&mppe_opt_hnd);
 	triton_event_register_handler(EV_MPPE_KEYS, (triton_event_func)ev_mppe_keys);
@@ -298,3 +298,4 @@ static void __init mppe_opt_init()
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 
+DEFINE_INIT(4, mppe_opt_init);

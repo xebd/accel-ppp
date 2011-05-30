@@ -99,7 +99,9 @@ static void magic_print(void (*print)(const char *fmt,...),struct lcp_option_t *
 		print("<magic %04x>", magic_opt->magic);
 }
 
-static void __init magic_opt_init()
+static void magic_opt_init()
 {
 	lcp_option_register(&magic_opt_hnd);
 }
+
+DEFINE_INIT(4, magic_opt_init);

@@ -80,7 +80,7 @@ void l2tp_nl_create_session(int tid, int sid, int peer_sid)
 	nl_socket_free(nl_sock);
 }
 
-static void __init init(void)
+static void init(void)
 {
 	struct nl_sock *nl_sock = nl_socket_alloc();
 	
@@ -92,3 +92,4 @@ static void __init init(void)
 	nl_socket_free(nl_sock);
 }
 
+DEFINE_INIT(21, init);

@@ -1256,7 +1256,7 @@ static int clock_init(void)
 	return 0;
 }
 
-static void __init init(void)
+static void init(void)
 {
 	if (clock_init())
 		return;
@@ -1281,3 +1281,4 @@ static void __init init(void)
 	cli_show_ses_register("rate-limit", "rate limit down-stream/up-stream (Kbit)", print_rate);
 }
 
+DEFINE_INIT(100, init);

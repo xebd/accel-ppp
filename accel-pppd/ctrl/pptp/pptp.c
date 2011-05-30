@@ -724,7 +724,7 @@ static void load_config(void)
 		conf_verbose = 1;
 }
 
-static void __init pptp_init(void)
+static void pptp_init(void)
 {
 	struct sockaddr_in addr;
 	char *opt;
@@ -776,3 +776,4 @@ static void __init pptp_init(void)
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 
+DEFINE_INIT(20, pptp_init);

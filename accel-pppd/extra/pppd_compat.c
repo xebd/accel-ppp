@@ -497,7 +497,7 @@ static void fill_env(char **env, struct pppd_compat_pd_t *pd)
 	}
 }
 
-static void __init init(void)
+static void init(void)
 {
 	char *opt;
 
@@ -537,3 +537,5 @@ static void __init init(void)
 	}
 #endif
 }
+
+DEFINE_INIT(101, init);

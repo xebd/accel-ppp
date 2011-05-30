@@ -648,9 +648,11 @@ int rad_packet_send(struct rad_packet_t *pack, int fd, struct sockaddr_in *addr)
 	return 0;
 }
 
-static void __init init(void)
+static void init(void)
 {
 	attr_pool = mempool_create(sizeof(struct rad_attr_t));
 	packet_pool = mempool_create(sizeof(struct rad_packet_t));
 	buf_pool = mempool_create(REQ_LENGTH_MAX);
 }
+
+DEFINE_INIT(101, init);

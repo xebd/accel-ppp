@@ -845,7 +845,7 @@ static void load_config(void)
 		conf_echo_failure = atoi(opt);
 }
 
-static void __init lcp_init(void)
+static void lcp_init(void)
 {
 	load_config();
 
@@ -854,3 +854,4 @@ static void __init lcp_init(void)
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 
+DEFINE_INIT(3, lcp_init);

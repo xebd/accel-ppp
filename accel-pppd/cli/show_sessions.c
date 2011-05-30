@@ -417,7 +417,7 @@ static void print_sid(const struct ppp_t *ppp, char *buf)
 	snprintf(buf, CELL_SIZE, "%s", ppp->sessionid);
 }
 
-void __init init(void)
+static void init(void)
 {
 	cli_register_simple_cmd2(show_ses_exec, show_ses_help, 2, "show", "sessions");
 	
@@ -432,3 +432,4 @@ void __init init(void)
 	cli_show_ses_register("sid", "session id", print_sid);
 }
 
+DEFINE_INIT(12, init);

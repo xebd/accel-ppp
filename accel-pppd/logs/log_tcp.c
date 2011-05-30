@@ -301,7 +301,7 @@ static struct triton_context_t tcp_ctx ={
 	.before_switch = log_switch,
 };
 
-static void __init init(void)
+static void init(void)
 {
 	struct conf_sect_t *s =	conf_get_section("log");
 	struct conf_option_t *opt;
@@ -321,3 +321,4 @@ static void __init init(void)
 	triton_context_wakeup(&tcp_ctx);
 }
 
+DEFINE_INIT(1, init);

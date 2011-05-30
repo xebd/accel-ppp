@@ -99,8 +99,9 @@ static void pcomp_print(void (*print)(const char *fmt,...),struct lcp_option_t *
 	print("<pcomp>");
 }
 
-static void __init pcomp_opt_init()
+static void pcomp_opt_init()
 {
 	lcp_option_register(&pcomp_opt_hnd);
 }
 
+DEFINE_INIT(4, pcomp_opt_init);

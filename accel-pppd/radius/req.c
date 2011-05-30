@@ -268,7 +268,7 @@ int rad_req_wait(struct rad_req_t *req, int timeout)
 	return 0;
 }
 
-void __init req_init(void)
+static void req_init(void)
 {
 	urandom_fd = open("/dev/urandom", O_RDONLY);
 	if (!urandom_fd) {
@@ -276,3 +276,5 @@ void __init req_init(void)
 		_exit(EXIT_FAILURE);
 	}
 }
+
+DEFINE_INIT(101, req_init);

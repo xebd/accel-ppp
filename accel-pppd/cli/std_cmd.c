@@ -326,7 +326,7 @@ static void reload_help(char * const *fields, int fields_cnt, void *client)
 	cli_send(client, "reload - reload config file\r\n");
 }
 
-static void __init init(void)
+static void init(void)
 {
 	cli_register_simple_cmd2(show_stat_exec, show_stat_help, 2, "show", "stat");
 	cli_register_simple_cmd2(terminate_exec, terminate_help, 1, "terminate");
@@ -335,3 +335,4 @@ static void __init init(void)
 	cli_register_simple_cmd2(exit_exec, exit_help, 1, "exit");
 }
 
+DEFINE_INIT(12, init);

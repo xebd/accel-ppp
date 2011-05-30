@@ -339,7 +339,7 @@ static void start_server(const char *host, int port)
 	triton_context_wakeup(&serv_ctx);
 }
 
-static void __init init(void)
+static void init(void)
 {
 	const char *opt;
 	char *host, *d;
@@ -369,3 +369,4 @@ err_fmt:
 	free(host);
 }
 
+DEFINE_INIT(11, init);

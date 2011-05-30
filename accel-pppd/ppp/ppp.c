@@ -652,7 +652,7 @@ static void load_config(void)
 		conf_single_session = -1;
 }
 
-static void __init init(void)
+static void init(void)
 {
 	char *opt;
 	FILE *f;
@@ -682,3 +682,4 @@ static void __init init(void)
 	atexit(save_seq);
 }
 
+DEFINE_INIT(2, init);

@@ -280,7 +280,7 @@ static struct log_target_t target = {
 	.log = general_log,
 };
 
-static void __init init(void)
+static void init(void)
 {
 	char *opt;
 
@@ -319,3 +319,5 @@ static void __init init(void)
 
 	log_register_target(&target);
 }
+
+DEFINE_INIT(1, init);

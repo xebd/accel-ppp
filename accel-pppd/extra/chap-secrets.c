@@ -268,7 +268,7 @@ static void load_config(void)
 		conf_gw_ip_address = inet_addr(opt);
 }
 
-static void __init init(void)
+static void init(void)
 {
 	load_config();
 
@@ -280,3 +280,4 @@ static void __init init(void)
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 
+DEFINE_INIT(100, init);

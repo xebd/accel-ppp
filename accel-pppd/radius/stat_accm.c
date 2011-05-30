@@ -90,8 +90,9 @@ unsigned long stat_accm_get_avg(struct stat_accm_t *s)
 	return val;
 }
 
-static void __init init(void)
+static void init(void)
 {
 	item_pool = mempool_create(sizeof(struct item_t));
 }
 
+DEFINE_INIT(101, init);

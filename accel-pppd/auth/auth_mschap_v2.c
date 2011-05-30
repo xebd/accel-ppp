@@ -629,7 +629,7 @@ static void chap_recv(struct ppp_handler_t *h)
 		log_ppp_warn("mschap-v2: unknown code received %x\n",hdr->code);
 }
 
-static void __init auth_mschap_v2_init()
+static void auth_mschap_v2_init()
 {
 	urandom_fd = open("/dev/urandom", O_RDONLY);
 	if (urandom_fd < 0) {
@@ -641,3 +641,4 @@ static void __init auth_mschap_v2_init()
 		log_emerg("mschap-v2: failed to register handler\n");
 }
 
+DEFINE_INIT(4, auth_mschap_v2_init);

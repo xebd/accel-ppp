@@ -244,7 +244,7 @@ static void cmd_help(char * const *fields, int fields_cnt, void *client)
 	cli_send(client, "pppoe mac-filter show - show current mac-filter list\r\n");
 }
 
-static void __init init(void)
+static void init(void)
 {
 	const char *opt = conf_get_opt("pppoe", "mac-filter");
 	if (!opt || mac_filter_load(opt))
@@ -253,3 +253,4 @@ static void __init init(void)
 	cli_register_simple_cmd2(cmd_exec, cmd_help, 2, "pppoe", "mac-filter");
 }
 
+DEFINE_INIT(20, init);

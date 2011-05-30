@@ -189,7 +189,7 @@ static int set_ac_name_exec(const char *cmd, char * const *f, int f_cnt, void *c
 //===================================
 
 
-static void __init init(void)
+static void init(void)
 {
 	cli_register_simple_cmd2(show_stat_exec, NULL, 2, "show", "stat");
 	cli_register_simple_cmd2(intf_exec, intf_help, 2, "pppoe", "interface");
@@ -203,3 +203,4 @@ static void __init init(void)
 	cli_register_simple_cmd2(show_ac_name_exec, NULL, 3, "pppoe", "show", "AC-Name");
 }
 
+DEFINE_INIT(22, init);

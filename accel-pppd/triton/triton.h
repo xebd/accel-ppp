@@ -106,6 +106,8 @@ void triton_stop_collect_cpu_usage(void);
 
 int triton_module_loaded(const char *name);
 
+void triton_register_init(int order, void (*func)(void));
+
 
 #define TRITON_OK          0
 #define TRITON_ERR_NOCOMP -1
@@ -136,5 +138,7 @@ void triton_terminate(void);
 #define container_of(ptr, type, member) ({			\
 	const typeof( ((type *)0)->member ) *__mptr = (ptr);	\
 	(type *)( (char *)__mptr - offsetof(type,member) );})
+
+#define DEFINE_INIT(o, func) static void __init __init__(void){triton_register_init(o,func);}
 
 #endif

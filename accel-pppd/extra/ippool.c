@@ -182,7 +182,7 @@ static struct ipdb_t ipdb = {
 	.put = put_ip,
 };
 
-static void __init ipool_init(void)
+static void ippool_init(void)
 {
 	struct conf_sect_t *s = conf_get_section("ip-pool");
 	struct conf_option_t *opt;
@@ -205,4 +205,6 @@ static void __init ipool_init(void)
 
 	ipdb_register(&ipdb);
 }
+
+DEFINE_INIT(100, ippool_init);
 

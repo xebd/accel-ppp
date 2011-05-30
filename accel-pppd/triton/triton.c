@@ -22,6 +22,8 @@ static LIST_HEAD(ctx_queue);
 static spinlock_t ctx_list_lock = SPINLOCK_INITIALIZER;
 static LIST_HEAD(ctx_list);
 
+static LIST_HEAD(init_list);
+
 static int terminate;
 static int need_terminate;
 
@@ -523,6 +525,24 @@ static void ru_update(struct triton_timer_t *t)
 	ru_stime = rusage.ru_stime;
 }
 
+void __export triton_register_init(int order, void (*func)(void))
+{
+	struct _triton_init_t *i1, *i = _malloc(sizeof(*i));
+	struct list_head *p = init_list.prev;
+
+
+	i->order = order;
+	i->func = func;
+
+	while (p != &init_list) {
+		i1 = list_entry(p, typeof(*i1), entry);
+		if (order > i1->order)
+			break;
+		p = p->prev;
+	}
+	list_add(&i->entry, p);
+}
+
 int __export triton_init(const char *conf_file)
 {
 	ctx_pool = mempool_create(sizeof(struct _triton_context_t));
@@ -548,8 +568,17 @@ int __export triton_init(const char *conf_file)
 
 int __export triton_load_modules(const char *mod_sect)
 {
+	struct _triton_init_t *i;
+
 	if (load_modules(mod_sect))
 		return -1;
+
+	while (!list_empty(&init_list)) {
+		i = list_entry(init_list.next, typeof(*i), entry);
+		i->func();
+		list_del(&i->entry);
+		_free(i);
+	}
 	
 	return 0;
 }

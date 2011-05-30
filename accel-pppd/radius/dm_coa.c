@@ -256,7 +256,7 @@ static struct dm_coa_serv_t serv = {
 	.hnd.read = dm_coa_read,
 };
 
-static void __init init(void)
+static void init(void)
 {
 	struct sockaddr_in addr;
 
@@ -293,3 +293,5 @@ static void __init init(void)
 	triton_md_enable_handler(&serv.hnd, MD_MODE_READ);
 	triton_context_wakeup(&serv.ctx);
 }
+
+DEFINE_INIT(101, init);

@@ -718,7 +718,7 @@ static void load_history_file(void)
 	fclose(f);
 }
 
-static void __init init(void)
+static void init(void)
 {
 	const char *opt;
 	char *host, *d;
@@ -757,3 +757,4 @@ err_fmt:
 	free(host);
 }
 
+DEFINE_INIT(11, init);

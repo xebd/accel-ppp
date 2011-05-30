@@ -219,9 +219,11 @@ static void load_config(void)
 		conf_cli_prompt = (char *)def_cli_prompt;
 }
 
-static void __init init(void)
+static void init(void)
 {
 	load_config();
 
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
+
+DEFINE_INIT(10, init);

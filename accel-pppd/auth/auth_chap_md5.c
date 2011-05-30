@@ -414,7 +414,7 @@ static void chap_recv(struct ppp_handler_t *h)
 		log_ppp_warn("chap-md5: unknown code received %x\n", hdr->code);
 }
 
-static void __init auth_chap_md5_init()
+static void auth_chap_md5_init()
 {
 	char *opt;
 
@@ -445,3 +445,4 @@ static void __init auth_chap_md5_init()
 		log_emerg("chap-md5: failed to register handler\n");
 }
 
+DEFINE_INIT(4, auth_chap_md5_init);

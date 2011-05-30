@@ -138,9 +138,10 @@ int __export iprange_tunnel_check(in_addr_t ipaddr)
 	return !check_range(&client_ranges, ipaddr);
 }
 
-static void __init iprange_init(void)
+static void iprange_init(void)
 {
 	load_ranges(&client_ranges, "client-ip-range");
 	//load_ranges(&tunnel_ranges, "tunnel-ip-range");
 }
 
+DEFINE_INIT(10, iprange_init);

@@ -216,7 +216,7 @@ static void load_config(void)
 		conf_check_exists = 1;
 }
 
-static void __init ipaddr_opt_init()
+static void ipaddr_opt_init()
 {
 	ipcp_option_register(&ipaddr_opt_hnd);
 	load_config();
@@ -224,3 +224,4 @@ static void __init ipaddr_opt_init()
 	triton_event_register_handler(EV_PPP_STARTED, (triton_event_func)if_up);
 }
 
+DEFINE_INIT(4, ipaddr_opt_init);

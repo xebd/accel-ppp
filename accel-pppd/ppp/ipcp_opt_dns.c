@@ -152,7 +152,7 @@ static void load_config(void)
 		conf_dns2 = inet_addr(opt);
 }
 
-static void __init dns_opt_init()
+static void dns_opt_init()
 {
 	ipcp_option_register(&dns1_opt_hnd);
 	ipcp_option_register(&dns2_opt_hnd);
@@ -160,3 +160,5 @@ static void __init dns_opt_init()
 	load_config();
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
+
+DEFINE_INIT(4, dns_opt_init);

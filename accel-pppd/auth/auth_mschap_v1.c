@@ -494,7 +494,7 @@ static void chap_recv(struct ppp_handler_t *h)
 		log_ppp_warn("mschap-v1: unknown code received %x\n", hdr->code);
 }
 
-static void __init auth_mschap_v1_init()
+static void auth_mschap_v1_init()
 {
 	char *opt;
 
@@ -523,3 +523,4 @@ static void __init auth_mschap_v1_init()
 		log_emerg("mschap-v1: failed to register handler\n");
 }
 
+DEFINE_INIT(4, auth_mschap_v1_init);

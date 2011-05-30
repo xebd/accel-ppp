@@ -257,7 +257,7 @@ static int l2tp_dict_load(const char *fname)
 	return r;
 }
 
-static void __init dict_init(void)
+static void dict_init(void)
 {
 	char *opt;
 
@@ -269,3 +269,4 @@ static void __init dict_init(void)
 		_exit(EXIT_FAILURE);
 }
 
+DEFINE_INIT(20, dict_init);

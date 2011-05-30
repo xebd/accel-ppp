@@ -1128,7 +1128,7 @@ static void load_config(void)
 		conf_dir300_quirk = atoi(opt);
 }
 
-static void __init l2tp_init(void)
+static void l2tp_init(void)
 {
 	l2tp_conn = malloc(L2TP_MAX_TID * sizeof(void *));
 	memset(l2tp_conn, 0, L2TP_MAX_TID * sizeof(void *));
@@ -1144,3 +1144,4 @@ static void __init l2tp_init(void)
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 
+DEFINE_INIT(22, l2tp_init);

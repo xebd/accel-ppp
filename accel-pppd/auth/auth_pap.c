@@ -265,7 +265,7 @@ static void pap_recv(struct ppp_handler_t *h)
 	}
 }
 
-static void __init auth_pap_init()
+static void auth_pap_init()
 {
 	char *opt;
 
@@ -280,3 +280,4 @@ static void __init auth_pap_init()
 	ppp_auth_register_handler(&pap);
 }
 
+DEFINE_INIT(4, auth_pap_init);

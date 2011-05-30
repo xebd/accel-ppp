@@ -1241,7 +1241,7 @@ static int init_secret(struct pppoe_serv_t *serv)
 	return 0;
 }
 
-static void __init pppoe_init(void)
+static void pppoe_init(void)
 {
 	struct conf_sect_t *s = conf_get_section("pppoe");
 	struct conf_option_t *opt;
@@ -1288,3 +1288,4 @@ static void __init pppoe_init(void)
 		conf_ac_name = _strdup("accel-ppp");
 }
 
+DEFINE_INIT(21, pppoe_init);

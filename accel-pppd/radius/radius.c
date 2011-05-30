@@ -535,7 +535,7 @@ static int load_config(void)
 	return 0;
 }
 
-static void __init radius_init(void)
+static void radius_init(void)
 {
 	char *opt;
 	char *dict = DICTIONARY;
@@ -579,3 +579,4 @@ static void __init radius_init(void)
 	stat_interim_query_5m = stat_accm_create(5 * 60);
 }
 
+DEFINE_INIT(100, radius_init);

@@ -99,8 +99,9 @@ static void accomp_print(void (*print)(const char *fmt,...),struct lcp_option_t 
 	print("<accomp>");
 }
 
-static void __init accomp_opt_init()
+static void accomp_opt_init()
 {
 	lcp_option_register(&accomp_opt_hnd);
 }
 
+DEFINE_INIT(4, accomp_opt_init);

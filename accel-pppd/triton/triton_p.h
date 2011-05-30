@@ -82,6 +82,14 @@ struct _triton_ctx_call_t
 	void (*func)(void *);
 };
 
+struct _triton_init_t
+{
+	struct list_head entry;
+
+	int order;
+	void (*func)(void);
+};
+
 int log_init(void);
 int md_init();
 int timer_init();

@@ -186,10 +186,11 @@ static void load_config(void)
 	}
 }
 
-static void __init mru_opt_init()
+static void mru_opt_init()
 {
 	load_config();
 	lcp_option_register(&mru_opt_hnd);
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 
+DEFINE_INIT(4, mru_opt_init);

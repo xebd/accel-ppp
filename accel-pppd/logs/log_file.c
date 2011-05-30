@@ -678,7 +678,7 @@ static struct log_target_t fail_log_target =
 };
 
 
-static void __init init(void)
+static void init(void)
 {
 	char *opt;
 	
@@ -765,3 +765,5 @@ static void __init init(void)
 	triton_event_register_handler(EV_CTRL_STARTED, (triton_event_func)ev_ctrl_started);
 	triton_event_register_handler(EV_CTRL_FINISHED, (triton_event_func)ev_ctrl_finished);
 }
+
+DEFINE_INIT(1, init);

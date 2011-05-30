@@ -485,10 +485,11 @@ int l2tp_packet_add_octets(struct l2tp_packet_t *pack, int id, const uint8_t *va
 	return 0;
 }
 
-static void __init init(void)
+static void init(void)
 {
 	attr_pool = mempool_create(sizeof(struct l2tp_attr_t));
 	pack_pool = mempool_create(sizeof(struct l2tp_packet_t));
 	buf_pool = mempool_create(L2TP_MAX_PACKET_SIZE);
 }
 
+DEFINE_INIT(21, init);
