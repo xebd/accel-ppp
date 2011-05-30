@@ -579,4 +579,4 @@ static void radius_init(void)
 	stat_interim_query_5m = stat_accm_create(5 * 60);
 }
 
-DEFINE_INIT(100, radius_init);
+DEFINE_INIT(51, radius_init);

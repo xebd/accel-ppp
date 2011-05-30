@@ -655,4 +655,4 @@ static void init(void)
 	buf_pool = mempool_create(REQ_LENGTH_MAX);
 }
 
-DEFINE_INIT(101, init);
+DEFINE_INIT(50, init);

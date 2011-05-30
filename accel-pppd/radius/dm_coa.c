@@ -294,4 +294,4 @@ static void init(void)
 	triton_context_wakeup(&serv.ctx);
 }
 
-DEFINE_INIT(101, init);
+DEFINE_INIT(52, init);

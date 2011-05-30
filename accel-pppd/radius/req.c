@@ -277,4 +277,4 @@ static void req_init(void)
 	}
 }
 
-DEFINE_INIT(101, req_init);
+DEFINE_INIT(50, req_init);

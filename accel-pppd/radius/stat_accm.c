@@ -95,4 +95,4 @@ static void init(void)
 	item_pool = mempool_create(sizeof(struct item_t));
 }
 
-DEFINE_INIT(101, init);
+DEFINE_INIT(50, init);
