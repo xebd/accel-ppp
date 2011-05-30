@@ -1,10 +1,8 @@
 Overview
 --------
-The ACCEL-PPTP v1.0 is completly new implementation of PPTP/PPPoE/L2TP which was written from null.
+The ACCEL-PPP v1.0 is completly new implementation of PPTP/PPPoE/L2TP which was written from scratch.
 Userspace daemon has its own PPP implementation, so it does not uses pppd and one process (multi-threaded) manages all connections.
-ACCEL-PPTP uses kernel module to increase performance and decrease system usage.
-It is not fully tested yet so not recomended to use in production.
-Also v1.0 is oriented for servers and does not containes client part, if you need client please use v0.8.x
+ACCEL-PPP uses only kernel-mode implementations of pptp/l2tp/pppoe.
 
 
 Features
@@ -12,7 +10,7 @@ Features
 1.  Modular architecture
 2.  High-performance multi-threaded I/O core
 3.  Supported PPTP
-4.  Supported PPPoE
+4.  Supported PPPoE (including TR-101 extension)
 5.  Supported L2TPv2 (without IPsec)
 5.  Radius authentication/accounting
 6.  Radius DM/CoA extention
@@ -33,13 +31,15 @@ Requirment
 2. kernel-2.6.25 or later
 4. cmake-2.6 or later
 5. libnl-2.0 or probably later (required for builtin shaper)
+6. libcrypto-0.9.8 or probably later (openssl-0.9.8)
+7. libpcre
 
 
 Compilation and instalation
 -----------
 Make sure you have configured kernel headers in /usr/src/linux,
 or specify other location via KDIR.
-1. cd /path/to/accel-pptp-1.3.1
+1. cd /path/to/accel-ppp-1.3.5
 2. mkdir build
 3. cd build
 4. cmake [-DBUILD_DRIVER=FALSE] [-DKDIR=/usr/src/linux] [-DCMAKE_INSTALL_PREFIX=/usr/local] [-DCMAKE_BUILD_TYPE=Release] [-DLOG_PGSQL=FALSE] [-DSHAPER=FALSE] [-DRADIUS=TRUE] ..
@@ -59,13 +59,14 @@ or specify other location via KDIR.
 
 Configuration
 -------------
-read man accel-pptp.conf
+read man accel-ppp.conf
+
 
 Built-in shaper
 --------------
-accel-pptp supports tbf based shaper manager.
+accel-ppp supports tbf based shaper manager.
 To enable it uncomment shaper_tbf in [modules] section.
-It accepts radius attrbutes in various formats: rate, down-rate/up-rate and cisco-like. Values have to be in kilobits except cisco-like.
+It accepts radius attributes in various formats: rate, down-rate/up-rate and cisco-like. Values have to be in kilobits except cisco-like.
 For example:
 Filter-Id=1000 (means 1000Kbit both up-stream and down-stream rate)
 Filter-Id=2000/3000 (means 2000Kbit down-stream rate and 3000Kbit up-stream rate)
@@ -78,7 +79,7 @@ To specify different attributes for down-stream and up-stream rates use 'attr-do
 attr-down=PPPD-Downstream-Speed
 attr-up=PPPD-Upstream-Speed
 
-If you want to use cisco-like format configure accel-pptp as following:
+If you want to use cisco-like format configure accel-ppp as following:
 [tbf]
 vendor=Cisco
 attr=Cisco-AVPair
@@ -86,10 +87,11 @@ and send two attributes:
 Cisco-AVPair=lcp:interface-config#1=rate-limit input 2000000 8000 8000 conform-action transmit exceed-action drop (which means 2000Kbit up-stream rate and 8Kb burst)
 Cisco-AVPair=lcp:interface-config#1=rate-limit output 2000000 8000 8000 conform-action transmit exceed-action drop (which means 2000Kbit down-stream rate and 8Kb burst)
 
+
 Advanced shaper using
 ---------------------
 1. Burst configuration.
-If you not using cisco-format then burst calculates from rate and specified burst factors.
+If you not using cisco-like format then burst calculates from rate and specified burst factors.
 To specify burst factors use 'down-burst-factor' and 'up-burst-factor' options, for example:
 [tbf]
 down-burst-factor=1.0
@@ -114,15 +116,20 @@ You have to pass multiple Filter-Id attributes to utilize this functionality.
 Or cisco-like:
 Cisco-AVPair=lcp:interface-config#1=rate-limit output access-group 1 1000000 8000 8000 conform-action transmit exceed-action drop
 Cisco-AVPair=lcp:interface-config#1=rate-limit input access-group 1 1000000 8000 8000 conform-action transmit exceed-action drop
-ans so on...
+and so on...
+
+3. chap-secrets.
+If you use chap-secrets instead of radius then there is way to utilize built-in shaper too.
+The optional fifth column in chap-secrets file is used to pass rate information to shaper.
+Its format is same as for radius attributes, except you cann't utilize time ranges functionality.
 
 
 Warning !!!
 -----------
 1. The pptp driver conflicts with ip_gre driver (in kernel), so make sure that ip_gre is not built-in or loaded at run time
    (don't matter if you have 2.6.37 or later kernel).
-2. Never mix connections of accel-pptp and original pptpd, before starting accel-pptp make sure that no connections
-   of original pptpd exists.
+2. Don't mix connections of accel-ppp and poptop's pptpd, before starting accel-ppp make sure that no connections
+   of pptpd exists.
 
 
 Thanks
