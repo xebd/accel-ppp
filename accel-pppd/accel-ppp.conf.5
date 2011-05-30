@@ -386,6 +386,16 @@ Prefix of radattr files (for example /var/run/radattr, resulting files will be /
 .BI "verbose=" n
 If specified and greated then zero pppd_module will produce verbose logging.
 .TP
+.SH [chap-secrets]
+.br
+Configuration of chap-secrets module.
+.TP
+.BI "gw-ip-address=" x.x.x.x
+Specifies address to use as local address of ppp interfaces if chap-secrets is used for IP address assignment.
+.TP
+.BI "chap-secrets=" file
+Specifies alternate chap-secrets file location (default is /etc/ppp/chap-secrets).
+.TP
 .SH [ip-pool]
 .br
 Configuration of ippool module.
