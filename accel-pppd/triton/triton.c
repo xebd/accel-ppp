@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <limits.h>
 #include <sys/resource.h>
 
 #include "triton_p.h"
@@ -231,17 +232,21 @@ static void ctx_thread(struct _triton_context_t *ctx)
 
 struct _triton_thread_t *create_thread()
 {
+	pthread_attr_t attr;
 	struct _triton_thread_t *thread = _malloc(sizeof(*thread));
 	if (!thread) {
 		triton_log_error("out of memory");
 		return NULL;
 	}
 
+	pthread_attr_init(&attr);
+	pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN);
+
 	memset(thread, 0, sizeof(*thread));
 	pthread_mutex_init(&thread->sleep_lock, NULL);
 	pthread_cond_init(&thread->sleep_cond, NULL);
 	pthread_mutex_lock(&thread->sleep_lock);
-	if (pthread_create(&thread->thread, NULL, (void*(*)(void*))triton_thread, thread)) {
+	if (pthread_create(&thread->thread, &attr, (void*(*)(void*))triton_thread, thread)) {
 		triton_log_error("pthread_create: %s", strerror(errno));
 		return NULL;
 	}
