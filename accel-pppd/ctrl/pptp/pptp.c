@@ -402,10 +402,10 @@ static int pptp_echo_rply(struct pptp_conn_t *conn)
 	if (conf_verbose)
 		log_ppp_debug("recv [PPTP Echo-Reply <Identifier %x>]\n", msg->identifier);
 
-	if (msg->identifier != conn->echo_sent) {
+	/*if (msg->identifier != conn->echo_sent) {
 		log_ppp_warn("pptp:echo: identifier mismatch\n");
 		//return -1;
-	}
+	}*/
 	conn->echo_sent = 0;
 	return 0;
 }
