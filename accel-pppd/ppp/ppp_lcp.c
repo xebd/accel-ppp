@@ -586,6 +586,7 @@ static void lcp_recv_echo_repl(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 		}
 	}
 
+	lcp->fsm.id++;
 	lcp->echo_sent = 0;
 }
 
@@ -593,6 +594,8 @@ static void send_echo_reply(struct ppp_lcp_t *lcp)
 {
 	struct lcp_hdr_t *hdr = (struct lcp_hdr_t*)lcp->ppp->buf;
 	//uint32_t magic = *(uint32_t *)(hdr + 1);
+
+	lcp->echo_sent = 0;
 
 	hdr->code = ECHOREP;
 	*(uint32_t *)(hdr + 1) = htonl(lcp->magic);
@@ -613,7 +616,7 @@ static void send_echo_request(struct triton_timer_t *t)
 	} __attribute__((packed)) msg = {
 		.hdr.proto = htons(PPP_LCP),
 		.hdr.code = ECHOREQ,
-		.hdr.id = ++lcp->fsm.id,
+		.hdr.id = lcp->fsm.id,
 		.hdr.len = htons(8),
 		.magic = lcp->magic,
 	};
