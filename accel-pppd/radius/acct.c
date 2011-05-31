@@ -144,10 +144,12 @@ static void rad_acct_timeout(struct triton_timer_t *t)
 		}
 	}
 
-	req->pack->id++;
-	
-	rad_packet_change_int(req->pack, NULL, "Acct-Delay-Time", dt);
-	req_set_RA(req, conf_acct_secret);
+	if (conf_acct_delay_time) {
+		req->pack->id++;	
+		rad_packet_change_int(req->pack, NULL, "Acct-Delay-Time", dt);
+		req_set_RA(req, conf_acct_secret);
+	}
+
 	rad_req_send(req, conf_interim_verbose);
 	__sync_add_and_fetch(&stat_interim_sent, 1);
 }
@@ -171,12 +173,13 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 	rpd->acct_req->pack->id++;
 
 	rad_packet_change_val(rpd->acct_req->pack, NULL, "Acct-Status-Type", "Interim-Update");
-	rad_packet_change_int(rpd->acct_req->pack, NULL, "Acct-Delay-Time", 0);
+	if (conf_acct_delay_time)
+		rad_packet_change_int(rpd->acct_req->pack, NULL, "Acct-Delay-Time", 0);
 	req_set_RA(rpd->acct_req, conf_acct_secret);
 	rad_req_send(rpd->acct_req, conf_interim_verbose);
 	__sync_add_and_fetch(&stat_interim_sent, 1);
 	if (conf_acct_timeout) {
-		rpd->acct_req->timeout.period = conf_acct_timeout * 1000;
+		rpd->acct_req->timeout.period = conf_timeout * 1000;
 		triton_timer_add(rpd->ppp->ctrl->ctx, &rpd->acct_req->timeout, 0);
 	}
 }
@@ -213,17 +216,23 @@ int rad_acct_start(struct radius_pd_t *rpd)
 
 	time(&rpd->acct_timestamp);
 	
+	if (req_set_RA(rpd->acct_req, conf_acct_secret))
+		goto out_err;
+
 	for (i = 0; i < conf_max_try; i++) {
-		time(&ts);
-		rad_packet_change_int(rpd->acct_req->pack, NULL, "Acct-Delay-Time", ts - rpd->acct_timestamp);
-		if (req_set_RA(rpd->acct_req, conf_acct_secret))
-			goto out_err;
+		if (conf_acct_delay_time) {
+			time(&ts);
+			rad_packet_change_int(rpd->acct_req->pack, NULL, "Acct-Delay-Time", ts - rpd->acct_timestamp);
+			if (req_set_RA(rpd->acct_req, conf_acct_secret))
+				goto out_err;
+		}
 		if (rad_req_send(rpd->acct_req, conf_verbose))
 			goto out_err;
 		__sync_add_and_fetch(&stat_acct_sent, 1);
 		rad_req_wait(rpd->acct_req, conf_timeout);
 		if (!rpd->acct_req->reply) {
-			rpd->acct_req->pack->id++;
+			if (conf_acct_delay_time)
+				rpd->acct_req->pack->id++;
 			__sync_add_and_fetch(&stat_acct_lost, 1);
 			stat_accm_add(stat_acct_lost_1m, 1);
 			stat_accm_add(stat_acct_lost_5m, 1);
@@ -332,11 +341,13 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 		time(&rpd->acct_timestamp);
 
 		for(i = 0; i < conf_max_try; i++) {
-			time(&ts);
-			rad_packet_change_int(rpd->acct_req->pack, NULL, "Acct-Delay-Time", ts - rpd->acct_timestamp);
-			rpd->acct_req->pack->id++;
-			if (req_set_RA(rpd->acct_req, conf_acct_secret))
-				break;
+			if (conf_acct_delay_time) {
+				time(&ts);
+				rad_packet_change_int(rpd->acct_req->pack, NULL, "Acct-Delay-Time", ts - rpd->acct_timestamp);
+				rpd->acct_req->pack->id++;
+				if (req_set_RA(rpd->acct_req, conf_acct_secret))
+					break;
+			}
 			if (rad_req_send(rpd->acct_req, conf_verbose))
 				break;
 			__sync_add_and_fetch(&stat_acct_sent, 1);

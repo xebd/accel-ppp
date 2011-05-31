@@ -26,6 +26,7 @@
 int conf_max_try = 3;
 int conf_timeout = 3;
 int conf_acct_timeout = 3;
+int conf_acct_delay_time;
 char *conf_nas_identifier;
 in_addr_t conf_nas_ip_address;
 in_addr_t conf_gw_ip_address;
@@ -521,16 +522,20 @@ static int load_config(void)
 	}
 
 	opt = conf_get_opt("radius", "sid_in_auth");
-	if (opt && atoi(opt) > 0)
-		conf_sid_in_auth = 1;
+	if (opt)
+		conf_sid_in_auth = atoi(opt);
 	
 	opt = conf_get_opt("radius", "require-nas-identification");
-	if (opt && atoi(opt) > 0)
-		conf_require_nas_ident = 1;
+	if (opt)
+		conf_require_nas_ident = atoi(opt);
 	
 	opt = conf_get_opt("radius", "acct-interim-interval");
 	if (opt && atoi(opt) > 0)
 		conf_acct_interim_interval = atoi(opt);
+
+	opt = conf_get_opt("radius", "acct-delay-time");
+	if (opt)
+		conf_acct_delay_time = atoi(opt);
 
 	return 0;
 }

@@ -62,6 +62,7 @@ struct rad_req_t
 extern int conf_max_try;
 extern int conf_timeout;
 extern int conf_acct_timeout;
+extern int conf_acct_delay_time;
 extern int conf_verbose;
 extern int conf_interim_verbose;
 extern char *conf_nas_identifier;
