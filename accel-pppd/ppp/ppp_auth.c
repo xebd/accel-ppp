@@ -304,6 +304,16 @@ static void ppp_terminate_sec(struct ppp_t *ppp)
 	ppp_terminate(ppp, TERM_NAS_REQUEST, 0);
 }
 
+static void __ppp_auth_started(struct ppp_t *ppp)
+{
+	struct auth_layer_data_t *ad = container_of(ppp_find_layer_data(ppp, &auth_layer), typeof(*ad), ld);
+
+	log_ppp_debug("auth_layer_started\n");
+	ppp_layer_started(ppp, &ad->ld);
+	log_ppp_info1("%s: authentication successed\n", ppp->username);
+	triton_event_fire(EV_PPP_AUTHORIZED, ppp);
+}
+
 int __export ppp_auth_successed(struct ppp_t *ppp, char *username)
 {
 	struct ppp_t *p;
@@ -329,10 +339,7 @@ int __export ppp_auth_successed(struct ppp_t *ppp, char *username)
 	ppp->username = username;
 	pthread_rwlock_unlock(&ppp_lock);
 
-	log_ppp_debug("auth_layer_started\n");
-	ppp_layer_started(ppp, &ad->ld);
-	log_ppp_info1("%s: authentication successed\n", username);
-	triton_event_fire(EV_PPP_AUTHORIZED, ppp);
+	triton_context_call(ppp->ctrl->ctx, (triton_event_func)__ppp_auth_started, ppp);
 
 	return 0;
 }
