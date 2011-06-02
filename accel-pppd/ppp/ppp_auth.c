@@ -329,7 +329,6 @@ int __export ppp_auth_successed(struct ppp_t *ppp, char *username)
 			} else {
 				if (conf_single_session == 1)
 					triton_context_call(p->ctrl->ctx, (triton_event_func)ppp_terminate_sec, p);
-				break;
 			}
 		}
 	}
