@@ -29,6 +29,7 @@ struct col_t
 	struct list_head entry;
 	struct column_t *column;
 	int width;
+	int hidden;
 };
 
 struct row_t
@@ -131,6 +132,7 @@ static int show_ses_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 	int i, n, total_width, def_columns = 0;
 	struct ppp_t *ppp;
 	char *buf = NULL;
+	int match_key_f = 0, order_key_f = 0;
 	LIST_HEAD(c_list);
 	LIST_HEAD(r_list);
 	LIST_HEAD(t_list);
@@ -179,10 +181,15 @@ static int show_ses_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 		if (ptr2)
 			*ptr2 = 0;
 		column = find_column(ptr1);
+		if (column == match_key)
+			match_key_f = 1;
+		if (column == order_key)
+			order_key_f = 1;
 		if (column) {
 			col = _malloc(sizeof(*col));
 			col->column = column;
 			col->width = strlen(column->name);
+			col->hidden = 0;
 			list_add_tail(&col->entry, &c_list);
 		} else {
 			if (!def_columns) {
@@ -196,6 +203,22 @@ static int show_ses_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 		ptr1 = ptr2 + 1;
 	}
 	_free(columns);
+
+	if (match_key && !match_key_f) {
+		col = _malloc(sizeof(*col));
+		col->column = match_key;
+		col->width = 0;
+		col->hidden = 1;
+		list_add_tail(&col->entry, &c_list);
+	}
+	
+	if (order_key && !order_key_f) {
+		col = _malloc(sizeof(*col));
+		col->column = order_key;
+		col->width = 0;
+		col->hidden = 1;
+		list_add_tail(&col->entry, &c_list);
+	}
 
 	pthread_rwlock_rdlock(&ppp_lock);
 	list_for_each_entry(ppp, &ppp_list, entry) {
@@ -244,8 +267,11 @@ static int show_ses_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 	}
 
 	total_width = -1;
-	list_for_each_entry(col, &c_list, entry)
+	list_for_each_entry(col, &c_list, entry) {
+		if (col->hidden)
+			continue;
 		total_width += col->width + 3;
+	}
 	
 	buf = _malloc(total_width + 3);
 	if (!buf)
@@ -253,6 +279,8 @@ static int show_ses_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 	
 	ptr1 = buf;
 	list_for_each_entry(col, &c_list, entry) {
+		if (col->hidden)
+			continue;
 		n = strlen(col->column->name);
 		if (col->width > n + 1) {
 			ptr2 = ptr1;
@@ -278,6 +306,8 @@ static int show_ses_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 
 	ptr1 = buf;
 	list_for_each_entry(col, &c_list, entry) {
+		if (col->hidden)
+			continue;
 		memset(ptr1, '-', col->width + 2);
 		ptr1 += col->width + 2;
 		*ptr1 = '+';
@@ -291,6 +321,8 @@ static int show_ses_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 		row = list_entry(r_list.next, typeof(*row), entry);
 		ptr1 = buf;
 		list_for_each_entry(cell, &row->cell_list, entry) {
+			if (cell->col->hidden)
+				continue;
 			ptr2 = ptr1;
 			sprintf(ptr1, " %s ", cell->buf);
 			ptr1 = strchr(ptr1, 0);
