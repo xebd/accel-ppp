@@ -280,4 +280,4 @@ static void auth_pap_init()
 	ppp_auth_register_handler(&pap);
 }
 
-DEFINE_INIT(4, auth_pap_init);
+DEFINE_INIT(7, auth_pap_init);

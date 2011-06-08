@@ -523,4 +523,4 @@ static void auth_mschap_v1_init()
 		log_emerg("mschap-v1: failed to register handler\n");
 }
 
-DEFINE_INIT(4, auth_mschap_v1_init);
+DEFINE_INIT(5, auth_mschap_v1_init);

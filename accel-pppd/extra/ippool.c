@@ -206,5 +206,5 @@ static void ippool_init(void)
 	ipdb_register(&ipdb);
 }
 
-DEFINE_INIT(100, ippool_init);
+DEFINE_INIT(101, ippool_init);
 

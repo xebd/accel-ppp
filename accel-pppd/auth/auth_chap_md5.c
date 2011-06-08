@@ -445,4 +445,4 @@ static void auth_chap_md5_init()
 		log_emerg("chap-md5: failed to register handler\n");
 }
 
-DEFINE_INIT(4, auth_chap_md5_init);
+DEFINE_INIT(6, auth_chap_md5_init);
