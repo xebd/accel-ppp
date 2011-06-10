@@ -84,13 +84,17 @@ struct ppp_ccp_t
 	int ropt_len;
 	
 	int conf_req_len;
-	int passive;
+	int passive:1;
+	int starting:1;
 	int started:1;
 	int need_req:1;
 };
 
 int ccp_option_register(struct ccp_option_handler_t *h);
 struct ccp_option_t *ccp_find_option(struct ppp_t *ppp, struct ccp_option_handler_t *h);
+
+struct ppp_ccp_t *ccp_find_layer_data(struct ppp_t *ppp);
+int ccp_ipcp_started(struct ppp_t *ppp);
 
 #endif
 

@@ -66,6 +66,9 @@ static struct ccp_option_t *mppe_init(struct ppp_ccp_t *ccp)
 		mppe_opt->mppe = 1;
 	else
 		mppe_opt->mppe = -1;
+	
+	if (conf_mppe == 2)
+		ccp->passive = 0;
 
 	mppe_opt->opt.id = CI_MPPE;
 	mppe_opt->opt.len = 6;
@@ -252,10 +255,12 @@ static void mppe_print(void (*print)(const char *fmt,...),struct ccp_option_t *o
 
 static void ev_mppe_keys(struct ev_mppe_keys_t *ev)
 {
+	struct ppp_ccp_t *ccp = ccp_find_layer_data(ev->ppp);
 	struct mppe_option_t *mppe_opt = container_of(ccp_find_option(ev->ppp, &mppe_opt_hnd), typeof(*mppe_opt), opt);
 
 	if ((ev->type & 0x04) == 0) {
 		log_ppp_warn("mppe: 128-bit session keys not allowed, disabling mppe ...\n");
+		mppe_opt->mppe = 0;
 		return;
 	}
 	
@@ -263,9 +268,10 @@ static void ev_mppe_keys(struct ev_mppe_keys_t *ev)
 	memcpy(mppe_opt->send_key, ev->send_key, 16);
 	mppe_opt->policy = ev->policy;
 
-	if (ev->policy == 2)
+	if (ev->policy == 2) {
 		mppe_opt->mppe = 1;
-	else if (ev->policy == 1) {
+		ccp->passive = 0;
+	} else if (ev->policy == 1) {
 		if (conf_mppe == 1)
 			mppe_opt->mppe = 1;
 		else

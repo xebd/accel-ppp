@@ -25,6 +25,7 @@ struct recv_opt_t
 };
 
 static int conf_ccp = 1;
+static int conf_ccp_max_configure = 3;
 
 static struct ppp_layer_t ccp_layer;
 static LIST_HEAD(option_handlers);
@@ -104,13 +105,15 @@ static struct ppp_layer_data_t *ccp_layer_init(struct ppp_t *ppp)
 	
 	ppp_register_unit_handler(ppp, &ccp->hnd);
 	
+	ccp->passive = 1;
+
 	INIT_LIST_HEAD(&ccp->options);
 	ccp_options_init(ccp);
-
-	ccp->passive = 0;
 	
 	ccp->fsm.proto = PPP_CCP;
 	ppp_fsm_init(&ccp->fsm);
+
+	ccp->fsm.max_configure = conf_ccp_max_configure;
 
 	ccp->fsm.layer_up = ccp_layer_up;
 	ccp->fsm.layer_finished = ccp_layer_down;
@@ -133,14 +136,18 @@ int ccp_layer_start(struct ppp_layer_data_t *ld)
 	log_ppp_debug("ccp_layer_start\n");
 
 	if (list_empty(&ccp->options) || !conf_ccp) {
-		ccp->ppp->ccp_started = 1;
+		ccp->started = 1;
 		ppp_layer_started(ccp->ppp, &ccp->ld);
 		return 0;
 	}
-	
-	ppp_fsm_lower_up(&ccp->fsm);
-	if (ppp_fsm_open(&ccp->fsm))
-		return -1;
+
+	ccp->starting = 1;
+
+	if (!ccp->passive) {
+		ppp_fsm_lower_up(&ccp->fsm);
+		if (ppp_fsm_open(&ccp->fsm))
+			return -1;
+	}
 	
 	if (ccp_set_flags(ccp->ppp->unit_fd, 1, 0)) {
 		ppp_fsm_close(&ccp->fsm);
@@ -184,7 +191,6 @@ static void ccp_layer_up(struct ppp_fsm_t *fsm)
 	if (!ccp->started) {
 		log_ppp_debug("ccp_layer_started\n");
 		ccp->started = 1;
-		ccp->ppp->ccp_started = 1;
 		if (ccp_set_flags(ccp->ppp->unit_fd, 1, 1)) {
 			ppp_terminate(ccp->ppp, TERM_NAS_ERROR, 0);
 			return;
@@ -199,7 +205,6 @@ static void ccp_layer_down(struct ppp_fsm_t *fsm)
 
 	log_ppp_debug("ccp_layer_finished\n");
 
-	ccp->ppp->ccp_started = 1;
 	if (!ccp->started) {
 		ccp->started = 1;
 		ppp_fsm_close(fsm);
@@ -229,10 +234,8 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 
 	ccp->need_req = 0;
 
-	if (ccp->passive) {
-		ccp->passive--;
+	if (ccp->passive)
 		return 0;
-	}
 
 	buf = _malloc(ccp->conf_req_len);
 	ccp_hdr = (struct ccp_hdr_t*)buf;
@@ -613,7 +616,7 @@ static void ccp_recv(struct ppp_handler_t*h)
 	struct ppp_ccp_t *ccp = container_of(h, typeof(*ccp), hnd);
 	int r;
 
-	if (ccp->fsm.fsm_state == FSM_Initial || ccp->fsm.fsm_state == FSM_Closed || ccp->ppp->terminating) {
+	if (!ccp->starting || ccp->fsm.fsm_state == FSM_Closed || ccp->ppp->terminating) {
 		if (conf_ppp_verbose)
 			log_ppp_warn("CCP: discarding packet\n");
 		if (ccp->fsm.fsm_state == FSM_Closed || !conf_ccp)
@@ -638,8 +641,13 @@ static void ccp_recv(struct ppp_handler_t*h)
 	ccp->fsm.recv_id = hdr->id;
 	
 	switch(hdr->code) {
-		case CONFREQ:
+		case CONFREQ:	
 			r = ccp_recv_conf_req(ccp, (uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN);
+			if (ccp->passive) {
+				ppp_fsm_lower_up(&ccp->fsm);
+				ppp_fsm_open(&ccp->fsm);
+				ccp->passive = 0;
+			}
 			if (ccp->started) {
 				if (r == CCP_OPT_ACK)
 					send_conf_ack(&ccp->fsm);
@@ -660,10 +668,10 @@ static void ccp_recv(struct ppp_handler_t*h)
 			}
 			ccp_free_conf_req(ccp);
 			
-			if (r == CCP_OPT_ACK && ccp->passive) {
+			/*if (r == CCP_OPT_ACK && ccp->passive) {
 				ccp->passive = 0;
 				send_conf_req(&ccp->fsm);
-			}
+			}*/
 			if (r == CCP_OPT_FAIL)
 				ppp_terminate(ccp->ppp, TERM_USER_ERROR, 0);
 			break;
@@ -732,6 +740,10 @@ int ccp_option_register(struct ccp_option_handler_t *h)
 	return 0;
 }
 
+struct ppp_ccp_t *ccp_find_layer_data(struct ppp_t *ppp)
+{
+	return container_of(ppp_find_layer_data(ppp, &ccp_layer), typeof(struct ppp_ccp_t), ld);
+}
 struct ccp_option_t *ccp_find_option(struct ppp_t *ppp, struct ccp_option_handler_t *h)
 {
 	struct ppp_ccp_t *ccp = container_of(ppp_find_layer_data(ppp, &ccp_layer), typeof(*ccp), ld);
@@ -743,6 +755,21 @@ struct ccp_option_t *ccp_find_option(struct ppp_t *ppp, struct ccp_option_handle
 	
 	log_emerg("ccp: BUG: option not found\n");
 	abort();
+}
+
+int ccp_ipcp_started(struct ppp_t *ppp)
+{
+	struct ppp_ccp_t *ccp = container_of(ppp_find_layer_data(ppp, &ccp_layer), typeof(*ccp), ld);
+
+	if (ccp->passive) {
+		ccp->fsm.fsm_state = FSM_Closed;	
+		ccp->started = 1;
+		ppp_layer_started(ccp->ppp, &ccp->ld);
+
+		return 0;
+	}
+
+	return !ccp->started;
 }
 
 static struct ppp_layer_t ccp_layer=
@@ -760,6 +787,10 @@ static void load_config(void)
 	opt = conf_get_opt("ppp", "ccp");
 	if (opt && atoi(opt) >= 0)
 		conf_ccp = atoi(opt);
+	
+	opt = conf_get_opt("ppp", "ccp-max-configure");
+	if (opt && atoi(opt) > 0)
+		conf_ccp_max_configure = atoi(opt);
 }
 
 static void ccp_init(void)

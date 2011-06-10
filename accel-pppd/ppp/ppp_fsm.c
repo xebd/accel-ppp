@@ -97,7 +97,7 @@ int ppp_fsm_open(struct ppp_fsm_t *layer)
 	switch(layer->fsm_state)
 	{
 		case FSM_Initial:
-			if (layer->layer_started) layer->layer_started(layer);
+			//if (layer->layer_started) layer->layer_started(layer);
 			layer->fsm_state=FSM_Starting;
 			break;
 		case FSM_Starting:
@@ -215,6 +215,12 @@ void ppp_fsm_recv_conf_req_ack(struct ppp_fsm_t *layer)
 			--layer->restart_counter;
 			if (layer->send_conf_req) layer->send_conf_req(layer);
 		case FSM_Req_Sent:
+			if (layer->send_conf_ack) layer->send_conf_ack(layer);
+			init_req_counter(layer,layer->max_configure);
+			--layer->restart_counter;
+			if (layer->send_conf_req) layer->send_conf_req(layer);
+			layer->fsm_state=FSM_Ack_Sent;
+			break;
 		case FSM_Ack_Sent:
 			if (layer->send_conf_ack) layer->send_conf_ack(layer);
 			layer->fsm_state=FSM_Ack_Sent;
