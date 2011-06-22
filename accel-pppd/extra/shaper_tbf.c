@@ -48,6 +48,7 @@ static int temp_up_speed;
 
 static pthread_rwlock_t shaper_lock = PTHREAD_RWLOCK_INITIALIZER;
 static LIST_HEAD(shaper_list);
+static pthread_mutex_t nl_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static double tick_in_usec = 1;
 static double clock_factor = 1;
@@ -384,11 +385,14 @@ static int install_shaper(const char *ifname, int down_speed, int down_burst, in
 	strcpy(ifr.ifr_name, ifname);
 
 	if (ioctl(sock_fd, SIOCGIFINDEX, &ifr)) {
-		log_ppp_error("tbf: ioctl(SIOCGIFINDEX)", strerror(errno));
+		log_ppp_error("tbf: ioctl(SIOCGIFINDEX): %s\n", strerror(errno));
 		return -1;
 	}
 
+	pthread_mutex_lock(&nl_lock);
 	h = nl_socket_alloc();
+	pthread_mutex_unlock(&nl_lock);
+
 	if (!h) {
 		log_ppp_error("tbf: nl_socket_alloc failed\n");
 		return -1;
@@ -396,7 +400,7 @@ static int install_shaper(const char *ifname, int down_speed, int down_burst, in
 
 	err = nl_connect(h, NETLINK_ROUTE);
 	if (err < 0) {
-		log_ppp_error("tbf: nl_connect: %s", strerror(errno));
+		log_ppp_error("tbf: nl_connect: %s\n", strerror(errno));
 		goto out;
 	}
 
@@ -413,7 +417,10 @@ static int install_shaper(const char *ifname, int down_speed, int down_burst, in
 
 	nl_close(h);
 out:
+
+	pthread_mutex_lock(&nl_lock);
 	nl_socket_free(h);
+	pthread_mutex_unlock(&nl_lock);
 
 	return 0;
 }
@@ -463,7 +470,7 @@ static int remove_shaper(const char *ifname)
 	strcpy(ifr.ifr_name, ifname);
 
 	if (ioctl(sock_fd, SIOCGIFINDEX, &ifr)) {
-		log_ppp_error("tbf: ioctl(SIOCGIFINDEX)", strerror(errno));
+		log_ppp_error("tbf: ioctl(SIOCGIFINDEX): %s\n", strerror(errno));
 		return -1;
 	}
 
@@ -481,7 +488,10 @@ static int remove_shaper(const char *ifname)
 		.tcm_parent = TC_H_INGRESS,
 	};
 
+	pthread_mutex_lock(&nl_lock);
 	h = nl_socket_alloc();
+	pthread_mutex_unlock(&nl_lock);
+
 	if (!h) {
 		log_ppp_error("tbf: nl_socket_alloc failed\n");
 		return -1;
@@ -489,9 +499,8 @@ static int remove_shaper(const char *ifname)
 
 	err = nl_connect(h, NETLINK_ROUTE);
 	if (err < 0) {
-		log_ppp_error("tbf: nl_connect: %s", strerror(errno));
-		nl_socket_free(h);
-		return -1;
+		log_ppp_error("tbf: nl_connect: %s\n", strerror(errno));
+		goto out_err1;
 	}
 
 	pmsg = nlmsg_alloc_simple(RTM_DELQDISC, NLM_F_CREATE | NLM_F_REPLACE);
@@ -525,17 +534,25 @@ static int remove_shaper(const char *ifname)
 	nlmsg_free(pmsg);
 
 	nl_close(h);
+
+	pthread_mutex_lock(&nl_lock);
 	nl_socket_free(h);
+	pthread_mutex_unlock(&nl_lock);
+
 	return 0;
 
 out_err:
-	log_ppp_error("tbf: failed to remove shaper\n");
-
 	if (pmsg)
 		nlmsg_free(pmsg);
 
 	nl_close(h);
+
+out_err1:
+	pthread_mutex_lock(&nl_lock);
 	nl_socket_free(h);
+	pthread_mutex_unlock(&nl_lock);
+
+	log_ppp_error("tbf: failed to remove shaper\n");
 
 	return -1;
 }
@@ -978,6 +995,9 @@ static void update_shaper_tr(struct shaper_pd_t *pd)
 {
 	struct time_range_pd_t *tr;
 
+	if (pd->ppp->terminating)
+		return;
+
 	list_for_each_entry(tr, &pd->tr_list, entry) {
 		if (tr->id != time_range_id)
 			continue;
@@ -1003,8 +1023,7 @@ static void update_shaper_tr(struct shaper_pd_t *pd)
 		}
 	} else
 		if (conf_verbose)
-			log_ppp_info2("tbf: removed shaper\n");
-		
+			log_ppp_info2("tbf: removed shaper\n");	
 }
 
 static void time_range_begin_timer(struct triton_timer_t *t)
