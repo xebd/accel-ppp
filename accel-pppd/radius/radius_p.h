@@ -10,6 +10,8 @@
 #include "ppp.h"
 #include "ipdb.h"
 
+struct rad_server_t;
+
 struct radius_pd_t
 {
 	struct list_head entry;
@@ -46,16 +48,37 @@ struct radius_pd_t
 
 struct rad_req_t
 {
+	struct list_head entry;
 	struct triton_context_t ctx;
 	struct triton_md_handler_t hnd;
 	struct triton_timer_t timeout;
 	uint8_t RA[16];
 	struct rad_packet_t *pack;
 	struct rad_packet_t *reply;
-	in_addr_t server_addr;
-	int server_port;
 
 	struct radius_pd_t *rpd;
+	struct rad_server_t *serv;
+	
+	in_addr_t server_addr;
+	int server_port;
+};
+
+struct rad_server_t
+{
+	struct list_head entry;
+	in_addr_t auth_addr;
+	int auth_port;
+	char *auth_secret;
+	in_addr_t acct_addr;
+	int acct_port;
+	char *acct_secret;
+	int max_req_cnt;
+	int req_cnt;
+	struct list_head req_queue;
+	int client_cnt;
+	time_t fail_time;
+	int conf_fail_time;
+	pthread_mutex_t lock;
 };
 
 
@@ -70,11 +93,6 @@ extern in_addr_t conf_nas_ip_address;
 extern in_addr_t conf_bind;
 extern in_addr_t conf_gw_ip_address;
 extern in_addr_t conf_auth_server;
-extern char *conf_auth_secret;
-extern int conf_auth_server_port;
-extern in_addr_t conf_acct_server;
-extern char *conf_acct_secret;
-extern int conf_acct_server_port;
 extern char *conf_dm_coa_secret;
 extern int conf_sid_in_auth;
 extern int conf_require_nas_ident;
@@ -121,6 +139,13 @@ void rad_packet_print(struct rad_packet_t *pack, void (*print)(const char *fmt, 
 int rad_packet_send(struct rad_packet_t *pck, int fd, struct sockaddr_in *addr);
 
 void dm_coa_cancel(struct radius_pd_t *pd);
+
+struct rad_server_t *rad_server_get();
+void rad_server_put(struct rad_server_t *);
+int rad_server_req_enter(struct rad_req_t *);
+void rad_server_req_exit(struct rad_req_t *);
+int rad_server_realloc(struct rad_req_t *, int);
+void rad_server_fail(struct rad_server_t *);
 
 struct stat_accm_t;
 struct stat_accm_t *stat_accm_create(unsigned int time);

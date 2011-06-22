@@ -34,14 +34,6 @@ in_addr_t conf_bind;
 int conf_verbose;
 int conf_interim_verbose;
 
-in_addr_t conf_auth_server;
-int conf_auth_server_port = 1812;
-char *conf_auth_secret;
-
-in_addr_t conf_acct_server;
-int conf_acct_server_port = 1813;
-char *conf_acct_secret;
-
 in_addr_t conf_dm_coa_server;
 int conf_dm_coa_port = 3799;
 char *conf_dm_coa_secret;

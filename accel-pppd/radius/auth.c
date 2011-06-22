@@ -30,7 +30,7 @@ static int decrypt_chap_mppe_keys(struct rad_req_t *req, struct rad_attr_t *attr
 	memcpy(plain, attr->val.octets, 32);
 
 	MD5_Init(&md5_ctx);
-	MD5_Update(&md5_ctx, conf_auth_secret, strlen(conf_auth_secret));
+	MD5_Update(&md5_ctx, req->serv->auth_secret, strlen(req->serv->auth_secret));
 	MD5_Update(&md5_ctx, req->pack->buf + 4, 16);
 	MD5_Final(md5, &md5_ctx);
 
@@ -38,7 +38,7 @@ static int decrypt_chap_mppe_keys(struct rad_req_t *req, struct rad_attr_t *attr
 		plain[i] ^= md5[i];
 	
 	MD5_Init(&md5_ctx);
-	MD5_Update(&md5_ctx, conf_auth_secret, strlen(conf_auth_secret));
+	MD5_Update(&md5_ctx, req->serv->auth_secret, strlen(req->serv->auth_secret));
 	MD5_Update(&md5_ctx, attr->val.octets, 16);
 	MD5_Final(md5, &md5_ctx);
 
@@ -74,7 +74,7 @@ static int decrypt_mppe_key(struct rad_req_t *req, struct rad_attr_t *attr, uint
 	}
 
 	MD5_Init(&md5_ctx);
-	MD5_Update(&md5_ctx, conf_auth_secret, strlen(conf_auth_secret));
+	MD5_Update(&md5_ctx, req->serv->auth_secret, strlen(req->serv->auth_secret));
 	MD5_Update(&md5_ctx, req->pack->buf + 4, 16);
 	MD5_Update(&md5_ctx, attr->val.octets, 2);
 	MD5_Final(md5, &md5_ctx);
@@ -90,7 +90,7 @@ static int decrypt_mppe_key(struct rad_req_t *req, struct rad_attr_t *attr, uint
 	}
 
 	MD5_Init(&md5_ctx);
-	MD5_Update(&md5_ctx, conf_auth_secret, strlen(conf_auth_secret));
+	MD5_Update(&md5_ctx, req->serv->auth_secret, strlen(req->serv->auth_secret));
 	MD5_Update(&md5_ctx, attr->val.octets + 2, 16);
 	MD5_Final(md5, &md5_ctx);
 
@@ -145,42 +145,71 @@ static uint8_t* encrypt_password(const char *passwd, const char *secret, const u
 static int rad_auth_send(struct rad_req_t *req)
 {
 	int i;
-	struct timeval tv;
+	struct timeval tv, tv2;
 	unsigned int dt;
+	int timeout;
 
-	for(i = 0; i < conf_max_try; i++) {
-		__sync_add_and_fetch(&stat_auth_sent, 1);
-		gettimeofday(&tv, NULL);
-		if (rad_req_send(req, conf_verbose))
-			goto out;
+	while (1) {
+		if (rad_server_req_enter(req)) {
+			if (rad_server_realloc(req, 0)) {
+				log_ppp_warn("radius: no available servers\n");
+				break;
+			}
+			continue;
+		}
 
-		rad_req_wait(req, conf_timeout);
+		for(i = 0; i < conf_max_try; i++) {
+			__sync_add_and_fetch(&stat_auth_sent, 1);
+			gettimeofday(&tv, NULL);
+			if (rad_req_send(req, conf_verbose))
+				goto out;
 
-		if (req->reply) {
-			if (req->reply->id != req->pack->id) {
-				__sync_add_and_fetch(&stat_auth_lost, 1);
-				stat_accm_add(stat_auth_lost_1m, 1);
-				stat_accm_add(stat_auth_lost_5m, 1);
-				rad_packet_free(req->reply);
-				req->reply = NULL;
-			} else {
+			timeout = conf_timeout;
+
+			while (timeout > 0) {
+
+				rad_req_wait(req, timeout);
+
+				if (req->reply) {
+					if (req->reply->id != req->pack->id) {
+						rad_packet_free(req->reply);
+						req->reply = NULL;
+						gettimeofday(&tv2, NULL);
+						timeout = conf_timeout - ((tv2.tv_sec - tv.tv_sec) * 1000 + (tv2.tv_usec - tv.tv_usec) / 1000);
+					} else
+						break;
+				} else
+					break;
+			}
+
+			if (req->reply) {
 				dt = (req->reply->tv.tv_sec - tv.tv_sec) * 1000 + (req->reply->tv.tv_usec - tv.tv_usec) / 1000;
 				stat_accm_add(stat_auth_query_1m, dt);
 				stat_accm_add(stat_auth_query_5m, dt);
 				break;
+			} else {
+				__sync_add_and_fetch(&stat_auth_lost, 1);
+				stat_accm_add(stat_auth_lost_1m, 1);
+				stat_accm_add(stat_auth_lost_5m, 1);
 			}
-		} else
-			__sync_add_and_fetch(&stat_auth_lost, 1);
-			stat_accm_add(stat_auth_lost_1m, 1);
-			stat_accm_add(stat_auth_lost_5m, 1);
-	}
+		}
+		
+		rad_server_req_exit(req);
 
-	if (!req->reply)
-		log_ppp_warn("radius:auth: no response\n");
-	else if (req->reply->code == CODE_ACCESS_ACCEPT) {
-		if (rad_proc_attrs(req))
-			return PWDB_DENIED;
-		return PWDB_SUCCESS;
+		if (!req->reply) {
+			rad_server_fail(req->serv);
+			if (rad_server_realloc(req, 0)) {
+				log_ppp_warn("radius: no available servers\n");
+				break;
+			}
+		} else {
+			if (req->reply->code == CODE_ACCESS_ACCEPT) {
+				if (rad_proc_attrs(req))
+					return PWDB_DENIED;
+				return PWDB_SUCCESS;
+			} else
+				break;
+		}
 	}
 
 out:
@@ -200,7 +229,7 @@ int rad_auth_pap(struct radius_pd_t *rpd, const char *username, va_list args)
 	if (!req)
 		return PWDB_DENIED;
 	
-	epasswd = encrypt_password(passwd, conf_auth_secret, req->RA, &epasswd_len);
+	epasswd = encrypt_password(passwd, req->serv->auth_secret, req->RA, &epasswd_len);
 	if (!epasswd)
 		goto out;
 

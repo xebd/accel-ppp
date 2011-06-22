@@ -116,6 +116,30 @@ static int rad_acct_read(struct triton_md_handler_t *h)
 	return 0;
 }
 
+static void __rad_req_send(struct rad_req_t *req)
+{
+	while (1) {
+
+		if (rad_server_req_enter(req)) {
+			if (rad_server_realloc(req, 1)) {
+				log_ppp_warn("radius:acct: no servers available, terminating session...\n");
+				if (conf_acct_timeout) {
+					ppp_terminate(req->rpd->ppp, TERM_NAS_ERROR, 0);
+					return;
+				}
+				break;
+			}
+			continue;
+		}
+
+		rad_req_send(req, conf_interim_verbose);
+
+		rad_server_req_exit(req);
+
+		break;
+	}
+}
+
 static void rad_acct_timeout(struct triton_timer_t *t)
 {
 	struct rad_req_t *req = container_of(t, typeof(*req), timeout);
@@ -130,9 +154,13 @@ static void rad_acct_timeout(struct triton_timer_t *t)
 	dt = ts - req->rpd->acct_timestamp;
 
 	if (dt > conf_acct_timeout) {
-		log_ppp_warn("radius:acct: no response, terminating session...\n");
-		ppp_terminate(req->rpd->ppp, TERM_NAS_ERROR, 0);
-		return;
+		rad_server_fail(req->serv);
+		if (rad_server_realloc(req, 1)) {
+			log_ppp_warn("radius:acct: no servers available, terminating session...\n");
+			ppp_terminate(req->rpd->ppp, TERM_NAS_ERROR, 0);
+			return;
+		}
+		time(&req->rpd->acct_timestamp);
 	}
 	if (dt > conf_acct_timeout / 2) {
 		req->timeout.period += 1000;
@@ -147,10 +175,11 @@ static void rad_acct_timeout(struct triton_timer_t *t)
 	if (conf_acct_delay_time) {
 		req->pack->id++;	
 		rad_packet_change_int(req->pack, NULL, "Acct-Delay-Time", dt);
-		req_set_RA(req, conf_acct_secret);
+		req_set_RA(req, req->serv->acct_secret);
 	}
 
-	rad_req_send(req, conf_interim_verbose);
+	__rad_req_send(req);
+
 	__sync_add_and_fetch(&stat_interim_sent, 1);
 }
 
@@ -175,8 +204,10 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 	rad_packet_change_val(rpd->acct_req->pack, NULL, "Acct-Status-Type", "Interim-Update");
 	if (conf_acct_delay_time)
 		rad_packet_change_int(rpd->acct_req->pack, NULL, "Acct-Delay-Time", 0);
-	req_set_RA(rpd->acct_req, conf_acct_secret);
-	rad_req_send(rpd->acct_req, conf_interim_verbose);
+	req_set_RA(rpd->acct_req, rpd->acct_req->serv->acct_secret);
+
+	__rad_req_send(rpd->acct_req);
+
 	__sync_add_and_fetch(&stat_interim_sent, 1);
 	if (conf_acct_timeout) {
 		rpd->acct_req->timeout.period = conf_timeout * 1000;
@@ -189,8 +220,8 @@ int rad_acct_start(struct radius_pd_t *rpd)
 	int i;
 	time_t ts;
 	unsigned int dt;
-
-	if (!conf_acct_secret)
+	
+	if (!rpd->acct_req->serv)
 		return 0;
 
 	rpd->acct_req = rad_req_alloc(rpd, CODE_ACCOUNTING_REQUEST, rpd->ppp->username);
@@ -216,50 +247,75 @@ int rad_acct_start(struct radius_pd_t *rpd)
 
 	time(&rpd->acct_timestamp);
 	
-	if (req_set_RA(rpd->acct_req, conf_acct_secret))
+	if (req_set_RA(rpd->acct_req, rpd->acct_req->serv->acct_secret))
 		goto out_err;
 
-	for (i = 0; i < conf_max_try; i++) {
-		if (conf_acct_delay_time) {
-			time(&ts);
-			rad_packet_change_int(rpd->acct_req->pack, NULL, "Acct-Delay-Time", ts - rpd->acct_timestamp);
-			if (req_set_RA(rpd->acct_req, conf_acct_secret))
+	while (1) {
+
+		if (rad_server_req_enter(rpd->acct_req)) {
+			if (rad_server_realloc(rpd->acct_req, 1)) {
+				log_ppp_warn("radius:acct_start: no servers available\n");
 				goto out_err;
-		}
-		if (rad_req_send(rpd->acct_req, conf_verbose))
-			goto out_err;
-		__sync_add_and_fetch(&stat_acct_sent, 1);
-		rad_req_wait(rpd->acct_req, conf_timeout);
-		if (!rpd->acct_req->reply) {
-			if (conf_acct_delay_time)
-				rpd->acct_req->pack->id++;
-			__sync_add_and_fetch(&stat_acct_lost, 1);
-			stat_accm_add(stat_acct_lost_1m, 1);
-			stat_accm_add(stat_acct_lost_5m, 1);
+			}
+			if (req_set_RA(rpd->acct_req, rpd->acct_req->serv->acct_secret))
+				goto out_err;
 			continue;
 		}
 
-		dt = (rpd->acct_req->reply->tv.tv_sec - rpd->acct_req->pack->tv.tv_sec) * 1000 + 
-			(rpd->acct_req->reply->tv.tv_usec - rpd->acct_req->pack->tv.tv_usec) / 1000;
-		stat_accm_add(stat_acct_query_1m, dt);
-		stat_accm_add(stat_acct_query_5m, dt);
+		for (i = 0; i < conf_max_try; i++) {
+			if (conf_acct_delay_time) {
+				time(&ts);
+				rad_packet_change_int(rpd->acct_req->pack, NULL, "Acct-Delay-Time", ts - rpd->acct_timestamp);
+				if (req_set_RA(rpd->acct_req, rpd->acct_req->serv->acct_secret))
+					goto out_err;
+			}
 
-		if (rpd->acct_req->reply->id != rpd->acct_req->pack->id || rpd->acct_req->reply->code != CODE_ACCOUNTING_RESPONSE) {
-			rad_packet_free(rpd->acct_req->reply);
-			rpd->acct_req->reply = NULL;
-			rpd->acct_req->pack->id++;
-			__sync_add_and_fetch(&stat_acct_lost, 1);
-			stat_accm_add(stat_acct_lost_1m, 1);
-			stat_accm_add(stat_acct_lost_5m, 1);
+			if (rad_req_send(rpd->acct_req, conf_verbose))
+				goto out_err;
+
+			__sync_add_and_fetch(&stat_acct_sent, 1);
+
+			rad_req_wait(rpd->acct_req, conf_timeout);
+
+			if (!rpd->acct_req->reply) {
+				if (conf_acct_delay_time)
+					rpd->acct_req->pack->id++;
+				__sync_add_and_fetch(&stat_acct_lost, 1);
+				stat_accm_add(stat_acct_lost_1m, 1);
+				stat_accm_add(stat_acct_lost_5m, 1);
+				continue;
+			}
+
+			dt = (rpd->acct_req->reply->tv.tv_sec - rpd->acct_req->pack->tv.tv_sec) * 1000 + 
+				(rpd->acct_req->reply->tv.tv_usec - rpd->acct_req->pack->tv.tv_usec) / 1000;
+			stat_accm_add(stat_acct_query_1m, dt);
+			stat_accm_add(stat_acct_query_5m, dt);
+
+			if (rpd->acct_req->reply->id != rpd->acct_req->pack->id || rpd->acct_req->reply->code != CODE_ACCOUNTING_RESPONSE) {
+				rad_packet_free(rpd->acct_req->reply);
+				rpd->acct_req->reply = NULL;
+				rpd->acct_req->pack->id++;
+				__sync_add_and_fetch(&stat_acct_lost, 1);
+				stat_accm_add(stat_acct_lost_1m, 1);
+				stat_accm_add(stat_acct_lost_5m, 1);
+			} else
+				break;
+		}
+
+		rad_server_req_exit(rpd->acct_req);
+
+		if (!rpd->acct_req->reply) {
+			rad_server_fail(rpd->acct_req->serv);
+			if (rad_server_realloc(rpd->acct_req, 1)) {
+				log_ppp_warn("radius:acct_start: no servers available\n");
+				goto out_err;
+			}
+			if (req_set_RA(rpd->acct_req, rpd->acct_req->serv->acct_secret))
+				goto out_err;
 		} else
 			break;
 	}
 
-	if (!rpd->acct_req->reply) {
-		log_ppp_warn("radius:acct_start: no response\n");
-		goto out_err;
-	}
-	
 	rpd->acct_req->hnd.read = rad_acct_read;
 
 	triton_md_register_handler(rpd->ppp->ctrl->ctx, &rpd->acct_req->hnd);
@@ -290,7 +346,7 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 	time_t ts;
 	unsigned int dt;
 
-	if (!conf_acct_secret)
+	if (!rpd->acct_req->serv)
 		return;
 
 	if (rpd->acct_interim_timer.tpd)
@@ -330,7 +386,7 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 		}
 		rad_packet_change_val(rpd->acct_req->pack, NULL, "Acct-Status-Type", "Stop");
 		req_set_stat(rpd->acct_req, rpd->ppp);
-		req_set_RA(rpd->acct_req, conf_acct_secret);
+		req_set_RA(rpd->acct_req, rpd->acct_req->serv->acct_secret);
 		/// !!! rad_req_add_val(rpd->acct_req, "Acct-Terminate-Cause", "");
 		
 		if (rpd->acct_req->reply) {
@@ -340,41 +396,62 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 	
 		time(&rpd->acct_timestamp);
 
-		for(i = 0; i < conf_max_try; i++) {
-			if (conf_acct_delay_time) {
-				time(&ts);
-				rad_packet_change_int(rpd->acct_req->pack, NULL, "Acct-Delay-Time", ts - rpd->acct_timestamp);
-				rpd->acct_req->pack->id++;
-				if (req_set_RA(rpd->acct_req, conf_acct_secret))
+		while (1) {
+
+			if (rad_server_req_enter(rpd->acct_req)) {
+				if (rad_server_realloc(rpd->acct_req, 1)) {
+					log_ppp_warn("radius:acct_stop: no servers available\n");
 					break;
-			}
-			if (rad_req_send(rpd->acct_req, conf_verbose))
-				break;
-			__sync_add_and_fetch(&stat_acct_sent, 1);
-			rad_req_wait(rpd->acct_req, conf_timeout);
-			if (!rpd->acct_req->reply) {
-				__sync_add_and_fetch(&stat_acct_lost, 1);
-				stat_accm_add(stat_acct_lost_1m, 1);
-				stat_accm_add(stat_acct_lost_5m, 1);
+				}
+				req_set_RA(rpd->acct_req, rpd->acct_req->serv->acct_secret);
 				continue;
 			}
 
-			dt = (rpd->acct_req->reply->tv.tv_sec - rpd->acct_req->pack->tv.tv_sec) * 1000 + 
-				(rpd->acct_req->reply->tv.tv_usec - rpd->acct_req->pack->tv.tv_usec) / 1000;
-			stat_accm_add(stat_acct_query_1m, dt);
-			stat_accm_add(stat_acct_query_5m, dt);
+			for(i = 0; i < conf_max_try; i++) {
+				if (conf_acct_delay_time) {
+					time(&ts);
+					rad_packet_change_int(rpd->acct_req->pack, NULL, "Acct-Delay-Time", ts - rpd->acct_timestamp);
+					rpd->acct_req->pack->id++;
+					if (req_set_RA(rpd->acct_req, rpd->acct_req->serv->acct_secret))
+						break;
+				}
+				if (rad_req_send(rpd->acct_req, conf_verbose))
+					break;
+				__sync_add_and_fetch(&stat_acct_sent, 1);
+				rad_req_wait(rpd->acct_req, conf_timeout);
+				if (!rpd->acct_req->reply) {
+					__sync_add_and_fetch(&stat_acct_lost, 1);
+					stat_accm_add(stat_acct_lost_1m, 1);
+					stat_accm_add(stat_acct_lost_5m, 1);
+					continue;
+				}
 
-			if (rpd->acct_req->reply->id != rpd->acct_req->pack->id || rpd->acct_req->reply->code != CODE_ACCOUNTING_RESPONSE) {
-				rad_packet_free(rpd->acct_req->reply);
-				rpd->acct_req->reply = NULL;
-				__sync_add_and_fetch(&stat_acct_lost, 1);
-				stat_accm_add(stat_acct_lost_1m, 1);
-				stat_accm_add(stat_acct_lost_5m, 1);
-			} else
-				break;
+				dt = (rpd->acct_req->reply->tv.tv_sec - rpd->acct_req->pack->tv.tv_sec) * 1000 + 
+					(rpd->acct_req->reply->tv.tv_usec - rpd->acct_req->pack->tv.tv_usec) / 1000;
+				stat_accm_add(stat_acct_query_1m, dt);
+				stat_accm_add(stat_acct_query_5m, dt);
+
+				if (rpd->acct_req->reply->id != rpd->acct_req->pack->id || rpd->acct_req->reply->code != CODE_ACCOUNTING_RESPONSE) {
+					rad_packet_free(rpd->acct_req->reply);
+					rpd->acct_req->reply = NULL;
+					__sync_add_and_fetch(&stat_acct_lost, 1);
+					stat_accm_add(stat_acct_lost_1m, 1);
+					stat_accm_add(stat_acct_lost_5m, 1);
+				} else
+					break;
+			}
+
+			rad_server_req_exit(rpd->acct_req);
+
+			if (!rpd->acct_req->reply) {
+				rad_server_fail(rpd->acct_req->serv);
+				if (rad_server_realloc(rpd->acct_req, 1)) {
+					log_ppp_warn("radius:acct_stop: no servers available\n");
+					break;
+				}
+				req_set_RA(rpd->acct_req, rpd->acct_req->serv->acct_secret);
+			}
 		}
-		if (!rpd->acct_req->reply)
-			log_ppp_warn("radius:acct_stop: no response\n");
 
 		rad_req_free(rpd->acct_req);
 		rpd->acct_req = NULL;
