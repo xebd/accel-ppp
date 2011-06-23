@@ -69,6 +69,7 @@ char *conf_service_name;
 char *conf_ac_name;
 int conf_ifname_in_sid;
 char *conf_pado_delay;
+int conf_tr101 = 1;
 
 static mempool_t conn_pool;
 static mempool_t pado_pool;
@@ -857,7 +858,8 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 					continue;
 				vendor_id = ntohl(*(uint32_t *)tag->tag_data);
 				if (vendor_id == VENDOR_ADSL_FORUM)
-					tr101_tag = tag;
+					if (conf_tr101)
+						tr101_tag = tag;
 				break;
 		}
 	}
@@ -1241,6 +1243,56 @@ static int init_secret(struct pppoe_serv_t *serv)
 	return 0;
 }
 
+static void load_config(void)
+{
+	char *opt;
+
+	opt = conf_get_opt("pppoe", "verbose");
+	if (opt)
+		conf_verbose = atoi(opt);
+
+	opt = conf_get_opt("pppoe", "ac-name");
+	if (!opt)
+		opt = conf_get_opt("pppoe", "AC-Name");
+	if (opt) {
+		if (conf_ac_name)
+			_free(conf_ac_name);
+		conf_ac_name = _strdup(opt);
+	} else
+		conf_ac_name = _strdup("accel-ppp");
+
+	opt = conf_get_opt("pppoe", "service-name");
+	if (!opt)
+		opt = conf_get_opt("pppoe", "Service-Name");
+	if (opt) {
+		if (conf_service_name)
+			_free(conf_service_name);
+		conf_service_name = _strdup(opt);
+	}
+
+	opt = conf_get_opt("pppoe", "ifname-in-sid");
+	if (opt) {
+		if (!strcmp(opt, "called-sid"))
+			conf_ifname_in_sid = 1;
+		else if (!strcmp(opt, "calling-sid"))
+			conf_ifname_in_sid = 2;
+		else if (!strcmp(opt, "both"))
+			conf_ifname_in_sid = 3;
+		else if (atoi(opt) >= 0)
+			conf_ifname_in_sid = atoi(opt);
+	}
+
+	opt = conf_get_opt("pppoe", "pado-delay");
+	if (!opt)
+		opt = conf_get_opt("pppoe", "PADO-Delay");
+	if (opt)
+		dpado_parse(opt);
+	
+	opt = conf_get_opt("pppoe", "tr101");
+	if (opt)
+		conf_tr101 = atoi(opt);
+}
+
 static void pppoe_init(void)
 {
 	struct conf_sect_t *s = conf_get_section("pppoe");
@@ -1258,34 +1310,12 @@ static void pppoe_init(void)
 		if (!strcmp(opt->name, "interface")) {
 			if (opt->val)
 				pppoe_server_start(opt->val, NULL);
-		} else if (!strcmp(opt->name, "verbose")) {
-			if (atoi(opt->val) > 0)
-				conf_verbose = 1;
-		}	else if (!strcmp(opt->name, "ac-name") || !strcmp(opt->name, "AC-Name")) {
-			if (opt->val && strlen(opt->val))
-				conf_ac_name = _strdup(opt->val);
-		} else if (!strcmp(opt->name, "service-name") || !strcmp(opt->name, "Service-Name")) {
-			if (opt->val && strlen(opt->val))
-				conf_service_name = _strdup(opt->val);
-		} else if (!strcmp(opt->name, "pado-delay") || !strcmp(opt->name, "PADO-delay")) {
-			if (dpado_parse(opt->val))
-				_exit(EXIT_FAILURE);
-		} else if (!strcmp(opt->name, "ifname-in-sid")) {
-			if (!opt->val)
-				continue;
-			if (!strcmp(opt->val, "called-sid"))
-				conf_ifname_in_sid = 1;
-			else if (!strcmp(opt->val, "calling-sid"))
-				conf_ifname_in_sid = 2;
-			else if (!strcmp(opt->val, "both"))
-				conf_ifname_in_sid = 3;
-			else if (atoi(opt->val) >= 0)
-				conf_ifname_in_sid = atoi(opt->val);
 		}
 	}
 
-	if (!conf_ac_name)
-		conf_ac_name = _strdup("accel-ppp");
+	load_config();
+
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 
 DEFINE_INIT(21, pppoe_init);
