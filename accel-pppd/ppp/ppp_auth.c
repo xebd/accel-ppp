@@ -28,6 +28,8 @@ static int auth_layer_start(struct ppp_layer_data_t *);
 static void auth_layer_finish(struct ppp_layer_data_t *);
 static void auth_layer_free(struct ppp_layer_data_t *);
 
+static void __ppp_auth_started(struct ppp_t *ppp);
+
 struct auth_option_t
 {
 	struct lcp_option_t opt;
@@ -295,6 +297,8 @@ static void auth_layer_free(struct ppp_layer_data_t *ld)
 	struct auth_layer_data_t *ad = container_of(ld, typeof(*ad), ld);
 
 	log_ppp_debug("auth_layer_free\n");
+
+	triton_cancel_call(ad->ppp->ctrl->ctx, (triton_event_func)__ppp_auth_started);
 
 	_free(ad);
 }
