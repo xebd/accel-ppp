@@ -31,15 +31,15 @@
 #define VALUE_SIZE 8
 #define RESPONSE_VALUE_SIZE (24+24+1)
 
-#define MSG_FAILURE   "E=691 R=0"
-#define MSG_SUCCESS   "Authentication successed"
-
 #define HDR_LEN (sizeof(struct chap_hdr_t)-2)
 
 static int conf_timeout = 5;
 static int conf_interval = 0;
 static int conf_max_failure = 3;
 static int conf_any_login = 0;
+static char *conf_msg_failure = "E=691 R=0";
+static char *conf_msg_success = "Authentication successed";
+;
 
 static int urandom_fd;
 
@@ -68,19 +68,6 @@ struct chap_response_t
 	uint8_t flags;
 	char name[0];
 } __attribute__((packed));
-
-struct chap_failure_t
-{
-	struct chap_hdr_t hdr;
-	char message[sizeof(MSG_FAILURE)];
-} __attribute__((packed));
-
-struct chap_success_t
-{
-	struct chap_hdr_t hdr;
-	char message[sizeof(MSG_SUCCESS)];
-} __attribute__((packed));
-
 
 struct chap_auth_data_t
 {
@@ -210,36 +197,38 @@ static int lcp_recv_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *
 	return LCP_OPT_NAK;
 }
 
-static void chap_send_failure(struct chap_auth_data_t *ad)
+static void chap_send_failure(struct chap_auth_data_t *ad, char *mschap_error)
 {
-	struct chap_failure_t msg = {
-		.hdr.proto = htons(PPP_CHAP),
-		.hdr.code = CHAP_FAILURE,
-		.hdr.id = ad->id,
-		.hdr.len = htons(sizeof(msg)-1-2),
-		.message = MSG_FAILURE,
-	};
-	
-	if (conf_ppp_verbose)
-		log_ppp_info2("send [MSCHAP-v1 Failure id=%x \"%s\"]\n", msg.hdr.id, MSG_FAILURE);
+	struct chap_hdr_t *hdr = _malloc(sizeof(*hdr) + strlen(mschap_error) + 1);
+	hdr->proto = htons(PPP_CHAP);
+	hdr->code = CHAP_FAILURE;
+	hdr->id = ad->id;
+	hdr->len = htons(HDR_LEN + strlen(mschap_error));
+	strcpy((char *)(hdr + 1), mschap_error);
 
-	ppp_chan_send(ad->ppp,&msg,ntohs(msg.hdr.len)+2);
+	if (conf_ppp_verbose)
+		log_ppp_info2("send [MSCHAP-v1 Failure id=%x \"%s\"]\n", hdr->id, mschap_error);
+
+	ppp_chan_send(ad->ppp, hdr, ntohs(hdr->len) + 2);
+
+	_free(hdr);
 }
 
 static void chap_send_success(struct chap_auth_data_t *ad)
 {
-	struct chap_success_t msg = {
-		.hdr.proto = htons(PPP_CHAP),
-		.hdr.code = CHAP_SUCCESS,
-		.hdr.id = ad->id,
-		.hdr.len = htons(sizeof(msg)-1-2),
-		.message = MSG_SUCCESS,
-	};
+	struct chap_hdr_t *hdr = _malloc(sizeof(*hdr) + strlen(conf_msg_success) + 1);
+	hdr->proto = htons(PPP_CHAP);
+	hdr->code = CHAP_SUCCESS;
+	hdr->id = ad->id;
+	hdr->len = htons(HDR_LEN + strlen(conf_msg_success));
+	strcpy((char *)(hdr + 1), conf_msg_success);
 	
 	if (conf_ppp_verbose)
-		log_ppp_info2("send [MSCHAP-v1 Success id=%x \"%s\"]\n", msg.hdr.id, MSG_SUCCESS);
+		log_ppp_info2("send [MSCHAP-v1 Success id=%x \"%s\"]\n", hdr->id, conf_msg_success);
 
-	ppp_chan_send(ad->ppp, &msg, ntohs(msg.hdr.len) + 2);
+	ppp_chan_send(ad->ppp, hdr, ntohs(hdr->len) + 2);
+
+	_free(hdr);
 }
 
 static void chap_send_challenge(struct chap_auth_data_t *ad)
@@ -271,6 +260,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 {
 	struct chap_response_t *msg = (struct chap_response_t*)hdr;
 	char *name;
+	char *mschap_error = conf_msg_failure;
 	int r;
 
 	if (ad->timeout.tpd)
@@ -313,7 +303,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 
 	if (conf_any_login) {
 		if (ppp_auth_successed(ad->ppp, name)) {
-			chap_send_failure(ad);
+			chap_send_failure(ad, mschap_error);
 			ppp_terminate(ad->ppp, TERM_AUTH_ERROR, 0);
 			_free(name);
 			return;
@@ -323,13 +313,13 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		return;
 	}
 
-	r = pwdb_check(ad->ppp, name, PPP_CHAP, MSCHAP_V1, ad->id, ad->val, VALUE_SIZE, msg->lm_hash, msg->nt_hash, msg->flags);
+	r = pwdb_check(ad->ppp, name, PPP_CHAP, MSCHAP_V1, ad->id, ad->val, VALUE_SIZE, msg->lm_hash, msg->nt_hash, msg->flags, &mschap_error);
 	if (r == PWDB_NO_IMPL)
 		if (chap_check_response(ad, msg, name))
 			r = PWDB_DENIED;
 	
 	if (r == PWDB_DENIED) {
-		chap_send_failure(ad);
+		chap_send_failure(ad, mschap_error);
 		if (ad->started)
 			ppp_terminate(ad->ppp, TERM_AUTH_ERROR, 0);
 		else
@@ -338,7 +328,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	} else {
 		if (!ad->started) {
 			if (ppp_auth_successed(ad->ppp, name)) {
-				chap_send_failure(ad);
+				chap_send_failure(ad, mschap_error);
 				ppp_terminate(ad->ppp, TERM_AUTH_ERROR, 0);
 				_free(name);
 			} else {
@@ -396,7 +386,7 @@ static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response
 	if (!passwd) {
 		if (conf_ppp_verbose)
 			log_ppp_warn("mschap-v1: user not found\n");
-		chap_send_failure(ad);
+		chap_send_failure(ad, conf_msg_failure);
 		return PWDB_DENIED;
 	}
 

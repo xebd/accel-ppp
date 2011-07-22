@@ -350,6 +350,7 @@ int rad_auth_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list ar
 {
 	int r = PWDB_DENIED;
 	uint8_t response[50];
+	struct rad_attr_t *ra;
 
 	int id = va_arg(args, int);
 	const uint8_t *challenge = va_arg(args, const uint8_t *);
@@ -357,6 +358,7 @@ int rad_auth_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list ar
 	const uint8_t *lm_response = va_arg(args, const uint8_t *);
 	const uint8_t *nt_response = va_arg(args, const uint8_t *);
 	int flags = va_arg(args, int);
+	char  **mschap_error = va_arg(args, char  **);
 
 	response[0] = id;
 	response[1] = flags;
@@ -398,6 +400,7 @@ int rad_auth_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list ar
 		if (rad_packet_add_str(rpd->auth_req->pack, NULL, "Acct-Session-Id", rpd->ppp->sessionid))
 			goto out;
 
+
 	r = rad_auth_send(rpd->auth_req);
 	if (r == PWDB_SUCCESS) {
 		struct ev_radius_t ev = {
@@ -408,6 +411,10 @@ int rad_auth_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list ar
 		triton_event_fire(EV_RADIUS_ACCESS_ACCEPT, &ev);
 		setup_mppe(rpd->auth_req, challenge);
 		rpd->auth_req->pack->id++;
+	} else if (rpd->auth_req->reply) {
+		ra = rad_packet_find_attr(rpd->auth_req->reply, "Microsoft", "MS-CHAP-Error");
+		if (ra)
+			*mschap_error = ra->val.string;
 	}
 
 	return r;
@@ -431,6 +438,8 @@ int rad_auth_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list ar
 	const uint8_t *response = va_arg(args, const uint8_t *);
 	int flags = va_arg(args, int);
 	uint8_t *authenticator = va_arg(args, uint8_t *);
+	char **mschap_error = va_arg(args, char **);
+	char **reply_msg = va_arg(args, char **);
 
 	mschap_response[0] = id;
 	mschap_response[1] = flags;
@@ -491,7 +500,16 @@ int rad_auth_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list ar
 		triton_event_fire(EV_RADIUS_ACCESS_ACCEPT, &ev);
 		setup_mppe(rpd->auth_req, NULL);
 		rpd->auth_req->pack->id++;
+	} else if (rpd->auth_req->reply) {
+		ra = rad_packet_find_attr(rpd->auth_req->reply, "Microsoft", "MS-CHAP-Error");
+		if (ra)
+			*mschap_error = ra->val.string;
+		ra = rad_packet_find_attr(rpd->auth_req->reply, NULL, "Reply-Message");
+		if (ra)
+			*reply_msg = ra->val.string;
 	}
+
+
 
 	return r;
 out:

@@ -31,14 +31,14 @@
 #define VALUE_SIZE 16
 #define RESPONSE_VALUE_SIZE (16+8+24+1)
 
-#define MSG_FAILURE   "E=691 R=0 C=cccccccccccccccccccccccccccccccc V=3 M=Authentication failure"
-#define MSG_SUCCESS   "S=cccccccccccccccccccccccccccccccccccccccc M=Authentication successed"
-
 #define HDR_LEN (sizeof(struct chap_hdr_t)-2)
 
 static int conf_timeout = 5;
 static int conf_interval = 0;
 static int conf_max_failure = 3;
+static char *conf_msg_failure = "E=691 R=0 V=3";
+static char *conf_msg_failure2 = "Authentication failure";
+static char *conf_msg_success = "Authentication successed";
 
 static int urandom_fd;
 
@@ -68,19 +68,6 @@ struct chap_response_t
 	uint8_t flags;
 	char name[0];
 } __attribute__((packed));
-
-struct chap_failure_t
-{
-	struct chap_hdr_t hdr;
-	char message[sizeof(MSG_FAILURE)];
-} __attribute__((packed));
-
-struct chap_success_t
-{
-	struct chap_hdr_t hdr;
-	char message[sizeof(MSG_SUCCESS)];
-} __attribute__((packed));
-
 
 struct chap_auth_data_t
 {
@@ -211,20 +198,40 @@ static int lcp_recv_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *
 	return LCP_OPT_NAK;
 }
 
-static void chap_send_failure(struct chap_auth_data_t *ad)
+static void chap_send_failure(struct chap_auth_data_t *ad, char *mschap_error, char *reply_msg)
 {
-	struct chap_failure_t msg = {
-		.hdr.proto = htons(PPP_CHAP),
-		.hdr.code = CHAP_FAILURE,
-		.hdr.id = ad->id,
-		.hdr.len = htons(sizeof(msg) - 1 - 2),
-		.message = MSG_FAILURE,
-	};
+	struct chap_hdr_t *hdr = _malloc(sizeof(*hdr) + strlen(mschap_error) + strlen(reply_msg) + 4);
+	hdr->proto = htons(PPP_CHAP);
+	hdr->code = CHAP_FAILURE;
+	hdr->id = ad->id;
+	hdr->len = htons(HDR_LEN + strlen(mschap_error) + strlen(reply_msg) + 3);
+
+	sprintf((char *)(hdr + 1), "%s M=%s", mschap_error, reply_msg);
 	
 	if (conf_ppp_verbose)
-		log_ppp_info2("send [MSCHAP-v2 Failure id=%x \"%s\"]\n", msg.hdr.id, MSG_FAILURE);
+		log_ppp_info2("send [MSCHAP-v2 Failure id=%x \"%s\"]\n", hdr->id, hdr + 1);
 
-	ppp_chan_send(ad->ppp, &msg, ntohs(msg.hdr.len) + 2);
+	ppp_chan_send(ad->ppp, hdr, ntohs(hdr->len) + 2);
+
+	_free(hdr);
+}
+
+static void chap_send_success(struct chap_auth_data_t *ad, struct chap_response_t *res_msg, const char *authenticator)
+{
+	struct chap_hdr_t *hdr = _malloc(sizeof(*hdr) + strlen(conf_msg_success) + 1 +	45);
+	hdr->proto = htons(PPP_CHAP),
+	hdr->code = CHAP_SUCCESS,
+	hdr->id = ad->id,
+	hdr->len = htons(HDR_LEN + strlen(conf_msg_success) + 45),
+
+	sprintf((char *)(hdr + 1), "S=%s M=%s", authenticator, conf_msg_success);
+
+	if (conf_ppp_verbose)
+		log_ppp_info2("send [MSCHAP-v2 Success id=%x \"%s\"]\n", hdr->id, hdr + 1);
+
+	ppp_chan_send(ad->ppp, hdr, ntohs(hdr->len) + 2);
+
+	_free(hdr);
 }
 
 static int generate_response(struct chap_auth_data_t *ad, struct chap_response_t *msg, const char *name, char *authenticator)
@@ -297,24 +304,6 @@ static int generate_response(struct chap_auth_data_t *ad, struct chap_response_t
 	return 0;
 }
 
-static void chap_send_success(struct chap_auth_data_t *ad, struct chap_response_t *res_msg, const char *authenticator)
-{
-	struct chap_success_t msg = {
-		.hdr.proto = htons(PPP_CHAP),
-		.hdr.code = CHAP_SUCCESS,
-		.hdr.id = ad->id,
-		.hdr.len = htons(sizeof(msg) - 1 - 2),
-		.message = MSG_SUCCESS,
-	};
-
-	memcpy(msg.message + 2, authenticator, 40);
-
-	if (conf_ppp_verbose)
-		log_ppp_info2("send [MSCHAP-v2 Success id=%x \"%s\"]\n", msg.hdr.id, msg.message);
-
-	ppp_chan_send(ad->ppp, &msg, ntohs(msg.hdr.len) + 2);
-}
-
 static void chap_send_challenge(struct chap_auth_data_t *ad)
 {
 	struct chap_challenge_t msg =	{
@@ -346,6 +335,10 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	char *name;
 	char authenticator[41];
 	int r;
+	char *mschap_error = conf_msg_failure;
+	char *reply_msg = conf_msg_failure2;
+
+	authenticator[40] = 0;
 
 	if (ad->timeout.tpd)
 		triton_timer_del(&ad->timeout);
@@ -368,7 +361,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 
 	if (msg->val_size != RESPONSE_VALUE_SIZE) {
 		log_ppp_error("mschap-v2: incorrect value-size (%i)\n", msg->val_size);
-		chap_send_failure(ad);
+		chap_send_failure(ad, mschap_error, reply_msg);
 		if (ad->started)
 			ppp_terminate(ad->ppp, TERM_USER_ERROR, 0);
 		else
@@ -386,9 +379,9 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		return;
 	}
 	
-	r = pwdb_check(ad->ppp, name, PPP_CHAP, MSCHAP_V2, ad->id, ad->val, msg->peer_challenge, msg->reserved, msg->nt_hash, msg->flags, authenticator);
+	r = pwdb_check(ad->ppp, name, PPP_CHAP, MSCHAP_V2, ad->id, ad->val, msg->peer_challenge, msg->reserved, msg->nt_hash, msg->flags, authenticator, &mschap_error, &reply_msg);
 
-	if (r == PWDB_NO_IMPL) {	
+	if (r == PWDB_NO_IMPL) {
 		r = chap_check_response(ad, msg, name);
 		if (r)
 			r = PWDB_DENIED;
@@ -397,7 +390,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	}
 
 	if (r == PWDB_DENIED) {
-		chap_send_failure(ad);
+		chap_send_failure(ad, mschap_error, reply_msg);
 		if (ad->started)
 			ppp_terminate(ad->ppp, TERM_AUTH_ERROR, 0);
 		else
@@ -406,7 +399,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	} else {
 		if (!ad->started) {
 			if (ppp_auth_successed(ad->ppp, name)) {
-				chap_send_failure(ad);
+				chap_send_failure(ad, mschap_error, reply_msg);
 				ppp_terminate(ad->ppp, TERM_AUTH_ERROR, 0);
 				_free(name);
 			} else {
@@ -466,38 +459,37 @@ static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response
 	if (!passwd) {
 		if (conf_ppp_verbose)
 			log_ppp_warn("mschap-v2: user not found\n");
-		chap_send_failure(ad);
+		chap_send_failure(ad, conf_msg_failure, conf_msg_failure2);
 		return -1;
 	}
 
-	u_passwd=_malloc(strlen(passwd)*2);
-	for(i=0; i<strlen(passwd); i++)
-	{
+	u_passwd = _malloc(strlen(passwd) * 2);
+	for (i = 0; i < strlen(passwd); i++) {
 		u_passwd[i*2]=passwd[i];
 		u_passwd[i*2+1]=0;
 	}
 
 	SHA1_Init(&sha_ctx);
-	SHA1_Update(&sha_ctx,msg->peer_challenge,16);
-	SHA1_Update(&sha_ctx,ad->val,16);
-	SHA1_Update(&sha_ctx,name,strlen(name));
-	SHA1_Final(c_hash,&sha_ctx);
+	SHA1_Update(&sha_ctx, msg->peer_challenge, 16);
+	SHA1_Update(&sha_ctx, ad->val, 16);
+	SHA1_Update(&sha_ctx, name, strlen(name));
+	SHA1_Final(c_hash, &sha_ctx);
 
-	memset(z_hash,0,sizeof(z_hash));
+	memset(z_hash, 0, sizeof(z_hash));
 	MD4_Init(&md4_ctx);
-	MD4_Update(&md4_ctx,u_passwd,strlen(passwd)*2);
-	MD4_Final(z_hash,&md4_ctx);
+	MD4_Update(&md4_ctx, u_passwd, strlen(passwd) * 2);
+	MD4_Final(z_hash, &md4_ctx);
 
-	des_encrypt(c_hash,z_hash,nt_hash);
-	des_encrypt(c_hash,z_hash+7,nt_hash+8);
-	des_encrypt(c_hash,z_hash+14,nt_hash+16);
+	des_encrypt(c_hash, z_hash, nt_hash);
+	des_encrypt(c_hash, z_hash + 7, nt_hash + 8);
+	des_encrypt(c_hash, z_hash + 14, nt_hash + 16);
 
 	set_mppe_keys(ad, z_hash, msg->nt_hash);
 
 	_free(passwd);
 	_free(u_passwd);
 
-	return memcmp(nt_hash,msg->nt_hash,24);
+	return memcmp(nt_hash, msg->nt_hash, 24);
 }
 
 static void set_mppe_keys(struct chap_auth_data_t *ad, uint8_t *z_hash, uint8_t *nt_hash)
