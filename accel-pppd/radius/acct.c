@@ -304,16 +304,16 @@ int rad_acct_start(struct radius_pd_t *rpd)
 
 		rad_server_req_exit(rpd->acct_req);
 
-		if (!rpd->acct_req->reply) {
-			rad_server_fail(rpd->acct_req->serv);
-			if (rad_server_realloc(rpd->acct_req, 1)) {
-				log_ppp_warn("radius:acct_start: no servers available\n");
-				goto out_err;
-			}
-			if (req_set_RA(rpd->acct_req, rpd->acct_req->serv->acct_secret))
-				goto out_err;
-		} else
+		if (rpd->acct_req->reply)
 			break;
+
+		rad_server_fail(rpd->acct_req->serv);
+		if (rad_server_realloc(rpd->acct_req, 1)) {
+			log_ppp_warn("radius:acct_start: no servers available\n");
+			goto out_err;
+		}
+		if (req_set_RA(rpd->acct_req, rpd->acct_req->serv->acct_secret))
+			goto out_err;
 	}
 
 	rpd->acct_req->hnd.read = rad_acct_read;
