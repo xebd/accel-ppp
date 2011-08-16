@@ -154,11 +154,11 @@ found:
 	}
 
 	pd->ip.addr = conf_gw_ip_address;
-	if (n >= 3)
+	if (n >= 3 && ptr[2][0] != '*')
 		pd->ip.peer_addr = inet_addr(ptr[2]);
 	pd->ip.owner = &ipdb;
 
-	if (n == 4)
+	if (n >= 4)
 		pd->rate = _strdup(ptr[3]);
 
 	list_add_tail(&pd->pd.entry, &ppp->pd_list);
@@ -224,7 +224,7 @@ static struct ipdb_item_t *get_ip(struct ppp_t *ppp)
 	if (!pd)
 		return NULL;
 
-	if (!pd->ip.addr)
+	if (!pd->ip.peer_addr)
 		return NULL;
 
 	return &pd->ip;
