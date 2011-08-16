@@ -135,16 +135,22 @@ void ipcp_layer_free(struct ppp_layer_data_t *ld)
 	_free(ipcp);
 }
 
-static void ipcp_layer_up(struct ppp_fsm_t *fsm)
+static void __ipcp_layer_up(struct ppp_ipcp_t *ipcp)
 {
-	struct ppp_ipcp_t *ipcp = container_of(fsm, typeof(*ipcp), fsm);
-
 	log_ppp_debug("ipcp_layer_started\n");
 
 	if (!ipcp->started) {
 		ipcp->started = 1;
 		ppp_layer_started(ipcp->ppp, &ipcp->ld);
 	}
+}
+
+static void ipcp_layer_up(struct ppp_fsm_t *fsm)
+{
+	struct ppp_ipcp_t *ipcp = container_of(fsm, typeof(*ipcp), fsm);
+	
+	if (!ipcp->delay_ack)
+		__ipcp_layer_up(ipcp);
 }
 
 static void ipcp_layer_down(struct ppp_fsm_t *fsm)
@@ -563,6 +569,7 @@ static void ipcp_recv(struct ppp_handler_t*h)
 	struct ipcp_hdr_t *hdr;
 	struct ppp_ipcp_t *ipcp = container_of(h, typeof(*ipcp), hnd);
 	int r;
+	int delay_ack = ipcp->delay_ack;
 
 	if (ipcp->fsm.fsm_state == FSM_Initial || ipcp->fsm.fsm_state == FSM_Closed || ipcp->ppp->terminating) {
 		if (conf_ppp_verbose)
@@ -593,7 +600,9 @@ static void ipcp_recv(struct ppp_handler_t*h)
 				ipcp_free_conf_req(ipcp);
 				return;
 			}
-			if (ipcp->started) {
+			if (delay_ack && !ipcp->delay_ack)
+				__ipcp_layer_up(ipcp);
+			if (ipcp->started || delay_ack) {
 				if (r == IPCP_OPT_ACK)
 					send_conf_ack(&ipcp->fsm);
 				else

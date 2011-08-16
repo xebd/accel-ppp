@@ -32,6 +32,7 @@ static LIST_HEAD(option_handlers);
 
 static void ccp_layer_up(struct ppp_fsm_t*);
 static void ccp_layer_down(struct ppp_fsm_t*);
+static void ccp_layer_finished(struct ppp_fsm_t*);
 static int send_conf_req(struct ppp_fsm_t*);
 static void send_conf_ack(struct ppp_fsm_t*);
 static void send_conf_nak(struct ppp_fsm_t*);
@@ -116,7 +117,8 @@ static struct ppp_layer_data_t *ccp_layer_init(struct ppp_t *ppp)
 	ccp->fsm.max_configure = conf_ccp_max_configure;
 
 	ccp->fsm.layer_up = ccp_layer_up;
-	ccp->fsm.layer_finished = ccp_layer_down;
+	ccp->fsm.layer_finished = ccp_layer_finished;
+	ccp->fsm.layer_down = ccp_layer_down;
 	ccp->fsm.send_conf_req = send_conf_req;
 	ccp->fsm.send_conf_ack = send_conf_ack;
 	ccp->fsm.send_conf_nak = send_conf_nak;
@@ -199,7 +201,7 @@ static void ccp_layer_up(struct ppp_fsm_t *fsm)
 	}
 }
 
-static void ccp_layer_down(struct ppp_fsm_t *fsm)
+static void ccp_layer_finished(struct ppp_fsm_t *fsm)
 {
 	struct ppp_ccp_t *ccp = container_of(fsm, typeof(*ccp), fsm);
 
@@ -207,10 +209,19 @@ static void ccp_layer_down(struct ppp_fsm_t *fsm)
 
 	if (!ccp->started) {
 		ccp->started = 1;
-		ppp_fsm_close(fsm);
 		ppp_layer_started(ccp->ppp, &ccp->ld);
 	}
 }
+
+static void ccp_layer_down(struct ppp_fsm_t *fsm)
+{
+	struct ppp_ccp_t *ccp = container_of(fsm, typeof(*ccp), fsm);
+
+	log_ppp_debug("ccp_layer_down\n");
+
+	ppp_fsm_close(fsm);
+}
+
 
 static void print_ropt(struct recv_opt_t *ropt)
 {
@@ -644,9 +655,9 @@ static void ccp_recv(struct ppp_handler_t*h)
 		case CONFREQ:	
 			r = ccp_recv_conf_req(ccp, (uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN);
 			if (ccp->passive) {
+				ccp->passive = 0;
 				ppp_fsm_lower_up(&ccp->fsm);
 				ppp_fsm_open(&ccp->fsm);
-				ccp->passive = 0;
 			}
 			if (ccp->started) {
 				if (r == CCP_OPT_ACK)

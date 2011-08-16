@@ -541,8 +541,7 @@ static void set_mppe_keys(struct chap_auth_data_t *ad, uint8_t *z_hash, uint8_t 
 
 	struct ev_mppe_keys_t ev_mppe = {
 		.ppp = ad->ppp,
-		.type = 1 << 2,
-		.policy = 1,
+		.policy = -1,
 		.recv_key = recv_key,
 		.send_key = send_key,
 	};
