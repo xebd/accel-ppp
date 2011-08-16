@@ -243,8 +243,6 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 	struct ccp_option_t *lopt;
 	int n;
 
-	ccp->need_req = 0;
-
 	if (ccp->passive)
 		return 0;
 
@@ -381,7 +379,6 @@ static int ccp_recv_conf_req(struct ppp_ccp_t *ccp, uint8_t *data, int size)
 	struct ccp_option_t *lopt;
 	int r, ret = 1, ack = 0;
 
-	ccp->need_req = 0;
 	ccp->ropt_len = size;
 
 	while (size > 0) {
@@ -418,8 +415,6 @@ static int ccp_recv_conf_req(struct ppp_ccp_t *ccp, uint8_t *data, int size)
 					lopt->state = CCP_OPT_REJ;
 					ropt->state = CCP_OPT_REJ;
 				} else	{
-					/*if (lopt->state == CCP_OPT_NAK && r == CCP_OPT_ACK)
-						ccp->need_req = 1;*/
 					lopt->state = r;
 					ropt->state = r;
 				}
@@ -531,8 +526,6 @@ static int ccp_recv_conf_nak(struct ppp_ccp_t *ccp, uint8_t *data, int size)
 				}
 				if (lopt->h->recv_conf_nak && lopt->h->recv_conf_nak(ccp, lopt, data))
 					res = -1;
-				//lopt->state = CCP_OPT_NAK;
-				//ccp->need_req = 1;
 				break;
 			}
 		}
@@ -689,11 +682,8 @@ static void ccp_recv(struct ppp_handler_t*h)
 		case CONFACK:
 			if (ccp_recv_conf_ack(ccp, (uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN))
 				ppp_terminate(ccp->ppp, TERM_USER_ERROR, 0);
-			else {
+			else
 				ppp_fsm_recv_conf_ack(&ccp->fsm);
-				if (ccp->need_req)
-					send_conf_req(&ccp->fsm);
-			}
 			break;
 		case CONFNAK:
 			ccp_recv_conf_nak(ccp, (uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN);

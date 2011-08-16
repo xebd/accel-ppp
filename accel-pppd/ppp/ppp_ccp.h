@@ -87,7 +87,6 @@ struct ppp_ccp_t
 	int passive:1;
 	int starting:1;
 	int started:1;
-	int need_req:1;
 };
 
 int ccp_option_register(struct ccp_option_handler_t *h);
