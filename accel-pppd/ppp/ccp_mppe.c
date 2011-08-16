@@ -23,7 +23,9 @@
 
 static struct ccp_option_t *mppe_init(struct ppp_ccp_t *ccp);
 static void mppe_free(struct ppp_ccp_t *ccp, struct ccp_option_t *opt);
+static int __mppe_send_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, uint8_t *ptr, int setup_key);
 static int mppe_send_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, uint8_t *ptr);
+static int mppe_send_conf_nak(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, uint8_t *ptr);
 static int mppe_recv_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, uint8_t *ptr);
 static int mppe_recv_conf_nak(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, uint8_t *ptr);
 static int mppe_recv_conf_rej(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, uint8_t *ptr);
@@ -44,7 +46,7 @@ struct mppe_option_t
 static struct ccp_option_handler_t mppe_opt_hnd = {
 	.init = mppe_init,
 	.send_conf_req = mppe_send_conf_req,
-	.send_conf_nak = mppe_send_conf_req,
+	.send_conf_nak = mppe_send_conf_nak,
 	.recv_conf_req = mppe_recv_conf_req,
 	.recv_conf_nak = mppe_recv_conf_nak,
 	.recv_conf_rej = mppe_recv_conf_rej,
@@ -129,7 +131,7 @@ static int decrease_mtu(struct ppp_t *ppp)
 	return 0;
 }
 
-static int mppe_send_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, uint8_t *ptr)
+static int __mppe_send_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, uint8_t *ptr, int setup_key)
 {
 	struct mppe_option_t *mppe_opt = container_of(opt,typeof(*mppe_opt),opt);
 	struct ccp_opt32_t *opt32 = (struct ccp_opt32_t*)ptr;
@@ -139,13 +141,24 @@ static int mppe_send_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, u
 		opt32->hdr.len = 6;
 		opt32->val = mppe_opt->mppe ? htonl(MPPE_S | MPPE_H) : 0;
 		
-		if (mppe_opt->mppe && setup_mppe_key(ccp->ppp->unit_fd, 0, mppe_opt->recv_key))
+		if (setup_key && mppe_opt->mppe && setup_mppe_key(ccp->ppp->unit_fd, 0, mppe_opt->recv_key))
 			return 0;
 
 		return 6;
 	}
 	return 0;
 }
+
+static int mppe_send_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, uint8_t *ptr)
+{
+	return __mppe_send_conf_req(ccp, opt, ptr, 1);
+}
+
+static int mppe_send_conf_nak(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, uint8_t *ptr)
+{
+	return __mppe_send_conf_req(ccp, opt, ptr, 0);
+}
+
 
 static int mppe_recv_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, uint8_t *ptr)
 {
