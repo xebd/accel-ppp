@@ -32,8 +32,12 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 	req->hnd.fd = -1;
 	req->ctx.before_switch = log_switch;
 
-	req->server_addr = conf_auth_server;
-	req->server_port = conf_auth_server_port;
+	req->serv = rad_server_get(code == CODE_ACCOUNTING_REQUEST);
+	if (!req->serv)
+		goto out_err;
+	
+	req->server_addr = req->serv->auth_addr;
+	req->server_port = req->serv->auth_port;
 
 	while (1) {
 		if (read(urandom_fd, req->RA, 16) != 16) {
@@ -97,8 +101,8 @@ out_err:
 
 int rad_req_acct_fill(struct rad_req_t *req)
 {
-	req->server_addr = conf_acct_server;
-	req->server_port = conf_acct_server_port;
+	req->server_addr = req->serv->acct_addr;
+	req->server_port = req->serv->acct_port;
 
 	memset(req->RA, 0, sizeof(req->RA));
 
@@ -132,6 +136,8 @@ int rad_req_acct_fill(struct rad_req_t *req)
 
 void rad_req_free(struct rad_req_t *req)
 {
+	if (req->serv)
+		rad_server_put(req->serv);
 	if (req->hnd.fd >= 0 )
 		close(req->hnd.fd);
 	if (req->pack)

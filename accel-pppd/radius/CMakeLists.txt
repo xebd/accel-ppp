@@ -5,6 +5,7 @@ SET(sources
 	packet.c
 	auth.c
 	acct.c
+	serv.c
 	dm_coa.c
 	radius.c
 )

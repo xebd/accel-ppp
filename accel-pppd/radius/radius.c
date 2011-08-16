@@ -34,14 +34,6 @@ in_addr_t conf_bind;
 int conf_verbose;
 int conf_interim_verbose;
 
-in_addr_t conf_auth_server;
-int conf_auth_server_port = 1812;
-char *conf_auth_secret;
-
-in_addr_t conf_acct_server;
-int conf_acct_server_port = 1813;
-char *conf_acct_secret;
-
 in_addr_t conf_dm_coa_server;
 int conf_dm_coa_port = 3799;
 char *conf_dm_coa_secret;
@@ -49,6 +41,9 @@ char *conf_dm_coa_secret;
 int conf_sid_in_auth;
 int conf_require_nas_ident;
 int conf_acct_interim_interval;
+
+int conf_accounting;
+int conf_fail_time = 60;
 
 unsigned long stat_auth_sent;
 unsigned long stat_auth_lost;
@@ -494,27 +489,6 @@ static int load_config(void)
 	else if (conf_nas_ip_address)
 		conf_bind = conf_nas_ip_address;
 
-	opt = conf_get_opt("radius", "auth-server");
-	if (!opt)
-		opt = conf_get_opt("radius", "auth_server");
-	if (!opt) {
-		log_emerg("radius: auth-server not specified\n");
-		return -1;
-	} else if (parse_server(opt, &conf_auth_server, &conf_auth_server_port, &conf_auth_secret)) {
-		log_emerg("radius: failed to parse auth_server\n");
-		return -1;
-	}
-
-	opt = conf_get_opt("radius", "acct-server");
-	if (!opt)
-		opt = conf_get_opt("radius", "acct_server");
-	if (!opt)
-		log_emerg("radius: acct-server not specified\n");
-	if (opt && parse_server(opt, &conf_acct_server, &conf_acct_server_port, &conf_acct_secret)) {
-		log_emerg("radius: failed to parse acct_server\n");
-		return -1;
-	}
-
 	opt = conf_get_opt("radius", "dae-server");
 	if (opt && parse_server(opt, &conf_dm_coa_server, &conf_dm_coa_port, &conf_dm_coa_secret)) {
 		log_emerg("radius: failed to parse dae-server\n");
@@ -536,6 +510,10 @@ static int load_config(void)
 	opt = conf_get_opt("radius", "acct-delay-time");
 	if (opt)
 		conf_acct_delay_time = atoi(opt);
+
+	opt = conf_get_opt("radius", "fail-time");
+	if (opt)
+		conf_fail_time = atoi(opt);
 
 	return 0;
 }
