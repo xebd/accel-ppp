@@ -99,6 +99,8 @@ extern int conf_require_nas_ident;
 extern in_addr_t conf_dm_coa_server;
 extern int conf_dm_coa_port;
 extern int conf_acct_interim_interval;
+extern int conf_accounting;
+extern int conf_fail_time;
 
 extern unsigned long stat_auth_sent;
 extern unsigned long stat_auth_lost;
@@ -140,7 +142,7 @@ int rad_packet_send(struct rad_packet_t *pck, int fd, struct sockaddr_in *addr);
 
 void dm_coa_cancel(struct radius_pd_t *pd);
 
-struct rad_server_t *rad_server_get();
+struct rad_server_t *rad_server_get(int);
 void rad_server_put(struct rad_server_t *);
 int rad_server_req_enter(struct rad_req_t *);
 void rad_server_req_exit(struct rad_req_t *);

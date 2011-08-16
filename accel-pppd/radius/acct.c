@@ -221,7 +221,7 @@ int rad_acct_start(struct radius_pd_t *rpd)
 	time_t ts;
 	unsigned int dt;
 	
-	if (!rpd->acct_req->serv)
+	if (!conf_accounting)
 		return 0;
 
 	rpd->acct_req = rad_req_alloc(rpd, CODE_ACCOUNTING_REQUEST, rpd->ppp->username);
@@ -346,7 +346,7 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 	time_t ts;
 	unsigned int dt;
 
-	if (!rpd->acct_req->serv)
+	if (!rpd->acct_req || !rpd->acct_req->serv)
 		return;
 
 	if (rpd->acct_interim_timer.tpd)
@@ -443,14 +443,15 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 
 			rad_server_req_exit(rpd->acct_req);
 
-			if (!rpd->acct_req->reply) {
-				rad_server_fail(rpd->acct_req->serv);
-				if (rad_server_realloc(rpd->acct_req, 1)) {
-					log_ppp_warn("radius:acct_stop: no servers available\n");
-					break;
-				}
-				req_set_RA(rpd->acct_req, rpd->acct_req->serv->acct_secret);
+			if (rpd->acct_req->reply)
+				break;
+
+			rad_server_fail(rpd->acct_req->serv);
+			if (rad_server_realloc(rpd->acct_req, 1)) {
+				log_ppp_warn("radius:acct_stop: no servers available\n");
+				break;
 			}
+			req_set_RA(rpd->acct_req, rpd->acct_req->serv->acct_secret);
 		}
 
 		rad_req_free(rpd->acct_req);

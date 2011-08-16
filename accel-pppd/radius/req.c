@@ -32,7 +32,7 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 	req->hnd.fd = -1;
 	req->ctx.before_switch = log_switch;
 
-	req->serv = rad_server_get();
+	req->serv = rad_server_get(code == CODE_ACCOUNTING_REQUEST);
 	if (!req->serv)
 		goto out_err;
 	
