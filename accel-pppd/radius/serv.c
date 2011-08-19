@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sched.h>
+#include <time.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -20,9 +21,12 @@ static LIST_HEAD(serv_list);
 struct rad_server_t *rad_server_get(int type)
 {
 	struct rad_server_t *s, *s0 = NULL;
+	struct timespec ts;
+	
+	clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	list_for_each_entry(s, &serv_list, entry) {
-		if (s->fail_time && time(NULL) < s->fail_time)
+		if (s->fail_time && ts.tv_sec < s->fail_time)
 			continue;
 
 		if (type == 0 && !s->auth_addr)
@@ -54,12 +58,16 @@ void rad_server_put(struct rad_server_t *s)
 
 int rad_server_req_enter(struct rad_req_t *req)
 {
+	struct timespec ts;
+	
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	
 	if (!req->serv->max_req_cnt)
 		return 0;
 
 	pthread_mutex_lock(&req->serv->lock);
 	
-	if (time(NULL) < req->serv->fail_time) {
+	if (ts.tv_sec < req->serv->fail_time) {
 		pthread_mutex_unlock(&req->serv->lock);
 		return -1;
 	}
@@ -70,7 +78,7 @@ int rad_server_req_enter(struct rad_req_t *req)
 		triton_context_schedule();
 		pthread_mutex_lock(&req->serv->lock);
 
-		if (time(NULL) < req->serv->fail_time) {
+		if (ts.tv_sec < req->serv->fail_time) {
 			pthread_mutex_unlock(&req->serv->lock);
 			return -1;
 		}
@@ -130,13 +138,14 @@ int rad_server_realloc(struct rad_req_t *req, int type)
 void rad_server_fail(struct rad_server_t *s)
 {
 	struct rad_req_t *r;
-	time_t t;
+	struct timespec ts;
+	
+	clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	pthread_mutex_lock(&s->lock);
-	t = time(NULL);
 
-	if (t > s->fail_time) {
-		s->fail_time = t + s->conf_fail_time;
+	if (ts.tv_sec > s->fail_time) {
+		s->fail_time = ts.tv_sec + s->conf_fail_time;
 		log_ppp_warn("radius: server not responding\n");
 		log_warn("radius: server noy responding\n");
 	}

@@ -74,6 +74,7 @@ int conf_tr101 = 1;
 static mempool_t conn_pool;
 static mempool_t pado_pool;
 
+unsigned int stat_starting;
 unsigned int stat_active;
 unsigned int stat_delayed_pado;
 unsigned long stat_PADI_recv;
@@ -247,6 +248,7 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 	conn->ctrl.started = ppp_started;
 	conn->ctrl.finished = ppp_finished;
 	conn->ctrl.max_mtu = MAX_PPPOE_MTU;
+	conn->ctrl.type = CTRL_TYPE_PPPOE;
 	conn->ctrl.name = "pppoe";
 
 	conn->ctrl.calling_station_id = _malloc(IFNAMSIZ + 19);
@@ -1215,6 +1217,12 @@ void pppoe_server_stop(const char *ifname)
 		break;
 	}
 	pthread_rwlock_unlock(&serv_lock);
+}
+
+void __export pppoe_get_stat(unsigned int **starting, unsigned int **active)
+{
+	*starting = &stat_starting;
+	*active = &stat_active;
 }
 
 static int init_secret(struct pppoe_serv_t *serv)

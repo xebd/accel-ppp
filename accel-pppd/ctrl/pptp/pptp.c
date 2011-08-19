@@ -656,6 +656,7 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		conn->ctrl.started = ppp_started;
 		conn->ctrl.finished = ppp_finished;
 		conn->ctrl.max_mtu = PPTP_MAX_MTU;
+		conn->ctrl.type = CTRL_TYPE_PPTP;
 		conn->ctrl.name = "pptp";
 		
 		conn->ctrl.calling_station_id = _malloc(17);
@@ -701,6 +702,12 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	cli_sendv(client,"  active: %u\r\n", stat_active);
 
 	return CLI_CMD_OK;
+}
+
+void __export pptp_get_stat(unsigned int **starting, unsigned int **active)
+{
+	*starting = &stat_starting;
+	*active = &stat_active;
 }
 
 static void load_config(void)

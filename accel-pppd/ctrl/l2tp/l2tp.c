@@ -301,6 +301,7 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 	conn->hello_timer.expire = l2tp_send_HELLO;
 	conn->hello_timer.period = conf_hello_interval * 1000;
 	conn->ctrl.ctx = &conn->ctx;
+	conn->ctrl.type = CTRL_TYPE_L2TP;
 	conn->ctrl.name = "l2tp";
 	conn->ctrl.started = l2tp_ppp_started;
 	conn->ctrl.finished = l2tp_ppp_finished;
@@ -1089,6 +1090,12 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	cli_sendv(client, "  active: %u\r\n", stat_active);
 
 	return CLI_CMD_OK;
+}
+
+void __export l2tp_get_stat(unsigned int **starting, unsigned int **active)
+{
+	*starting = &stat_starting;
+	*active = &stat_active;
 }
 
 static void load_config(void)

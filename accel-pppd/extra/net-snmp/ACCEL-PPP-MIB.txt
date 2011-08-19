@@ -1,0 +1,326 @@
+ACCEL-PPP-MIB DEFINITIONS ::= BEGIN
+
+IMPORTS
+    MODULE-IDENTITY, OBJECT-TYPE, Gauge32
+    NOTIFICATION-TYPE                       FROM SNMPv2-SMI
+    netSnmp                                 FROM NET-SNMP-MIB
+    InetAddressIPv4                         FROM INET-ADDRESS-MIB
+    IANAtunnelType                          FROM IANAifType-MIB
+;
+
+accelPPP MODULE-IDENTITY
+    LAST-UPDATED "201108180000Z"
+    ORGANIZATION "accel-ppp.sourceforge.net"
+    CONTACT-INFO    
+          "email:    xeb@mail.ru"
+    DESCRIPTION
+	"MIB objects for accel-ppp"
+    REVISION     "201108180000Z"
+    DESCRIPTION
+	"First draft"
+    ::= { netSnmp 100 }
+
+--
+-- top level structure
+--
+accelPPPStat      OBJECT IDENTIFIER ::= { accelPPP 1 }
+accelPPPSessions  OBJECT IDENTIFIER ::= { accelPPP 2 }
+accelPPPAdmin     OBJECT IDENTIFIER ::= { accelPPP 3 }
+--accelPPPNotifications OBJECT IDENTIFIER ::= { accelPPP 4 }
+
+statCore          OBJECT IDENTIFIER ::= { accelPPPStat 1 }
+statPPP           OBJECT IDENTIFIER ::= { accelPPPStat 2 }
+statPPTP          OBJECT IDENTIFIER ::= { accelPPPStat 3 }
+statL2TP          OBJECT IDENTIFIER ::= { accelPPPStat 4 }
+statPPPOE         OBJECT IDENTIFIER ::= { accelPPPStat 5 }
+--statRadius        OBJECT IDENTIFIER ::= { accelPPPStat 6 }
+
+
+statCoreUpTime OBJECT-TYPE
+    SYNTAX      Gauge32
+		UNITS       "seconds"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"accel-ppp uptime"
+    ::= { statCore 1 }
+
+statCoreCPU OBJECT-TYPE
+    SYNTAX      INTEGER (0..100)
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"cpu utilization"
+    ::= { statCore 2 }
+
+statCoreMemRss OBJECT-TYPE
+    SYNTAX      INTEGER
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"memory rss size"
+    ::= { statCore 3 }
+
+
+--
+-- PPP stats
+--
+
+statPPPStarting OBJECT-TYPE
+    SYNTAX      INTEGER
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"count of sessions which are
+			in starting phase"
+    ::= { statPPP 1 }
+
+statPPPActive OBJECT-TYPE
+    SYNTAX      INTEGER
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"count of active sessions"
+    ::= { statPPP 2 }
+
+statPPPFinishing OBJECT-TYPE
+    SYNTAX      INTEGER
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"count of active which are
+			in finishing phase"
+    ::= { statPPP 3 }
+
+--
+-- PPTP stats
+--
+
+statPPTPStarting OBJECT-TYPE
+    SYNTAX      INTEGER
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"count of connections which are
+			in starting phase"
+    ::= { statPPTP 1 }
+
+statPPTPActive OBJECT-TYPE
+    SYNTAX      INTEGER
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"count of active connections"
+    ::= { statPPTP 2 }
+
+--
+-- L2TP stats
+--
+
+statL2TPStarting OBJECT-TYPE
+    SYNTAX      INTEGER
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"count of connections which are
+			in starting phase"
+    ::= { statL2TP 1 }
+
+statL2TPActive OBJECT-TYPE
+    SYNTAX      INTEGER
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"count of active connections"
+    ::= { statL2TP 2 }
+
+--
+-- PPPOE stats
+--
+
+statPPPOEStarting OBJECT-TYPE
+    SYNTAX      INTEGER
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"count of connections which are
+			in starting phase"
+    ::= { statPPPOE 1 }
+
+statPPPOEActive OBJECT-TYPE
+    SYNTAX      INTEGER
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"count of active connections"
+    ::= { statPPPOE 2 }
+
+
+--
+-- PPP session table
+--
+
+sessionTable OBJECT-TYPE
+    SYNTAX      SEQUENCE OF sessionEntry
+    MAX-ACCESS  not-accessible
+    STATUS      current
+    DESCRIPTION
+			"this table contains information about
+			connected sessions"
+    ::= { accelPPPSessions 1 }
+
+sessionEntry OBJECT-TYPE
+    SYNTAX      sessionEntry
+    MAX-ACCESS  not-accessible
+    STATUS      current
+    DESCRIPTION
+			"A row describing a given session"
+    INDEX   { sesSID }
+    ::= { sessionTable 1 }
+
+sessionEntry ::= SEQUENCE {
+	sesSID          OCTET STRING,
+	sesIfName       OCTET STRING,
+	sesUsername     OCTET STRING,
+	sesIP           InetAddress,
+	sesType         IANAtunnelType,
+	sesState        INTEGER,
+	sesUptime       TimeTicks,
+	sesCallingSID   OCTET STRING,
+	sesCalledSID    OCTET STRING
+}
+
+sesSID OBJECT-TYPE
+    SYNTAX      OCTET STRING (SIZE(16))
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"Acct-Session-ID"
+    ::= { sessionEntry 1 }
+
+sesIfName OBJECT-TYPE
+    SYNTAX      OCTET STRING
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"name of ppp interface"
+    ::= { sessionEntry 2 }
+
+sesUsername OBJECT-TYPE
+    SYNTAX      OCTET STRING
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"session user name"
+    ::= { sessionEntry 3 }
+
+sesIP OBJECT-TYPE
+    SYNTAX      InetAddressIPv4
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"assigned IP address"
+    ::= { sessionEntry 4 }
+
+sesType OBJECT-TYPE
+    SYNTAX      INTEGER {
+									pptp(1),
+									l2tp(2),
+									pppoe(3)
+		            }
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"name of ppp interface"
+    ::= { sessionEntry 5 }
+
+sesState OBJECT-TYPE
+    SYNTAX      INTEGER {
+			            starting(1),
+									active(2),
+									finishing(3)
+		            }
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"state of session"
+    ::= { sessionEntry 6 }
+
+sesUptime OBJECT-TYPE
+    SYNTAX      Gauge32
+		UNITS       "seconds"
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"uptime of session"
+    ::= { sessionEntry 7 }
+
+sesCallingSID OBJECT-TYPE
+    SYNTAX      OCTET STRING
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"Calling-Station-ID"
+    ::= { sessionEntry 8 }
+
+sesCalledSID OBJECT-TYPE
+    SYNTAX      OCTET STRING
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"Called-Station-ID"
+    ::= { sessionEntry 9 }
+
+--
+-- Administration
+--
+
+terminate        OBJECT IDENTIFIER ::= { accelPPPAdmin 1 }
+
+termBySID OBJECT-TYPE
+    SYNTAX      OCTET STRING
+    MAX-ACCESS  write-only
+    STATUS      current
+    DESCRIPTION
+			"Terminate session softly identified by Acct-Session-ID"
+    ::= { terminate 1 }
+
+termByIfName OBJECT-TYPE
+    SYNTAX      OCTET STRING
+    MAX-ACCESS  write-only
+    STATUS      current
+    DESCRIPTION
+			"Terminate session softly identified by interface name"
+    ::= { terminate 2 }
+
+termByIP OBJECT-TYPE
+    SYNTAX      OCTET STRING
+    MAX-ACCESS  write-only
+    STATUS      current
+    DESCRIPTION
+			"Terminate session softly identified by Framed-IP-Address"
+    ::= { terminate 3 }
+
+termByUsername OBJECT-TYPE
+    SYNTAX      OCTET STRING
+    MAX-ACCESS  write-only
+    STATUS      current
+    DESCRIPTION
+			"Terminate session softly identified by username"
+    ::= { terminate 4 }
+
+
+shutdown OBJECT-TYPE
+    SYNTAX      INTEGER {
+                  normal(0),
+									soft(1),
+									hard(2),
+									cancel(3)
+		            }
+    MAX-ACCESS  write-only
+    STATUS      current
+    DESCRIPTION
+			"shutdown accel-ppp"
+    ::= { accelPPPAdmin 2 }
+
+END

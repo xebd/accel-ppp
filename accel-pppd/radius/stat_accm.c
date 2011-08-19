@@ -38,11 +38,13 @@ struct stat_accm_t *stat_accm_create(unsigned int time)
 static void stat_accm_clean(struct stat_accm_t *s)
 {
 	struct item_t *it;
-	time_t ts = time(NULL);
+	struct timespec ts;
+	
+	clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	while (!list_empty(&s->items)) {
 		it = list_entry(s->items.next, typeof(*it), entry);
-		if (ts - it->ts > s->time) {
+		if (ts.tv_sec - it->ts > s->time) {
 			list_del(&it->entry);
 			--s->items_cnt;
 			s->total -= it->val;
@@ -55,13 +57,16 @@ static void stat_accm_clean(struct stat_accm_t *s)
 void stat_accm_add(struct stat_accm_t *s, unsigned int val)
 {
 	struct item_t *it;
+	struct timespec ts;
+	
+	clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	pthread_mutex_lock(&s->lock);
 	
 	stat_accm_clean(s);
 
 	it = mempool_alloc(item_pool);
-	it->ts = time(NULL);
+	it->ts = ts.tv_sec;
 	it->val = val;
 	list_add_tail(&it->entry, &s->items);
 	++s->items_cnt;

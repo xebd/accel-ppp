@@ -16,6 +16,7 @@
 
 static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
 {
+	struct timespec ts;
 	time_t dt;
 	int day,hour;
 	char statm_fname[128];
@@ -33,8 +34,8 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 		fclose(f);
 	}
 
-	time(&dt);
-	dt -= triton_stat.start_time;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	dt = ts.tv_sec - triton_stat.start_time;
 	day = dt / (60 * 60 * 24);
 	dt %= 60 * 60 * 24;
 	hour = dt / (60 * 60);

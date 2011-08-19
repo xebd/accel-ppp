@@ -23,6 +23,7 @@ Features
 13. Supported pppd compatible ip-up/ip-down scripts
 14. Builtin tbf shaper manager
 15. Command line interface via telnet
+16. SNMP support (master or subagent via AgentX)
 
 
 Requirment
@@ -33,6 +34,7 @@ Requirment
 5. libnl-2.0 or probably later (required for builtin shaper)
 6. libcrypto-0.9.8 or probably later (openssl-0.9.8)
 7. libpcre
+8. net-snmp-5.x 
 
 
 Compilation and instalation
@@ -42,7 +44,7 @@ or specify other location via KDIR.
 1. cd /path/to/accel-ppp-1.3.5
 2. mkdir build
 3. cd build
-4. cmake [-DBUILD_DRIVER=FALSE] [-DKDIR=/usr/src/linux] [-DCMAKE_INSTALL_PREFIX=/usr/local] [-DCMAKE_BUILD_TYPE=Release] [-DLOG_PGSQL=FALSE] [-DSHAPER=FALSE] [-DRADIUS=TRUE] ..
+4. cmake [-DBUILD_DRIVER=FALSE] [-DKDIR=/usr/src/linux] [-DCMAKE_INSTALL_PREFIX=/usr/local] [-DCMAKE_BUILD_TYPE=Release] [-DLOG_PGSQL=FALSE] [-DSHAPER=FALSE] [-DRADIUS=TRUE] [-DNETSNMP=FALSE] ..
    Please note that the double dot record in the end of the command is essential. You'll probably get error or misconfigured sources if you miss it.
    BUILD_DRIVER, KDIR, CMAKE_INSTALL_PREFIX, CMAKE_BUILD_TYPE, LOG_PGSQL, SHAPER, RADIUS  are optional,
    But while pptp is not present in mainline kernel you probably need BUILD_DRIVER.
@@ -122,6 +124,31 @@ and so on...
 If you use chap-secrets instead of radius then there is way to utilize built-in shaper too.
 The optional fifth column in chap-secrets file is used to pass rate information to shaper.
 Its format is same as for radius attributes, except you cann't utilize time ranges functionality.
+
+
+SNMP
+----
+SNMP is implemented using net-snmp libraries. By default accel-ppp starts in subagent mode,
+so make sure that net-snmp configured with subagent control turned on (read net-snmp's README.agentx for more details).
+Also you can start accel-ppp as master agent using following configuration:
+[snmp]
+master=1
+
+Usage:
+Place accel-pppd/extra/net-snmp/ACCEL-PPP-MIB.txt to your mibs directory.
+Also you can find used numerical oids in this file.
+1. Requesting statistics:
+snmpwalk -m +ACCEL-PPP-MIB -v 2c -c local 127.0.0.1 ACCEL-PPP-MIB::accelPPPStat
+2. Requesting sessions:
+snmptable -m +ACCEL-PPP-MIB -v 2c -c local 127.0.0.1 ACCEL-PPP-MIB::sessionsTable
+3. Terminate session by session identifier (Acct-Session-ID):
+snmpset -m +ACCEL-PPP-MIB -v 2c -c local 127.0.0.1 ACCEL-PPP-MIB::termBySID.0 = 0000000000000001
+4. Terminate session by interface name:
+snmpset -m +ACCEL-PPP-MIB -v 2c -c local 127.0.0.1 ACCEL-PPP-MIB::termByIfName = ppp2
+5. Terminaten session by IP address (Framed-IP-Address):
+snmpset -m +ACCEL-PPP-MIB -v 2c -c local 127.0.0.1 ACCEL-PPP-MIB::termByIP = 192.168.10.10
+6. Terminate session by username:
+snmpset -m +ACCEL-PPP-MIB -v 2c -c local 127.0.0.1 ACCEL-PPP-MIB::termByUsername = user1
 
 
 Warning !!!

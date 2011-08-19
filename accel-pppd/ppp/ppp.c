@@ -44,7 +44,7 @@ static unsigned long long seq;
 static spinlock_t seq_lock;
 #endif
 
-struct ppp_stat_t ppp_stat;
+__export struct ppp_stat_t ppp_stat;
 
 struct layer_node_t
 {
@@ -400,7 +400,7 @@ void __export ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 		list_for_each_entry(d, &n->items, entry) {
 			d->starting = 1;
 			if (d->layer->start(d)) {
-				ppp_terminate(ppp, TERM_NAS_ERROR, 0);
+				ppp_terminate(ppp, 1, TERM_NAS_ERROR);
 				return;
 			}
 		}

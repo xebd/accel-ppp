@@ -5,14 +5,6 @@
 #include <sys/time.h>
 #include "list.h"
 
-#define LOG_MSG   0
-#define LOG_ERROR 1
-#define LOG_WARN  2
-#define LOG_INFO1 3
-#define LOG_INFO2 4
-#define LOG_DEBUG 5
-
-#define LOG_CHUNK_SIZE 128
 #define LOG_MAX_SIZE 4096
 
 struct ppp_t;

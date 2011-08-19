@@ -56,12 +56,16 @@
 #define TERM_AUTH_ERROR 8
 #define TERM_LOST_CARRIER 9
 
+#define CTRL_TYPE_PPTP  1
+#define CTRL_TYPE_L2TP  2
+#define CTRL_TYPE_PPPOE 3
 
 struct ppp_t;
 
 struct ppp_ctrl_t
 {
 	struct triton_context_t *ctx;
+	int type;
 	const char *name;
 	int max_mtu;
 	char *calling_station_id;

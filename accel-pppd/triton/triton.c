@@ -517,8 +517,7 @@ static void ru_update(struct triton_timer_t *t)
 	val = (double)((rusage.ru_utime.tv_sec - ru_utime.tv_sec) * 1000000 + (rusage.ru_utime.tv_usec - ru_utime.tv_usec) + 
 	      (rusage.ru_stime.tv_sec - ru_stime.tv_sec) * 1000000 + (rusage.ru_stime.tv_usec - ru_stime.tv_usec)) / dt * 100;
 
-	if (val <= 100)
-		triton_stat.cpu = val;
+	triton_stat.cpu = val;
 
 	ru_timestamp = ts;
 	ru_utime = rusage.ru_utime;
@@ -563,6 +562,8 @@ int __export triton_init(const char *conf_file)
 	if (event_init())
 		return -1;
 
+	triton_context_register(&default_ctx, NULL);
+
 	return 0;
 }
 
@@ -600,6 +601,7 @@ void __export triton_run()
 	struct _triton_thread_t *t;
 	int i;
 	char *opt;
+	struct timespec ts;
 
 	opt = conf_get_opt("core", "thread-count");
 	if (opt && atoi(opt) > 0)
@@ -614,12 +616,12 @@ void __export triton_run()
 		pthread_mutex_unlock(&t->sleep_lock);
 	}
 
-	time(&triton_stat.start_time);
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	triton_stat.start_time = ts.tv_sec;
 
 	md_run();
 	timer_run();
 
-	triton_context_register(&default_ctx, NULL);
 	triton_context_wakeup(&default_ctx);
 }
 
