@@ -493,6 +493,7 @@ static int get_layer_order(const char *name)
 	if (!strcmp(name,"auth")) return 1;
 	if (!strcmp(name,"ccp")) return 2;
 	if (!strcmp(name,"ipcp")) return 2;
+	if (!strcmp(name,"ipv6cp")) return 2;
 	return -1;
 }
 
