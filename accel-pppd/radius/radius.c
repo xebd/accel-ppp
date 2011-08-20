@@ -90,9 +90,9 @@ int rad_proc_attrs(struct rad_req_t *req)
 				if (!conf_gw_ip_address)
 					log_ppp_warn("radius: gw-ip-address not specified, cann't assign IP address...\n");
 				else {
-					req->rpd->ipaddr.owner = &ipdb;
-					req->rpd->ipaddr.peer_addr = attr->val.ipaddr;
-					req->rpd->ipaddr.addr = conf_gw_ip_address;
+					req->rpd->ipv4_addr.owner = &ipdb;
+					req->rpd->ipv4_addr.peer_addr = attr->val.ipaddr;
+					req->rpd->ipv4_addr.addr = conf_gw_ip_address;
 				}
 				break;
 			case Acct_Interim_Interval:
@@ -163,14 +163,24 @@ static int check(struct pwdb_t *pwdb, struct ppp_t *ppp, const char *username, i
 	return r;
 }
 
-static struct ipdb_item_t *get_ip(struct ppp_t *ppp)
+static struct ipv4db_item_t *get_ipv4(struct ppp_t *ppp)
 {
 	struct radius_pd_t *rpd = find_pd(ppp);
 	
-	if (rpd->ipaddr.peer_addr)
-		return &rpd->ipaddr;
+	if (rpd->ipv4_addr.peer_addr)
+		return &rpd->ipv4_addr;
 	return NULL;
 }
+
+static struct ipv6db_item_t *get_ipv6(struct ppp_t *ppp)
+{
+	struct radius_pd_t *rpd = find_pd(ppp);
+	
+	if (memcmp(&rpd->ipv6_addr.peer_addr, &in6addr_any, sizeof(in6addr_any)))
+		return &rpd->ipv6_addr;
+	return NULL;
+}
+
 
 static void session_timeout(struct triton_timer_t *t)
 {
@@ -402,7 +412,8 @@ void __export rad_register_plugin(struct ppp_t *ppp, struct rad_plugin_t *plugin
 }
 
 static struct ipdb_t ipdb = {
-	.get = get_ip,
+	.get_ipv4 = get_ipv4,
+	.get_ipv6 = get_ipv6,
 };
 
 static struct pwdb_t pwdb = {

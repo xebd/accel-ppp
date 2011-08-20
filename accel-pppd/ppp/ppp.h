@@ -3,7 +3,6 @@
 
 #include <sys/types.h>
 #include <time.h>
-#include <netinet/in.h>
 #include <pthread.h>
 
 #include "triton.h"
@@ -99,8 +98,8 @@ struct ppp_t
 	time_t start_time;
 	time_t stop_time;
 	char *username;
-	in_addr_t ipaddr;
-	in_addr_t peer_ipaddr;
+	uint32_t ipaddr;
+	uint32_t peer_ipaddr;
 
 	struct ppp_ctrl_t *ctrl;
 
