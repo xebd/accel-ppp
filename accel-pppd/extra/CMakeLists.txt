@@ -1,5 +1,6 @@
 ADD_LIBRARY(pppd_compat SHARED pppd_compat.c)
 ADD_LIBRARY(ippool SHARED ippool.c)
+ADD_LIBRARY(ipv6pool SHARED ipv6pool.c)
 ADD_LIBRARY(sigchld SHARED sigchld.c)
 ADD_LIBRARY(chap-secrets SHARED chap-secrets.c)
 
