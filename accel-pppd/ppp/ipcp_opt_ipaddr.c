@@ -107,6 +107,9 @@ static int ipaddr_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 	if (conf_check_exists && check_exists(ipcp->ppp, ipaddr_opt->ip->peer_addr))
 		return -1;
 	
+	ipcp->ppp->ipaddr = ipaddr_opt->ip->addr;
+	ipcp->ppp->peer_ipaddr = ipaddr_opt->ip->peer_addr;
+	
 	opt32->hdr.id=CI_ADDR;
 	opt32->hdr.len=6;
 	opt32->val=ipaddr_opt->ip->addr;
@@ -132,8 +135,8 @@ static int ipaddr_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 		return IPCP_OPT_REJ;
 
 	if (ipaddr_opt->ip->peer_addr == opt32->val) {
-		ipcp->ppp->ipaddr = ipaddr_opt->ip->addr;
-		ipcp->ppp->peer_ipaddr = ipaddr_opt->ip->peer_addr;
+		//ipcp->ppp->ipaddr = ipaddr_opt->ip->addr;
+		//ipcp->ppp->peer_ipaddr = ipaddr_opt->ip->peer_addr;
 		ipcp->delay_ack = ccp_ipcp_started(ipcp->ppp);
 		return IPCP_OPT_ACK;
 	}

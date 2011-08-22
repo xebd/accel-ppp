@@ -176,8 +176,8 @@ static struct ipv6db_item_t *get_ipv6(struct ppp_t *ppp)
 {
 	struct radius_pd_t *rpd = find_pd(ppp);
 	
-	if (memcmp(&rpd->ipv6_addr.peer_addr, &in6addr_any, sizeof(in6addr_any)))
-		return &rpd->ipv6_addr;
+	//if (memcmp(&rpd->ipv6_addr.peer_addr, &in6addr_any, sizeof(in6addr_any)))
+	//	return &rpd->ipv6_addr;
 	return NULL;
 }
 

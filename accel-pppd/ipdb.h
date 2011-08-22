@@ -17,7 +17,7 @@ struct ipv6db_item_t
 {
 	struct ipdb_t *owner;
 	struct in6_addr addr;
-	struct in6_addr peer_addr;
+	int prefix_len;
 };
 
 
