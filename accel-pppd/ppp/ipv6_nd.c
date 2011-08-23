@@ -7,18 +7,50 @@
 #include <pthread.h>
 #include <netinet/in.h>
 #include <netinet/icmp6.h>
+#include <arpa/inet.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 
 #include "log.h"
 #include "ppp.h"
 #include "events.h"
+#include "mempool.h"
+#include "ipdb.h"
 
 #include "memdebug.h"
+
+#define MAX_DNS_COUNT 3
 
 static int conf_init_ra = 3;
 static int conf_init_ra_interval = 1;
 static int conf_ra_interval = 60;
+static int conf_router_lifetime = 300;
+static int conf_rdnss_lifetime = 300;
+static struct in6_addr conf_dns[MAX_DNS_COUNT];
+static int conf_dns_count;
+
+#undef ND_OPT_ROUTE_INFORMATION
+#define  ND_OPT_ROUTE_INFORMATION	24
+struct nd_opt_route_info_local     /* route information */
+{
+	uint8_t   nd_opt_ri_type;
+	uint8_t   nd_opt_ri_len;
+	uint8_t   nd_opt_ri_prefix_len;
+	uint8_t   nd_opt_ri_flags_reserved;
+	uint32_t  nd_opt_ri_lifetime;
+	struct in6_addr  nd_opt_ri_prefix;
+};
+
+#undef ND_OPT_RDNSS_INFORMATION
+#define  ND_OPT_RDNSS_INFORMATION	25
+struct nd_opt_rdnss_info_local
+{
+	uint8_t  nd_opt_rdnssi_type;
+	uint8_t  nd_opt_rdnssi_len;
+	uint16_t nd_opt_rdnssi_pref_flag_reserved;
+	uint32_t nd_opt_rdnssi_lifetime;
+	struct in6_addr  nd_opt_rdnssi[0];
+};
 
 struct ipv6_nd_handler_t
 {
@@ -32,33 +64,82 @@ struct ipv6_nd_handler_t
 static void *pd_key;
 
 #define BUF_SIZE 1024
+static mempool_t buf_pool;
 
-static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h)
+static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *addr)
 {
-	void *buf = _malloc(BUF_SIZE);
+	void *buf = mempool_alloc(buf_pool), *endptr;
 	struct nd_router_advert *adv = buf;
 	struct nd_opt_prefix_info *pinfo;
-	//struct nd_opt_route_info *rinfo;
-	//struct nd_opt_rdnss_info_local *rdnssinfo;
+	struct nd_opt_route_info_local *rinfo;
+	struct nd_opt_rdnss_info_local *rdnssinfo;
+	struct in6_addr *rdnss_addr;
 	//struct nd_opt_mtu *mtu;
-	struct sockaddr_in6 addr;
+	struct ipv6db_addr_t *a;
+	int i;
+	
+	if (!buf) {
+		log_emerg("out of memory\n");
+		return;
+	}
 
 	memset(adv, 0, sizeof(*adv));
 	adv->nd_ra_type = ND_ROUTER_ADVERT;
 	adv->nd_ra_curhoplimit = 64;
-	adv->nd_ra_router_lifetime = htons(1);
+	adv->nd_ra_router_lifetime = htons(conf_router_lifetime);
 	//adv->nd_ra_reachable = 0;
 	//adv->nd_ra_retransmit = 0;
 	
 	pinfo = (struct nd_opt_prefix_info *)(adv + 1);
-	memset(pinfo, 0, sizeof(*pinfo));
-	pinfo->nd_opt_pi_type = ND_OPT_PREFIX_INFORMATION;
-	pinfo->nd_opt_pi_len = 4;
-	pinfo->nd_opt_pi_prefix_len = h->ppp->ipv6_prefix_len;
-	pinfo->nd_opt_pi_flags_reserved = ND_OPT_PI_FLAG_ONLINK | ND_OPT_PI_FLAG_AUTO;
-	pinfo->nd_opt_pi_valid_time = 0xffffffff;
-	pinfo->nd_opt_pi_preferred_time = 0xffffffff;
-	memcpy(&pinfo->nd_opt_pi_prefix, &h->ppp->ipv6_addr, 8);
+	list_for_each_entry(a, &h->ppp->ipv6->addr_list, entry) {
+		memset(pinfo, 0, sizeof(*pinfo));
+		pinfo->nd_opt_pi_type = ND_OPT_PREFIX_INFORMATION;
+		pinfo->nd_opt_pi_len = 4;
+		pinfo->nd_opt_pi_prefix_len = a->prefix_len;
+		pinfo->nd_opt_pi_flags_reserved = ND_OPT_PI_FLAG_ONLINK | ND_OPT_PI_FLAG_AUTO;
+		pinfo->nd_opt_pi_valid_time = 0xffffffff;
+		pinfo->nd_opt_pi_preferred_time = 0xffffffff;
+		memcpy(&pinfo->nd_opt_pi_prefix, &a->addr, 8);
+		pinfo++;
+	}
+	
+	rinfo = (struct nd_opt_route_info_local *)pinfo;
+	list_for_each_entry(a, &h->ppp->ipv6->route_list, entry) {
+		memset(rinfo, 0, sizeof(*rinfo));
+		rinfo->nd_opt_ri_type = ND_OPT_ROUTE_INFORMATION;
+		rinfo->nd_opt_ri_len = 3;
+		rinfo->nd_opt_ri_prefix_len = a->prefix_len;
+		rinfo->nd_opt_ri_lifetime = 0xffffffff;
+		memcpy(&rinfo->nd_opt_ri_prefix, &a->addr, 8);
+		rinfo++;
+	}
+
+	if (conf_dns_count) {
+		rdnssinfo = (struct nd_opt_rdnss_info_local *)rinfo;
+		memset(rdnssinfo, 0, sizeof(*rdnssinfo));
+		rdnssinfo->nd_opt_rdnssi_type = ND_OPT_RDNSS_INFORMATION;
+		rdnssinfo->nd_opt_rdnssi_len = 1 + 2 * conf_dns_count;
+		rdnssinfo->nd_opt_rdnssi_lifetime = htonl(conf_rdnss_lifetime);
+		rdnss_addr = (struct in6_addr *)rdnssinfo->nd_opt_rdnssi;
+		for (i = 0; i < conf_dns_count; i++) {
+			memcpy(rdnss_addr, &conf_dns[i], sizeof(*rdnss_addr));
+			rdnss_addr++;
+		}
+	} else
+		rdnss_addr = (struct in6_addr *)rinfo;
+
+	endptr = rdnss_addr;
+
+
+	sendto(h->hnd.fd, buf, endptr - buf, 0, (struct sockaddr *)addr, sizeof(*addr));
+
+	mempool_free(buf);
+}
+
+static void send_ra_timer(struct triton_timer_t *t)
+{
+	struct ipv6_nd_handler_t *h = container_of(t, typeof(*h), timer);
+	struct sockaddr_in6 addr;
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sin6_family = AF_INET6;
@@ -66,71 +147,33 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h)
 	addr.sin6_addr.s6_addr32[3] = htonl(0x1);
 	addr.sin6_scope_id = h->ppp->ifindex; 
 
-	sendto(h->hnd.fd, buf, (void *)(pinfo + 1) - buf, 0, (struct sockaddr *)&addr, sizeof(addr));
-
-	_free(buf);
-}
-
-static void send_ra_timer(struct triton_timer_t *t)
-{
-	struct ipv6_nd_handler_t *h = container_of(t, typeof(*h), timer);
-
 	if (h->ra_sent++ == conf_init_ra) {
 		h->timer.period = conf_ra_interval * 1000;
 		triton_timer_mod(t, 0);
 	}
 
-	ipv6_nd_send_ra(h);
+	ipv6_nd_send_ra(h, &addr);
 }
 
 static int ipv6_nd_read(struct triton_md_handler_t *_h)
 {
 	struct ipv6_nd_handler_t *h = container_of(_h, typeof(*h), hnd);
-	struct msghdr mhdr;
-	int chdr_len;
-	struct iovec iov;
-	struct cmsghdr *chdr, *cmsg;
-	struct in6_pktinfo *pkt_info;
-	struct icmp6_hdr *icmph;
-	void *buf;
+	struct icmp6_hdr *icmph = mempool_alloc(buf_pool);
 	int n;
+	struct sockaddr_in6 addr;
+	socklen_t addr_len = sizeof(addr);
 
-	chdr_len = CMSG_SPACE(sizeof(struct in6_pktinfo)) + CMSG_SPACE(sizeof(int));
-	chdr = _malloc(chdr_len);
-	buf = _malloc(BUF_SIZE);
-
-	iov.iov_len = BUF_SIZE;
-	iov.iov_base = buf;
-
-	memset(&mhdr, 0, sizeof(mhdr));
-	mhdr.msg_iov = &iov;
-	mhdr.msg_iovlen = 1;
-	mhdr.msg_control = chdr;
-	mhdr.msg_controllen = chdr_len;
+	if (!icmph) {
+		log_emerg("out of memory\n");
+		return 0;
+	}
 
 	while (1) {
-		n = recvmsg(h->hnd.fd, &mhdr, 0);
+		n = recvfrom(h->hnd.fd, icmph, BUF_SIZE, 0, &addr, &addr_len);
 		if (n == -1) {
 			if (errno == EAGAIN)
 				break;
 			log_ppp_error("ipv6_nd: recvmsg: %s\n", strerror(errno));
-			continue;
-		}
-
-		pkt_info = NULL;
-		for (cmsg = CMSG_FIRSTHDR(&mhdr); cmsg != NULL; cmsg = CMSG_NXTHDR(&mhdr, cmsg)) {
-			if (cmsg->cmsg_level == IPPROTO_IPV6 &&
-				  cmsg->cmsg_type == IPV6_PKTINFO) {
-				if (cmsg->cmsg_len != CMSG_LEN(sizeof(*pkt_info)))
-					log_ppp_warn("ipv6_nd: received invalid IPV6_PKTINFO\n");
-				else
-					pkt_info = (struct in6_pktinfo *)CMSG_DATA(cmsg);
-				break;
-			}
-		}
-
-		if (!pkt_info) {
-			log_ppp_warn("ipv6_nd: no IPV6_PKTINFO\n");
 			continue;
 		}
 
@@ -139,28 +182,25 @@ static int ipv6_nd_read(struct triton_md_handler_t *_h)
 			continue;
 		}
 
-		icmph = buf;
-
 		if (icmph->icmp6_type != ND_ROUTER_SOLICIT) {
 			log_ppp_warn("ipv6_nd: received unexcpected icmp packet (%i)\n", icmph->icmp6_type);
 			continue;
 		}
 
-		/*if (!IN6_IS_ADDR_LINKLOCAL(&pkt_info->ipi6_addr)) {
+		if (!IN6_IS_ADDR_LINKLOCAL(&addr.sin6_addr)) {
 			log_ppp_warn("ipv6_nd: received icmp packet from non link-local address\n");
 			continue;
-		}*/
+		}
 
-		/*if (*(uint64_t *)(pkt_info->ipi6_addr.s6_addr + 8) != *(uint64_t *)(h->ppp->ipv6_addr.s6_addr + 8)) {
+		/*if (*(uint64_t *)(addr.sin6_addr.s6_addr + 8) != *(uint64_t *)(h->ppp->ipv6_addr.s6_addr + 8)) {
 			log_ppp_warn("ipv6_nd: received icmp packet from unknown address\n");
 			continue;
 		}*/
 
-		ipv6_nd_send_ra(h);
+		ipv6_nd_send_ra(h, &addr);
 	}
 
-	_free(chdr);
-	_free(buf);
+	mempool_free(icmph);
 
 	return 0;
 }
@@ -189,12 +229,6 @@ int ppp_ipv6_nd_start(struct ppp_t *ppp, uint64_t intf_id)
 
 	if (bind(sock, (struct sockaddr *)&addr, sizeof(addr))) {
 		log_ppp_error("ipv6_nd: bind: %s %i\n", strerror(errno), errno);
-		goto out_err;
-	}
-
-	val = 1;
-	if (setsockopt(sock, IPPROTO_IPV6, IPV6_RECVPKTINFO, &val, sizeof(val))) {
-		log_ppp_error("ipv6_nd: setsockopt(IPV6_PKTINFO): %s\n", strerror(errno));
 		goto out_err;
 	}
 
@@ -299,10 +333,35 @@ static void ev_ppp_finishing(struct ppp_t *ppp)
 	_free(h);
 }
 
+static void load_config(void)
+{
+	struct conf_sect_t *s = conf_get_section("dnsv6");
+	struct conf_option_t *opt;
+	
+	if (!s)
+		return;
+	
+	conf_dns_count = 0;
+
+	list_for_each_entry(opt, &s->items, entry) {
+		if (inet_pton(AF_INET6, opt->name, &conf_dns[conf_dns_count]) == 0) {
+			log_error("dnsv6: faild to parse '%s'\n", opt->name);
+			continue;
+		}
+		if (++conf_dns_count == MAX_DNS_COUNT)
+			break;
+	}
+}
+
 static void init(void)
 {
+	buf_pool = mempool_create(BUF_SIZE);
+
+	load_config();
+
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 	triton_event_register_handler(EV_PPP_STARTED, (triton_event_func)ev_ppp_started);
 	triton_event_register_handler(EV_PPP_FINISHING, (triton_event_func)ev_ppp_finishing);
 }
 
-DEFINE_INIT(0, init);
+DEFINE_INIT(5, init);

@@ -16,6 +16,7 @@
 #include "sessionTable_data_access.h"
 
 #include "ppp.h"
+#include "ipdb.h"
 
 /** @ingroup interface
  * @addtogroup data_access data_access: Routines to access data
@@ -227,7 +228,7 @@ sessionTable_container_load(netsnmp_container *container)
 				else
 					ppp->username = strdup("");
 
-				rowreq_ctx->data->peer_addr = ppp->peer_ipaddr;
+				rowreq_ctx->data->peer_addr = ppp->ipv4 ? ppp->ipv4->peer_addr : 0;
 				rowreq_ctx->data->type = ppp->ctrl->type;
 				rowreq_ctx->data->state = ppp->state;
 				rowreq_ctx->data->uptime = (ppp->stop_time ? ppp->stop_time : t) - ppp->start_time;

@@ -30,36 +30,36 @@ static void ipaddr_print(void (*print)(const char *fmt,...),struct ipcp_option_t
 struct ipaddr_option_t
 {
 	struct ipcp_option_t opt;
-	struct ipv4db_item_t *ip;
+	struct ppp_t *ppp;
 	int started:1;
 };
 
-static struct ipcp_option_handler_t ipaddr_opt_hnd=
-{
-	.init=ipaddr_init,
-	.send_conf_req=ipaddr_send_conf_req,
-	.send_conf_nak=ipaddr_send_conf_nak,
-	.recv_conf_req=ipaddr_recv_conf_req,
-	.free=ipaddr_free,
-	.print=ipaddr_print,
+static struct ipcp_option_handler_t ipaddr_opt_hnd = {
+	.init          = ipaddr_init,
+	.send_conf_req = ipaddr_send_conf_req,
+	.send_conf_nak = ipaddr_send_conf_nak,
+	.recv_conf_req = ipaddr_recv_conf_req,
+	.free          = ipaddr_free,
+	.print         = ipaddr_print,
 };
 
 static struct ipcp_option_t *ipaddr_init(struct ppp_ipcp_t *ipcp)
 {
-	struct ipaddr_option_t *ipaddr_opt=_malloc(sizeof(*ipaddr_opt));
-	memset(ipaddr_opt,0,sizeof(*ipaddr_opt));
-	ipaddr_opt->opt.id=CI_ADDR;
-	ipaddr_opt->opt.len=6;
+	struct ipaddr_option_t *ipaddr_opt = _malloc(sizeof(*ipaddr_opt));
+	memset(ipaddr_opt, 0, sizeof(*ipaddr_opt));
+	ipaddr_opt->opt.id = CI_ADDR;
+	ipaddr_opt->opt.len = 6;
+	ipaddr_opt->ppp = ipcp->ppp;
 
 	return &ipaddr_opt->opt;
 }
 
 static void ipaddr_free(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt)
 {
-	struct ipaddr_option_t *ipaddr_opt=container_of(opt,typeof(*ipaddr_opt),opt);
+	struct ipaddr_option_t *ipaddr_opt = container_of(opt, typeof(*ipaddr_opt), opt);
 
-	if (ipaddr_opt->ip)
-		ipdb_put_ipv4(ipcp->ppp, ipaddr_opt->ip);
+	if (ipcp->ppp->ipv4)
+		ipdb_put_ipv4(ipcp->ppp, ipcp->ppp->ipv4);
 
 	_free(ipaddr_opt);
 }
@@ -71,8 +71,8 @@ static int check_exists(struct ppp_t *self_ppp, in_addr_t addr)
 
 	pthread_rwlock_rdlock(&ppp_lock);
 	list_for_each_entry(ppp, &ppp_list, entry) {
-		if (!ppp->terminating && ppp->peer_ipaddr == addr && ppp != self_ppp) {
-			log_ppp_warn("ppp:ipcp: requested IP already assigned to %s\n", ppp->ifname);
+		if (!ppp->terminating && ppp->ipv4 && ppp->ipv4->peer_addr == addr && ppp != self_ppp) {
+			log_ppp_warn("ppp: requested IPv4 address already assigned to %s\n", ppp->ifname);
 			r = 1;
 			break;
 		}
@@ -84,74 +84,63 @@ static int check_exists(struct ppp_t *self_ppp, in_addr_t addr)
 
 static int ipaddr_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt, uint8_t *ptr)
 {
-	struct ipaddr_option_t *ipaddr_opt=container_of(opt,typeof(*ipaddr_opt),opt);
-	struct ipcp_opt32_t *opt32=(struct ipcp_opt32_t*)ptr;
+	struct ipaddr_option_t *ipaddr_opt = container_of(opt, typeof(*ipaddr_opt), opt);
+	struct ipcp_opt32_t *opt32 = (struct ipcp_opt32_t *)ptr;
 	
-	if (!ipaddr_opt->ip) {
-		ipaddr_opt->ip = ipdb_get_ipv4(ipcp->ppp);
-		if (!ipaddr_opt->ip) {
-			log_ppp_warn("ppp:ipcp: no free IP address\n");
+	if (!ipcp->ppp->ipv4) {
+		ipcp->ppp->ipv4 = ipdb_get_ipv4(ipcp->ppp);
+		if (!ipcp->ppp->ipv4) {
+			log_ppp_warn("ppp: no free IPv4 address\n");
 			return -1;
 		}
 	}
 	
-	if (iprange_tunnel_check(ipaddr_opt->ip->peer_addr)) {
+	if (iprange_tunnel_check(ipcp->ppp->ipv4->peer_addr)) {
 		log_ppp_warn("ppp:ipcp: to avoid kernel soft lockup requested IP cannot be assigned (%i.%i.%i.%i)\n",
-			ipaddr_opt->ip->peer_addr&0xff, 
-			(ipaddr_opt->ip->peer_addr >> 8)&0xff, 
-			(ipaddr_opt->ip->peer_addr >> 16)&0xff, 
-			(ipaddr_opt->ip->peer_addr >> 24)&0xff);
+			ipcp->ppp->ipv4->peer_addr&0xff, 
+			(ipcp->ppp->ipv4->peer_addr >> 8)&0xff, 
+			(ipcp->ppp->ipv4->peer_addr >> 16)&0xff, 
+			(ipcp->ppp->ipv4->peer_addr >> 24)&0xff);
 		return -1;
 	}
 	
-	if (conf_check_exists && check_exists(ipcp->ppp, ipaddr_opt->ip->peer_addr))
+	if (conf_check_exists && check_exists(ipcp->ppp, ipcp->ppp->ipv4->peer_addr))
 		return -1;
 	
-	ipcp->ppp->ipaddr = ipaddr_opt->ip->addr;
-	ipcp->ppp->peer_ipaddr = ipaddr_opt->ip->peer_addr;
-	
-	opt32->hdr.id=CI_ADDR;
-	opt32->hdr.len=6;
-	opt32->val=ipaddr_opt->ip->addr;
+	opt32->hdr.id = CI_ADDR;
+	opt32->hdr.len = 6;
+	opt32->val = ipcp->ppp->ipv4->addr;
 	return 6;
 }
 
 static int ipaddr_send_conf_nak(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt, uint8_t *ptr)
 {
-	struct ipaddr_option_t *ipaddr_opt=container_of(opt,typeof(*ipaddr_opt),opt);
-	struct ipcp_opt32_t *opt32=(struct ipcp_opt32_t*)ptr;
-	opt32->hdr.id=CI_ADDR;
-	opt32->hdr.len=6;
-	opt32->val=ipaddr_opt->ip->peer_addr;
+	struct ipaddr_option_t *ipaddr_opt = container_of(opt, typeof(*ipaddr_opt), opt);
+	struct ipcp_opt32_t *opt32 = (struct ipcp_opt32_t *)ptr;
+	opt32->hdr.id = CI_ADDR;
+	opt32->hdr.len = 6;
+	opt32->val = ipcp->ppp->ipv4->peer_addr;
 	return 6;
 }
 
 static int ipaddr_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt, uint8_t *ptr)
 {
-	struct ipaddr_option_t *ipaddr_opt = container_of(opt,typeof(*ipaddr_opt), opt);
-	struct ipcp_opt32_t *opt32 = (struct ipcp_opt32_t*)ptr;
+	struct ipaddr_option_t *ipaddr_opt = container_of(opt, typeof(*ipaddr_opt), opt);
+	struct ipcp_opt32_t *opt32 = (struct ipcp_opt32_t *)ptr;
 
 	if (opt32->hdr.len != 6)
 		return IPCP_OPT_REJ;
 
-	if (ipaddr_opt->ip->peer_addr == opt32->val) {
-		//ipcp->ppp->ipaddr = ipaddr_opt->ip->addr;
-		//ipcp->ppp->peer_ipaddr = ipaddr_opt->ip->peer_addr;
+	if (ipcp->ppp->ipv4->peer_addr == opt32->val) {
 		ipcp->delay_ack = ccp_ipcp_started(ipcp->ppp);
 		return IPCP_OPT_ACK;
 	}
 		
-	/*if (!ipaddr_opt->peer_addr) {
-		ipaddr_opt->peer_addr = opt32->val;
-		goto ack;
-	}*/
-	
 	return IPCP_OPT_NAK;
 }
 
 static void if_up(struct ppp_t *ppp)
 {
-	struct ipaddr_option_t *ipaddr_opt = container_of(ipcp_find_option(ppp, &ipaddr_opt_hnd), typeof(*ipaddr_opt), opt);
 	struct ifreq ifr;
 	struct sockaddr_in addr;
 	struct npioctl np;
@@ -162,13 +151,13 @@ static void if_up(struct ppp_t *ppp)
 	strcpy(ifr.ifr_name, ppp->ifname);
 
 	addr.sin_family = AF_INET;
-  addr.sin_addr.s_addr = ipaddr_opt->ip->addr;
+  addr.sin_addr.s_addr = ppp->ipv4->addr;
 	memcpy(&ifr.ifr_addr,&addr,sizeof(addr));
 
 	if (ioctl(sock_fd, SIOCSIFADDR, &ifr))
 		log_ppp_error("ipcp: failed to set PA address: %s\n", strerror(errno));
 	
-  addr.sin_addr.s_addr = ipaddr_opt->ip->peer_addr;
+  addr.sin_addr.s_addr = ppp->ipv4->peer_addr;
 	memcpy(&ifr.ifr_dstaddr,&addr,sizeof(addr));
 	
 	if (ioctl(sock_fd, SIOCSIFDSTADDR, &ifr))
@@ -205,8 +194,8 @@ static void ipaddr_print(void (*print)(const char *fmt,...),struct ipcp_option_t
 
 	if (ptr)
 		in.s_addr = opt32->val;
-	else if (ipaddr_opt->ip)
-		in.s_addr = ipaddr_opt->ip->addr;
+	else if (ipaddr_opt->ppp->ipv4)
+		in.s_addr = ipaddr_opt->ppp->ipv4->addr;
 	
 	print("<addr %s>",inet_ntoa(in));
 }
@@ -229,3 +218,4 @@ static void ipaddr_opt_init()
 }
 
 DEFINE_INIT(4, ipaddr_opt_init);
+

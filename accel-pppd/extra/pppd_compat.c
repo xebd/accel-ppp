@@ -14,6 +14,7 @@
 
 #include "events.h"
 #include "ppp.h"
+#include "ipdb.h"
 #include "log.h"
 #include "utils.h"
 #include "sigchld.h"
@@ -480,8 +481,8 @@ static void fill_argv(char **argv, struct ppp_t *ppp, char *path)
 	argv[1] = ppp->ifname;
 	argv[2] = "none";
 	argv[3] = "0";
-	u_inet_ntoa(ppp->ipaddr, argv[4]);
-	u_inet_ntoa(ppp->peer_ipaddr, argv[5]);
+	u_inet_ntoa(ppp->ipv4 ? ppp->ipv4->addr : 0, argv[4]);
+	u_inet_ntoa(ppp->ipv4 ? ppp->ipv4->peer_addr : 0, argv[5]);
 	argv[6] = ppp->ctrl->calling_station_id;
 	argv[7] = NULL;
 }

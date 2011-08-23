@@ -62,6 +62,9 @@
 
 struct ppp_t;
 
+struct ipv4db_item_t;
+struct ipv6db_item_t;
+
 struct ppp_ctrl_t
 {
 	struct triton_context_t *ctx;
@@ -100,10 +103,8 @@ struct ppp_t
 	time_t start_time;
 	time_t stop_time;
 	char *username;
-	in_addr_t ipaddr;
-	in_addr_t peer_ipaddr;
-	struct in6_addr ipv6_addr;
-	int ipv6_prefix_len;
+	struct ipv4db_item_t *ipv4;
+	struct ipv6db_item_t *ipv6;
 
 	struct ppp_ctrl_t *ctrl;
 

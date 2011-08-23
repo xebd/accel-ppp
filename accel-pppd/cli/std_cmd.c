@@ -9,6 +9,7 @@
 #include "triton.h"
 #include "events.h"
 #include "ppp.h"
+#include "ipdb.h"
 #include "cli.h"
 #include "utils.h"
 #include "log.h"
@@ -166,7 +167,7 @@ static int terminate_exec2(int key, char * const *f, int f_cnt, void *cli)
 					continue;
 				break;
 			case 1:
-				if (ppp->peer_ipaddr != ipaddr)
+				if (ppp->ipv4 && ppp->ipv4->peer_addr != ipaddr)
 					continue;
 				break;
 			case 2:

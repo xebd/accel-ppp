@@ -13,11 +13,19 @@ struct ipv4db_item_t
 	in_addr_t peer_addr;
 };
 
+struct ipv6db_addr_t
+{
+	struct list_head entry;
+	struct in6_addr addr;
+	int prefix_len;
+};
+
 struct ipv6db_item_t
 {
 	struct ipdb_t *owner;
-	struct in6_addr addr;
-	int prefix_len;
+	uint64_t intf_id;
+	struct list_head addr_list;
+	struct list_head route_list;
 };
 
 

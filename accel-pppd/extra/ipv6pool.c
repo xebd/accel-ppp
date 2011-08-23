@@ -39,6 +39,7 @@ static void generate_pool(struct in6_addr *addr, int mask, int prefix_len)
 {
 	struct ippool_item_t *it;
 	uint64_t ip, endip, step;
+	struct ipv6db_addr_t *a;
 
 	ip = be64toh(*(uint64_t *)addr->s6_addr);
 	endip = ip | ((1llu << (64 - mask)) - 1);
@@ -46,8 +47,13 @@ static void generate_pool(struct in6_addr *addr, int mask, int prefix_len)
 	
 	for (; ip <= endip; ip += step) {
 		it = malloc(sizeof(*it));
-		*(uint64_t *)it->it.addr.s6_addr = htobe64(ip);
-		it->it.prefix_len = prefix_len;
+		INIT_LIST_HEAD(&it->it.addr_list);
+		INIT_LIST_HEAD(&it->it.route_list);
+		a = malloc(sizeof(*a));
+		memset(a, 0, sizeof(*a));
+		*(uint64_t *)a->addr.s6_addr = htobe64(ip);
+		a->prefix_len = prefix_len;
+		list_add_tail(&a->entry, &it->it.addr_list);
 		list_add_tail(&it->entry, &ippool);
 	}
 }
@@ -97,27 +103,36 @@ err:
 	_free(val);
 }
 
-static void generate_intf_id(struct ppp_t *ppp, struct in6_addr *addr)
+static uint64_t generate_intf_id(struct ppp_t *ppp)
 {
 	char str[4];
 	int i, n;
+	union {
+		uint64_t intf_id;
+		uint16_t addr16[4];
+	} u;
 	
 	switch (conf_intf_id) {
 		case INTF_ID_FIXED:
-			*(uint64_t *)(&addr->s6_addr32[2]) = conf_intf_id_val;
+			return conf_intf_id_val;
 			break;
 		case INTF_ID_RANDOM:
-			read(urandom_fd, &addr->s6_addr32[2], 8);
+			read(urandom_fd, &u, sizeof(u));
 			break;
 		case INTF_ID_CSID:
 			break;
 		case INTF_ID_IPV4:
-			for (i = 0; i < 4; i++) {
-				sprintf(str, "%i", (ppp->peer_ipaddr >> (i*8)) & 0xff);
-				sscanf(str, "%x", &n);
-				addr->s6_addr16[4 + i] = htons(n);
-			}
+			if (ppp->ipv4) {
+				for (i = 0; i < 4; i++) {
+					sprintf(str, "%i", (ppp->ipv4->peer_addr >> (i*8)) & 0xff);
+					sscanf(str, "%x", &n);
+					u.addr16[i] = htons(n);
+				}
+			} else
+				read(urandom_fd, &u, sizeof(u));
 	}
+
+	return u.intf_id;
 }
 
 static struct ipv6db_item_t *get_ip(struct ppp_t *ppp)
@@ -133,7 +148,7 @@ static struct ipv6db_item_t *get_ip(struct ppp_t *ppp)
 	spin_unlock(&pool_lock);
 
 	if (it)
-		generate_intf_id(ppp, &it->it.addr);
+		it->it.intf_id = generate_intf_id(ppp);
 
 	return it ? &it->it : NULL;
 }

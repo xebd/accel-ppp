@@ -8,6 +8,7 @@
 #include "triton.h"
 #include "events.h"
 #include "ppp.h"
+#include "ipdb.h"
 #include "cli.h"
 #include "utils.h"
 #include "log.h"
@@ -382,7 +383,7 @@ static void print_username(const struct ppp_t *ppp, char *buf)
 
 static void print_ip(const struct ppp_t *ppp, char *buf)
 {
-	u_inet_ntoa(ppp->peer_ipaddr, buf);
+	u_inet_ntoa(ppp->ipv4 ? ppp->ipv4->peer_addr : 0, buf);
 }
 
 static void print_type(const struct ppp_t *ppp, char *buf)

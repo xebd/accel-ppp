@@ -174,7 +174,7 @@ static struct ipv4db_item_t *get_ipv4(struct ppp_t *ppp)
 
 static struct ipv6db_item_t *get_ipv6(struct ppp_t *ppp)
 {
-	struct radius_pd_t *rpd = find_pd(ppp);
+	//struct radius_pd_t *rpd = find_pd(ppp);
 	
 	//if (memcmp(&rpd->ipv6_addr.peer_addr, &in6addr_any, sizeof(in6addr_any)))
 	//	return &rpd->ipv6_addr;
@@ -302,7 +302,7 @@ struct radius_pd_t *rad_find_session(const char *sessionid, const char *username
 			continue;
 		if (port_id >= 0 && port_id != rpd->ppp->unit_idx)
 			continue;
-		if (ipaddr && ipaddr != rpd->ppp->peer_ipaddr)
+		if (ipaddr && rpd->ppp->ipv4 && ipaddr != rpd->ppp->ipv4->peer_addr)
 			continue;
 		if (csid && rpd->ppp->ctrl->calling_station_id && strcmp(csid, rpd->ppp->ctrl->calling_station_id))
 			continue;

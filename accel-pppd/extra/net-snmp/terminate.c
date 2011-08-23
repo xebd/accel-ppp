@@ -12,6 +12,7 @@
 
 #include "triton.h"
 #include "ppp.h"
+#include "ipdb.h"
 
 #include "terminate.h"
 
@@ -65,7 +66,7 @@ static void terminate_by_ip(const char *val, size_t len)
 	
 	pthread_rwlock_rdlock(&ppp_lock);
 	list_for_each_entry(ppp, &ppp_list, entry) {
-		if (ppp->peer_ipaddr != addr)
+		if (!ppp->ipv4 || ppp->ipv4->peer_addr != addr)
 			continue;
 		triton_context_call(ppp->ctrl->ctx, (triton_event_func)__terminate, ppp);
 		break;
