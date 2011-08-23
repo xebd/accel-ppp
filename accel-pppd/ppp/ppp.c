@@ -388,6 +388,49 @@ void ppp_recv_proto_rej(struct ppp_t *ppp, uint16_t proto)
 	}
 }
 
+static void ppp_ifup(struct ppp_t *ppp)
+{
+	struct ifreq ifr;
+	struct npioctl np;
+	
+	triton_event_fire(EV_PPP_ACCT_START, ppp);
+	if (ppp->stop_time)
+		return;
+
+	triton_event_fire(EV_PPP_PRE_UP, ppp);
+	if (ppp->stop_time)
+		return;
+
+	memset(&ifr, 0, sizeof(ifr));
+	strcpy(ifr.ifr_name, ppp->ifname);
+
+	if (ioctl(sock_fd, SIOCGIFFLAGS, &ifr))
+		log_ppp_error("ppp: failed to get interface flags: %s\n", strerror(errno));
+
+	ifr.ifr_flags |= IFF_UP | IFF_POINTOPOINT;
+
+	if (ioctl(sock_fd, SIOCSIFFLAGS, &ifr))
+		log_ppp_error("ppp: failed to set interface flags: %s\n", strerror(errno));
+
+	if (ppp->ipv4) {
+		np.protocol = PPP_IP;
+		np.mode = NPMODE_PASS;
+
+		if (ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
+			log_ppp_error("ppp: failed to set NP (IPv4) mode: %s\n", strerror(errno));
+	}
+	
+	if (ppp->ipv6) {
+		np.protocol = PPP_IPV6;
+		np.mode = NPMODE_PASS;
+
+		if (ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
+			log_ppp_error("ppp: failed to set NP (IPv6) mode: %s\n", strerror(errno));
+	}
+	
+	triton_event_fire(EV_PPP_STARTED, ppp);
+}
+
 void __export ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 {
 	struct layer_node_t *n = d->node;
@@ -405,7 +448,7 @@ void __export ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 		__sync_sub_and_fetch(&ppp_stat.starting, 1);
 		__sync_add_and_fetch(&ppp_stat.active, 1);
 		ppp->ctrl->started(ppp);
-		triton_event_fire(EV_PPP_STARTED, ppp);
+		ppp_ifup(ppp);
 	} else {
 		n = list_entry(n->entry.next, typeof(*n), entry);
 		list_for_each_entry(d, &n->items, entry) {

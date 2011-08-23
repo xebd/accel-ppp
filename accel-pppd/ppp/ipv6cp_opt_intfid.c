@@ -160,8 +160,10 @@ static int ipaddr_recv_conf_req(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_optio
 	if (opt64->hdr.len != 10)
 		return IPV6CP_OPT_REJ;
 
-	if (ipv6cp->ppp->ipv6->intf_id == opt64->val)
+	if (ipv6cp->ppp->ipv6->intf_id == opt64->val) {
+		//ipv6cp->delay_ack = ccp_ipcp_started(ipcp->ppp);
 		goto ack;
+	}
 		
 	return IPV6CP_OPT_NAK;
 

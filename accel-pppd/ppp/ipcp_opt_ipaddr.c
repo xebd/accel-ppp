@@ -127,63 +127,39 @@ static int ipaddr_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 {
 	struct ipaddr_option_t *ipaddr_opt = container_of(opt, typeof(*ipaddr_opt), opt);
 	struct ipcp_opt32_t *opt32 = (struct ipcp_opt32_t *)ptr;
+	struct ifreq ifr;
+	struct sockaddr_in addr;
 
 	if (opt32->hdr.len != 6)
 		return IPCP_OPT_REJ;
 
 	if (ipcp->ppp->ipv4->peer_addr == opt32->val) {
 		ipcp->delay_ack = ccp_ipcp_started(ipcp->ppp);
-		return IPCP_OPT_ACK;
+		goto ack;
 	}
 		
 	return IPCP_OPT_NAK;
-}
 
-static void if_up(struct ppp_t *ppp)
-{
-	struct ifreq ifr;
-	struct sockaddr_in addr;
-	struct npioctl np;
-	
+ack:
 	memset(&ifr, 0, sizeof(ifr));
 	memset(&addr, 0, sizeof(addr));
 
-	strcpy(ifr.ifr_name, ppp->ifname);
+	strcpy(ifr.ifr_name, ipcp->ppp->ifname);
 
 	addr.sin_family = AF_INET;
-  addr.sin_addr.s_addr = ppp->ipv4->addr;
+  addr.sin_addr.s_addr = ipcp->ppp->ipv4->addr;
 	memcpy(&ifr.ifr_addr,&addr,sizeof(addr));
 
 	if (ioctl(sock_fd, SIOCSIFADDR, &ifr))
 		log_ppp_error("ipcp: failed to set PA address: %s\n", strerror(errno));
 	
-  addr.sin_addr.s_addr = ppp->ipv4->peer_addr;
+  addr.sin_addr.s_addr = ipcp->ppp->ipv4->peer_addr;
 	memcpy(&ifr.ifr_dstaddr,&addr,sizeof(addr));
 	
 	if (ioctl(sock_fd, SIOCSIFDSTADDR, &ifr))
 		log_ppp_error("ipcp: failed to set remote PA address: %s\n", strerror(errno));
-	
-	triton_event_fire(EV_PPP_ACCT_START, ppp);
-	if (ppp->stop_time)
-		return;
 
-	triton_event_fire(EV_PPP_PRE_UP, ppp);
-	if (ppp->stop_time)
-		return;
-
-	if (ioctl(sock_fd, SIOCGIFFLAGS, &ifr))
-		log_ppp_error("ipcp: failed to get interface flags: %s\n", strerror(errno));
-
-	ifr.ifr_flags |= IFF_UP | IFF_POINTOPOINT;
-
-	if (ioctl(sock_fd, SIOCSIFFLAGS, &ifr))
-		log_ppp_error("ipcp: failed to set interface flags: %s\n", strerror(errno));
-
-	np.protocol = PPP_IP;
-	np.mode = NPMODE_PASS;
-
-	if (ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
-		log_ppp_error("ipcp: failed to set NP mode: %s\n", strerror(errno));
+	return IPCP_OPT_ACK;
 }
 
 static void ipaddr_print(void (*print)(const char *fmt,...),struct ipcp_option_t *opt, uint8_t *ptr)
@@ -214,7 +190,6 @@ static void ipaddr_opt_init()
 	ipcp_option_register(&ipaddr_opt_hnd);
 	load_config();
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
-	triton_event_register_handler(EV_PPP_STARTED, (triton_event_func)if_up);
 }
 
 DEFINE_INIT(4, ipaddr_opt_init);
