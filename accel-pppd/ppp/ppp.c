@@ -88,6 +88,8 @@ static void generate_sessionid(struct ppp_t *ppp)
 
 int __export establish_ppp(struct ppp_t *ppp)
 {
+	struct ifreq ifr;
+
 	/* Open an instance of /dev/ppp and connect the channel to it */
 	if (ioctl(ppp->fd, PPPIOCGCHAN, &ppp->chan_idx) == -1) {
 		log_ppp_error("ioctl(PPPIOCGCHAN): %s\n", strerror(errno));
@@ -136,8 +138,17 @@ int __export establish_ppp(struct ppp_t *ppp)
 	generate_sessionid(ppp);
 	sprintf(ppp->ifname, "ppp%i", ppp->unit_idx);
 
+	memset(&ifr, 0, sizeof(ifr));
+	strcpy(ifr.ifr_name, ppp->ifname);
+
+	if (ioctl(sock_fd, SIOCGIFINDEX, &ifr)) {
+		log_ppp_error("ppp: ioctl(SIOCGIFINDEX): %s\n", strerror(errno));
+		goto exit_close_unit;
+	}
+	ppp->ifindex = ifr.ifr_ifindex;
+
 	log_ppp_info1("connect: %s <--> %s(%s)\n", ppp->ifname, ppp->ctrl->name, ppp->chan_name);
-	
+
 	init_layers(ppp);
 
 	if (list_empty(&ppp->layers)) {

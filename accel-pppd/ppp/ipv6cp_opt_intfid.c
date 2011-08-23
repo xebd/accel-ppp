@@ -4,12 +4,9 @@
 #include <fcntl.h>
 #include <string.h>
 #include <errno.h>
-#include <endian.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 #include "linux_ppp.h"
-
-#include <netlink/netlink.h>
 
 #include "log.h"
 #include "events.h"
@@ -130,6 +127,9 @@ static int ipaddr_send_conf_req(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_optio
 	if (conf_check_exists && check_exists(ipv6cp->ppp, &ipaddr_opt->ip->addr))
 		return -1;
 	
+	ipv6cp->ppp->ipv6_addr = ipaddr_opt->ip->addr;
+	ipv6cp->ppp->ipv6_prefix_len = ipaddr_opt->ip->prefix_len;
+	
 	opt64->hdr.id = CI_INTFID;
 	opt64->hdr.len = 10;
 	opt64->val = ipaddr_opt->intf_id;
@@ -150,7 +150,6 @@ static int ipaddr_recv_conf_req(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_optio
 {
 	struct ipaddr_option_t *ipaddr_opt = container_of(opt, typeof(*ipaddr_opt), opt);
 	struct ipv6cp_opt64_t *opt64 = (struct ipv6cp_opt64_t* )ptr;
-	struct ifreq ifr;
 	struct in6_ifreq ifr6;
 
 	if (opt64->hdr.len != 10)
@@ -178,24 +177,26 @@ ack:
 	//if (ipv6cp->ppp->stop_time)
 	//	return IPV6CP_OPT_ACK;
 
-	memset(&ifr, 0, sizeof(ifr));
-	strcpy(ifr.ifr_name, ipv6cp->ppp->ifname);
-
-	if (ioctl(sock_fd, SIOCGIFINDEX, &ifr)) {
-		log_ppp_error("ppp:ipv6cp: ioctl(SIOCGIFINDEX): %s\n", strerror(errno));
-		return IPV6CP_OPT_REJ;
-	}
-
 	memset(&ifr6, 0, sizeof(ifr6));
-	ifr6.ifr6_addr.s6_addr16[0] = htons(0xfe80);
+	ifr6.ifr6_addr.s6_addr32[0] = htons(0xfe80);
 	*(uint64_t *)(ifr6.ifr6_addr.s6_addr + 8) = ipaddr_opt->intf_id;
 	ifr6.ifr6_prefixlen = 64;
-	ifr6.ifr6_ifindex = ifr.ifr_ifindex;
+	ifr6.ifr6_ifindex = ipv6cp->ppp->ifindex;
 
 	if (ioctl(sock6_fd, SIOCSIFADDR, &ifr6)) {
 		log_ppp_error("ppp:ipv6cp: ioctl(SIOCSIFADDR): %s\n", strerror(errno));
 		return IPV6CP_OPT_REJ;
 	}
+
+	memcpy(ifr6.ifr6_addr.s6_addr, ipaddr_opt->ip->addr.s6_addr, 8);
+
+	if (ioctl(sock6_fd, SIOCSIFADDR, &ifr6)) {
+		log_ppp_error("ppp:ipv6cp: ioctl(SIOCSIFADDR): %s\n", strerror(errno));
+		return IPV6CP_OPT_REJ;
+	}
+
+	if (ppp_ipv6_nd_start(ipv6cp->ppp, ipaddr_opt->intf_id))
+		return IPV6CP_OPT_REJ;
 
 	return IPV6CP_OPT_ACK;
 }

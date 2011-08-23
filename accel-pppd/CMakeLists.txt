@@ -69,6 +69,7 @@ ADD_EXECUTABLE(accel-pppd
 	ppp/ppp_ipv6cp.c
 	ppp/ppp_ccp.c	
 	ppp/ccp_mppe.c
+	ppp/ipv6_nd.c
 
 	cli/std_cmd.c
 	cli/show_sessions.c

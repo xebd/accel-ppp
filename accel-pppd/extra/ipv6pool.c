@@ -47,6 +47,7 @@ static void generate_pool(struct in6_addr *addr, int mask, int prefix_len)
 	for (; ip <= endip; ip += step) {
 		it = malloc(sizeof(*it));
 		*(uint64_t *)it->it.addr.s6_addr = htobe64(ip);
+		it->it.prefix_len = prefix_len;
 		list_add_tail(&it->entry, &ippool);
 	}
 }

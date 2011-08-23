@@ -95,6 +95,7 @@ struct ppp_t
 	int state;
 	char *chan_name;
 	char ifname[PPP_IFNAME_LEN];
+	int ifindex;
 	char sessionid[PPP_SESSIONID_LEN+1];
 	time_t start_time;
 	time_t stop_time;
@@ -182,6 +183,8 @@ struct ppp_layer_data_t *ppp_find_layer_data(struct ppp_t *, struct ppp_layer_t 
 
 extern int ppp_shutdown;
 void ppp_shutdown_soft(void);
+
+int ppp_ipv6_nd_start(struct ppp_t *ppp, uint64_t intf_id);
 
 extern int conf_ppp_verbose;
 extern int conf_single_session;
