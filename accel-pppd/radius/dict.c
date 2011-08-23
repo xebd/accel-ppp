@@ -155,6 +155,12 @@ static int dict_load(const char *fname)
 					attr->type = ATTR_TYPE_IPADDR;
 				else if (!strcmp(ptr[2], "octets"))
 					attr->type = ATTR_TYPE_OCTETS;
+				else if (!strcmp(ptr[2], "ifid"))
+					attr->type = ATTR_TYPE_IFID;
+				else if (!strcmp(ptr[2], "ipv6addr"))
+					attr->type = ATTR_TYPE_IPV6ADDR;
+				else if (!strcmp(ptr[2], "ipv6prefix"))
+					attr->type = ATTR_TYPE_IPV6PREFIX;
 				else {
 					log_emerg("radius:%s:%i: unknown attribute type\n", fname, n);
 					goto out_err;

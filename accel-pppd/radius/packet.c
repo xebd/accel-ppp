@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <linux/mman.h>
+#include <arpa/inet.h>
 
 #include "log.h"
 #include "mempool.h"
@@ -87,10 +88,17 @@ int rad_packet_build(struct rad_packet_t *pack, uint8_t *RA)
 				memcpy(ptr, attr->val.string, attr->len);
 				break;
 			case ATTR_TYPE_IPADDR:
-				*(in_addr_t*)ptr = attr->val.ipaddr;
+			case ATTR_TYPE_IFID:
+			case ATTR_TYPE_IPV6ADDR:
+				memcpy(ptr, &attr->val, attr->len);
 				break;
 			case ATTR_TYPE_DATE:
 				*(uint32_t*)ptr = htonl(attr->val.date);
+				break;
+			case ATTR_TYPE_IPV6PREFIX:
+				ptr[0] = 0;
+				ptr[1] = attr->val.ipv6prefix.len;
+				memcpy(ptr + 2, &attr->val.ipv6prefix.prefix, sizeof(attr->val.ipv6prefix.prefix));
 				break;
 			default:
 				log_emerg("radius:packet:BUG: unknown attribute type\n");
@@ -222,7 +230,14 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 					attr->val.integer = ntohl(*(uint32_t*)ptr);
 					break;
 				case ATTR_TYPE_IPADDR:
-					attr->val.integer = *(uint32_t*)ptr;
+				case ATTR_TYPE_IFID:
+				case ATTR_TYPE_IPV6ADDR:
+					memcpy(&attr->val.integer, ptr, len);
+					break;
+				case ATTR_TYPE_IPV6PREFIX:
+					attr->val.ipv6prefix.len = ptr[1];
+					memset(&attr->val.ipv6prefix.prefix, 0, sizeof(attr->val.ipv6prefix.prefix));
+					memcpy(&attr->val.ipv6prefix.prefix, ptr + 2, len - 2);
 					break;
 			}
 			list_add_tail(&attr->entry, &pack->attrs);
@@ -264,6 +279,11 @@ void rad_packet_print(struct rad_packet_t *pack, void (*print)(const char *fmt, 
 {
 	struct rad_attr_t *attr;
 	struct rad_dict_value_t *val;
+	char ip_str[50];
+	union {
+		uint64_t ifid;
+		uint16_t u16[4];
+	} ifid_u;
 	
 	print("[RADIUS ");
 	switch(pack->code) {
@@ -326,6 +346,18 @@ void rad_packet_print(struct rad_packet_t *pack, void (*print)(const char *fmt, 
 				break;
 			case ATTR_TYPE_IPADDR:
 				print("%i.%i.%i.%i", attr->val.ipaddr & 0xff, (attr->val.ipaddr >> 8) & 0xff, (attr->val.ipaddr >> 16) & 0xff, (attr->val.ipaddr >> 24) & 0xff);
+				break;
+			case ATTR_TYPE_IFID:
+				ifid_u.ifid = attr->val.ifid;
+				print("%x:%x:%x:%x", ntohs(ifid_u.u16[0]), ntohs(ifid_u.u16[1]), ntohs(ifid_u.u16[2]), ntohs(ifid_u.u16[3]));
+				break;
+			case ATTR_TYPE_IPV6ADDR:
+				inet_ntop(AF_INET6, &attr->val.ipv6addr, ip_str, sizeof(ip_str));
+				print("%s", ip_str);
+				break;
+			case ATTR_TYPE_IPV6PREFIX:
+				inet_ntop(AF_INET6, &attr->val.ipv6prefix.prefix, ip_str, sizeof(ip_str));
+				print("%s/%i", ip_str, attr->val.ipv6prefix.len);
 				break;
 		}
 		print(">");
@@ -594,6 +626,81 @@ int __export rad_packet_change_val(struct rad_packet_t *pack, const char *vendor
 int __export rad_packet_add_ipaddr(struct rad_packet_t *pack, const char *vendor_name, const char *name, in_addr_t ipaddr)
 {
 	return rad_packet_add_int(pack, vendor_name, name, ipaddr);
+}
+
+int rad_packet_add_ifid(struct rad_packet_t *pack, const char *vendor_name, const char *name, uint64_t ifid)
+{
+	struct rad_attr_t *ra;
+	struct rad_dict_attr_t *attr;
+	struct rad_dict_vendor_t *vendor;
+
+	if (pack->len + (vendor_name ? 8 : 2) + 8 >= REQ_LENGTH_MAX)
+		return -1;
+
+	if (vendor_name) {
+		vendor = rad_dict_find_vendor_name(vendor_name);
+		if (!vendor)
+			return -1;
+		attr = rad_dict_find_vendor_attr(vendor, name);
+	} else {
+		vendor = NULL;
+		attr = rad_dict_find_attr(name);
+	}
+
+	if (!attr)
+		return -1;
+	
+	ra = mempool_alloc(attr_pool);
+	if (!ra)
+		return -1;
+
+	memset(ra, 0, sizeof(*ra));
+	ra->vendor = vendor;
+	ra->attr = attr;
+	ra->len = 8;
+	ra->val.ifid = ifid;
+	list_add_tail(&ra->entry, &pack->attrs);
+	pack->len += (vendor_name ? 8 : 2) + 8;
+
+	return 0;
+}
+
+int rad_packet_add_ipv6prefix(struct rad_packet_t *pack, const char *vendor_name, const char *name, struct in6_addr *prefix, int len)
+{
+	struct rad_attr_t *ra;
+	struct rad_dict_attr_t *attr;
+	struct rad_dict_vendor_t *vendor;
+
+	if (pack->len + (vendor_name ? 8 : 2) + 18 >= REQ_LENGTH_MAX)
+		return -1;
+
+	if (vendor_name) {
+		vendor = rad_dict_find_vendor_name(vendor_name);
+		if (!vendor)
+			return -1;
+		attr = rad_dict_find_vendor_attr(vendor, name);
+	} else {
+		vendor = NULL;
+		attr = rad_dict_find_attr(name);
+	}
+
+	if (!attr)
+		return -1;
+	
+	ra = mempool_alloc(attr_pool);
+	if (!ra)
+		return -1;
+
+	memset(ra, 0, sizeof(*ra));
+	ra->vendor = vendor;
+	ra->attr = attr;
+	ra->len = 18;
+	ra->val.ipv6prefix.len = len;
+	ra->val.ipv6prefix.prefix = *prefix;
+	list_add_tail(&ra->entry, &pack->attrs);
+	pack->len += (vendor_name ? 8 : 2) + 18;
+
+	return 0;
 }
 
 

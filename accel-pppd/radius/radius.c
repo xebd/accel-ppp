@@ -78,6 +78,7 @@ static mempool_t rpd_pool;
 int rad_proc_attrs(struct rad_req_t *req)
 {
 	struct rad_attr_t *attr;
+	struct ipv6db_addr_t *a;
 	int res = 0;
 
 	req->rpd->acct_interim_interval = conf_acct_interim_interval;
@@ -119,6 +120,15 @@ int rad_proc_attrs(struct rad_req_t *req)
 				break;
 			case Termination_Action:
 				req->rpd->termination_action = attr->val.integer; 
+				break;
+			case Framed_Interface_Id:
+				req->rpd->ipv6_addr.intf_id = attr->val.ifid;
+				break;
+			case Framed_IPv6_Prefix:
+				a = _malloc(sizeof(*a));
+				a->prefix_len = attr->val.ipv6prefix.len;
+				a->addr = attr->val.ipv6prefix.prefix;
+				list_add_tail(&a->entry, &req->rpd->ipv6_addr.addr_list);
 				break;
 		}
 	}
@@ -174,10 +184,11 @@ static struct ipv4db_item_t *get_ipv4(struct ppp_t *ppp)
 
 static struct ipv6db_item_t *get_ipv6(struct ppp_t *ppp)
 {
-	//struct radius_pd_t *rpd = find_pd(ppp);
+	struct radius_pd_t *rpd = find_pd(ppp);
 	
-	//if (memcmp(&rpd->ipv6_addr.peer_addr, &in6addr_any, sizeof(in6addr_any)))
-	//	return &rpd->ipv6_addr;
+	if (!list_empty(&rpd->ipv6_addr.addr_list))
+		return &rpd->ipv6_addr;
+
 	return NULL;
 }
 
@@ -206,6 +217,8 @@ static void ppp_starting(struct ppp_t *ppp)
 	rpd->ppp = ppp;
 	pthread_mutex_init(&rpd->lock, NULL);
 	INIT_LIST_HEAD(&rpd->plugin_list);
+	INIT_LIST_HEAD(&rpd->ipv6_addr.addr_list);
+	INIT_LIST_HEAD(&rpd->ipv6_addr.route_list);
 	list_add_tail(&rpd->pd.entry, &ppp->pd_list);
 
 	pthread_rwlock_wrlock(&sessions_lock);
@@ -242,6 +255,7 @@ static void ppp_finishing(struct ppp_t *ppp)
 static void ppp_finished(struct ppp_t *ppp)
 {
 	struct radius_pd_t *rpd = find_pd(ppp);
+	struct ipv6db_addr_t *a;
 
 	pthread_rwlock_wrlock(&sessions_lock);
 	pthread_mutex_lock(&rpd->lock);
@@ -267,6 +281,12 @@ static void ppp_finished(struct ppp_t *ppp)
 	if (rpd->attr_state)
 		_free(rpd->attr_state);
 	
+	while (!list_empty(&rpd->ipv6_addr.addr_list)) {
+		a = list_entry(rpd->ipv6_addr.addr_list.next, typeof(*a), entry);
+		list_del(&a->entry);
+		_free(a);
+	}
+
 	list_del(&rpd->pd.entry);
 	
 	mempool_free(rpd);

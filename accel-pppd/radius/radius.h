@@ -11,6 +11,9 @@
 #define ATTR_TYPE_OCTETS  2
 #define ATTR_TYPE_DATE    3
 #define ATTR_TYPE_IPADDR  4
+#define ATTR_TYPE_IFID    5
+#define ATTR_TYPE_IPV6ADDR 6
+#define ATTR_TYPE_IPV6PREFIX 7
 
 #define CODE_ACCESS_REQUEST 1
 #define CODE_ACCESS_ACCEPT  2
@@ -34,6 +37,12 @@ typedef union
 		uint8_t *octets;
 		time_t date;
 		in_addr_t ipaddr;
+		uint64_t ifid;
+		struct in6_addr ipv6addr;
+		struct {
+			struct in6_addr prefix;
+			uint8_t len;
+		} ipv6prefix;
 } rad_value_t;
 
 struct rad_dict_t
@@ -114,6 +123,8 @@ int rad_packet_change_int(struct rad_packet_t *pack, const char *vendor, const c
 int rad_packet_change_val(struct rad_packet_t *pack, const char *vendor, const char *name, const char *val);
 int rad_packet_change_octets(struct rad_packet_t *pack, const char *vendor, const char *name, const uint8_t *val, int len);
 int rad_packet_add_ipaddr(struct rad_packet_t *pack, const char *vendor, const char *name, in_addr_t ipaddr);
+int rad_packet_add_ifid(struct rad_packet_t *pack, const char *vendor, const char *name, uint64_t ifid);
+int rad_packet_add_ipv6prefix(struct rad_packet_t *pack, const char *vendor, const char *name, struct in6_addr *prefix, int len);
 
 #endif
 

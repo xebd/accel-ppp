@@ -16,14 +16,6 @@
 #include "memdebug.h"
 
 
-#define INTF_ID_FIXED  0
-#define INTF_ID_RANDOM 1
-#define INTF_ID_CSID   2
-#define INTF_ID_IPV4   3
-
-static int conf_intf_id = INTF_ID_FIXED;
-static uint64_t conf_intf_id_val = 2;
-
 struct ippool_item_t
 {
 	struct list_head entry;
@@ -33,7 +25,6 @@ struct ippool_item_t
 static LIST_HEAD(ippool);
 static spinlock_t pool_lock = SPINLOCK_INITIALIZER;
 static struct ipdb_t ipdb;
-static int urandom_fd;
 
 static void generate_pool(struct in6_addr *addr, int mask, int prefix_len)
 {
@@ -103,38 +94,6 @@ err:
 	_free(val);
 }
 
-static uint64_t generate_intf_id(struct ppp_t *ppp)
-{
-	char str[4];
-	int i, n;
-	union {
-		uint64_t intf_id;
-		uint16_t addr16[4];
-	} u;
-	
-	switch (conf_intf_id) {
-		case INTF_ID_FIXED:
-			return conf_intf_id_val;
-			break;
-		case INTF_ID_RANDOM:
-			read(urandom_fd, &u, sizeof(u));
-			break;
-		case INTF_ID_CSID:
-			break;
-		case INTF_ID_IPV4:
-			if (ppp->ipv4) {
-				for (i = 0; i < 4; i++) {
-					sprintf(str, "%i", (ppp->ipv4->peer_addr >> (i*8)) & 0xff);
-					sscanf(str, "%x", &n);
-					u.addr16[i] = htons(n);
-				}
-			} else
-				read(urandom_fd, &u, sizeof(u));
-	}
-
-	return u.intf_id;
-}
-
 static struct ipv6db_item_t *get_ip(struct ppp_t *ppp)
 {
 	struct ippool_item_t *it;
@@ -146,9 +105,8 @@ static struct ipv6db_item_t *get_ip(struct ppp_t *ppp)
 	} else
 		it = NULL;
 	spin_unlock(&pool_lock);
-
-	if (it)
-		it->it.intf_id = generate_intf_id(ppp);
+	
+	it->it.intf_id = 0;
 
 	return it ? &it->it : NULL;
 }
@@ -167,33 +125,6 @@ static struct ipdb_t ipdb = {
 	.put_ipv6 = put_ip,
 };
 
-static uint64_t parse_intfid(const char *opt)
-{
-	union {
-		uint64_t u64;
-		uint16_t u16[4];
-	} u;
-
-	int n[4];
-	int i;
-
-	if (sscanf(opt, "%x:%x:%x:%x", &n[0], &n[1], &n[2], &n[3]) != 4)
-		goto err;
-	
-	for (i = 0; i < 4; i++) {
-		if (n[i] < 0 || n[i] > 0xffff)
-			goto err;
-		u.u16[i] = htons(n[i]);
-	}
-
-	return u.u64;
-
-err:
-	log_error("ipv6pool: failed to parse intf-id\n");
-	conf_intf_id = INTF_ID_RANDOM;
-	return 0;
-}
-
 static void ippool_init(void)
 {
 	struct conf_sect_t *s = conf_get_section("ipv6-pool");
@@ -202,25 +133,8 @@ static void ippool_init(void)
 	if (!s)
 		return;
 	
-	list_for_each_entry(opt, &s->items, entry) {
-		if (!strcmp(opt->name, "intf-id")) {
-			if (!strcmp(opt->val, "random"))
-				conf_intf_id = INTF_ID_RANDOM;
-			else if (!strcmp(opt->val, "calling-sid"))
-				conf_intf_id = INTF_ID_CSID;
-			else if (!strcmp(opt->val, "ipv4"))
-				conf_intf_id = INTF_ID_IPV4;
-			else {
-				conf_intf_id = INTF_ID_FIXED;
-				conf_intf_id_val = parse_intfid(opt->val);
-			}
-		}
-		if (opt->val)
-			continue;
+	list_for_each_entry(opt, &s->items, entry)
 		add_prefix(opt->name);
-	}
-
-	urandom_fd = open("/dev/urandom", O_RDONLY);
 
 	ipdb_register(&ipdb);
 }

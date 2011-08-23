@@ -101,6 +101,8 @@ out_err:
 
 int rad_req_acct_fill(struct rad_req_t *req)
 {
+	struct ipv6db_addr_t *a;
+
 	req->server_addr = req->serv->acct_addr;
 	req->server_port = req->serv->acct_port;
 
@@ -133,6 +135,14 @@ int rad_req_acct_fill(struct rad_req_t *req)
 	if (req->rpd->ppp->ipv4) {
 		if (rad_packet_add_ipaddr(req->pack, NULL, "Framed-IP-Address", req->rpd->ppp->ipv4->peer_addr))
 			return -1;
+	}
+	if (req->rpd->ppp->ipv6) {
+		if (rad_packet_add_ifid(req->pack, NULL, "Framed-Interface-Id", req->rpd->ppp->ipv6->intf_id))
+			return -1;
+		list_for_each_entry(a, &req->rpd->ppp->ipv6->addr_list, entry) {
+			if (rad_packet_add_ipv6prefix(req->pack, NULL, "Framed-IPv6-Prefix", &a->addr, a->prefix_len))
+				return -1;
+		}
 	}
 
 	return 0;

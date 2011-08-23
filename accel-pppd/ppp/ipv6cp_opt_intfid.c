@@ -18,10 +18,14 @@
 
 #define INTF_ID_FIXED  0
 #define INTF_ID_RANDOM 1
+#define INTF_ID_CSID   2
+#define INTF_ID_IPV4   3
 
 static int conf_check_exists;
 static int conf_intf_id = INTF_ID_FIXED;
 static uint64_t conf_intf_id_val = 1;
+static int conf_peer_intf_id = INTF_ID_FIXED;
+static uint64_t conf_peer_intf_id_val = 2;
 
 // from /usr/include/linux/ipv6.h
 struct in6_ifreq {
@@ -118,6 +122,38 @@ out:
 	return r;
 }
 
+static uint64_t generate_peer_intf_id(struct ppp_t *ppp)
+{
+	char str[4];
+	int i, n;
+	union {
+		uint64_t intf_id;
+		uint16_t addr16[4];
+	} u;
+	
+	switch (conf_peer_intf_id) {
+		case INTF_ID_FIXED:
+			return conf_peer_intf_id_val;
+			break;
+		case INTF_ID_RANDOM:
+			read(urandom_fd, &u, sizeof(u));
+			break;
+		case INTF_ID_CSID:
+			break;
+		case INTF_ID_IPV4:
+			if (ppp->ipv4) {
+				for (i = 0; i < 4; i++) {
+					sprintf(str, "%i", (ppp->ipv4->peer_addr >> (i*8)) & 0xff);
+					sscanf(str, "%x", &n);
+					u.addr16[i] = htons(n);
+				}
+			} else
+				read(urandom_fd, &u, sizeof(u));
+	}
+
+	return u.intf_id;
+}
+
 static int ipaddr_send_conf_req(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_option_t *opt, uint8_t *ptr)
 {
 	struct ipaddr_option_t *ipaddr_opt = container_of(opt, typeof(*ipaddr_opt), opt);
@@ -130,6 +166,9 @@ static int ipaddr_send_conf_req(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_optio
 			return -1;
 		}
 	}
+
+	if (!ipv6cp->ppp->ipv6->intf_id)
+		ipv6cp->ppp->ipv6->intf_id = generate_peer_intf_id(ipv6cp->ppp);
 	
 	if (conf_check_exists && check_exists(ipv6cp->ppp))
 		return -1;
@@ -266,6 +305,20 @@ static void load_config(void)
 		else {
 			conf_intf_id = INTF_ID_FIXED;
 			conf_intf_id_val = parse_intfid(opt);
+		}
+	}
+	
+	opt = conf_get_opt("ppp", "ipv6-peer-intf-id");
+	if (opt) {
+		if (!strcmp(opt, "random"))
+			conf_peer_intf_id = INTF_ID_RANDOM;
+		else if (!strcmp(opt, "calling-sid"))
+			conf_peer_intf_id = INTF_ID_CSID;
+		else if (!strcmp(opt, "ipv4"))
+			conf_peer_intf_id = INTF_ID_IPV4;
+		else {
+			conf_peer_intf_id = INTF_ID_FIXED;
+			conf_peer_intf_id_val = parse_intfid(opt);
 		}
 	}
 }

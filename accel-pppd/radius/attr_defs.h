@@ -285,3 +285,9 @@
 #define MS_Acct_EAP_Type_Generic_Token_Card 6
 #define MS_Acct_EAP_Type_TLS 13
 #define Traffic_Shape_in 231
+#define NAS_IPv6_Address 95
+#define Framed_Interface_Id 96
+#define Framed_IPv6_Prefix 97
+#define Login_IPv6_Host 98
+#define Framed_IPv6_Route 99
+#define Framed_IPv6_Pool 100
