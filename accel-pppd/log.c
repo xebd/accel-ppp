@@ -23,8 +23,6 @@
 #define LOG_INFO2 4
 #define LOG_DEBUG 5
 
-#define LOG_CHUNK_SIZE 128
-
 struct log_pd_t
 {
 	struct ppp_pd_t pd;

@@ -6,6 +6,7 @@
 #include "list.h"
 
 #define LOG_MAX_SIZE 4096
+#define LOG_CHUNK_SIZE 128
 
 struct ppp_t;
 struct triton_context_t;
