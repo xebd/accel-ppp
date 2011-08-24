@@ -324,7 +324,9 @@ static void ev_ppp_finishing(struct ppp_t *ppp)
 	if (!h)
 		return;
 	
-	triton_timer_del(&h->timer);
+	if (h->timer.tpd)
+		triton_timer_del(&h->timer);
+
 	triton_md_unregister_handler(&h->hnd);
 	close(h->hnd.fd);
 
