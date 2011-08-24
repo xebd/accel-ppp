@@ -1,4 +1,4 @@
-.TH ACCEL-PPP.CONF 5 "6 October 2010"
+.TH ACCEL-PPP.CONF 5 "23 August 2011"
 .SH NAME
 .B accel-ppp.conf
 - ACCEL-PPP VPN daemon configuration
@@ -61,7 +61,11 @@ RADIUS interaction module.
 .TP
 .BI ippool
 .br
-IP address assigning module.
+IPv4 address assigning module.
+.TP
+.BI ipv6pool
+.br
+IPv6 address assigning module.
 .TP
 .BI sigchld
 Helper module to manage child processes, required by pppd_compat
@@ -97,7 +101,6 @@ Prefered MRU.
 .BI "ccp=" n
 Disable CCP negotiation if this parameter is zero.
 .TP
-.TP
 .BI "sid-case=" upper|lower
 Specifies in which case generate session identifier (default lower).
 .TP
@@ -130,6 +133,39 @@ Specifies mppe negotioation preference.
 Default behavior - don't ask client for mppe, but allow it if client wants.
 Please note that RADIUS may override this option by MS-MPPE-Encryption-Policy attribute.
 .TP
+.BI "ipv4=" deny|allow|prefere|require
+Specify IPv4 (IPCP) negotioation algorithm:
+.br
+.B deny
+- don't negotiate IPv4.
+.br
+.B allow
+- negotiate IPv4 only if client requests.
+.br
+.B prefere
+- ask client for IPv4 negotiation, don't fail if he rejects.
+.br
+.B require
+- require IPv4 negotiation.
+.TP
+.BI "ipv6=" deny|allow|prefere|require
+Parameters are same as above.
+.TP
+.BI "ipv6-intf-id=" x:x:x:x|random
+Specify fixed or random interface identifier for IPv6.
+.TP
+.BI "ipv6-peer-intf-id=" x:x:x:x|random|ipv4|calling-sid
+Specify peer interface identifier for IPv6.
+.br
+.B ipv4
+- calculate interface identifier from IPv4 address, for example 192:168:0:1.
+.br
+.B calling-sid
+- calculate interface identifier from Calling-Station-Id.
+.TP
+.BI "ipv6-accept-peer-intf-id=" 0|1
+Specify whether to accept peer's interface identifier.
+.TP
 .SH [lcp]
 .br
 PPP LCP module configuration
@@ -149,6 +185,11 @@ Specifies primary DNS to be sent to peer.
 .TP
 .BI "dns2=" x.x.x.x
 Specifies secondary DNS to be sent to peer.
+.TP
+.SH [dnsv6]
+.TP
+.BI "dns=" IPv6_address
+Specifies IPv6 DNS to be sent to peer. You may specify up to 3 dns options.
 .TP
 .SH [client-ip-range]
 You have to explicitly specify range of ip address from which clients can connect to server in form:
@@ -433,3 +474,22 @@ Specifies range of remote address of ppp interfaces if form:
 .TP
 .BI "x.x.x.x/mask or x.x.x.x-y"
 Also specifies range of remote address of ppp interfaces.
+.TP
+.SH [ipv6-pool]
+.br
+Configuration of ipv6pool module.
+.br
+Format of each row is
+.br
+.B ipv6prefix/maks,prefix_len
+for example:
+.br
+.B fc00:0:1::/48,64
+- specifies pool of address by dividing prefix fc00:0:1::/48 to networks with 64 prefix len, e.g:
+.br
+fc00:0:1:0::/64
+.br
+fc00:0:1:1::/64
+.br
+...
+fc00:0:1:ffff::/64
