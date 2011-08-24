@@ -38,6 +38,7 @@ static void generate_pool(struct in6_addr *addr, int mask, int prefix_len)
 	
 	for (; ip <= endip; ip += step) {
 		it = malloc(sizeof(*it));
+		it->it.owner = &ipdb;
 		INIT_LIST_HEAD(&it->it.addr_list);
 		INIT_LIST_HEAD(&it->it.route_list);
 		a = malloc(sizeof(*a));
@@ -102,11 +103,10 @@ static struct ipv6db_item_t *get_ip(struct ppp_t *ppp)
 	if (!list_empty(&ippool)) {
 		it = list_entry(ippool.next, typeof(*it), entry);
 		list_del(&it->entry);
+		it->it.intf_id = 0;
 	} else
 		it = NULL;
 	spin_unlock(&pool_lock);
-	
-	it->it.intf_id = 0;
 
 	return it ? &it->it : NULL;
 }
