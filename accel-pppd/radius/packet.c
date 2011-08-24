@@ -275,7 +275,7 @@ void rad_packet_free(struct rad_packet_t *pack)
 	mempool_free(pack);
 }
 
-void rad_packet_print(struct rad_packet_t *pack, void (*print)(const char *fmt, ...))
+void rad_packet_print(struct rad_packet_t *pack, struct rad_server_t *s, void (*print)(const char *fmt, ...))
 {
 	struct rad_attr_t *attr;
 	struct rad_dict_value_t *val;
@@ -285,7 +285,10 @@ void rad_packet_print(struct rad_packet_t *pack, void (*print)(const char *fmt, 
 		uint16_t u16[4];
 	} ifid_u;
 	
-	print("[RADIUS ");
+	if (s)
+		print("[RADIUS(%i) ", s->id);
+	else
+		print("[RADIUS ");
 	switch(pack->code) {
 		case CODE_ACCESS_REQUEST:
 			print("Access-Request");

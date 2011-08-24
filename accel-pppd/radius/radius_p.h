@@ -67,6 +67,7 @@ struct rad_req_t
 struct rad_server_t
 {
 	struct list_head entry;
+	int id;
 	in_addr_t auth_addr;
 	int auth_port;
 	char *auth_secret;
@@ -79,9 +80,12 @@ struct rad_server_t
 	int client_cnt;
 	time_t fail_time;
 	int conf_fail_time;
+	int timeout_cnt;
 	pthread_mutex_t lock;
 };
 
+#define RAD_SERV_AUTH 0
+#define RAD_SERV_ACCT 1
 
 extern int conf_max_try;
 extern int conf_timeout;
@@ -138,7 +142,7 @@ struct rad_packet_t *rad_packet_alloc(int code);
 int rad_packet_build(struct rad_packet_t *pack, uint8_t *RA);
 int rad_packet_recv(int fd, struct rad_packet_t **, struct sockaddr_in *addr);
 void rad_packet_free(struct rad_packet_t *);
-void rad_packet_print(struct rad_packet_t *pack, void (*print)(const char *fmt, ...));
+void rad_packet_print(struct rad_packet_t *pack, struct rad_server_t *s, void (*print)(const char *fmt, ...));
 int rad_packet_send(struct rad_packet_t *pck, int fd, struct sockaddr_in *addr);
 
 void dm_coa_cancel(struct radius_pd_t *pd);
@@ -149,6 +153,8 @@ int rad_server_req_enter(struct rad_req_t *);
 void rad_server_req_exit(struct rad_req_t *);
 int rad_server_realloc(struct rad_req_t *, int);
 void rad_server_fail(struct rad_server_t *);
+void rad_server_timeout(struct rad_server_t *);
+void rad_server_reply(struct rad_server_t *);
 
 struct stat_accm_t;
 struct stat_accm_t *stat_accm_create(unsigned int time);

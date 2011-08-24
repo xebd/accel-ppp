@@ -16,9 +16,10 @@
 
 #include "memdebug.h"
 
+static int num;
 static LIST_HEAD(serv_list);
 
-struct rad_server_t *rad_server_get(int type)
+static struct rad_server_t *__rad_server_get(int type, struct rad_server_t *exclude)
 {
 	struct rad_server_t *s, *s0 = NULL;
 	struct timespec ts;
@@ -26,12 +27,15 @@ struct rad_server_t *rad_server_get(int type)
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	list_for_each_entry(s, &serv_list, entry) {
+		if (s == exclude)
+			continue;
+
 		if (s->fail_time && ts.tv_sec < s->fail_time)
 			continue;
 
-		if (type == 0 && !s->auth_addr)
+		if (type == RAD_SERV_AUTH && !s->auth_addr)
 			continue;
-		else if (type == 1 && !s->acct_addr)
+		else if (type == RAD_SERV_ACCT && !s->acct_addr)
 			continue;
 
 		if (!s0) {
@@ -51,6 +55,11 @@ struct rad_server_t *rad_server_get(int type)
 	return s0;
 }
 
+struct rad_server_t *rad_server_get(int type)
+{
+	return __rad_server_get(type, NULL);
+}
+
 void rad_server_put(struct rad_server_t *s)
 {
 	__sync_sub_and_fetch(&s->client_cnt, 1);
@@ -61,7 +70,10 @@ int rad_server_req_enter(struct rad_req_t *req)
 	struct timespec ts;
 	
 	clock_gettime(CLOCK_MONOTONIC, &ts);
-	
+
+	if (ts.tv_sec < req->serv->fail_time)
+		return -1;
+
 	if (!req->serv->max_req_cnt)
 		return 0;
 
@@ -111,18 +123,22 @@ void rad_server_req_exit(struct rad_req_t *req)
 
 int rad_server_realloc(struct rad_req_t *req, int type)
 {
-	if (req->hnd.fd != -1) {
-		close(req->hnd.fd);
-		req->hnd.fd = -1;
-	}
+	struct rad_server_t *s = __rad_server_get(type, req->serv);
+
+	if (!s)
+		return -1;
 
 	if (req->serv)
 		rad_server_put(req->serv);
 
-	req->serv = rad_server_get(type);
+	req->serv = s;
 
-	if (!req->serv)
-		return -1;
+	if (req->hnd.fd != -1) {
+		if (req->hnd.tpd)
+			triton_md_unregister_handler(&req->hnd);
+		close(req->hnd.fd);
+		req->hnd.fd = -1;
+	}
 
 	if (type) {
 		req->server_addr = req->serv->acct_addr;
@@ -146,8 +162,8 @@ void rad_server_fail(struct rad_server_t *s)
 
 	if (ts.tv_sec > s->fail_time) {
 		s->fail_time = ts.tv_sec + s->conf_fail_time;
-		log_ppp_warn("radius: server not responding\n");
-		log_warn("radius: server noy responding\n");
+		log_ppp_warn("radius: server(%i) not responding\n", s->id);
+		log_warn("radius: server(%i) not responding\n", s->id);
 	}
 
 	while (!list_empty(&s->req_queue)) {
@@ -158,8 +174,21 @@ void rad_server_fail(struct rad_server_t *s)
 	pthread_mutex_unlock(&s->lock);
 }
 
+void rad_server_timeout(struct rad_server_t *s)
+{
+	if (__sync_add_and_fetch(&s->timeout_cnt, 1) >= conf_max_try)
+		rad_server_fail(s);
+}
+
+void rad_server_reply(struct rad_server_t *s)
+{
+	__sync_synchronize();
+	s->timeout_cnt = 0;
+}
+
 static void __add_server(struct rad_server_t *s)
 {
+	s->id = ++num;
 	INIT_LIST_HEAD(&s->req_queue);
 	pthread_mutex_init(&s->lock, NULL);
 	s->conf_fail_time = conf_fail_time;

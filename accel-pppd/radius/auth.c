@@ -151,7 +151,7 @@ static int rad_auth_send(struct rad_req_t *req)
 
 	while (1) {
 		if (rad_server_req_enter(req)) {
-			if (rad_server_realloc(req, 0)) {
+			if (rad_server_realloc(req, RAD_SERV_AUTH)) {
 				log_ppp_warn("radius: no available servers\n");
 				break;
 			}
@@ -198,7 +198,7 @@ static int rad_auth_send(struct rad_req_t *req)
 
 		if (!req->reply) {
 			rad_server_fail(req->serv);
-			if (rad_server_realloc(req, 0)) {
+			if (rad_server_realloc(req, RAD_SERV_AUTH)) {
 				log_ppp_warn("radius: no available servers\n");
 				break;
 			}

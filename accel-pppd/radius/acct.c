@@ -84,12 +84,13 @@ static int rad_acct_read(struct triton_md_handler_t *h)
 		r = rad_packet_recv(h->fd, &pack, NULL);
 
 		if (pack) {
+			rad_server_reply(req->serv);
 			if (req->reply)
 				rad_packet_free(req->reply);
 			req->reply = pack;
 			if (conf_interim_verbose) {
 				log_ppp_info2("recv ");
-				rad_packet_print(req->reply, log_ppp_info2);
+				rad_packet_print(req->reply, req->serv, log_ppp_info2);
 			}
 		}
 
@@ -119,13 +120,11 @@ static int rad_acct_read(struct triton_md_handler_t *h)
 static void __rad_req_send(struct rad_req_t *req)
 {
 	while (1) {
-
 		if (rad_server_req_enter(req)) {
-			if (rad_server_realloc(req, 1)) {
-				log_ppp_warn("radius:acct: no servers available, terminating session...\n");
+			if (rad_server_realloc(req, RAD_SERV_ACCT)) {
 				if (conf_acct_timeout) {
+					log_ppp_warn("radius:acct: no servers available, terminating session...\n");
 					ppp_terminate(req->rpd->ppp, TERM_NAS_ERROR, 0);
-					return;
 				}
 				break;
 			}
@@ -133,6 +132,10 @@ static void __rad_req_send(struct rad_req_t *req)
 		}
 
 		rad_req_send(req, conf_interim_verbose);
+		if (!req->hnd.tpd) {
+			triton_md_register_handler(req->rpd->ppp->ctrl->ctx, &req->hnd);
+			triton_md_enable_handler(&req->hnd, MD_MODE_READ);
+		}
 
 		rad_server_req_exit(req);
 
@@ -148,14 +151,20 @@ static void rad_acct_timeout(struct triton_timer_t *t)
 	__sync_add_and_fetch(&stat_interim_lost, 1);
 	stat_accm_add(stat_interim_lost_1m, 1);
 	stat_accm_add(stat_interim_lost_5m, 1);
-	
+
+	if (conf_acct_timeout == 0) {
+		rad_server_timeout(req->serv);
+		triton_timer_del(t);
+		return;
+	}
+
 	time(&ts);
 
 	dt = ts - req->rpd->acct_timestamp;
 
 	if (dt > conf_acct_timeout) {
 		rad_server_fail(req->serv);
-		if (rad_server_realloc(req, 1)) {
+		if (rad_server_realloc(req, RAD_SERV_ACCT)) {
 			log_ppp_warn("radius:acct: no servers available, terminating session...\n");
 			ppp_terminate(req->rpd->ppp, TERM_NAS_ERROR, 0);
 			return;
@@ -209,10 +218,8 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 	__rad_req_send(rpd->acct_req);
 
 	__sync_add_and_fetch(&stat_interim_sent, 1);
-	if (conf_acct_timeout) {
-		rpd->acct_req->timeout.period = conf_timeout * 1000;
-		triton_timer_add(rpd->ppp->ctrl->ctx, &rpd->acct_req->timeout, 0);
-	}
+
+	triton_timer_add(rpd->ppp->ctrl->ctx, &rpd->acct_req->timeout, 0);
 }
 
 int rad_acct_start(struct radius_pd_t *rpd)
@@ -253,7 +260,7 @@ int rad_acct_start(struct radius_pd_t *rpd)
 	while (1) {
 
 		if (rad_server_req_enter(rpd->acct_req)) {
-			if (rad_server_realloc(rpd->acct_req, 1)) {
+			if (rad_server_realloc(rpd->acct_req, RAD_SERV_ACCT)) {
 				log_ppp_warn("radius:acct_start: no servers available\n");
 				goto out_err;
 			}
@@ -308,7 +315,7 @@ int rad_acct_start(struct radius_pd_t *rpd)
 			break;
 
 		rad_server_fail(rpd->acct_req->serv);
-		if (rad_server_realloc(rpd->acct_req, 1)) {
+		if (rad_server_realloc(rpd->acct_req, RAD_SERV_ACCT)) {
 			log_ppp_warn("radius:acct_start: no servers available\n");
 			goto out_err;
 		}
@@ -399,7 +406,7 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 		while (1) {
 
 			if (rad_server_req_enter(rpd->acct_req)) {
-				if (rad_server_realloc(rpd->acct_req, 1)) {
+				if (rad_server_realloc(rpd->acct_req, RAD_SERV_ACCT)) {
 					log_ppp_warn("radius:acct_stop: no servers available\n");
 					break;
 				}
@@ -447,7 +454,7 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 				break;
 
 			rad_server_fail(rpd->acct_req->serv);
-			if (rad_server_realloc(rpd->acct_req, 1)) {
+			if (rad_server_realloc(rpd->acct_req, RAD_SERV_ACCT)) {
 				log_ppp_warn("radius:acct_stop: no servers available\n");
 				break;
 			}

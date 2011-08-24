@@ -32,7 +32,7 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 	req->hnd.fd = -1;
 	req->ctx.before_switch = log_switch;
 
-	req->serv = rad_server_get(code == CODE_ACCOUNTING_REQUEST);
+	req->serv = rad_server_get(code == CODE_ACCESS_REQUEST ? RAD_SERV_AUTH : RAD_SERV_ACCT);
 	if (!req->serv)
 		goto out_err;
 	
@@ -213,7 +213,7 @@ int rad_req_send(struct rad_req_t *req, int verbose)
 	
 	if (verbose) {
 		log_ppp_info1("send ");
-		rad_packet_print(req->pack, log_ppp_info1);
+		rad_packet_print(req->pack, req->serv, log_ppp_info1);
 	}
 
 	rad_packet_send(req->pack, req->hnd.fd, NULL);
@@ -283,7 +283,7 @@ int rad_req_wait(struct rad_req_t *req, int timeout)
 
 	if (conf_verbose && req->reply) {
 		log_ppp_info1("recv ");
-		rad_packet_print(req->reply, log_ppp_info1);
+		rad_packet_print(req->reply, req->serv, log_ppp_info1);
 	}
 	return 0;
 }

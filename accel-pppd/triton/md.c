@@ -152,6 +152,8 @@ void __export triton_md_unregister_handler(struct triton_md_handler_t *ud)
 	list_add_tail(&h->entry, &freed_list);
 	pthread_mutex_unlock(&freed_list_lock);
 
+	ud->tpd = NULL;
+
 	triton_stat.md_handler_count--;
 }
 int __export triton_md_enable_handler(struct triton_md_handler_t *ud, int mode)
