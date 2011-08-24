@@ -45,7 +45,7 @@ struct ipv6db_item_t __export *ipdb_get_ipv6(struct ppp_t *ppp)
 
 void __export ipdb_put_ipv6(struct ppp_t *ppp, struct ipv6db_item_t *it)
 {
-	if (it->owner->put_ipv4)
+	if (it->owner->put_ipv6)
 		it->owner->put_ipv6(ppp, it);
 }
 
