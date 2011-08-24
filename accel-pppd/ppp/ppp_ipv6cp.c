@@ -105,7 +105,7 @@ static struct ppp_layer_data_t *ipv6cp_layer_init(struct ppp_t *ppp)
 	INIT_LIST_HEAD(&ipv6cp->options);
 	INIT_LIST_HEAD(&ipv6cp->ropt_list);
 
-	ipv6cp->ld.passive = conf_ipv6 == IPV6_ALLOW;
+	ipv6cp->ld.passive = conf_ipv6 == IPV6_ALLOW || conf_ipv6 == IPV6_DENY;
 	
 	return &ipv6cp->ld;
 }

@@ -105,7 +105,7 @@ static struct ppp_layer_data_t *ipcp_layer_init(struct ppp_t *ppp)
 	INIT_LIST_HEAD(&ipcp->options);
 	INIT_LIST_HEAD(&ipcp->ropt_list);
 
-	ipcp->ld.passive = conf_ipv4 == IPV4_ALLOW;
+	ipcp->ld.passive = conf_ipv4 == IPV4_ALLOW || conf_ipv4 == IPV4_DENY;
 	
 	return &ipcp->ld;
 }
