@@ -71,7 +71,7 @@ static struct ccp_option_t *mppe_init(struct ppp_ccp_t *ccp)
 		mppe_opt->mppe = -1;
 	
 	if (conf_mppe == 2)
-		ccp->passive = 0;
+		ccp->ld.passive = 0;
 
 	mppe_opt->opt.id = CI_MPPE;
 	mppe_opt->opt.len = 6;
@@ -288,7 +288,7 @@ static void ev_mppe_keys(struct ev_mppe_keys_t *ev)
 
 	if (ev->policy == 2) {
 		mppe_opt->mppe = 1;
-		ccp->passive = 0;
+		ccp->ld.passive = 0;
 	} else if (ev->policy == 1) {
 		if (conf_mppe == 1)
 			mppe_opt->mppe = 1;
@@ -296,7 +296,7 @@ static void ev_mppe_keys(struct ev_mppe_keys_t *ev)
 			mppe_opt->mppe = -1;
 
 		if (conf_mppe == 2)
-			ccp->passive = 1;
+			ccp->ld.passive = 1;
 	}
 }
 

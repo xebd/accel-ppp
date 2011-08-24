@@ -7,6 +7,7 @@
 #include "triton.h"
 
 #include "log.h"
+#include "events.h"
 
 #include "ppp.h"
 #include "ppp_ipv6cp.h"
@@ -22,17 +23,25 @@ struct recv_opt_t
 	struct ipv6cp_option_t *lopt;
 };
 
-static int conf_ipv6 = 2; // 0 - disables, 1 - allow, 2 - require
+#define IPV6_DENY 0
+#define IPV6_ALLOW 1
+#define IPV6_PREFERE 2
+#define IPV6_REQUIRE 3
+
+static int conf_ipv6 = IPV6_ALLOW;
 
 static LIST_HEAD(option_handlers);
+static struct ppp_layer_t ipv6cp_layer;
 
 static void ipv6cp_layer_up(struct ppp_fsm_t*);
 static void ipv6cp_layer_down(struct ppp_fsm_t*);
+static void ipv6cp_layer_finished(struct ppp_fsm_t*);
 static int send_conf_req(struct ppp_fsm_t*);
 static void send_conf_ack(struct ppp_fsm_t*);
 static void send_conf_nak(struct ppp_fsm_t*);
 static void send_conf_rej(struct ppp_fsm_t*);
 static void ipv6cp_recv(struct ppp_handler_t*);
+static void ipv6cp_recv_proto_rej(struct ppp_handler_t*);
 static void send_term_req(struct ppp_fsm_t *fsm);
 static void send_term_ack(struct ppp_fsm_t *fsm);
 
@@ -76,6 +85,7 @@ static struct ppp_layer_data_t *ipv6cp_layer_init(struct ppp_t *ppp)
 	
 	ipv6cp->hnd.proto = PPP_IPV6CP;
 	ipv6cp->hnd.recv = ipv6cp_recv;
+	ipv6cp->hnd.recv_proto_rej = ipv6cp_recv_proto_rej;
 	
 	ppp_register_unit_handler(ppp, &ipv6cp->hnd);
 
@@ -83,7 +93,8 @@ static struct ppp_layer_data_t *ipv6cp_layer_init(struct ppp_t *ppp)
 	ppp_fsm_init(&ipv6cp->fsm);
 
 	ipv6cp->fsm.layer_up = ipv6cp_layer_up;
-	ipv6cp->fsm.layer_finished = ipv6cp_layer_down;
+	ipv6cp->fsm.layer_finished = ipv6cp_layer_finished;
+	ipv6cp->fsm.layer_down = ipv6cp_layer_down;
 	ipv6cp->fsm.send_conf_req = send_conf_req;
 	ipv6cp->fsm.send_conf_ack = send_conf_ack;
 	ipv6cp->fsm.send_conf_nak = send_conf_nak;
@@ -94,10 +105,8 @@ static struct ppp_layer_data_t *ipv6cp_layer_init(struct ppp_t *ppp)
 	INIT_LIST_HEAD(&ipv6cp->options);
 	INIT_LIST_HEAD(&ipv6cp->ropt_list);
 
-	ipv6cp->passive = conf_ipv6 == 1;
+	ipv6cp->ld.passive = conf_ipv6 == IPV6_ALLOW;
 	
-	ipv6cp_options_init(ipv6cp);
-
 	return &ipv6cp->ld;
 }
 
@@ -106,15 +115,16 @@ int ipv6cp_layer_start(struct ppp_layer_data_t *ld)
 	struct ppp_ipv6cp_t *ipv6cp = container_of(ld, typeof(*ipv6cp), ld);
 	
 	log_ppp_debug("ipv6cp_layer_start\n");
-	
-	if (!conf_ipv6) {
-		ppp_layer_started(ipv6cp->ppp, &ipv6cp->ld);
-		return 0;
-	}
 
-	ppp_fsm_lower_up(&ipv6cp->fsm);
-	if (ppp_fsm_open(&ipv6cp->fsm))
-		return -1;
+	ipv6cp_options_init(ipv6cp);
+
+	ipv6cp->starting = 1;
+
+	if (!ipv6cp->ld.passive && conf_ipv6 != IPV6_DENY) {
+		ppp_fsm_lower_up(&ipv6cp->fsm);
+		if (ppp_fsm_open(&ipv6cp->fsm))
+			return -1;
+	}
 	
 	return 0;
 }
@@ -144,10 +154,8 @@ void ipv6cp_layer_free(struct ppp_layer_data_t *ld)
 	_free(ipv6cp);
 }
 
-static void ipv6cp_layer_up(struct ppp_fsm_t *fsm)
+static void __ipv6cp_layer_up(struct ppp_ipv6cp_t *ipv6cp)
 {
-	struct ppp_ipv6cp_t *ipv6cp = container_of(fsm, typeof(*ipv6cp), fsm);
-
 	log_ppp_debug("ipv6cp_layer_started\n");
 
 	if (!ipv6cp->started) {
@@ -156,17 +164,36 @@ static void ipv6cp_layer_up(struct ppp_fsm_t *fsm)
 	}
 }
 
-static void ipv6cp_layer_down(struct ppp_fsm_t *fsm)
+static void ipv6cp_layer_up(struct ppp_fsm_t *fsm)
+{
+	struct ppp_ipv6cp_t *ipv6cp = container_of(fsm, typeof(*ipv6cp), fsm);
+	
+	if (!ipv6cp->delay_ack)
+		__ipv6cp_layer_up(ipv6cp);
+}
+
+static void ipv6cp_layer_finished(struct ppp_fsm_t *fsm)
 {
 	struct ppp_ipv6cp_t *ipv6cp = container_of(fsm, typeof(*ipv6cp), fsm);
 
 	log_ppp_debug("ipv6cp_layer_finished\n");
 
-	if (ipv6cp->started) {
-		ipv6cp->started = 0;
-	  ppp_layer_finished(ipv6cp->ppp, &ipv6cp->ld);
-	} else
-		ppp_terminate(ipv6cp->ppp, TERM_NAS_ERROR, 0);
+	if (!ipv6cp->started) {
+		if (conf_ipv6 == IPV6_REQUIRE)
+			ppp_terminate(ipv6cp->ppp, TERM_USER_ERROR, 0);
+		else
+			ipv6cp->ld.passive = 1;
+	} else if (!ipv6cp->ppp->terminating)
+		ppp_terminate(ipv6cp->ppp, TERM_USER_ERROR, 0);
+}
+
+static void ipv6cp_layer_down(struct ppp_fsm_t *fsm)
+{
+	struct ppp_ipv6cp_t *ipv6cp = container_of(fsm, typeof(*ipv6cp), fsm);
+
+	log_ppp_debug("ipv6cp_layer_down\n");
+
+	ppp_fsm_close(fsm);
 }
 
 static void print_ropt(struct recv_opt_t *ropt)
@@ -189,20 +216,25 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 	struct ipv6cp_option_t *lopt;
 	int n;
 
-	if (ipv6cp->passive)
-		return 0;
-
 	ipv6cp_hdr->proto = htons(PPP_IPV6CP);
 	ipv6cp_hdr->code = CONFREQ;
-	ipv6cp_hdr->id = ++ipv6cp->fsm.id;
+	ipv6cp_hdr->id = ipv6cp->fsm.id;
 	ipv6cp_hdr->len = 0;
 	
 	ptr += sizeof(*ipv6cp_hdr);
 
 	list_for_each_entry(lopt, &ipv6cp->options, entry) {
 		n = lopt->h->send_conf_req(ipv6cp, lopt, ptr);
-		if (n < 0)
+		if (n < 0) {
+			if (n == IPV6CP_OPT_TERMACK)
+				goto out;
+			if (n == IPV6CP_OPT_CLOSE && conf_ipv6 != IPV6_REQUIRE) {
+				ppp_fsm_close2(fsm);
+				goto out;
+			}
+			_free(buf);
 			return -1;
+		}
 		if (n) {
 			ptr += n;
 			lopt->print = 1;
@@ -224,6 +256,7 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 	ipv6cp_hdr->len = htons(ptr - buf - 2);
 	ppp_unit_send(ipv6cp->ppp, ipv6cp_hdr, ptr - buf);
 
+out:
 	_free(buf);
 
 	return 0;
@@ -233,6 +266,11 @@ static void send_conf_ack(struct ppp_fsm_t *fsm)
 {
 	struct ppp_ipv6cp_t *ipv6cp = container_of(fsm, typeof(*ipv6cp), fsm);
 	struct ipv6cp_hdr_t *hdr = (struct ipv6cp_hdr_t*)ipv6cp->ppp->buf;
+
+	if (ipv6cp->delay_ack) {
+		send_term_ack(fsm);
+		return;
+	}
 
 	hdr->code = CONFACK;
 
@@ -263,10 +301,10 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 		if (ropt->state == IPV6CP_OPT_NAK) {
 			ptr1 = ptr;
 			ptr += ropt->lopt->h->send_conf_nak(ipv6cp, ropt->lopt, ptr);
-			if (conf_ppp_verbose) {
-				log_ppp_info2(" ");
-				ropt->lopt->h->print(log_ppp_info2, ropt->lopt, ptr1);
-			}
+		}
+		if (conf_ppp_verbose) {
+			log_ppp_info2(" ");
+			ropt->lopt->h->print(log_ppp_info2, ropt->lopt, ptr1);
 		}
 	}
 	
@@ -373,6 +411,17 @@ static int ipv6cp_recv_conf_req(struct ppp_ipv6cp_t *ipv6cp, uint8_t *data, int 
 		list_for_each_entry(lopt, &ipv6cp->options, entry) {
 			if (lopt->id == ropt->hdr->id) {
 				r = lopt->h->recv_conf_req(ipv6cp, lopt, (uint8_t*)ropt->hdr);
+				if (r == IPV6CP_OPT_TERMACK) {
+					send_term_ack(&ipv6cp->fsm);
+					return 0;
+				}
+				if (r == IPV6CP_OPT_CLOSE) {
+					if (conf_ipv6 == IPV6_REQUIRE)
+						ppp_terminate(ipv6cp->ppp, TERM_NAS_ERROR, 0);
+					else
+						lcp_send_proto_rej(ipv6cp->ppp, PPP_IPV6CP);
+					return 0;
+				}
 				if (ipv6cp->ppp->stop_time)
 					return -1;
 				lopt->state = r;
@@ -423,11 +472,11 @@ static int ipv6cp_recv_conf_rej(struct ppp_ipv6cp_t *ipv6cp, uint8_t *data, int 
 	if (conf_ppp_verbose)
 		log_ppp_info2("recv [IPV6CP ConfRej id=%x", ipv6cp->fsm.recv_id);
 
-	if (ipv6cp->fsm.recv_id != ipv6cp->fsm.id) {
+	/*if (ipv6cp->fsm.recv_id != ipv6cp->fsm.id) {
 		if (conf_ppp_verbose)
 			log_ppp_info2(": id mismatch ]\n");
 		return 0;
-	}
+	}*/
 
 	while (size > 0) {
 		hdr = (struct ipv6cp_opt_hdr_t *)data;
@@ -461,11 +510,11 @@ static int ipv6cp_recv_conf_nak(struct ppp_ipv6cp_t *ipv6cp, uint8_t *data, int 
 	if (conf_ppp_verbose)
 		log_ppp_info2("recv [IPV6CP ConfNak id=%x", ipv6cp->fsm.recv_id);
 
-	if (ipv6cp->fsm.recv_id != ipv6cp->fsm.id) {
+	/*if (ipv6cp->fsm.recv_id != ipv6cp->fsm.id) {
 		if (conf_ppp_verbose)
 			log_ppp_info2(": id mismatch ]\n");
 		return 0;
-	}
+	}*/
 
 	while (size > 0) {
 		hdr = (struct ipv6cp_opt_hdr_t *)data;
@@ -501,11 +550,11 @@ static int ipv6cp_recv_conf_ack(struct ppp_ipv6cp_t *ipv6cp, uint8_t *data, int 
 	if (conf_ppp_verbose)
 		log_ppp_info2("recv [IPV6CP ConfAck id=%x", ipv6cp->fsm.recv_id);
 
-	if (ipv6cp->fsm.recv_id != ipv6cp->fsm.id) {
+	/*if (ipv6cp->fsm.recv_id != ipv6cp->fsm.id) {
 		if (conf_ppp_verbose)
 			log_ppp_info2(": id mismatch ]\n");
 		return 0;
-	}
+	}*/
 
 	while (size > 0) {
 		hdr = (struct ipv6cp_opt_hdr_t *)data;
@@ -571,15 +620,15 @@ static void ipv6cp_recv(struct ppp_handler_t*h)
 	struct ipv6cp_hdr_t *hdr;
 	struct ppp_ipv6cp_t *ipv6cp = container_of(h, typeof(*ipv6cp), hnd);
 	int r;
+	int delay_ack = ipv6cp->delay_ack;
 
-	if (!conf_ipv6) {
-		lcp_send_proto_rej(ipv6cp->ppp, PPP_IPV6CP);
-		return;
-	}
-
-	if (ipv6cp->fsm.fsm_state == FSM_Initial || ipv6cp->fsm.fsm_state == FSM_Closed || ipv6cp->ppp->terminating) {
+	if (!ipv6cp->starting || ipv6cp->fsm.fsm_state == FSM_Closed || ipv6cp->ppp->terminating || conf_ipv6 == IPV6_DENY) {
 		if (conf_ppp_verbose)
 			log_ppp_warn("IPV6CP: discarding packet\n");
+		if (ipv6cp->ppp->terminating)
+			return;
+		if (ipv6cp->fsm.fsm_state == FSM_Closed || conf_ipv6 == IPV6_DENY)
+			lcp_send_proto_rej(ipv6cp->ppp, PPP_IPV6CP);
 		return;
 	}
 
@@ -593,8 +642,12 @@ static void ipv6cp_recv(struct ppp_handler_t*h)
 		log_ppp_warn("IPV6CP: short packet received\n");
 		return;
 	}
+	
+	if ((hdr->code == CONFACK || hdr->code == CONFNAK || hdr->code == CONFREJ) && hdr->id != ipv6cp->fsm.id)
+		return;
 
 	ipv6cp->fsm.recv_id = hdr->id;
+	
 	switch(hdr->code) {
 		case CONFREQ:
 			r = ipv6cp_recv_conf_req(ipv6cp,(uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN);
@@ -602,24 +655,34 @@ static void ipv6cp_recv(struct ppp_handler_t*h)
 				ipv6cp_free_conf_req(ipv6cp);
 				return;
 			}
-			switch(r) {
-				case IPV6CP_OPT_ACK:
-					ppp_fsm_recv_conf_req_ack(&ipv6cp->fsm);
-					break;
-				case IPV6CP_OPT_NAK:
-					ppp_fsm_recv_conf_req_nak(&ipv6cp->fsm);
-					break;
-				case IPV6CP_OPT_REJ:
-					ppp_fsm_recv_conf_req_rej(&ipv6cp->fsm);
-					break;
+			if (r && ipv6cp->ld.passive) {
+				ipv6cp->ld.passive = 0;
+				ppp_fsm_lower_up(&ipv6cp->fsm);
+				ppp_fsm_open(&ipv6cp->fsm);
+			}
+			if (delay_ack && !ipv6cp->delay_ack)
+				__ipv6cp_layer_up(ipv6cp);
+			if (ipv6cp->started || delay_ack) {
+				if (r == IPV6CP_OPT_ACK)
+					send_conf_ack(&ipv6cp->fsm);
+				else
+					r = IPV6CP_OPT_FAIL;
+			} else {
+				switch(r) {
+					case IPV6CP_OPT_ACK:
+						ppp_fsm_recv_conf_req_ack(&ipv6cp->fsm);
+						break;
+					case IPV6CP_OPT_NAK:
+						ppp_fsm_recv_conf_req_nak(&ipv6cp->fsm);
+						break;
+					case IPV6CP_OPT_REJ:
+						ppp_fsm_recv_conf_req_rej(&ipv6cp->fsm);
+						break;
+				}
 			}
 			ipv6cp_free_conf_req(ipv6cp);
 			if (r == IPV6CP_OPT_FAIL)
 				ppp_terminate(ipv6cp->ppp, TERM_USER_ERROR, 0);
-			else if (ipv6cp->passive) {
-				ipv6cp->passive = 0;
-				send_conf_req(&ipv6cp->fsm);
-			}
 			break;
 		case CONFACK:
 			if (ipv6cp_recv_conf_ack(ipv6cp,(uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN))
@@ -641,6 +704,7 @@ static void ipv6cp_recv(struct ppp_handler_t*h)
 			if (conf_ppp_verbose)
 				log_ppp_info2("recv [IPV6CP TermReq id=%x]\n", hdr->id);
 			ppp_fsm_recv_term_req(&ipv6cp->fsm);
+			ppp_terminate(ipv6cp->ppp, TERM_USER_REQUEST, 0);
 			break;
 		case TERMACK:
 			if (conf_ppp_verbose)
@@ -659,6 +723,17 @@ static void ipv6cp_recv(struct ppp_handler_t*h)
 	}
 }
 
+static void ipv6cp_recv_proto_rej(struct ppp_handler_t*h)
+{
+	struct ppp_ipv6cp_t *ipv6cp = container_of(h, typeof(*ipv6cp), hnd);
+
+	if (ipv6cp->fsm.fsm_state == FSM_Initial || ipv6cp->fsm.fsm_state == FSM_Closed)
+		return;
+	
+	ppp_fsm_lower_down(&ipv6cp->fsm);
+	ppp_fsm_close(&ipv6cp->fsm);
+}
+
 int ipv6cp_option_register(struct ipv6cp_option_handler_t *h)
 {
 	/*struct ipv6cp_option_drv_t *p;
@@ -672,6 +747,19 @@ int ipv6cp_option_register(struct ipv6cp_option_handler_t *h)
 	return 0;
 }
 
+struct ipv6cp_option_t *ipv6cp_find_option(struct ppp_t *ppp, struct ipv6cp_option_handler_t *h)
+{
+	struct ppp_ipv6cp_t *ipv6cp = container_of(ppp_find_layer_data(ppp, &ipv6cp_layer), typeof(*ipv6cp), ld);
+	struct ipv6cp_option_t *opt;
+	
+	list_for_each_entry(opt, &ipv6cp->options, entry)
+		if (opt->h == h)
+			return opt;
+	
+	log_emerg("ipv6cp: BUG: option not found\n");
+	abort();
+}
+
 static struct ppp_layer_t ipv6cp_layer =
 {
 	.init   = ipv6cp_layer_init,
@@ -680,10 +768,32 @@ static struct ppp_layer_t ipv6cp_layer =
 	.free   = ipv6cp_layer_free,
 };
 
+static void load_config(void)
+{
+	const char *opt;
+
+	opt = conf_get_opt("ppp", "ipv6");
+	if (opt) {
+		if (!strcmp(opt, "deny"))
+			conf_ipv6 = IPV6_DENY;
+		else if (!strcmp(opt, "allow"))
+			conf_ipv6 = IPV6_ALLOW;
+		else if (!strcmp(opt, "prefere"))
+			conf_ipv6 = IPV6_PREFERE;
+		else if (!strcmp(opt, "require"))
+			conf_ipv6 = IPV6_REQUIRE;
+		else
+			conf_ipv6 = atoi(opt);
+	}
+}
+
 static void ipv6cp_init(void)
 {
+	load_config();
+
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
+
 	ppp_register_layer("ipv6cp", &ipv6cp_layer);
 }
 
 DEFINE_INIT(4, ipv6cp_init);
-

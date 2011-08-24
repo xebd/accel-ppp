@@ -7,6 +7,7 @@
 #include "triton.h"
 
 #include "log.h"
+#include "events.h"
 
 #include "ppp.h"
 #include "ppp_ipcp.h"
@@ -22,16 +23,25 @@ struct recv_opt_t
 	struct ipcp_option_t *lopt;
 };
 
+#define IPV4_DENY 0
+#define IPV4_ALLOW 1
+#define IPV4_PREFERE 2
+#define IPV4_REQUIRE 3
+
+static int conf_ipv4 = IPV4_ALLOW;
+
 static LIST_HEAD(option_handlers);
 static struct ppp_layer_t ipcp_layer;
 
 static void ipcp_layer_up(struct ppp_fsm_t*);
 static void ipcp_layer_down(struct ppp_fsm_t*);
+static void ipcp_layer_finished(struct ppp_fsm_t*);
 static int send_conf_req(struct ppp_fsm_t*);
 static void send_conf_ack(struct ppp_fsm_t*);
 static void send_conf_nak(struct ppp_fsm_t*);
 static void send_conf_rej(struct ppp_fsm_t*);
 static void ipcp_recv(struct ppp_handler_t*);
+static void ipcp_recv_proto_rej(struct ppp_handler_t*);
 static void send_term_req(struct ppp_fsm_t *fsm);
 static void send_term_ack(struct ppp_fsm_t *fsm);
 
@@ -75,6 +85,7 @@ static struct ppp_layer_data_t *ipcp_layer_init(struct ppp_t *ppp)
 	
 	ipcp->hnd.proto = PPP_IPCP;
 	ipcp->hnd.recv = ipcp_recv;
+	ipcp->hnd.recv_proto_rej = ipcp_recv_proto_rej;
 	
 	ppp_register_unit_handler(ppp, &ipcp->hnd);
 
@@ -82,7 +93,8 @@ static struct ppp_layer_data_t *ipcp_layer_init(struct ppp_t *ppp)
 	ppp_fsm_init(&ipcp->fsm);
 
 	ipcp->fsm.layer_up = ipcp_layer_up;
-	ipcp->fsm.layer_finished = ipcp_layer_down;
+	ipcp->fsm.layer_finished = ipcp_layer_finished;
+	ipcp->fsm.layer_down = ipcp_layer_down;
 	ipcp->fsm.send_conf_req = send_conf_req;
 	ipcp->fsm.send_conf_ack = send_conf_ack;
 	ipcp->fsm.send_conf_nak = send_conf_nak;
@@ -93,6 +105,8 @@ static struct ppp_layer_data_t *ipcp_layer_init(struct ppp_t *ppp)
 	INIT_LIST_HEAD(&ipcp->options);
 	INIT_LIST_HEAD(&ipcp->ropt_list);
 
+	ipcp->ld.passive = conf_ipv4 == IPV4_ALLOW;
+	
 	return &ipcp->ld;
 }
 
@@ -103,9 +117,14 @@ int ipcp_layer_start(struct ppp_layer_data_t *ld)
 	log_ppp_debug("ipcp_layer_start\n");
 
 	ipcp_options_init(ipcp);
-	ppp_fsm_lower_up(&ipcp->fsm);
-	if (ppp_fsm_open(&ipcp->fsm))
-		return -1;
+
+	ipcp->starting = 1;
+
+	if (!ipcp->ld.passive && conf_ipv4 != IPV4_DENY) {
+		ppp_fsm_lower_up(&ipcp->fsm);
+		if (ppp_fsm_open(&ipcp->fsm))
+			return -1;
+	}
 	
 	return 0;
 }
@@ -153,17 +172,28 @@ static void ipcp_layer_up(struct ppp_fsm_t *fsm)
 		__ipcp_layer_up(ipcp);
 }
 
-static void ipcp_layer_down(struct ppp_fsm_t *fsm)
+static void ipcp_layer_finished(struct ppp_fsm_t *fsm)
 {
 	struct ppp_ipcp_t *ipcp = container_of(fsm, typeof(*ipcp), fsm);
 
 	log_ppp_debug("ipcp_layer_finished\n");
 
-	if (ipcp->started) {
-		ipcp->started = 0;
-	  ppp_layer_finished(ipcp->ppp, &ipcp->ld);
-	} else
-		ppp_terminate(ipcp->ppp, TERM_NAS_ERROR, 0);
+	if (!ipcp->started) {
+		if (conf_ipv4 == IPV4_REQUIRE)
+			ppp_terminate(ipcp->ppp, TERM_USER_ERROR, 0);
+		else
+			ipcp->ld.passive = 1;
+	} else if (!ipcp->ppp->terminating)
+		ppp_terminate(ipcp->ppp, TERM_USER_ERROR, 0);
+}
+
+static void ipcp_layer_down(struct ppp_fsm_t *fsm)
+{
+	struct ppp_ipcp_t *ipcp = container_of(fsm, typeof(*ipcp), fsm);
+
+	log_ppp_debug("ipcp_layer_down\n");
+
+	ppp_fsm_close(fsm);
 }
 
 static void print_ropt(struct recv_opt_t *ropt)
@@ -195,8 +225,16 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 
 	list_for_each_entry(lopt, &ipcp->options, entry) {
 		n = lopt->h->send_conf_req(ipcp, lopt, ptr);
-		if (n < 0)
+		if (n < 0) {
+			if (n == IPCP_OPT_TERMACK)
+				goto out;
+			if (n == IPCP_OPT_CLOSE && conf_ipv4 != IPV4_REQUIRE) {
+				ppp_fsm_close2(fsm);
+				goto out;
+			}
+			_free(buf);
 			return -1;
+		}
 		if (n) {
 			ptr += n;
 			lopt->print = 1;
@@ -218,6 +256,7 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 	ipcp_hdr->len = htons(ptr - buf - 2);
 	ppp_unit_send(ipcp->ppp, ipcp_hdr, ptr - buf);
 
+out:
 	_free(buf);
 
 	return 0;
@@ -244,7 +283,7 @@ static void send_conf_ack(struct ppp_fsm_t *fsm)
 static void send_conf_nak(struct ppp_fsm_t *fsm)
 {
 	struct ppp_ipcp_t *ipcp = container_of(fsm, typeof(*ipcp), fsm);
-	uint8_t *buf = _malloc(ipcp->conf_req_len), *ptr = buf;
+	uint8_t *buf = _malloc(ipcp->conf_req_len), *ptr = buf, *ptr1;
 	struct ipcp_hdr_t *ipcp_hdr = (struct ipcp_hdr_t*)ptr;
 	struct recv_opt_t *ropt;
 
@@ -260,11 +299,12 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 
 	list_for_each_entry(ropt, &ipcp->ropt_list, entry) {
 		if (ropt->state == IPCP_OPT_NAK) {
-			if (conf_ppp_verbose) {
-				log_ppp_info2(" ");
-				ropt->lopt->h->print(log_ppp_info2, ropt->lopt, NULL);
-			}
+			ptr1 = ptr;
 			ptr += ropt->lopt->h->send_conf_nak(ipcp, ropt->lopt, ptr);
+		}
+		if (conf_ppp_verbose) {
+			log_ppp_info2(" ");
+			ropt->lopt->h->print(log_ppp_info2, ropt->lopt, ptr1);
 		}
 	}
 	
@@ -371,6 +411,17 @@ static int ipcp_recv_conf_req(struct ppp_ipcp_t *ipcp, uint8_t *data, int size)
 		list_for_each_entry(lopt, &ipcp->options, entry) {
 			if (lopt->id == ropt->hdr->id) {
 				r = lopt->h->recv_conf_req(ipcp, lopt, (uint8_t*)ropt->hdr);
+				if (r == IPCP_OPT_TERMACK) {
+					send_term_ack(&ipcp->fsm);
+					return 0;
+				}
+				if (r == IPCP_OPT_CLOSE) {
+					if (conf_ipv4 == IPV4_REQUIRE)
+						ppp_terminate(ipcp->ppp, TERM_NAS_ERROR, 0);
+					else
+						lcp_send_proto_rej(ipcp->ppp, PPP_IPCP);
+					return 0;
+				}
 				if (ipcp->ppp->stop_time)
 					return -1;
 				lopt->state = r;
@@ -571,9 +622,13 @@ static void ipcp_recv(struct ppp_handler_t*h)
 	int r;
 	int delay_ack = ipcp->delay_ack;
 
-	if (ipcp->fsm.fsm_state == FSM_Initial || ipcp->fsm.fsm_state == FSM_Closed || ipcp->ppp->terminating) {
+	if (!ipcp->starting || ipcp->fsm.fsm_state == FSM_Closed || ipcp->ppp->terminating || conf_ipv4 == IPV4_DENY) {
 		if (conf_ppp_verbose)
 			log_ppp_warn("IPCP: discarding packet\n");
+		if (ipcp->ppp->terminating)
+			return;
+		if (ipcp->fsm.fsm_state == FSM_Closed || conf_ipv4 == IPV4_DENY)
+			lcp_send_proto_rej(ipcp->ppp, PPP_IPCP);
 		return;
 	}
 
@@ -599,6 +654,11 @@ static void ipcp_recv(struct ppp_handler_t*h)
 			if (ipcp->ppp->stop_time) {
 				ipcp_free_conf_req(ipcp);
 				return;
+			}
+			if (r && ipcp->ld.passive) {
+				ipcp->ld.passive = 0;
+				ppp_fsm_lower_up(&ipcp->fsm);
+				ppp_fsm_open(&ipcp->fsm);
 			}
 			if (delay_ack && !ipcp->delay_ack)
 				__ipcp_layer_up(ipcp);
@@ -663,6 +723,17 @@ static void ipcp_recv(struct ppp_handler_t*h)
 	}
 }
 
+static void ipcp_recv_proto_rej(struct ppp_handler_t*h)
+{
+	struct ppp_ipcp_t *ipcp = container_of(h, typeof(*ipcp), hnd);
+
+	if (ipcp->fsm.fsm_state == FSM_Initial || ipcp->fsm.fsm_state == FSM_Closed)
+		return;
+	
+	ppp_fsm_lower_down(&ipcp->fsm);
+	ppp_fsm_close(&ipcp->fsm);
+}
+
 int ipcp_option_register(struct ipcp_option_handler_t *h)
 {
 	/*struct ipcp_option_drv_t *p;
@@ -697,9 +768,32 @@ static struct ppp_layer_t ipcp_layer =
 	.free   = ipcp_layer_free,
 };
 
+static void load_config(void)
+{
+	const char *opt;
+
+	opt = conf_get_opt("ppp", "ipv4");
+	if (opt) {
+		if (!strcmp(opt, "deny"))
+			conf_ipv4 = IPV4_DENY;
+		else if (!strcmp(opt, "allow"))
+			conf_ipv4 = IPV4_ALLOW;
+		else if (!strcmp(opt, "prefere"))
+			conf_ipv4 = IPV4_PREFERE;
+		else if (!strcmp(opt, "require"))
+			conf_ipv4 = IPV4_REQUIRE;
+		else
+			conf_ipv4 = atoi(opt);
+	}
+}
+
 static void ipcp_init(void)
 {
+	load_config();
+
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
+
 	ppp_register_layer("ipcp", &ipcp_layer);
 }
 
-DEFINE_INIT(3, ipcp_init);
+DEFINE_INIT(4, ipcp_init);

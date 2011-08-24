@@ -310,7 +310,7 @@ cont:
 			if (ppp_h->proto == proto) {
 				ppp_h->recv(ppp_h);
 				if (ppp->chan_fd == -1) {
-					ppp->ctrl->finished(ppp);
+					//ppp->ctrl->finished(ppp);
 					return 1;
 				}
 				goto cont;
@@ -356,7 +356,7 @@ cont:
 			if (ppp_h->proto == proto) {
 				ppp_h->recv(ppp_h);
 				if (ppp->unit_fd == -1) {
-					ppp->ctrl->finished(ppp);
+					//ppp->ctrl->finished(ppp);
 					return 1;
 				}
 				goto cont;
@@ -428,33 +428,42 @@ static void ppp_ifup(struct ppp_t *ppp)
 			log_ppp_error("ppp: failed to set NP (IPv6) mode: %s\n", strerror(errno));
 	}
 	
+	ppp->ctrl->started(ppp);
+
 	triton_event_fire(EV_PPP_STARTED, ppp);
 }
 
 void __export ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 {
 	struct layer_node_t *n = d->node;
+	int f = 0;
 
 	if (d->started)
 		return;
 
 	d->started = 1;
 
-	list_for_each_entry(d, &n->items, entry)
-		if (!d->started) return;
+	list_for_each_entry(d, &n->items, entry) {
+		if (!d->started && !d->passive) return;
+		if (d->started && !d->optional)
+			f = 1;
+	}
+
+	if (!f)
+		return;
+	
 
 	if (n->entry.next == &ppp->layers) {
 		ppp->state = PPP_STATE_ACTIVE;
 		__sync_sub_and_fetch(&ppp_stat.starting, 1);
 		__sync_add_and_fetch(&ppp_stat.active, 1);
-		ppp->ctrl->started(ppp);
 		ppp_ifup(ppp);
 	} else {
 		n = list_entry(n->entry.next, typeof(*n), entry);
 		list_for_each_entry(d, &n->items, entry) {
 			d->starting = 1;
 			if (d->layer->start(d)) {
-				ppp_terminate(ppp, 1, TERM_NAS_ERROR);
+				ppp_terminate(ppp, TERM_NAS_ERROR, 0);
 				return;
 			}
 		}

@@ -82,30 +82,40 @@ static int check_exists(struct ppp_t *self_ppp, in_addr_t addr)
 	return r;
 }
 
+static int alloc_ip(struct ppp_t *ppp)
+{
+	ppp->ipv4 = ipdb_get_ipv4(ppp);
+	if (!ppp->ipv4) {
+		log_ppp_warn("ppp: no free IPv4 address\n");
+		return IPCP_OPT_CLOSE;
+	}
+	
+	if (iprange_tunnel_check(ppp->ipv4->peer_addr)) {
+		log_ppp_warn("ppp:ipcp: to avoid kernel soft lockup requested IP cannot be assigned (%i.%i.%i.%i)\n",
+			ppp->ipv4->peer_addr&0xff, 
+			(ppp->ipv4->peer_addr >> 8)&0xff, 
+			(ppp->ipv4->peer_addr >> 16)&0xff, 
+			(ppp->ipv4->peer_addr >> 24)&0xff);
+		return IPCP_OPT_FAIL;
+	}
+	
+	if (conf_check_exists && check_exists(ppp, ppp->ipv4->peer_addr))
+		return IPCP_OPT_FAIL;
+	
+	return 0;
+}
+
 static int ipaddr_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt, uint8_t *ptr)
 {
 	struct ipaddr_option_t *ipaddr_opt = container_of(opt, typeof(*ipaddr_opt), opt);
 	struct ipcp_opt32_t *opt32 = (struct ipcp_opt32_t *)ptr;
+	int r;
 	
 	if (!ipcp->ppp->ipv4) {
-		ipcp->ppp->ipv4 = ipdb_get_ipv4(ipcp->ppp);
-		if (!ipcp->ppp->ipv4) {
-			log_ppp_warn("ppp: no free IPv4 address\n");
-			return -1;
-		}
+		r = alloc_ip(ipcp->ppp);
+		if (r)
+			return r;
 	}
-	
-	if (iprange_tunnel_check(ipcp->ppp->ipv4->peer_addr)) {
-		log_ppp_warn("ppp:ipcp: to avoid kernel soft lockup requested IP cannot be assigned (%i.%i.%i.%i)\n",
-			ipcp->ppp->ipv4->peer_addr&0xff, 
-			(ipcp->ppp->ipv4->peer_addr >> 8)&0xff, 
-			(ipcp->ppp->ipv4->peer_addr >> 16)&0xff, 
-			(ipcp->ppp->ipv4->peer_addr >> 24)&0xff);
-		return -1;
-	}
-	
-	if (conf_check_exists && check_exists(ipcp->ppp, ipcp->ppp->ipv4->peer_addr))
-		return -1;
 	
 	opt32->hdr.id = CI_ADDR;
 	opt32->hdr.len = 6;
@@ -129,6 +139,13 @@ static int ipaddr_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 	struct ipcp_opt32_t *opt32 = (struct ipcp_opt32_t *)ptr;
 	struct ifreq ifr;
 	struct sockaddr_in addr;
+	int r;
+
+	if (!ipcp->ppp->ipv4) {
+		r = alloc_ip(ipcp->ppp);
+		if (r)
+			return r;
+	}
 
 	if (opt32->hdr.len != 6)
 		return IPCP_OPT_REJ;

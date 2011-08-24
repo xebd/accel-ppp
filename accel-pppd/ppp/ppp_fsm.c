@@ -106,10 +106,10 @@ int ppp_fsm_open(struct ppp_fsm_t *layer)
 			//if (layer->init_req_cnt) layer->init_req_cnt(layer);
 			init_req_counter(layer,layer->max_configure);
 			--layer->restart_counter;
+			layer->fsm_state=FSM_Req_Sent;
 			if (layer->send_conf_req)
 				if (layer->send_conf_req(layer))
 					return -1;
-			layer->fsm_state=FSM_Req_Sent;
 			break;
 		case FSM_Closing:
 		case FSM_Stopping:
@@ -153,6 +153,12 @@ void ppp_fsm_close(struct ppp_fsm_t *layer)
 		default:
 			break;
 	}
+}
+
+void ppp_fsm_close2(struct ppp_fsm_t *layer)
+{
+	stop_timer(layer);
+	layer->fsm_state=FSM_Closed;
 }
 
 void ppp_fsm_timeout0(struct ppp_fsm_t *layer)

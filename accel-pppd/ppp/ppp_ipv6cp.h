@@ -53,7 +53,9 @@ struct ipv6cp_opt64_t
 #define IPV6CP_OPT_ACK   1
 #define IPV6CP_OPT_NAK  -1
 #define IPV6CP_OPT_REJ  -2
-#define IPV6CP_OPT_FAIL -3
+#define IPV6CP_OPT_CLOSE -3
+#define IPV6CP_OPT_TERMACK -4
+#define IPV6CP_OPT_FAIL -5
 
 struct ppp_ipv6cp_t;
 struct ipv6cp_option_handler_t;
@@ -95,8 +97,9 @@ struct ppp_ipv6cp_t
 	int ropt_len;
 	
 	int conf_req_len;
+	int starting:1;
 	int started:1;
-	int passive:1;
+	int delay_ack:1;
 };
 
 int ipv6cp_option_register(struct ipv6cp_option_handler_t *h);

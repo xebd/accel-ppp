@@ -107,7 +107,8 @@ static struct ppp_layer_data_t *ccp_layer_init(struct ppp_t *ppp)
 	
 	ppp_register_unit_handler(ppp, &ccp->hnd);
 	
-	ccp->passive = 1;
+	ccp->ld.passive = 1;
+	ccp->ld.optional = 1;
 
 	INIT_LIST_HEAD(&ccp->options);
 	ccp_options_init(ccp);
@@ -146,7 +147,7 @@ int ccp_layer_start(struct ppp_layer_data_t *ld)
 
 	ccp->starting = 1;
 
-	if (!ccp->passive) {
+	if (!ccp->ld.passive) {
 		ppp_fsm_lower_up(&ccp->fsm);
 		if (ppp_fsm_open(&ccp->fsm))
 			return -1;
@@ -208,10 +209,10 @@ static void ccp_layer_finished(struct ppp_fsm_t *fsm)
 
 	log_ppp_debug("ccp_layer_finished\n");
 
-	if (!ccp->started) {
-		ccp->started = 1;
-		ppp_layer_started(ccp->ppp, &ccp->ld);
-	}
+	if (!ccp->started)
+		ccp->ld.passive = 1;
+	else if (!ccp->ppp->terminating)
+		ppp_terminate(ccp->ppp, TERM_USER_ERROR, 0);
 }
 
 static void ccp_layer_down(struct ppp_fsm_t *fsm)
@@ -222,7 +223,6 @@ static void ccp_layer_down(struct ppp_fsm_t *fsm)
 
 	ppp_fsm_close(fsm);
 }
-
 
 static void print_ropt(struct recv_opt_t *ropt)
 {
@@ -244,7 +244,7 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 	struct ccp_option_t *lopt;
 	int n;
 
-	if (ccp->passive)
+	if (ccp->ld.passive)
 		return 0;
 
 	buf = _malloc(ccp->conf_req_len);
@@ -648,8 +648,8 @@ static void ccp_recv(struct ppp_handler_t*h)
 	switch(hdr->code) {
 		case CONFREQ:	
 			r = ccp_recv_conf_req(ccp, (uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN);
-			if (ccp->passive) {
-				ccp->passive = 0;
+			if (ccp->ld.passive) {
+				ccp->ld.passive = 0;
 				ppp_fsm_lower_up(&ccp->fsm);
 				ppp_fsm_open(&ccp->fsm);
 			}
@@ -673,10 +673,6 @@ static void ccp_recv(struct ppp_handler_t*h)
 			}
 			ccp_free_conf_req(ccp);
 			
-			/*if (r == CCP_OPT_ACK && ccp->passive) {
-				ccp->passive = 0;
-				send_conf_req(&ccp->fsm);
-			}*/
 			if (r == CCP_OPT_FAIL)
 				ppp_terminate(ccp->ppp, TERM_USER_ERROR, 0);
 			break;
@@ -763,15 +759,7 @@ int ccp_ipcp_started(struct ppp_t *ppp)
 {
 	struct ppp_ccp_t *ccp = container_of(ppp_find_layer_data(ppp, &ccp_layer), typeof(*ccp), ld);
 
-	if (ccp->passive) {
-		ccp->fsm.fsm_state = FSM_Closed;	
-		ccp->started = 1;
-		ppp_layer_started(ccp->ppp, &ccp->ld);
-
-		return 0;
-	}
-
-	return !ccp->started;
+	return !ccp->ld.passive && !ccp->started;
 }
 
 static struct ppp_layer_t ccp_layer=

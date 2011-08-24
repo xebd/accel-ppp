@@ -11,6 +11,7 @@
 #include "log.h"
 #include "events.h"
 #include "ppp.h"
+#include "ppp_ccp.h"
 #include "ppp_ipv6cp.h"
 #include "ipdb.h"
 
@@ -87,6 +88,9 @@ static void ipaddr_free(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_option_t *opt
 {
 	struct ipaddr_option_t *ipaddr_opt=container_of(opt,typeof(*ipaddr_opt),opt);
 
+	if (ipv6cp->ppp->ipv6)
+		ipdb_put_ipv6(ipv6cp->ppp, ipv6cp->ppp->ipv6);
+
 	_free(ipaddr_opt);
 }
 
@@ -148,30 +152,43 @@ static uint64_t generate_peer_intf_id(struct ppp_t *ppp)
 					u.addr16[i] = htons(n);
 				}
 			} else
-				read(urandom_fd, &u, sizeof(u));
+				return 0;
 	}
 
 	return u.intf_id;
+}
+
+static int alloc_ip(struct ppp_t *ppp)
+{
+	ppp->ipv6 = ipdb_get_ipv6(ppp);
+	if (!ppp->ipv6) {
+		log_ppp_warn("ppp: no free IPv6 address\n");
+		return IPV6CP_OPT_CLOSE;
+	}
+	
+	if (conf_check_exists && check_exists(ppp))
+		return IPV6CP_OPT_FAIL;
+	
+	return 0;
 }
 
 static int ipaddr_send_conf_req(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_option_t *opt, uint8_t *ptr)
 {
 	struct ipaddr_option_t *ipaddr_opt = container_of(opt, typeof(*ipaddr_opt), opt);
 	struct ipv6cp_opt64_t *opt64 = (struct ipv6cp_opt64_t *)ptr;
+	int r;
 	
 	if (!ipv6cp->ppp->ipv6) {
-		ipv6cp->ppp->ipv6 = ipdb_get_ipv6(ipv6cp->ppp);
-		if (!ipv6cp->ppp->ipv6) {
-			log_ppp_warn("ppp: no free IPv6 address\n");
-			return -1;
-		}
+		r = alloc_ip(ipv6cp->ppp);
+		if (r)
+			return r;
 	}
-
-	if (!ipv6cp->ppp->ipv6->intf_id)
-		ipv6cp->ppp->ipv6->intf_id = generate_peer_intf_id(ipv6cp->ppp);
 	
-	if (conf_check_exists && check_exists(ipv6cp->ppp))
-		return -1;
+	if (!ipv6cp->ppp->ipv6->intf_id) {
+		ipv6cp->ppp->ipv6->intf_id = generate_peer_intf_id(ipv6cp->ppp);
+		if (!ipv6cp->ppp->ipv6->intf_id)
+			return IPV6CP_OPT_TERMACK;
+	}
 	
 	opt64->hdr.id = CI_INTFID;
 	opt64->hdr.len = 10;
@@ -195,12 +212,25 @@ static int ipaddr_recv_conf_req(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_optio
 	struct ipv6cp_opt64_t *opt64 = (struct ipv6cp_opt64_t* )ptr;
 	struct in6_ifreq ifr6;
 	struct ipv6db_addr_t *a;
+	int r;
 
+	if (!ipv6cp->ppp->ipv6) {
+		r = alloc_ip(ipv6cp->ppp);
+		if (r)
+			return r;
+	}
+
+	if (!ipv6cp->ppp->ipv6->intf_id) {
+		ipv6cp->ppp->ipv6->intf_id = generate_peer_intf_id(ipv6cp->ppp);
+		if (!ipv6cp->ppp->ipv6->intf_id)
+			return IPV6CP_OPT_TERMACK;
+	}
+	
 	if (opt64->hdr.len != 10)
 		return IPV6CP_OPT_REJ;
 
 	if (ipv6cp->ppp->ipv6->intf_id == opt64->val) {
-		//ipv6cp->delay_ack = ccp_ipcp_started(ipcp->ppp);
+		ipv6cp->delay_ack = ccp_ipcp_started(ipv6cp->ppp);
 		goto ack;
 	}
 		
@@ -285,7 +315,7 @@ static uint64_t parse_intfid(const char *opt)
 	return u.u64;
 
 err:
-	log_error("ppp:ipv6cp: failed to parse ipv6-intf-id\n");
+	log_error("ppp:ipv6cp: failed to parse intf-id '%s'\n", opt);
 	conf_intf_id = INTF_ID_RANDOM;
 	return 0;
 }

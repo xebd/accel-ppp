@@ -45,7 +45,9 @@ struct ipcp_opt32_t
 #define IPCP_OPT_ACK   1
 #define IPCP_OPT_NAK  -1
 #define IPCP_OPT_REJ  -2
-#define IPCP_OPT_FAIL -3
+#define IPCP_OPT_CLOSE -3
+#define IPCP_OPT_TERMACK -4
+#define IPCP_OPT_FAIL -5
 
 struct ppp_ipcp_t;
 struct ipcp_option_handler_t;
@@ -87,6 +89,7 @@ struct ppp_ipcp_t
 	int ropt_len;
 	
 	int conf_req_len;
+	int starting:1;
 	int started:1;
 	int delay_ack:1;
 };

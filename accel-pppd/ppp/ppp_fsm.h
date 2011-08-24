@@ -56,6 +56,7 @@ int ppp_fsm_lower_up(struct ppp_fsm_t*);
 void ppp_fsm_lower_down(struct ppp_fsm_t*);
 int ppp_fsm_open(struct ppp_fsm_t*);
 void ppp_fsm_close(struct ppp_fsm_t*);
+void ppp_fsm_close2(struct ppp_fsm_t *layer);
 void ppp_fsm_timeout0(struct ppp_fsm_t *layer);
 void ppp_fsm_timeout1(struct ppp_fsm_t *layer);
 void ppp_fsm_recv_conf_req_ack(struct ppp_fsm_t *layer);
