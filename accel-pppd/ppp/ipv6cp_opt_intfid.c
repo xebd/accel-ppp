@@ -27,6 +27,7 @@ static int conf_intf_id = INTF_ID_FIXED;
 static uint64_t conf_intf_id_val = 1;
 static int conf_peer_intf_id = INTF_ID_FIXED;
 static uint64_t conf_peer_intf_id_val = 2;
+static int conf_accept_peer_intf_id;
 
 // from /usr/include/linux/ipv6.h
 struct in6_ifreq {
@@ -184,12 +185,6 @@ static int ipaddr_send_conf_req(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_optio
 			return r;
 	}
 	
-	if (!ipv6cp->ppp->ipv6->intf_id) {
-		ipv6cp->ppp->ipv6->intf_id = generate_peer_intf_id(ipv6cp->ppp);
-		if (!ipv6cp->ppp->ipv6->intf_id)
-			return IPV6CP_OPT_TERMACK;
-	}
-	
 	opt64->hdr.id = CI_INTFID;
 	opt64->hdr.len = 10;
 	opt64->val = ipaddr_opt->intf_id;
@@ -214,26 +209,27 @@ static int ipaddr_recv_conf_req(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_optio
 	struct ipv6db_addr_t *a;
 	int r;
 
+	if (opt64->hdr.len != 10)
+		return IPV6CP_OPT_REJ;
+
 	if (!ipv6cp->ppp->ipv6) {
 		r = alloc_ip(ipv6cp->ppp);
 		if (r)
 			return r;
 	}
 
-	if (!ipv6cp->ppp->ipv6->intf_id) {
-		ipv6cp->ppp->ipv6->intf_id = generate_peer_intf_id(ipv6cp->ppp);
-		if (!ipv6cp->ppp->ipv6->intf_id)
-			return IPV6CP_OPT_TERMACK;
-	}
-	
-	if (opt64->hdr.len != 10)
-		return IPV6CP_OPT_REJ;
+	if (conf_accept_peer_intf_id && opt64->val)
+		ipv6cp->ppp->ipv6->intf_id = opt64->val;
 
-	if (ipv6cp->ppp->ipv6->intf_id == opt64->val) {
+	if (opt64->val && ipv6cp->ppp->ipv6->intf_id == opt64->val && opt64->val != ipaddr_opt->intf_id) {
 		ipv6cp->delay_ack = ccp_ipcp_started(ipv6cp->ppp);
 		goto ack;
 	}
 		
+	ipv6cp->ppp->ipv6->intf_id = generate_peer_intf_id(ipv6cp->ppp);
+	if (!ipv6cp->ppp->ipv6->intf_id)
+		return IPV6CP_OPT_TERMACK;
+	
 	return IPV6CP_OPT_NAK;
 
 ack:
@@ -351,6 +347,10 @@ static void load_config(void)
 			conf_peer_intf_id_val = parse_intfid(opt);
 		}
 	}
+	
+	opt = conf_get_opt("ppp", "ipv6-accept-peer-intf-id");
+	if (opt)
+		conf_accept_peer_intf_id = atoi(opt);
 }
 
 static void init()
