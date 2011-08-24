@@ -32,7 +32,9 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 	req->hnd.fd = -1;
 	req->ctx.before_switch = log_switch;
 
-	req->serv = rad_server_get(code == CODE_ACCESS_REQUEST ? RAD_SERV_AUTH : RAD_SERV_ACCT);
+	req->type = code == CODE_ACCESS_REQUEST ? RAD_SERV_AUTH : RAD_SERV_ACCT;
+
+	req->serv = rad_server_get(req->type);
 	if (!req->serv)
 		goto out_err;
 	
@@ -151,7 +153,7 @@ int rad_req_acct_fill(struct rad_req_t *req)
 void rad_req_free(struct rad_req_t *req)
 {
 	if (req->serv)
-		rad_server_put(req->serv);
+		rad_server_put(req->serv, req->type);
 	if (req->hnd.fd >= 0 )
 		close(req->hnd.fd);
 	if (req->pack)

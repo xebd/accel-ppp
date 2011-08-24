@@ -43,14 +43,14 @@ static struct rad_server_t *__rad_server_get(int type, struct rad_server_t *excl
 			continue;
 		}
 
-		if (s->client_cnt < s0->client_cnt)
+		if (s->client_cnt[type] < s0->client_cnt[type])
 			s0 = s;
 	}
 
 	if (!s0)
 		return NULL;
 
-	__sync_add_and_fetch(&s0->client_cnt, 1);
+	__sync_add_and_fetch(&s0->client_cnt[type], 1);
 
 	return s0;
 }
@@ -60,9 +60,9 @@ struct rad_server_t *rad_server_get(int type)
 	return __rad_server_get(type, NULL);
 }
 
-void rad_server_put(struct rad_server_t *s)
+void rad_server_put(struct rad_server_t *s, int type)
 {
-	__sync_sub_and_fetch(&s->client_cnt, 1);
+	__sync_sub_and_fetch(&s->client_cnt[type], 1);
 }
 
 int rad_server_req_enter(struct rad_req_t *req)
@@ -121,15 +121,15 @@ void rad_server_req_exit(struct rad_req_t *req)
 		triton_context_wakeup(r->rpd->ppp->ctrl->ctx);
 }
 
-int rad_server_realloc(struct rad_req_t *req, int type)
+int rad_server_realloc(struct rad_req_t *req)
 {
-	struct rad_server_t *s = __rad_server_get(type, req->serv);
+	struct rad_server_t *s = __rad_server_get(req->type, req->serv);
 
 	if (!s)
 		return -1;
 
 	if (req->serv)
-		rad_server_put(req->serv);
+		rad_server_put(req->serv, req->type);
 
 	req->serv = s;
 
@@ -140,7 +140,7 @@ int rad_server_realloc(struct rad_req_t *req, int type)
 		req->hnd.fd = -1;
 	}
 
-	if (type) {
+	if (req->type == RAD_SERV_ACCT) {
 		req->server_addr = req->serv->acct_addr;
 		req->server_port = req->serv->acct_port;
 	} else {

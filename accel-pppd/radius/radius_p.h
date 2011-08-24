@@ -62,6 +62,7 @@ struct rad_req_t
 	
 	in_addr_t server_addr;
 	int server_port;
+	int type;
 };
 
 struct rad_server_t
@@ -77,7 +78,7 @@ struct rad_server_t
 	int max_req_cnt;
 	int req_cnt;
 	struct list_head req_queue;
-	int client_cnt;
+	int client_cnt[2];
 	time_t fail_time;
 	int conf_fail_time;
 	int timeout_cnt;
@@ -148,10 +149,10 @@ int rad_packet_send(struct rad_packet_t *pck, int fd, struct sockaddr_in *addr);
 void dm_coa_cancel(struct radius_pd_t *pd);
 
 struct rad_server_t *rad_server_get(int);
-void rad_server_put(struct rad_server_t *);
+void rad_server_put(struct rad_server_t *, int);
 int rad_server_req_enter(struct rad_req_t *);
 void rad_server_req_exit(struct rad_req_t *);
-int rad_server_realloc(struct rad_req_t *, int);
+int rad_server_realloc(struct rad_req_t *);
 void rad_server_fail(struct rad_server_t *);
 void rad_server_timeout(struct rad_server_t *);
 void rad_server_reply(struct rad_server_t *);
