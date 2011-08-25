@@ -4,7 +4,7 @@ ADD_LIBRARY(ipv6pool SHARED ipv6pool.c)
 ADD_LIBRARY(sigchld SHARED sigchld.c)
 ADD_LIBRARY(chap-secrets SHARED chap-secrets.c)
 
-INSTALL(TARGETS pppd_compat ippool sigchld chap-secrets
+INSTALL(TARGETS pppd_compat ippool ipv6pool sigchld chap-secrets
 	LIBRARY DESTINATION lib/accel-ppp
 )
 
