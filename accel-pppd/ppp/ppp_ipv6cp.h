@@ -93,6 +93,8 @@ struct ppp_ipv6cp_t
 	struct ppp_t *ppp;
 	struct list_head options;
 
+	struct triton_timer_t timeout;
+
 	struct list_head ropt_list; // last received ConfReq
 	int ropt_len;
 	

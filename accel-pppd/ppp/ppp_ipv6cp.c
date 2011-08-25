@@ -28,6 +28,8 @@ struct recv_opt_t
 #define IPV6_PREFERE 2
 #define IPV6_REQUIRE 3
 
+#define START_TIMEOUT 60
+
 static int conf_ipv6 = IPV6_ALLOW;
 
 static LIST_HEAD(option_handlers);
@@ -110,6 +112,15 @@ static struct ppp_layer_data_t *ipv6cp_layer_init(struct ppp_t *ppp)
 	return &ipv6cp->ld;
 }
 
+static void ipv6cp_start_timeout(struct triton_timer_t *t)
+{
+	struct ppp_ipv6cp_t *ipv6cp = container_of(t, typeof(*ipv6cp), timeout);
+
+	triton_timer_del(t);
+		
+	ppp_terminate(ipv6cp->ppp, TERM_USER_ERROR, 0);
+}
+
 int ipv6cp_layer_start(struct ppp_layer_data_t *ld)
 {
 	struct ppp_ipv6cp_t *ipv6cp = container_of(ld, typeof(*ipv6cp), ld);
@@ -120,10 +131,16 @@ int ipv6cp_layer_start(struct ppp_layer_data_t *ld)
 
 	ipv6cp->starting = 1;
 
-	if (!ipv6cp->ld.passive && conf_ipv6 != IPV6_DENY) {
-		ppp_fsm_lower_up(&ipv6cp->fsm);
-		if (ppp_fsm_open(&ipv6cp->fsm))
-			return -1;
+	if (conf_ipv6 != IPV6_DENY) {
+		if (ipv6cp->ld.passive) {
+			ipv6cp->timeout.expire = ipv6cp_start_timeout;
+			ipv6cp->timeout.expire_tv.tv_sec = START_TIMEOUT;
+			triton_timer_add(ipv6cp->ppp->ctrl->ctx, &ipv6cp->timeout, 0);
+		} else {
+			ppp_fsm_lower_up(&ipv6cp->fsm);
+			if (ppp_fsm_open(&ipv6cp->fsm))
+				return -1;
+		}
 	}
 	
 	return 0;
@@ -150,6 +167,9 @@ void ipv6cp_layer_free(struct ppp_layer_data_t *ld)
 	ppp_unregister_handler(ipv6cp->ppp, &ipv6cp->hnd);
 	ipv6cp_options_free(ipv6cp);
 	ppp_fsm_free(&ipv6cp->fsm);
+
+	if (ipv6cp->timeout.tpd)
+		triton_timer_del(&ipv6cp->timeout);
 
 	_free(ipv6cp);
 }
@@ -659,6 +679,7 @@ static void ipv6cp_recv(struct ppp_handler_t*h)
 				ipv6cp->ld.passive = 0;
 				ppp_fsm_lower_up(&ipv6cp->fsm);
 				ppp_fsm_open(&ipv6cp->fsm);
+				triton_timer_del(&ipv6cp->timeout);
 			}
 			if (delay_ack && !ipv6cp->delay_ack)
 				__ipv6cp_layer_up(ipv6cp);
@@ -796,4 +817,4 @@ static void ipv6cp_init(void)
 	ppp_register_layer("ipv6cp", &ipv6cp_layer);
 }
 
-DEFINE_INIT(4, ipv6cp_init);
+DEFINE_INIT(5, ipv6cp_init);

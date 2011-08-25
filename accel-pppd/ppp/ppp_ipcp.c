@@ -28,6 +28,8 @@ struct recv_opt_t
 #define IPV4_PREFERE 2
 #define IPV4_REQUIRE 3
 
+#define START_TIMEOUT 60
+
 static int conf_ipv4 = IPV4_ALLOW;
 
 static LIST_HEAD(option_handlers);
@@ -110,6 +112,15 @@ static struct ppp_layer_data_t *ipcp_layer_init(struct ppp_t *ppp)
 	return &ipcp->ld;
 }
 
+static void ipcp_start_timeout(struct triton_timer_t *t)
+{
+	struct ppp_ipcp_t *ipcp = container_of(t, typeof(*ipcp), timeout);
+
+	triton_timer_del(t);
+		
+	ppp_terminate(ipcp->ppp, TERM_USER_ERROR, 0);
+}
+
 int ipcp_layer_start(struct ppp_layer_data_t *ld)
 {
 	struct ppp_ipcp_t *ipcp = container_of(ld, typeof(*ipcp), ld);
@@ -120,10 +131,16 @@ int ipcp_layer_start(struct ppp_layer_data_t *ld)
 
 	ipcp->starting = 1;
 
-	if (!ipcp->ld.passive && conf_ipv4 != IPV4_DENY) {
-		ppp_fsm_lower_up(&ipcp->fsm);
-		if (ppp_fsm_open(&ipcp->fsm))
-			return -1;
+	if (conf_ipv4 != IPV4_DENY) {
+		if (ipcp->ld.passive) {
+			ipcp->timeout.expire = ipcp_start_timeout;
+			ipcp->timeout.expire_tv.tv_sec = START_TIMEOUT;
+			triton_timer_add(ipcp->ppp->ctrl->ctx, &ipcp->timeout, 0);
+		} else {
+			ppp_fsm_lower_up(&ipcp->fsm);
+			if (ppp_fsm_open(&ipcp->fsm))
+				return -1;
+		}
 	}
 	
 	return 0;
@@ -150,6 +167,9 @@ void ipcp_layer_free(struct ppp_layer_data_t *ld)
 	ppp_unregister_handler(ipcp->ppp, &ipcp->hnd);
 	ipcp_options_free(ipcp);
 	ppp_fsm_free(&ipcp->fsm);
+
+	if (ipcp->timeout.tpd)
+		triton_timer_del(&ipcp->timeout);
 
 	_free(ipcp);
 }
@@ -659,6 +679,7 @@ static void ipcp_recv(struct ppp_handler_t*h)
 				ipcp->ld.passive = 0;
 				ppp_fsm_lower_up(&ipcp->fsm);
 				ppp_fsm_open(&ipcp->fsm);
+				triton_timer_del(&ipcp->timeout);
 			}
 			if (delay_ack && !ipcp->delay_ack)
 				__ipcp_layer_up(ipcp);
