@@ -28,6 +28,8 @@ static int conf_router_lifetime = 300;
 static int conf_rdnss_lifetime = 300;
 static struct in6_addr conf_dns[MAX_DNS_COUNT];
 static int conf_dns_count;
+static void *conf_dnssl;
+static int conf_dnssl_size;
 
 #undef ND_OPT_ROUTE_INFORMATION
 #define  ND_OPT_ROUTE_INFORMATION	24
@@ -52,6 +54,17 @@ struct nd_opt_rdnss_info_local
 	struct in6_addr  nd_opt_rdnssi[0];
 };
 
+#undef ND_OPT_DNSSL_INFORMATION
+#define  ND_OPT_DNSSL_INFORMATION	31
+struct nd_opt_dnssl_info_local
+{
+	uint8_t  nd_opt_dnssli_type;
+	uint8_t  nd_opt_dnssli_len;
+	uint16_t nd_opt_dnssli_pref_flag_reserved;
+	uint32_t nd_opt_dnssli_lifetime;
+	uint8_t  nd_opt_dnssli[0];
+};
+
 struct ipv6_nd_handler_t
 {
 	struct ppp_t *ppp;
@@ -74,6 +87,7 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ad
 	struct nd_opt_route_info_local *rinfo;
 	struct nd_opt_rdnss_info_local *rdnssinfo;
 	struct in6_addr *rdnss_addr;
+	struct nd_opt_dnssl_info_local *dnsslinfo;
 	//struct nd_opt_mtu *mtu;
 	struct ipv6db_addr_t *a;
 	int i;
@@ -127,9 +141,18 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ad
 		}
 	} else
 		rdnss_addr = (struct in6_addr *)rinfo;
-
-	endptr = rdnss_addr;
-
+	
+	if (conf_dnssl) {
+		dnsslinfo = (struct nd_opt_dnssl_info_local *)rdnss_addr;
+		memset(dnsslinfo, 0, sizeof(*dnsslinfo));
+		dnsslinfo->nd_opt_dnssli_type = ND_OPT_DNSSL_INFORMATION;
+		dnsslinfo->nd_opt_dnssli_len = 1 + (conf_dnssl_size - 1) / 8 + 1;
+		dnsslinfo->nd_opt_dnssli_lifetime = htonl(conf_rdnss_lifetime);
+		memcpy(dnsslinfo->nd_opt_dnssli, conf_dnssl, conf_dnssl_size);
+		memset(dnsslinfo->nd_opt_dnssli + conf_dnssl_size, 0, (dnsslinfo->nd_opt_dnssli_len - 1) * 8 - conf_dnssl_size);
+		endptr = (void *)dnsslinfo + dnsslinfo->nd_opt_dnssli_len * 8;
+	} else
+		endptr = rdnss_addr;
 
 	sendto(h->hnd.fd, buf, endptr - buf, 0, (struct sockaddr *)addr, sizeof(*addr));
 
@@ -335,6 +358,50 @@ static void ev_ppp_finishing(struct ppp_t *ppp)
 	_free(h);
 }
 
+static void add_dnssl(const char *val)
+{
+	int n = strlen(val);
+	const char *ptr;
+	uint8_t *buf;
+
+	if (val[n - 1] == '.')
+		n++;
+	else
+		n += 2;
+	
+	if (n > 255) {
+		log_error("dnsv6: dnssl '%s' is too long\n", val);
+		return;
+	}
+	
+	if (!conf_dnssl)
+		conf_dnssl = _malloc(n);
+	else
+		conf_dnssl = _realloc(conf_dnssl, conf_dnssl_size + n);
+	
+	buf = conf_dnssl + conf_dnssl_size;
+	
+	while (1) {
+		ptr = strchr(val, '.');
+		if (!ptr)
+			ptr = strchr(val, 0);
+		if (ptr - val > 63) {
+			log_error("dnsv6: dnssl '%s' is invalid\n", val);
+			return;
+		}
+		*buf = ptr - val;
+		memcpy(buf + 1, val, ptr - val);
+		buf += 1 + (ptr - val);
+		val = ptr + 1;
+		if (!*ptr || !*val) {
+				*buf = 0;
+				break;
+		}
+	}
+	
+	conf_dnssl_size += n;
+}
+
 static void load_config(void)
 {
 	struct conf_sect_t *s = conf_get_section("dnsv6");
@@ -344,14 +411,28 @@ static void load_config(void)
 		return;
 	
 	conf_dns_count = 0;
+	
+	if (conf_dnssl)
+		_free(conf_dnssl);
+	conf_dnssl = NULL;
+	conf_dnssl_size = 0;
 
 	list_for_each_entry(opt, &s->items, entry) {
-		if (inet_pton(AF_INET6, opt->name, &conf_dns[conf_dns_count]) == 0) {
-			log_error("dnsv6: faild to parse '%s'\n", opt->name);
+		if (!strcmp(opt->name, "dnssl")) {
+			add_dnssl(opt->val);
 			continue;
 		}
-		if (++conf_dns_count == MAX_DNS_COUNT)
-			break;
+
+		if (!strcmp(opt->name, "dns") || !opt->val) {
+			if (conf_dns_count == MAX_DNS_COUNT)
+				continue;
+
+			if (inet_pton(AF_INET6, opt->val ? opt->val : opt->name, &conf_dns[conf_dns_count]) == 0) {
+				log_error("dnsv6: faild to parse '%s'\n", opt->name);
+				continue;
+			}
+			conf_dns_count++;
+		}
 	}
 }
 
