@@ -141,6 +141,7 @@ void ppp_fsm_close(struct ppp_fsm_t *layer)
 			layer->fsm_state=FSM_Closing;
 			break;
 		case FSM_Opened:
+			layer->fsm_state=FSM_Closing;
 			if (layer->layer_down) layer->layer_down(layer);
 		case FSM_Req_Sent:
 		case FSM_Ack_Rcvd:
