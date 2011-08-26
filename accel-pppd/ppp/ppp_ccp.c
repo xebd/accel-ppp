@@ -210,7 +210,7 @@ static void ccp_layer_finished(struct ppp_fsm_t *fsm)
 	log_ppp_debug("ccp_layer_finished\n");
 
 	if (!ccp->started)
-		ccp->ld.passive = 1;
+		ppp_layer_passive(ccp->ppp, &ccp->ld);
 	else if (!ccp->ppp->terminating)
 		ppp_terminate(ccp->ppp, TERM_USER_ERROR, 0);
 }

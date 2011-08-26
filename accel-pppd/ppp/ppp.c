@@ -433,15 +433,10 @@ static void ppp_ifup(struct ppp_t *ppp)
 	triton_event_fire(EV_PPP_STARTED, ppp);
 }
 
-void __export ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
+static void __ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 {
 	struct layer_node_t *n = d->node;
 	int f = 0;
-
-	if (d->started)
-		return;
-
-	d->started = 1;
 
 	list_for_each_entry(d, &n->items, entry) {
 		if (!d->started && !d->passive) return;
@@ -468,6 +463,26 @@ void __export ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 			}
 		}
 	}
+}
+
+void __export ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
+{
+	if (d->started)
+		return;
+
+	d->started = 1;
+
+	__ppp_layer_started(ppp, d);
+}
+
+void __export ppp_layer_passive(struct ppp_t *ppp, struct ppp_layer_data_t *d)
+{
+	if (d->started)
+		return;
+
+	d->passive = 1;
+	
+	__ppp_layer_started(ppp, d);
 }
 
 void __export ppp_layer_finished(struct ppp_t *ppp, struct ppp_layer_data_t *d)

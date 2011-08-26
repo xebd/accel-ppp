@@ -117,8 +117,9 @@ static void ipcp_start_timeout(struct triton_timer_t *t)
 	struct ppp_ipcp_t *ipcp = container_of(t, typeof(*ipcp), timeout);
 
 	triton_timer_del(t);
-		
-	ppp_terminate(ipcp->ppp, TERM_USER_ERROR, 0);
+
+	if (ipcp->ppp->state == PPP_STATE_STARTING)
+		ppp_terminate(ipcp->ppp, TERM_USER_ERROR, 0);
 }
 
 int ipcp_layer_start(struct ppp_layer_data_t *ld)
@@ -202,7 +203,7 @@ static void ipcp_layer_finished(struct ppp_fsm_t *fsm)
 		if (conf_ipv4 == IPV4_REQUIRE)
 			ppp_terminate(ipcp->ppp, TERM_USER_ERROR, 0);
 		else
-			ipcp->ld.passive = 1;
+			ppp_layer_passive(ipcp->ppp, &ipcp->ld);
 	} else if (!ipcp->ppp->terminating)
 		ppp_terminate(ipcp->ppp, TERM_USER_ERROR, 0);
 }

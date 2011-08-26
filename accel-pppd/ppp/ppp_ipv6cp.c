@@ -118,7 +118,8 @@ static void ipv6cp_start_timeout(struct triton_timer_t *t)
 
 	triton_timer_del(t);
 		
-	ppp_terminate(ipv6cp->ppp, TERM_USER_ERROR, 0);
+	if (ipv6cp->ppp->state == PPP_STATE_STARTING)
+		ppp_terminate(ipv6cp->ppp, TERM_USER_ERROR, 0);
 }
 
 int ipv6cp_layer_start(struct ppp_layer_data_t *ld)
@@ -202,7 +203,7 @@ static void ipv6cp_layer_finished(struct ppp_fsm_t *fsm)
 		if (conf_ipv6 == IPV6_REQUIRE)
 			ppp_terminate(ipv6cp->ppp, TERM_USER_ERROR, 0);
 		else
-			ipv6cp->ld.passive = 1;
+			ppp_layer_passive(ipv6cp->ppp, &ipv6cp->ld);
 	} else if (!ipv6cp->ppp->terminating)
 		ppp_terminate(ipv6cp->ppp, TERM_USER_ERROR, 0);
 }
