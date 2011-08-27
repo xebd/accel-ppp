@@ -18,14 +18,15 @@ struct ipv6db_addr_t
 	struct list_head entry;
 	struct in6_addr addr;
 	int prefix_len;
+	int flag_auto:1;
 };
 
 struct ipv6db_item_t
 {
 	struct ipdb_t *owner;
 	uint64_t intf_id;
+	uint64_t peer_intf_id;
 	struct list_head addr_list;
-	struct list_head route_list;
 };
 
 

@@ -40,7 +40,6 @@ static void generate_pool(struct in6_addr *addr, int mask, int prefix_len)
 		it = malloc(sizeof(*it));
 		it->it.owner = &ipdb;
 		INIT_LIST_HEAD(&it->it.addr_list);
-		INIT_LIST_HEAD(&it->it.route_list);
 		a = malloc(sizeof(*a));
 		memset(a, 0, sizeof(*a));
 		*(uint64_t *)a->addr.s6_addr = htobe64(ip);
@@ -104,6 +103,7 @@ static struct ipv6db_item_t *get_ip(struct ppp_t *ppp)
 		it = list_entry(ippool.next, typeof(*it), entry);
 		list_del(&it->entry);
 		it->it.intf_id = 0;
+		it->it.peer_intf_id = 0;
 	} else
 		it = NULL;
 	spin_unlock(&pool_lock);

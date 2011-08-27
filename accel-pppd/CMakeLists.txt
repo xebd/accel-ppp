@@ -52,6 +52,7 @@ ADD_SUBDIRECTORY(ctrl)
 ADD_SUBDIRECTORY(auth)
 ADD_SUBDIRECTORY(logs)
 ADD_SUBDIRECTORY(extra)
+ADD_SUBDIRECTORY(ipv6)
 
 ADD_EXECUTABLE(accel-pppd
 	ppp/ppp.c
@@ -69,7 +70,6 @@ ADD_EXECUTABLE(accel-pppd
 	ppp/ppp_ipv6cp.c
 	ppp/ppp_ccp.c	
 	ppp/ccp_mppe.c
-	ppp/ipv6_nd.c
 
 	cli/std_cmd.c
 	cli/show_sessions.c

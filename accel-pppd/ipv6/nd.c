@@ -30,6 +30,7 @@ static struct in6_addr conf_dns[MAX_DNS_COUNT];
 static int conf_dns_count;
 static void *conf_dnssl;
 static int conf_dnssl_size;
+static int conf_managed;
 
 #undef ND_OPT_ROUTE_INFORMATION
 #define  ND_OPT_ROUTE_INFORMATION	24
@@ -84,7 +85,7 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ad
 	void *buf = mempool_alloc(buf_pool), *endptr;
 	struct nd_router_advert *adv = buf;
 	struct nd_opt_prefix_info *pinfo;
-	struct nd_opt_route_info_local *rinfo;
+	//struct nd_opt_route_info_local *rinfo;
 	struct nd_opt_rdnss_info_local *rdnssinfo;
 	struct in6_addr *rdnss_addr;
 	struct nd_opt_dnssl_info_local *dnsslinfo;
@@ -101,23 +102,28 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ad
 	adv->nd_ra_type = ND_ROUTER_ADVERT;
 	adv->nd_ra_curhoplimit = 64;
 	adv->nd_ra_router_lifetime = htons(conf_router_lifetime);
+	adv->nd_ra_flags_reserved = 
+		conf_managed ? ND_RA_FLAG_MANAGED | ND_RA_FLAG_OTHER : 0;
 	//adv->nd_ra_reachable = 0;
 	//adv->nd_ra_retransmit = 0;
 	
 	pinfo = (struct nd_opt_prefix_info *)(adv + 1);
 	list_for_each_entry(a, &h->ppp->ipv6->addr_list, entry) {
+		if (a->prefix_len == 128)
+			continue;
+			
 		memset(pinfo, 0, sizeof(*pinfo));
 		pinfo->nd_opt_pi_type = ND_OPT_PREFIX_INFORMATION;
 		pinfo->nd_opt_pi_len = 4;
 		pinfo->nd_opt_pi_prefix_len = a->prefix_len;
-		pinfo->nd_opt_pi_flags_reserved = ND_OPT_PI_FLAG_ONLINK | ND_OPT_PI_FLAG_AUTO;
+		pinfo->nd_opt_pi_flags_reserved = ND_OPT_PI_FLAG_ONLINK | ((a->flag_auto || !conf_managed) ? ND_OPT_PI_FLAG_AUTO : 0);
 		pinfo->nd_opt_pi_valid_time = 0xffffffff;
 		pinfo->nd_opt_pi_preferred_time = 0xffffffff;
 		memcpy(&pinfo->nd_opt_pi_prefix, &a->addr, 8);
 		pinfo++;
 	}
 	
-	rinfo = (struct nd_opt_route_info_local *)pinfo;
+	/*rinfo = (struct nd_opt_route_info_local *)pinfo;
 	list_for_each_entry(a, &h->ppp->ipv6->route_list, entry) {
 		memset(rinfo, 0, sizeof(*rinfo));
 		rinfo->nd_opt_ri_type = ND_OPT_ROUTE_INFORMATION;
@@ -126,10 +132,10 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ad
 		rinfo->nd_opt_ri_lifetime = 0xffffffff;
 		memcpy(&rinfo->nd_opt_ri_prefix, &a->addr, 8);
 		rinfo++;
-	}
+	}*/
 
 	if (conf_dns_count) {
-		rdnssinfo = (struct nd_opt_rdnss_info_local *)rinfo;
+		rdnssinfo = (struct nd_opt_rdnss_info_local *)pinfo;
 		memset(rdnssinfo, 0, sizeof(*rdnssinfo));
 		rdnssinfo->nd_opt_rdnssi_type = ND_OPT_RDNSS_INFORMATION;
 		rdnssinfo->nd_opt_rdnssi_len = 1 + 2 * conf_dns_count;
@@ -140,7 +146,7 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ad
 			rdnss_addr++;
 		}
 	} else
-		rdnss_addr = (struct in6_addr *)rinfo;
+		rdnss_addr = (struct in6_addr *)pinfo;
 	
 	if (conf_dnssl) {
 		dnsslinfo = (struct nd_opt_dnssl_info_local *)rdnss_addr;
@@ -228,7 +234,7 @@ static int ipv6_nd_read(struct triton_md_handler_t *_h)
 	return 0;
 }
 
-int ppp_ipv6_nd_start(struct ppp_t *ppp, uint64_t intf_id)
+static int ipv6_nd_start(struct ppp_t *ppp)
 {
 	int sock;
 	struct icmp6_filter filter;
@@ -247,7 +253,7 @@ int ppp_ipv6_nd_start(struct ppp_t *ppp, uint64_t intf_id)
 	memset(&addr, 0, sizeof(addr));
 	addr.sin6_family = AF_INET6;
 	addr.sin6_addr.s6_addr32[0] = htons(0xfe80);
-	*(uint64_t *)(addr.sin6_addr.s6_addr + 8) = intf_id;
+	*(uint64_t *)(addr.sin6_addr.s6_addr + 8) = ppp->ipv6->intf_id;
 	addr.sin6_scope_id = ppp->ifindex;
 
 	if (bind(sock, (struct sockaddr *)&addr, sizeof(addr))) {
@@ -311,6 +317,8 @@ int ppp_ipv6_nd_start(struct ppp_t *ppp, uint64_t intf_id)
 	triton_md_register_handler(ppp->ctrl->ctx, &h->hnd);
 	triton_md_enable_handler(&h->hnd, MD_MODE_READ);
 
+	triton_timer_add(ppp->ctrl->ctx, &h->timer, 0);
+
 	return 0;
 
 out_err:
@@ -332,12 +340,10 @@ static struct ipv6_nd_handler_t *find_pd(struct ppp_t *ppp)
 
 static void ev_ppp_started(struct ppp_t *ppp)
 {
-	struct ipv6_nd_handler_t *h = find_pd(ppp);
-
-	if (!h)
+	if (!ppp->ipv6)
 		return;
-	
-	triton_timer_add(ppp->ctrl->ctx, &h->timer, 0);
+
+	ipv6_nd_start(ppp);
 }
 
 static void ev_ppp_finishing(struct ppp_t *ppp)
@@ -441,6 +447,8 @@ static void init(void)
 	buf_pool = mempool_create(BUF_SIZE);
 
 	load_config();
+	
+	conf_managed = triton_module_loaded("ipv6_dhcp");
 
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 	triton_event_register_handler(EV_PPP_STARTED, (triton_event_func)ev_ppp_started);

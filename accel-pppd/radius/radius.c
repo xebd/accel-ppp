@@ -122,7 +122,7 @@ int rad_proc_attrs(struct rad_req_t *req)
 				req->rpd->termination_action = attr->val.integer; 
 				break;
 			case Framed_Interface_Id:
-				req->rpd->ipv6_addr.intf_id = attr->val.ifid;
+				req->rpd->ipv6_addr.peer_intf_id = attr->val.ifid;
 				break;
 			case Framed_IPv6_Prefix:
 				a = _malloc(sizeof(*a));
@@ -185,7 +185,10 @@ static struct ipv4db_item_t *get_ipv4(struct ppp_t *ppp)
 static struct ipv6db_item_t *get_ipv6(struct ppp_t *ppp)
 {
 	struct radius_pd_t *rpd = find_pd(ppp);
-	
+
+	rpd->ipv6_addr.owner = &ipdb;
+	rpd->ipv6_addr.intf_id = 0;
+
 	if (!list_empty(&rpd->ipv6_addr.addr_list))
 		return &rpd->ipv6_addr;
 
@@ -218,7 +221,6 @@ static void ppp_starting(struct ppp_t *ppp)
 	pthread_mutex_init(&rpd->lock, NULL);
 	INIT_LIST_HEAD(&rpd->plugin_list);
 	INIT_LIST_HEAD(&rpd->ipv6_addr.addr_list);
-	INIT_LIST_HEAD(&rpd->ipv6_addr.route_list);
 	list_add_tail(&rpd->pd.entry, &ppp->pd_list);
 
 	pthread_rwlock_wrlock(&sessions_lock);

@@ -30,7 +30,7 @@ struct recv_opt_t
 
 #define START_TIMEOUT 60
 
-static int conf_ipv6 = IPV6_ALLOW;
+static int conf_ipv6 = IPV6_DENY;
 
 static LIST_HEAD(option_handlers);
 static struct ppp_layer_t ipv6cp_layer;

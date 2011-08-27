@@ -139,7 +139,7 @@ int rad_req_acct_fill(struct rad_req_t *req)
 			return -1;
 	}
 	if (req->rpd->ppp->ipv6) {
-		if (rad_packet_add_ifid(req->pack, NULL, "Framed-Interface-Id", req->rpd->ppp->ipv6->intf_id))
+		if (rad_packet_add_ifid(req->pack, NULL, "Framed-Interface-Id", req->rpd->ppp->ipv6->peer_intf_id))
 			return -1;
 		list_for_each_entry(a, &req->rpd->ppp->ipv6->addr_list, entry) {
 			if (rad_packet_add_ipv6prefix(req->pack, NULL, "Framed-IPv6-Prefix", &a->addr, a->prefix_len))
