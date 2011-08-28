@@ -291,3 +291,4 @@
 #define Login_IPv6_Host 98
 #define Framed_IPv6_Route 99
 #define Framed_IPv6_Pool 100
+#define Delegated_IPv6_Prefix 123

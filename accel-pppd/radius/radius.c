@@ -130,6 +130,12 @@ int rad_proc_attrs(struct rad_req_t *req)
 				a->addr = attr->val.ipv6prefix.prefix;
 				list_add_tail(&a->entry, &req->rpd->ipv6_addr.addr_list);
 				break;
+			case Delegated_IPv6_Prefix:
+				a = _malloc(sizeof(*a));
+				a->prefix_len = attr->val.ipv6prefix.len;
+				a->addr = attr->val.ipv6prefix.prefix;
+				list_add_tail(&a->entry, &req->rpd->ipv6_dp.prefix_list);
+				break;
 		}
 	}
 
@@ -195,6 +201,19 @@ static struct ipv6db_item_t *get_ipv6(struct ppp_t *ppp)
 	return NULL;
 }
 
+static struct ipv6db_prefix_t *get_ipv6_prefix(struct ppp_t *ppp)
+{
+	struct radius_pd_t *rpd = find_pd(ppp);
+
+	rpd->ipv6_dp.owner = &ipdb;
+
+	if (!list_empty(&rpd->ipv6_dp.prefix_list))
+		return &rpd->ipv6_dp;
+
+	return NULL;
+}
+
+
 
 static void session_timeout(struct triton_timer_t *t)
 {
@@ -221,6 +240,8 @@ static void ppp_starting(struct ppp_t *ppp)
 	pthread_mutex_init(&rpd->lock, NULL);
 	INIT_LIST_HEAD(&rpd->plugin_list);
 	INIT_LIST_HEAD(&rpd->ipv6_addr.addr_list);
+	INIT_LIST_HEAD(&rpd->ipv6_dp.prefix_list);
+
 	list_add_tail(&rpd->pd.entry, &ppp->pd_list);
 
 	pthread_rwlock_wrlock(&sessions_lock);
@@ -285,6 +306,12 @@ static void ppp_finished(struct ppp_t *ppp)
 	
 	while (!list_empty(&rpd->ipv6_addr.addr_list)) {
 		a = list_entry(rpd->ipv6_addr.addr_list.next, typeof(*a), entry);
+		list_del(&a->entry);
+		_free(a);
+	}
+
+	while (!list_empty(&rpd->ipv6_dp.prefix_list)) {
+		a = list_entry(rpd->ipv6_dp.prefix_list.next, typeof(*a), entry);
 		list_del(&a->entry);
 		_free(a);
 	}
@@ -436,6 +463,7 @@ void __export rad_register_plugin(struct ppp_t *ppp, struct rad_plugin_t *plugin
 static struct ipdb_t ipdb = {
 	.get_ipv4 = get_ipv4,
 	.get_ipv6 = get_ipv6,
+	.get_ipv6_prefix = get_ipv6_prefix,
 };
 
 static struct pwdb_t pwdb = {
