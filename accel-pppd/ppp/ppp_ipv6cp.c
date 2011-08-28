@@ -206,6 +206,8 @@ static void ipv6cp_layer_finished(struct ppp_fsm_t *fsm)
 			ppp_layer_passive(ipv6cp->ppp, &ipv6cp->ld);
 	} else if (!ipv6cp->ppp->terminating)
 		ppp_terminate(ipv6cp->ppp, TERM_USER_ERROR, 0);
+	
+	fsm->fsm_state = FSM_Closed;
 }
 
 static void ipv6cp_layer_down(struct ppp_fsm_t *fsm)

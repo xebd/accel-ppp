@@ -206,6 +206,8 @@ static void ipcp_layer_finished(struct ppp_fsm_t *fsm)
 			ppp_layer_passive(ipcp->ppp, &ipcp->ld);
 	} else if (!ipcp->ppp->terminating)
 		ppp_terminate(ipcp->ppp, TERM_USER_ERROR, 0);
+	
+	fsm->fsm_state = FSM_Closed;
 }
 
 static void ipcp_layer_down(struct ppp_fsm_t *fsm)

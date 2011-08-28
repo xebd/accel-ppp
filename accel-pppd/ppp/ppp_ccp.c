@@ -213,6 +213,8 @@ static void ccp_layer_finished(struct ppp_fsm_t *fsm)
 		ppp_layer_passive(ccp->ppp, &ccp->ld);
 	else if (!ccp->ppp->terminating)
 		ppp_terminate(ccp->ppp, TERM_USER_ERROR, 0);
+	
+	fsm->fsm_state = FSM_Closed;
 }
 
 static void ccp_layer_down(struct ppp_fsm_t *fsm)
