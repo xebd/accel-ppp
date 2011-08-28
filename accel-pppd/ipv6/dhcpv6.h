@@ -55,6 +55,7 @@
 #define D6_STATUS_NoBinding        3
 #define D6_STATUS_NotOnLink        4
 #define D6_STATUS_UseMulticast     5
+#define D6_STATUS_NoPrefixAvail    6
 
 #define DUID_LLT 1
 #define DUID_EN  2

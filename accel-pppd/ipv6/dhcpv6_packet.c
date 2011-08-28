@@ -416,9 +416,10 @@ static void print_status(struct dhcpv6_option *opt, void (*print)(const char *fm
 		"NoBindings",
 		"NotOnLink",
 		"UseMulticast"
+		"NoPrefixAvail"
 	};
 
-	if (ntohs(o->code) < 0 || ntohs(o->code) > 5)
+	if (ntohs(o->code) < 0 || ntohs(o->code) > sizeof(status_name))
 		print(" %u", ntohs(o->code));
 	else
 		print(" %s", status_name[ntohs(o->code)]);

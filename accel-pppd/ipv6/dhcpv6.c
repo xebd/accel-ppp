@@ -255,7 +255,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 			} else if (!pd->ipv6_dp || list_empty(&pd->ipv6_dp->prefix_list) || f2) {
 				opt3 = dhcpv6_nested_option_alloc(reply, opt1, D6_OPTION_STATUS_CODE, sizeof(struct dhcpv6_opt_status) - sizeof(struct dhcpv6_opt_hdr));
 				status = (struct dhcpv6_opt_status *)opt3->hdr;
-				status->code = htons(D6_STATUS_NoAddrsAvail);
+				status->code = htons(D6_STATUS_NoPrefixAvail);
 			} else {
 
 				if (req->hdr->type == D6_REQUEST)
@@ -632,6 +632,9 @@ static void init(void)
 {
 	struct sockaddr_in6 addr;
 	int sock;
+
+	if (!triton_module_loaded("ipv6_nd"))
+		log_warn("dhcpv6: ipv6_nd module is not loaded, you probably get misconfigured network environment\n");
 
 	load_config();
 
