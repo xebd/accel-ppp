@@ -30,6 +30,7 @@ static void print_status(struct dhcpv6_option *opt, void (*print)(const char *fm
 static void print_uint64(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...));
 static void print_reconf(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...));
 static void print_dnssl(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...));
+static void print_ia_prefix(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...));
 
 static struct dict_option known_options[] = {
 	{ D6_OPTION_CLIENTID, "Client-ID", 1, 0, print_clientid },
@@ -53,6 +54,8 @@ static struct dict_option known_options[] = {
 	{ D6_OPTION_RECONF_ACCEPT, "Reconfigure-Accept", 1, 0 },
 	{ D6_OPTION_DNS_SERVERS, "DNS", 1, 0, print_ipv6addr_array },
 	{ D6_OPTION_DOMAIN_LIST, "DNSSL", 1, 0, print_dnssl },
+	{ D6_OPTION_IA_PD, "IA-PD", 1, sizeof(struct dhcpv6_opt_ia_na), print_ia_na },
+	{ D6_OPTION_IAPREFIX, "IA-Prefix", 1, sizeof(struct dhcpv6_opt_ia_prefix), print_ia_prefix },
 	{ 0 }
 };
 
@@ -337,7 +340,7 @@ static void print_ia_ta(struct dhcpv6_option *opt, void (*print)(const char *fmt
 static void print_ia_addr(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...))
 {
 	struct dhcpv6_opt_ia_addr *o = (struct dhcpv6_opt_ia_addr *)opt->hdr;
-	char str[50];
+	char str[INET6_ADDRSTRLEN];
 
 	inet_ntop(AF_INET6, &o->addr, str, sizeof(str));
 	print(" %s pref_lifetime=%i valid_lifetime=%i", str, ntohl(o->pref_lifetime), ntohl(o->valid_lifetime));
@@ -382,7 +385,7 @@ static void print_time(struct dhcpv6_option *opt, void (*print)(const char *fmt,
 
 static void print_ipv6addr(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...))
 {
-	char str[50];
+	char str[INET6_ADDRSTRLEN];
 
 	inet_ntop(AF_INET6, opt->hdr->data, str, sizeof(str));
 
@@ -391,7 +394,7 @@ static void print_ipv6addr(struct dhcpv6_option *opt, void (*print)(const char *
 
 static void print_ipv6addr_array(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...))
 {
-	char str[50];
+	char str[INET6_ADDRSTRLEN];
 	int i;
 	int f = 0;
 	struct in6_addr *addr = (struct in6_addr *)opt->hdr->data;
@@ -434,5 +437,14 @@ static void print_reconf(struct dhcpv6_option *opt, void (*print)(const char *fm
 static void print_dnssl(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...))
 {
 
+}
+
+static void print_ia_prefix(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...))
+{
+	struct dhcpv6_opt_ia_prefix *o = (struct dhcpv6_opt_ia_prefix *)opt->hdr;
+	char str[INET6_ADDRSTRLEN];
+
+	inet_ntop(AF_INET6, &o->prefix, str, sizeof(str));
+	print(" %s/%i pref_lifetime=%i valid_lifetime=%i", str, o->prefix_len, ntohl(o->pref_lifetime), ntohl(o->valid_lifetime));
 }
 

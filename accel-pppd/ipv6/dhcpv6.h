@@ -32,6 +32,8 @@
 #define D6_OPTION_RECONF_ACCEPT   20
 #define D6_OPTION_DNS_SERVERS     23
 #define D6_OPTION_DOMAIN_LIST     24
+#define D6_OPTION_IA_PD           25
+#define D6_OPTION_IAPREFIX        26
 
 #define D6_SOLICIT                 1
 #define D6_ADVERTISE               2
@@ -139,6 +141,15 @@ struct dhcpv6_opt_status
 	struct dhcpv6_opt_hdr hdr;
 	uint16_t code;
 	char msg[0];
+} __packed;
+
+struct dhcpv6_opt_ia_prefix
+{
+	struct dhcpv6_opt_hdr hdr;
+	uint32_t pref_lifetime;
+	uint32_t valid_lifetime;
+	uint8_t prefix_len;
+	struct in6_addr prefix;
 } __packed;
 
 
