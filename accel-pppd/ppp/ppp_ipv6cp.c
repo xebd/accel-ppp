@@ -811,6 +811,9 @@ static void load_config(void)
 
 static void ipv6cp_init(void)
 {
+	if (sock6_fd < 0)
+		return;
+
 	load_config();
 
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);

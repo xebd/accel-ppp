@@ -32,6 +32,7 @@ pthread_rwlock_t __export ppp_lock = PTHREAD_RWLOCK_INITIALIZER;
 __export LIST_HEAD(ppp_list);
 
 int __export sock_fd;
+int __export sock6_fd;
 
 int __export ppp_shutdown;
 
@@ -743,6 +744,10 @@ static void init(void)
 		perror("socket");
 		_exit(EXIT_FAILURE);
 	}
+
+	sock6_fd = socket(AF_INET6, SOCK_DGRAM, 0);
+	if (sock6_fd < 0)
+		log_warn("ppp: kernel doesn't support ipv6\n");
 
 	opt = conf_get_opt("ppp", "seq-file");
 	if (!opt)

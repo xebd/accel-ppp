@@ -37,7 +37,6 @@ struct in6_ifreq {
 };
 
 static int urandom_fd;
-static int sock6_fd;
 
 static struct ipv6cp_option_t *ipaddr_init(struct ppp_ipv6cp_t *ipv6cp);
 static void ipaddr_free(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_option_t *opt);
@@ -372,11 +371,8 @@ static void load_config(void)
 
 static void init()
 {
-	sock6_fd = socket(AF_INET6, SOCK_DGRAM, 0);
-	if (!sock6_fd) {
-		log_warn("ppp:ipv6cp: kernel doesn't support ipv6\n");
+	if (sock6_fd < 0)
 		return;
-	}
 
 	urandom_fd = open("/dev/urandom", O_RDONLY);
 

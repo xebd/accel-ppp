@@ -10,6 +10,9 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <linux/route.h>
+#include <linux/ipv6_route.h>
 
 #include "triton.h"
 #include "mempool.h"
@@ -41,6 +44,7 @@ struct dhcpv6_pd
 	uint32_t addr_iaid;
 	uint32_t dp_iaid;
 	struct ipv6db_prefix_t *ipv6_dp;
+	int dp_active:1;
 };
 
 static struct triton_md_handler_t dhcpv6_hnd;
@@ -148,6 +152,44 @@ static void build_addr(struct ipv6db_addr_t *a, uint64_t intf_id, struct in6_add
 		*(uint64_t *)(addr->s6_addr + 8) = intf_id;
 	else
 		*(uint64_t *)(addr->s6_addr + 8) |= intf_id & ((1 << (128 - a->prefix_len)) - 1);
+}
+
+static void insert_dp_routes(struct ppp_t *ppp, struct dhcpv6_pd *pd)
+{
+	struct ipv6db_addr_t *a;
+	struct ipv6db_addr_t *p;
+	struct in6_rtmsg rt6;
+	char str1[INET6_ADDRSTRLEN];
+	char str2[INET6_ADDRSTRLEN];
+	int err;
+
+	memset(&rt6, 0, sizeof(rt6));
+	rt6.rtmsg_ifindex = ppp->ifindex;
+	rt6.rtmsg_flags = RTF_UP | RTF_GATEWAY;
+
+	list_for_each_entry(p, &pd->ipv6_dp->prefix_list, entry) {
+		memcpy(&rt6.rtmsg_dst, &p->addr, sizeof(p->addr));
+		rt6.rtmsg_dst_len = p->prefix_len;
+		rt6.rtmsg_metric = 0;
+		//rt6.rtmsg_flags = RTF_UP;
+		list_for_each_entry(a, &ppp->ipv6->addr_list, entry) {
+			build_addr(a, ppp->ipv6->peer_intf_id, &rt6.rtmsg_gateway);
+			rt6.rtmsg_metric++;
+			if (ioctl(sock6_fd, SIOCADDRT, &rt6)) {
+				err = errno;
+				inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
+				inet_ntop(AF_INET6, &rt6.rtmsg_gateway, str2, sizeof(str2));
+				log_ppp_error("dhcpv6: add route %s/%i via %s: %s\n", str1, p->prefix_len, str2, strerror(err));
+			} else {
+				inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
+				inet_ntop(AF_INET6, &rt6.rtmsg_gateway, str2, sizeof(str2));
+				log_ppp_info2("dhcpv6: add route %s/%i via %s\n", str1, p->prefix_len, str2);
+
+			}
+		}
+	}
+
+	pd->dp_active = 1;
 }
 
 static void insert_status(struct dhcpv6_packet *pkt, struct dhcpv6_option *opt, int code)
@@ -259,8 +301,11 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 				insert_status(reply, opt1, D6_STATUS_NoPrefixAvail);
 			} else {
 
-				if (req->hdr->type == D6_REQUEST)
+				if (req->hdr->type == D6_REQUEST) {
 					pd->dp_iaid = ia_na->iaid;
+					if (!pd->dp_active)
+						insert_dp_routes(req->ppp, pd);
+				}
 
 				f2 = 1;
 
