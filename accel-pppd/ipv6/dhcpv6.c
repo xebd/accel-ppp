@@ -180,10 +180,10 @@ static void insert_dp_routes(struct ppp_t *ppp, struct dhcpv6_pd *pd)
 				inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
 				inet_ntop(AF_INET6, &rt6.rtmsg_gateway, str2, sizeof(str2));
 				log_ppp_error("dhcpv6: add route %s/%i via %s: %s\n", str1, p->prefix_len, str2, strerror(err));
-			} else {
+			} else if (conf_verbose) {
 				inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
 				inet_ntop(AF_INET6, &rt6.rtmsg_gateway, str2, sizeof(str2));
-				log_ppp_info2("dhcpv6: add route %s/%i via %s\n", str1, p->prefix_len, str2);
+				log_ppp_info2("dhcpv6: route add %s/%i via %s\n", str1, p->prefix_len, str2);
 
 			}
 		}

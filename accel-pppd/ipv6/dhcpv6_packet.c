@@ -286,7 +286,7 @@ void dhcpv6_packet_print(struct dhcpv6_packet *pkt, void (*print)(const char *fm
 		"Solicit",
 		"Advertise",
 		"Request",
-		"Confirt",
+		"Confirm",
 		"Renew",
 		"Rebind",
 		"Reply",
