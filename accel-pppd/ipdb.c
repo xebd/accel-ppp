@@ -49,6 +49,28 @@ void __export ipdb_put_ipv6(struct ppp_t *ppp, struct ipv6db_item_t *it)
 		it->owner->put_ipv6(ppp, it);
 }
 
+struct ipv6db_prefix_t __export *ipdb_get_ipv6_prefix(struct ppp_t *ppp)
+{
+	struct ipdb_t *ipdb;
+	struct ipv6db_prefix_t *it;
+
+	list_for_each_entry(ipdb, &ipdb_handlers, entry) {
+		if (!ipdb->get_ipv6_prefix)
+			continue;
+		it = ipdb->get_ipv6_prefix(ppp);
+		if (it)
+			return it;
+	}
+
+	return NULL;
+}
+
+void __export ipdb_put_ipv6_prefix(struct ppp_t *ppp, struct ipv6db_prefix_t *it)
+{
+	if (it->owner->put_ipv6_prefix)
+		it->owner->put_ipv6_prefix(ppp, it);
+}
+
 
 void __export ipdb_register(struct ipdb_t *ipdb)
 {
