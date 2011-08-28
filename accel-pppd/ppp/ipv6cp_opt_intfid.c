@@ -231,16 +231,17 @@ static int ipaddr_recv_conf_req(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_optio
 
 	if (conf_accept_peer_intf_id && opt64->val)
 		ipv6cp->ppp->ipv6->peer_intf_id = opt64->val;
+	else if (!ipv6cp->ppp->ipv6->peer_intf_id) {
+		ipv6cp->ppp->ipv6->peer_intf_id = generate_peer_intf_id(ipv6cp->ppp);
+		if (!ipv6cp->ppp->ipv6->peer_intf_id)
+			return IPV6CP_OPT_TERMACK;
+	}
 
 	if (opt64->val && ipv6cp->ppp->ipv6->peer_intf_id == opt64->val && opt64->val != ipv6cp->ppp->ipv6->intf_id) {
 		ipv6cp->delay_ack = ccp_ipcp_started(ipv6cp->ppp);
 		goto ack;
 	}
 		
-	ipv6cp->ppp->ipv6->peer_intf_id = generate_peer_intf_id(ipv6cp->ppp);
-	if (!ipv6cp->ppp->ipv6->peer_intf_id)
-		return IPV6CP_OPT_TERMACK;
-	
 	return IPV6CP_OPT_NAK;
 
 ack:
