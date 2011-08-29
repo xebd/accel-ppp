@@ -484,7 +484,7 @@ Configuration of ipv6pool module.
 .br
 Format of each row is
 .br
-.B ipv6prefix/maks,prefix_len
+.B ipv6prefix/mask,prefix_len
 for example:
 .br
 .B fc00:0:1::/48,64
@@ -496,3 +496,7 @@ fc00:0:1:1::/64
 .br
 ...
 fc00:0:1:ffff::/64
+.TP
+.BI "delegate=" ipv6prefix/mask,prefix_len
+Specifies range of prefixes to delegate to clients through DHCPv6 prefix delegation (rfc3633).
+Format is same as described above.
