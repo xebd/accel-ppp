@@ -156,7 +156,7 @@ static void ev_ppp_pre_up(struct ppp_t *ppp)
 			pthread_mutex_lock(&pd->ip_pre_up_hnd.lock);
 			pthread_mutex_unlock(&pd->ip_pre_up_hnd.lock);
 			if (pd->res != 0) {
-				ppp_terminate(ppp, 0, pd->res < 0 ? TERM_NAS_ERROR : TERM_ADMIN_RESET);
+				ppp_terminate(ppp, pd->res > 127 ? TERM_NAS_ERROR : TERM_ADMIN_RESET, 0);
 				return;
 			}
 		} else if (pid == 0) {

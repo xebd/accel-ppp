@@ -297,7 +297,7 @@ cont:
 		//printf("ppp_chan_read: ");
 		//print_buf(ppp->buf,ppp->buf_size);
 		if (ppp->buf_size == 0) {
-			ppp_terminate(ppp, 1, TERM_NAS_ERROR);
+			ppp_terminate(ppp, TERM_NAS_ERROR, 1);
 			return 1;
 		}
 
@@ -343,7 +343,7 @@ cont:
 		//print_buf(ppp->buf,ppp->buf_size);
 
 		if (ppp->buf_size == 0) {
-			ppp_terminate(ppp, 1, TERM_NAS_ERROR);
+			ppp_terminate(ppp, TERM_NAS_ERROR, 1);
 			return 1;
 		}
 

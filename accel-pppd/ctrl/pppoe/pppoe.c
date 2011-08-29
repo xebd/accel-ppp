@@ -1161,7 +1161,7 @@ out_err:
 
 static void _conn_stop(struct pppoe_conn_t *conn)
 {
-	ppp_terminate(&conn->ppp, 0, TERM_ADMIN_RESET);
+	ppp_terminate(&conn->ppp, TERM_ADMIN_RESET, 0);
 }
 
 static void _server_stop(struct pppoe_serv_t *serv)
