@@ -4,6 +4,7 @@
 #include <fcntl.h>
 #include <string.h>
 #include <errno.h>
+#include <limits.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 #include "linux_ppp.h"
@@ -212,6 +213,33 @@ static int ipaddr_send_conf_nak(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_optio
 	return 10;
 }
 
+static void devconf(struct ppp_t *ppp, const char *attr, const char *val)
+{
+	int fd;
+	char fname[PATH_MAX];
+
+	sprintf(fname, "/proc/sys/net/ipv6/conf/%s/%s", ppp->ifname, attr);
+	fd = open(fname, O_WRONLY);
+	if (!fd) {
+		log_ppp_error("ppp:ipv6cp: failed to open '%s': %s\n", fname, strerror(errno));
+		return;
+	}
+
+	write(fd, val, strlen(val));
+
+	close(fd);
+}
+
+static void build_addr(struct ipv6db_addr_t *a, uint64_t intf_id, struct in6_addr *addr)
+{
+	memcpy(addr, &a->addr, sizeof(*addr));
+
+	if (a->prefix_len <= 64)
+		*(uint64_t *)(addr->s6_addr + 8) = intf_id;
+	else
+		*(uint64_t *)(addr->s6_addr + 8) |= intf_id & ((1 << (128 - a->prefix_len)) - 1);
+}
+
 static int ipaddr_recv_conf_req(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_option_t *opt, uint8_t *ptr)
 {
 	struct ipaddr_option_t *ipaddr_opt = container_of(opt, typeof(*ipaddr_opt), opt);
@@ -250,16 +278,9 @@ ack:
 	
 	ipaddr_opt->started = 1;
 
-	//ipv6cp->ppp->ipaddr = ipaddr_opt->ip->addr;
-	//ipv6cp->ppp->peer_ipaddr = ipaddr_opt->ip->peer_addr;
-
-	//triton_event_fire(EV_PPP_ACCT_START, ipv6cp->ppp);
-	//if (ipv6cp->ppp->stop_time)
-	//	return IPV6CP_OPT_ACK;
-
-	//triton_event_fire(EV_PPP_PRE_UP, ipv6cp->ppp);
-	//if (ipv6cp->ppp->stop_time)
-	//	return IPV6CP_OPT_ACK;
+	devconf(ipv6cp->ppp, "accept_ra", "0");
+	devconf(ipv6cp->ppp, "autoconf", "0");
+	devconf(ipv6cp->ppp, "forwarding", "1");
 
 	memset(&ifr6, 0, sizeof(ifr6));
 	ifr6.ifr6_addr.s6_addr32[0] = htons(0xfe80);
@@ -271,22 +292,20 @@ ack:
 		log_ppp_error("ppp:ipv6cp: ioctl(SIOCSIFADDR): %s\n", strerror(errno));
 		return IPV6CP_OPT_REJ;
 	}
-
+	
 	list_for_each_entry(a, &ipv6cp->ppp->ipv6->addr_list, entry) {
 		if (a->prefix_len == 128)
 			continue;
 
-		memcpy(ifr6.ifr6_addr.s6_addr, a->addr.s6_addr, 16);
-
-		if (a->prefix_len <= 64)
-			*(uint64_t *)(ifr6.ifr6_addr.s6_addr + 8) = ipv6cp->ppp->ipv6->intf_id;
-		else
-			*(uint64_t *)(ifr6.ifr6_addr.s6_addr + 8) |= ipv6cp->ppp->ipv6->intf_id & ((1 << (128 - a->prefix_len)) - 1);
+		build_addr(a, ipv6cp->ppp->ipv6->intf_id, &ifr6.ifr6_addr);
+		ifr6.ifr6_prefixlen = a->prefix_len;
 
 		if (ioctl(sock6_fd, SIOCSIFADDR, &ifr6)) {
 			log_ppp_error("ppp:ipv6cp: ioctl(SIOCSIFADDR): %s\n", strerror(errno));
 			return IPV6CP_OPT_REJ;
 		}
+	
+			
 	}
 
 	return IPV6CP_OPT_ACK;
