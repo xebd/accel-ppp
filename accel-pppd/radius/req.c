@@ -24,8 +24,10 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 	struct rad_plugin_t *plugin;
 	struct rad_req_t *req = _malloc(sizeof(*req));
 
-	if (!req)
+	if (!req) {
+		log_emerg("radius: out of memory\n");
 		return NULL;
+	}
 
 	memset(req, 0, sizeof(*req));
 	req->rpd = rpd;
@@ -97,6 +99,10 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 	return req;
 
 out_err:
+	if (!req->serv)
+		log_ppp_error("radius: no servers available\n");
+	else
+		log_emerg("radius: out of memory\n");
 	rad_req_free(req);
 	return NULL;
 }

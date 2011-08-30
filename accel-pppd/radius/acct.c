@@ -232,10 +232,8 @@ int rad_acct_start(struct radius_pd_t *rpd)
 		return 0;
 
 	rpd->acct_req = rad_req_alloc(rpd, CODE_ACCOUNTING_REQUEST, rpd->ppp->username);
-	if (!rpd->acct_req) {
-		log_emerg("radius: out of memory\n");
+	if (!rpd->acct_req)
 		return -1;
-	}
 
 	if (rad_req_acct_fill(rpd->acct_req)) {
 		log_ppp_error("radius:acct: failed to fill accounting attributes\n");
