@@ -372,8 +372,12 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 			insert_status(reply, opt1, D6_STATUS_NoAddrsAvail);
 
 		// Option Request
-		}	else if (ntohs(opt->hdr->code) == D6_OPTION_ORO)
+		}	else if (ntohs(opt->hdr->code) == D6_OPTION_ORO) {
 			insert_oro(reply, opt);
+		
+		}	else if (ntohs(opt->hdr->code) == D6_OPTION_RAPID_COMMIT) {
+			dhcpv6_option_alloc(reply, D6_OPTION_RAPID_COMMIT, 0);
+		}
 	}
 	
 	opt1 = dhcpv6_option_alloc(reply, D6_OPTION_PREFERENCE, 1);
