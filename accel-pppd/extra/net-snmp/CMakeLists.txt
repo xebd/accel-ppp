@@ -18,6 +18,11 @@ ADD_LIBRARY(net-snmp SHARED ${sources})
 TARGET_LINK_LIBRARIES(net-snmp netsnmpagent netsnmphelpers netsnmpmibs
 netsnmp)
 
+IF (NETSNMP_PREFIX)
+	SET_PROPERTY(TARGET net-snmp PROPERTY COMPILE_FLAGS "-I${NETSNMP_PREFIX}/include")
+	SET_PROPERTY(TARGET net-snmp PROPERTY LINK_FLAGS "-L${NETSNMP_PREFIX}/lib")
+ENDIF (NETSNMP_PREFIX)
+
 INSTALL(TARGETS net-snmp
 	LIBRARY DESTINATION lib/accel-ppp
 )
