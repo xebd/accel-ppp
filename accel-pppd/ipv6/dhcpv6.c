@@ -249,7 +249,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 				insert_status(reply, opt1, D6_STATUS_NoAddrsAvail);
 			} else {
 
-				if (req->hdr->type == D6_REQUEST)
+				if (req->hdr->type == D6_REQUEST || req->rapid_commit)
 					pd->addr_iaid = ia_na->iaid;
 
 				f = 1;
@@ -314,7 +314,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 				insert_status(reply, opt1, D6_STATUS_NoPrefixAvail);
 			} else {
 
-				if (req->hdr->type == D6_REQUEST) {
+				if (req->hdr->type == D6_REQUEST || req->rapid_commit) {
 					pd->dp_iaid = ia_na->iaid;
 					if (!pd->dp_active)
 						insert_dp_routes(req->ppp, pd);
@@ -410,15 +410,17 @@ static void dhcpv6_recv_solicit(struct dhcpv6_packet *req)
 
 	req->serverid = &conf_serverid;
 
-	if (!pd->clientid) {
-		pd->clientid = _malloc(sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len));
-		memcpy(pd->clientid, req->clientid, sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len));
-	} else if (pd->clientid->hdr.len != req->clientid->hdr.len || memcmp(pd->clientid, req->clientid, sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len))) {
-		log_ppp_warn("dhcpv6: Client-ID option was changed\n");
-		return;
+	if (req->rapid_commit) {
+		if (!pd->clientid) {
+			pd->clientid = _malloc(sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len));
+			memcpy(pd->clientid, req->clientid, sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len));
+		} else if (pd->clientid->hdr.len != req->clientid->hdr.len || memcmp(pd->clientid, req->clientid, sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len))) {
+			log_ppp_error("dhcpv6: unmatched Client-ID option\n");
+			return;
+		}
 	}
 
-	dhcpv6_send_reply(req, pd, D6_ADVERTISE);
+	dhcpv6_send_reply(req, pd, req->rapid_commit ? D6_REPLY : D6_ADVERTISE);
 }
 
 static void dhcpv6_recv_request(struct dhcpv6_packet *req)
@@ -438,14 +440,12 @@ static void dhcpv6_recv_request(struct dhcpv6_packet *req)
 		return;
 	}
 
-	if (req->hdr->type == D6_REQUEST) {
-		if (!pd->clientid) {
-			pd->clientid = _malloc(sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len));
-			memcpy(pd->clientid, req->clientid, sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len));
-		} else if (pd->clientid->hdr.len != req->clientid->hdr.len || memcmp(pd->clientid, req->clientid, sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len))) {
-			log_ppp_warn("dhcpv6: unmatched Client-ID option\n");
-			return;
-		}
+	if (!pd->clientid) {
+		pd->clientid = _malloc(sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len));
+		memcpy(pd->clientid, req->clientid, sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len));
+	} else if (pd->clientid->hdr.len != req->clientid->hdr.len || memcmp(pd->clientid, req->clientid, sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len))) {
+		log_ppp_error("dhcpv6: unmatched Client-ID option\n");
+		return;
 	}
 	
 	dhcpv6_send_reply(req, pd, D6_REPLY);

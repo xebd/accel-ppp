@@ -133,6 +133,8 @@ struct dhcpv6_packet *dhcpv6_packet_parse(const void *buf, size_t size)
 			pkt->clientid = ptr;
 		else if (opth->code == htons(D6_OPTION_SERVERID))
 			pkt->serverid = ptr;
+		else if (opth->code == htons(D6_OPTION_RAPID_COMMIT))
+			pkt->rapid_commit = 1;
 		ptr = parse_option(ptr, endptr, &pkt->opt_list);
 		if (!ptr) {
 			dhcpv6_packet_free(pkt);

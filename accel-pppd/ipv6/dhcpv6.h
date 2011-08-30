@@ -172,6 +172,7 @@ struct dhcpv6_packet
 	struct dhcpv6_msg_hdr *hdr;
 	struct dhcpv6_opt_clientid *clientid;
 	struct dhcpv6_opt_serverid *serverid;
+	int rapid_commit:1;
 
 	struct list_head opt_list;
 	void *endptr;
