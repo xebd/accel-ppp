@@ -268,6 +268,9 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 					if (ntohs(opt2->hdr->code) == D6_OPTION_IAADDR) {
 						ia_addr = (struct dhcpv6_opt_ia_addr *)opt2->hdr;
 
+						if (IN6_IS_ADDR_UNSPECIFIED(&ia_addr->addr))
+							continue;
+
 						f1 = 0;
 						list_for_each_entry(a, &req->ppp->ipv6->addr_list, entry) {
 							build_addr(a, req->ppp->ipv6->peer_intf_id, &addr);
@@ -332,6 +335,9 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 				list_for_each_entry(opt2, &opt->opt_list, entry) {
 					if (ntohs(opt2->hdr->code) == D6_OPTION_IAPREFIX) {
 						ia_prefix = (struct dhcpv6_opt_ia_prefix *)opt2->hdr;
+
+						if (ia_prefix->prefix_len == 0 || IN6_IS_ADDR_UNSPECIFIED(&ia_prefix->prefix))
+							continue;
 
 						f1 = 0;
 						list_for_each_entry(a, &pd->ipv6_dp->prefix_list, entry) {
