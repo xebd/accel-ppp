@@ -21,16 +21,27 @@
 
 #define MAX_DNS_COUNT 3
 
-static int conf_init_ra = 3;
-static int conf_init_ra_interval = 1;
-static int conf_ra_interval = 60;
-static int conf_router_lifetime = 300;
-static int conf_rdnss_lifetime = 300;
+static int conf_init_ra = 5;
+static int conf_init_ra_interval = 3;
+static int conf_rdnss_lifetime;
 static struct in6_addr conf_dns[MAX_DNS_COUNT];
 static int conf_dns_count;
 static void *conf_dnssl;
 static int conf_dnssl_size;
-static int conf_managed;
+
+static int conf_MaxRtrAdvInterval = 600;
+static int conf_MinRtrAdvInterval;
+static int conf_AdvManagedFlag;
+static int conf_AdvOtherConfigFlag;
+static int conf_AdvLinkMTU;
+static int conf_AdvReachableTime;
+static int conf_AdvRetransTimer;
+static int conf_AdvCurHopLimit = 64;
+static int conf_AdvDefaultLifetime;
+static int conf_AdvPrefixValidLifetime = 2592000;
+static int conf_AdvPrefixPreferredLifetime = 604800;
+static int conf_AdvPrefixAutonomousFlag;
+
 
 #undef ND_OPT_ROUTE_INFORMATION
 #define  ND_OPT_ROUTE_INFORMATION	24
@@ -100,12 +111,13 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ad
 
 	memset(adv, 0, sizeof(*adv));
 	adv->nd_ra_type = ND_ROUTER_ADVERT;
-	adv->nd_ra_curhoplimit = 64;
-	adv->nd_ra_router_lifetime = htons(conf_router_lifetime);
+	adv->nd_ra_curhoplimit = conf_AdvCurHopLimit;
+	adv->nd_ra_router_lifetime = htons(conf_AdvDefaultLifetime);
 	adv->nd_ra_flags_reserved = 
-		conf_managed ? ND_RA_FLAG_MANAGED | ND_RA_FLAG_OTHER : 0;
-	//adv->nd_ra_reachable = 0;
-	//adv->nd_ra_retransmit = 0;
+		(conf_AdvManagedFlag ? ND_RA_FLAG_MANAGED : 0) |
+		(conf_AdvOtherConfigFlag ? ND_RA_FLAG_OTHER : 0);
+	adv->nd_ra_reachable = htonl(conf_AdvReachableTime);
+	adv->nd_ra_retransmit = htonl(conf_AdvRetransTimer);
 	
 	pinfo = (struct nd_opt_prefix_info *)(adv + 1);
 	list_for_each_entry(a, &h->ppp->ipv6->addr_list, entry) {
@@ -116,9 +128,9 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ad
 		pinfo->nd_opt_pi_type = ND_OPT_PREFIX_INFORMATION;
 		pinfo->nd_opt_pi_len = 4;
 		pinfo->nd_opt_pi_prefix_len = a->prefix_len;
-		pinfo->nd_opt_pi_flags_reserved = ND_OPT_PI_FLAG_ONLINK | ((a->flag_auto || !conf_managed) ? ND_OPT_PI_FLAG_AUTO : 0);
-		pinfo->nd_opt_pi_valid_time = 0xffffffff;
-		pinfo->nd_opt_pi_preferred_time = 0xffffffff;
+		pinfo->nd_opt_pi_flags_reserved = ND_OPT_PI_FLAG_ONLINK | ((a->flag_auto || conf_AdvPrefixAutonomousFlag) ? ND_OPT_PI_FLAG_AUTO : 0);
+		pinfo->nd_opt_pi_valid_time = htonl(conf_AdvPrefixValidLifetime);
+		pinfo->nd_opt_pi_preferred_time = htonl(conf_AdvPrefixPreferredLifetime);
 		memcpy(&pinfo->nd_opt_pi_prefix, &a->addr, 8);
 		pinfo++;
 	}
@@ -177,7 +189,7 @@ static void send_ra_timer(struct triton_timer_t *t)
 	addr.sin6_scope_id = h->ppp->ifindex; 
 
 	if (h->ra_sent++ == conf_init_ra) {
-		h->timer.period = conf_ra_interval * 1000;
+		h->timer.period = conf_MaxRtrAdvInterval * 1000;
 		triton_timer_mod(t, 0);
 	}
 
@@ -408,7 +420,7 @@ static void add_dnssl(const char *val)
 	conf_dnssl_size += n;
 }
 
-static void load_config(void)
+static void load_dns(void)
 {
 	struct conf_sect_t *s = conf_get_section("ipv6-dns");
 	struct conf_option_t *opt;
@@ -428,6 +440,11 @@ static void load_config(void)
 			add_dnssl(opt->val);
 			continue;
 		}
+		
+		if (!strcmp(opt->name, "lifetime")) {
+			conf_rdnss_lifetime = atoi(opt->val);
+			continue;
+		}
 
 		if (!strcmp(opt->name, "dns") || !opt->val) {
 			if (conf_dns_count == MAX_DNS_COUNT)
@@ -442,14 +459,75 @@ static void load_config(void)
 	}
 }
 
+static void load_config(void)
+{
+	const char *opt;
+
+	opt = conf_get_opt("ipv6-nd", "MaxRtrAdvInterval");
+	if (opt)
+		conf_MaxRtrAdvInterval = atoi(opt);
+	
+	conf_MinRtrAdvInterval = 0.33 * conf_MaxRtrAdvInterval;
+	conf_AdvDefaultLifetime = 3 * conf_MaxRtrAdvInterval;
+	
+	conf_AdvManagedFlag = triton_module_loaded("ipv6_dhcp");
+	conf_AdvOtherConfigFlag = triton_module_loaded("ipv6_dhcp");
+	conf_AdvPrefixAutonomousFlag = !conf_AdvManagedFlag;
+	conf_rdnss_lifetime = conf_MaxRtrAdvInterval;
+
+	opt = conf_get_opt("ipv6-nd", "MinRtrAdvInterval");
+	if (opt)
+		conf_MinRtrAdvInterval = atoi(opt);
+
+	opt = conf_get_opt("ipv6-nd", "AdvManagedFlag");
+	if (opt)
+		conf_AdvManagedFlag = atoi(opt);
+
+	opt = conf_get_opt("ipv6-nd", "AdvOtherConfigFlag");
+	if (opt)
+		conf_AdvOtherConfigFlag = atoi(opt);
+
+	opt = conf_get_opt("ipv6-nd", "AdvLinkMTU");
+	if (opt)
+		conf_AdvLinkMTU = atoi(opt);
+
+	opt = conf_get_opt("ipv6-nd", "AdvReachableTime");
+	if (opt)
+		conf_AdvReachableTime = atoi(opt);
+
+	opt = conf_get_opt("ipv6-nd", "AdvRetransTimer");
+	if (opt)
+		conf_AdvRetransTimer = atoi(opt);
+
+	opt = conf_get_opt("ipv6-nd", "AdvCurHopLimit");
+	if (opt)
+		conf_AdvCurHopLimit = atoi(opt);
+
+	opt = conf_get_opt("ipv6-nd", "AdvDefaultLifetime");
+	if (opt)
+		conf_AdvDefaultLifetime = atoi(opt);
+
+	opt = conf_get_opt("ipv6-nd", "AdvValidLifetime");
+	if (opt)
+		conf_AdvPrefixValidLifetime = atoi(opt);
+
+	opt = conf_get_opt("ipv6-nd", "AdvPreferredLifetime");
+	if (opt)
+		conf_AdvPrefixPreferredLifetime = atoi(opt);
+
+	opt = conf_get_opt("ipv6-nd", "AdvAutonomousFlag");
+	if (opt)
+		conf_AdvPrefixAutonomousFlag = atoi(opt);
+	
+	load_dns();
+}
+
 static void init(void)
 {
 	buf_pool = mempool_create(BUF_SIZE);
 
 	load_config();
 	
-	conf_managed = triton_module_loaded("ipv6_dhcp");
-
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 	triton_event_register_handler(EV_PPP_STARTED, (triton_event_func)ev_ppp_started);
 	triton_event_register_handler(EV_PPP_FINISHING, (triton_event_func)ev_ppp_finishing);
