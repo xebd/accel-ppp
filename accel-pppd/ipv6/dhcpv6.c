@@ -207,12 +207,16 @@ static void insert_oro(struct dhcpv6_packet *reply, struct dhcpv6_option *opt)
 
 	for (i = ntohs(opt->hdr->len) / 2, ptr = (uint16_t *)opt->hdr->data; i; i--, ptr++) {
 		if (ntohs(*ptr) == D6_OPTION_DNS_SERVERS) {
-			opt1 = dhcpv6_option_alloc(reply, D6_OPTION_DNS_SERVERS, conf_dns_count * sizeof(addr));
-			for (j = 0, addr_ptr = (struct in6_addr *)opt1->hdr->data; j < conf_dns_count; j++, addr_ptr++)
-				memcpy(addr_ptr, conf_dns + j, sizeof(addr));
+			if (conf_dns_count) {
+				opt1 = dhcpv6_option_alloc(reply, D6_OPTION_DNS_SERVERS, conf_dns_count * sizeof(addr));
+				for (j = 0, addr_ptr = (struct in6_addr *)opt1->hdr->data; j < conf_dns_count; j++, addr_ptr++)
+					memcpy(addr_ptr, conf_dns + j, sizeof(addr));
+			}
 		} else if (ntohs(*ptr) == D6_OPTION_DOMAIN_LIST) {
-			opt1 = dhcpv6_option_alloc(reply, D6_OPTION_DOMAIN_LIST, conf_dnssl_size);
-			memcpy(opt1->hdr->data, conf_dnssl, conf_dnssl_size);
+			if (conf_dnssl_size) {
+				opt1 = dhcpv6_option_alloc(reply, D6_OPTION_DOMAIN_LIST, conf_dnssl_size);
+				memcpy(opt1->hdr->data, conf_dnssl, conf_dnssl_size);
+			}
 		}
 	}
 }
@@ -235,7 +239,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 	list_for_each_entry(opt, &req->opt_list, entry) {
 
 		// IA_NA
-		if (ntohs(opt->hdr->code) == D6_OPTION_IA_NA) {
+		if (ntohs(opt->hdr->code) == D6_OPTION_IA_NA && req->hdr->type != D6_INFORMATION_REQUEST) {
 			opt1 = dhcpv6_option_alloc(reply, D6_OPTION_IA_NA, sizeof(struct dhcpv6_opt_ia_na) - sizeof(struct dhcpv6_opt_hdr));
 			memcpy(opt1->hdr + 1, opt->hdr + 1, ntohs(opt1->hdr->len));
 
@@ -297,7 +301,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 			}
 
 		// IA_PD
-		} else if (ntohs(opt->hdr->code) == D6_OPTION_IA_PD) {
+		} else if (ntohs(opt->hdr->code) == D6_OPTION_IA_PD && req->hdr->type != D6_INFORMATION_REQUEST) {
 			opt1 = dhcpv6_option_alloc(reply, D6_OPTION_IA_PD, sizeof(struct dhcpv6_opt_ia_na) - sizeof(struct dhcpv6_opt_hdr));
 			memcpy(opt1->hdr + 1, opt->hdr + 1, ntohs(opt1->hdr->len));
 			
@@ -365,7 +369,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 		}
 
 		// IA_TA
-		} else if (ntohs(opt->hdr->code) == D6_OPTION_IA_TA) {
+		} else if (ntohs(opt->hdr->code) == D6_OPTION_IA_TA && req->hdr->type != D6_INFORMATION_REQUEST) {
 			opt1 = dhcpv6_option_alloc(reply, D6_OPTION_IA_TA, sizeof(struct dhcpv6_opt_ia_ta) - sizeof(struct dhcpv6_opt_hdr));
 			memcpy(opt1->hdr + 1, opt->hdr + 1, ntohs(opt1->hdr->len));
 
@@ -492,6 +496,20 @@ static void dhcpv6_recv_renew(struct dhcpv6_packet *req)
 	dhcpv6_send_reply(req, pd, D6_REPLY);
 }
 
+static void dhcpv6_recv_information_request(struct dhcpv6_packet *req)
+{
+	struct dhcpv6_pd *pd = find_pd(req->ppp);
+	
+	if (req->rapid_commit) {
+		log_ppp_error("dhcpv6: unexpected Rapid-Commit option\n");
+		return;
+	}
+
+	req->serverid = &conf_serverid;
+
+	dhcpv6_send_reply(req, pd, D6_REPLY);
+}
+
 static void dhcpv6_recv_rebind(struct dhcpv6_packet *req)
 {
 	// don't answer
@@ -532,6 +550,9 @@ static void dhcpv6_recv_packet(struct dhcpv6_packet *pkt)
 			break;
 		case D6_DECLINE:
 			dhcpv6_recv_decline(pkt);
+			break;
+		case D6_INFORMATION_REQUEST:
+			dhcpv6_recv_information_request(pkt);
 			break;
 	}
 
