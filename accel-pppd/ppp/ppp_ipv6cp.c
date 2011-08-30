@@ -617,7 +617,7 @@ static void send_term_req(struct ppp_fsm_t *fsm)
 	};
 
 	if (conf_ppp_verbose)
-		log_ppp_info2("send [IPV6CP TermReq id=%i]\n", hdr.id);
+		log_ppp_info2("send [IPV6CP TermReq id=%x]\n", hdr.id);
 
 	ppp_unit_send(ipv6cp->ppp, &hdr, 6);
 }
@@ -633,7 +633,7 @@ static void send_term_ack(struct ppp_fsm_t *fsm)
 	};
 
 	if (conf_ppp_verbose)
-		log_ppp_info2("send [IPV6CP TermAck id=%i]\n", hdr.id);
+		log_ppp_info2("send [IPV6CP TermAck id=%x]\n", hdr.id);
 	
 	ppp_unit_send(ipv6cp->ppp, &hdr, 6);
 }
