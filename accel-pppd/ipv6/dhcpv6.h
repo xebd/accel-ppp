@@ -87,11 +87,11 @@ struct dhcpv6_duid
 		struct {
 			uint32_t enterprise;
 			uint8_t id[0];
-		} en;
+		} __packed en;
 		struct {
 			uint16_t htype;
 			uint8_t addr[0];
-		} ll;
+		} __packed ll;
 		uint8_t raw[0];
 	} u;
 } __packed;

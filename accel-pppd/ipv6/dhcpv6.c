@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <time.h>
 #include <pthread.h>
+#include <endian.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
@@ -29,8 +30,11 @@
 #define MAX_DNS_COUNT 3
 
 static int conf_verbose;
-static int conf_pref_lifetime = -1;
-static int conf_valid_lifetime = -1;
+static int conf_pref_lifetime = 604800;
+static int conf_valid_lifetime = 2592000;
+static struct dhcpv6_opt_serverid conf_serverid;
+static int conf_route_via_gw = 1;
+
 static struct in6_addr conf_dns[MAX_DNS_COUNT];
 static int conf_dns_count;
 static void *conf_dnssl;
@@ -40,7 +44,6 @@ struct dhcpv6_pd
 {
 	struct ppp_pd_t pd;
 	struct dhcpv6_opt_clientid *clientid;
-	struct dhcpv6_opt_serverid serverid;
 	uint32_t addr_iaid;
 	uint32_t dp_iaid;
 	struct ipv6db_prefix_t *ipv6_dp;
@@ -57,36 +60,14 @@ static void ev_ppp_started(struct ppp_t *ppp)
 {
 	struct ipv6_mreq mreq;
 	struct dhcpv6_pd *pd;
-	time_t t, t0;
-	struct tm tm;
 
 	if (!ppp->ipv6)
 		return;
-
-	time(&t);
-	localtime_r(&t, &tm);
-
-	tm.tm_year = 100;
-	tm.tm_mon = 0;
-	tm.tm_mday = 1;
-	tm.tm_hour = 0;
-	tm.tm_min = 0;
-	tm.tm_sec = 0;
-
-	t0 = mktime(&tm);
 
 	pd = _malloc(sizeof(*pd));
 	memset(pd, 0, sizeof(*pd));
 	
 	pd->pd.key = &pd_key;
-
-	pd->serverid.hdr.code = htons(D6_OPTION_SERVERID);
-	pd->serverid.hdr.len = htons(16);
-	pd->serverid.duid.type = htons(DUID_LLT);
-	pd->serverid.duid.u.llt.htype = htons(27);
-	pd->serverid.duid.u.llt.time = htonl(t - t0);
-	*(uint64_t *)pd->serverid.duid.u.llt.addr = ppp->ipv6->intf_id;
-
 	list_add_tail(&pd->pd.entry, &ppp->pd_list);
 
 	memset(&mreq, 0, sizeof(mreq));
@@ -165,26 +146,37 @@ static void insert_dp_routes(struct ppp_t *ppp, struct dhcpv6_pd *pd)
 
 	memset(&rt6, 0, sizeof(rt6));
 	rt6.rtmsg_ifindex = ppp->ifindex;
-	rt6.rtmsg_flags = RTF_UP | RTF_GATEWAY;
+	rt6.rtmsg_flags = RTF_UP;
 
 	list_for_each_entry(p, &pd->ipv6_dp->prefix_list, entry) {
 		memcpy(&rt6.rtmsg_dst, &p->addr, sizeof(p->addr));
 		rt6.rtmsg_dst_len = p->prefix_len;
-		rt6.rtmsg_metric = 0;
-		//rt6.rtmsg_flags = RTF_UP;
-		list_for_each_entry(a, &ppp->ipv6->addr_list, entry) {
-			build_addr(a, ppp->ipv6->peer_intf_id, &rt6.rtmsg_gateway);
-			rt6.rtmsg_metric++;
+		rt6.rtmsg_metric = 1;
+
+		if (conf_route_via_gw) {
+			rt6.rtmsg_flags |= RTF_GATEWAY;
+			list_for_each_entry(a, &ppp->ipv6->addr_list, entry) {
+				build_addr(a, ppp->ipv6->peer_intf_id, &rt6.rtmsg_gateway);
+				if (ioctl(sock6_fd, SIOCADDRT, &rt6)) {
+					err = errno;
+					inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
+					inet_ntop(AF_INET6, &rt6.rtmsg_gateway, str2, sizeof(str2));
+					log_ppp_error("dhcpv6: route add %s/%i via %s: %s\n", str1, p->prefix_len, str2, strerror(err));
+				} else if (conf_verbose) {
+					inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
+					inet_ntop(AF_INET6, &rt6.rtmsg_gateway, str2, sizeof(str2));
+					log_ppp_info2("dhcpv6: route add %s/%i via %s\n", str1, p->prefix_len, str2);
+				}
+				rt6.rtmsg_metric++;
+			}
+		} else {
 			if (ioctl(sock6_fd, SIOCADDRT, &rt6)) {
 				err = errno;
 				inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
-				inet_ntop(AF_INET6, &rt6.rtmsg_gateway, str2, sizeof(str2));
-				log_ppp_error("dhcpv6: add route %s/%i via %s: %s\n", str1, p->prefix_len, str2, strerror(err));
+				log_ppp_error("dhcpv6: route add %s/%i: %s\n", str1, p->prefix_len);
 			} else if (conf_verbose) {
 				inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
-				inet_ntop(AF_INET6, &rt6.rtmsg_gateway, str2, sizeof(str2));
-				log_ppp_info2("dhcpv6: route add %s/%i via %s\n", str1, p->prefix_len, str2);
-
+				log_ppp_info2("dhcpv6: route add %s/%i\n", str1, p->prefix_len);
 			}
 		}
 	}
@@ -206,6 +198,25 @@ static void insert_status(struct dhcpv6_packet *pkt, struct dhcpv6_option *opt, 
 	status->code = htons(code);
 }
 
+static void insert_oro(struct dhcpv6_packet *reply, struct dhcpv6_option *opt)
+{
+	struct dhcpv6_option *opt1;
+	int i, j;
+	uint16_t *ptr;
+	struct in6_addr addr, *addr_ptr;
+
+	for (i = ntohs(opt->hdr->len) / 2, ptr = (uint16_t *)opt->hdr->data; i; i--, ptr++) {
+		if (ntohs(*ptr) == D6_OPTION_DNS_SERVERS) {
+			opt1 = dhcpv6_option_alloc(reply, D6_OPTION_DNS_SERVERS, conf_dns_count * sizeof(addr));
+			for (j = 0, addr_ptr = (struct in6_addr *)opt1->hdr->data; j < conf_dns_count; j++, addr_ptr++)
+				memcpy(addr_ptr, conf_dns + j, sizeof(addr));
+		} else if (ntohs(*ptr) == D6_OPTION_DOMAIN_LIST) {
+			opt1 = dhcpv6_option_alloc(reply, D6_OPTION_DOMAIN_LIST, conf_dnssl_size);
+			memcpy(opt1->hdr->data, conf_dnssl, conf_dnssl_size);
+		}
+	}
+}
+
 static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, int code)
 {
 	struct dhcpv6_packet *reply;
@@ -214,9 +225,8 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 	struct dhcpv6_opt_ia_addr *ia_addr;
 	struct dhcpv6_opt_ia_prefix *ia_prefix;
 	struct ipv6db_addr_t *a;
-	struct in6_addr addr, *addr_ptr;
-	int i, j, f = 0, f1, f2 = 0;
-	uint16_t *ptr;
+	struct in6_addr addr;
+	int f = 0, f1, f2 = 0;
 
 	reply = dhcpv6_packet_alloc_reply(req, code);
 	if (!reply)
@@ -233,7 +243,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 			ia_na->T1 = 0;
 			ia_na->T2 = 0;
 
-			if ((req->hdr->type == D6_RENEW || req->hdr->type == D6_REBIND) && pd->addr_iaid != ia_na->iaid) {
+			if (req->hdr->type == D6_RENEW && pd->addr_iaid != ia_na->iaid) {
 				insert_status(reply, opt1, D6_STATUS_NoBinding);
 			} else if (list_empty(&req->ppp->ipv6->addr_list) || f) {
 				insert_status(reply, opt1, D6_STATUS_NoAddrsAvail);
@@ -280,7 +290,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 					}
 				}
 
-				insert_status(reply, opt1, D6_STATUS_Success);
+				//insert_status(reply, opt1, D6_STATUS_Success);
 			}
 
 		// IA_PD
@@ -292,10 +302,10 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 			ia_na->T1 = 0;
 			ia_na->T2 = 0;
 			
-			if (req->hdr->type == D6_SOLICIT && !pd->ipv6_dp)
+			if (!pd->ipv6_dp)
 				pd->ipv6_dp = ipdb_get_ipv6_prefix(req->ppp);
 
-			if ((req->hdr->type == D6_RENEW || req->hdr->type == D6_REBIND) && pd->dp_iaid != ia_na->iaid) {
+			if ((req->hdr->type == D6_RENEW) && pd->dp_iaid != ia_na->iaid) {
 				insert_status(reply, opt1, D6_STATUS_NoBinding);
 			} else if (!pd->ipv6_dp || list_empty(&pd->ipv6_dp->prefix_list) || f2) {
 				insert_status(reply, opt1, D6_STATUS_NoPrefixAvail);
@@ -345,7 +355,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 					}
 				}
 			
-				insert_status(reply, opt1, D6_STATUS_Success);
+				//insert_status(reply, opt1, D6_STATUS_Success);
 		}
 
 		// IA_TA
@@ -356,21 +366,14 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 			insert_status(reply, opt1, D6_STATUS_NoAddrsAvail);
 
 		// Option Request
-		}	else if (ntohs(opt->hdr->code) == D6_OPTION_ORO) {
-			for (i = ntohs(opt->hdr->len) / 2, ptr = (uint16_t *)opt->hdr->data; i; i--, ptr++) {
-				if (ntohs(*ptr) == D6_OPTION_DNS_SERVERS) {
-					opt1 = dhcpv6_option_alloc(reply, D6_OPTION_DNS_SERVERS, conf_dns_count * sizeof(addr));
-					for (j = 0, addr_ptr = (struct in6_addr *)opt1->hdr->data; j < conf_dns_count; j++, addr_ptr++)
-						memcpy(addr_ptr, conf_dns + j, sizeof(addr));
-				} else if (ntohs(*ptr) == D6_OPTION_DOMAIN_LIST) {
-					opt1 = dhcpv6_option_alloc(reply, D6_OPTION_DOMAIN_LIST, conf_dnssl_size);
-					memcpy(opt1->hdr->data, conf_dnssl, conf_dnssl_size);
-				}
-			}
-		}
+		}	else if (ntohs(opt->hdr->code) == D6_OPTION_ORO)
+			insert_oro(reply, opt);
 	}
 	
-	insert_status(reply, NULL, D6_STATUS_Success);
+	opt1 = dhcpv6_option_alloc(reply, D6_OPTION_PREFERENCE, 1);
+	*(uint8_t *)opt1->hdr->data = 255;
+
+	//insert_status(reply, NULL, D6_STATUS_Success);
 
 	if (conf_verbose) {
 		log_ppp_info2("send ");
@@ -399,7 +402,7 @@ static void dhcpv6_recv_solicit(struct dhcpv6_packet *req)
 		return;
 	}
 
-	req->serverid = &pd->serverid;
+	req->serverid = &conf_serverid;
 
 	if (!pd->clientid) {
 		pd->clientid = _malloc(sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len));
@@ -429,12 +432,14 @@ static void dhcpv6_recv_request(struct dhcpv6_packet *req)
 		return;
 	}
 
-	if (!pd->clientid) {
-		pd->clientid = _malloc(sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len));
-		memcpy(pd->clientid, req->clientid, sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len));
-	} else if (pd->clientid->hdr.len != req->clientid->hdr.len || memcmp(pd->clientid, req->clientid, sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len))) {
-		log_ppp_warn("dhcpv6: Client-ID option was changed\n");
-		return;
+	if (req->hdr->type == D6_REQUEST) {
+		if (!pd->clientid) {
+			pd->clientid = _malloc(sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len));
+			memcpy(pd->clientid, req->clientid, sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len));
+		} else if (pd->clientid->hdr.len != req->clientid->hdr.len || memcmp(pd->clientid, req->clientid, sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len))) {
+			log_ppp_warn("dhcpv6: unmatched Client-ID option\n");
+			return;
+		}
 	}
 	
 	dhcpv6_send_reply(req, pd, D6_REPLY);
@@ -457,27 +462,39 @@ static void dhcpv6_recv_renew(struct dhcpv6_packet *req)
 		return;
 	}
 
+	if (req->serverid->hdr.len != conf_serverid.hdr.len ||
+		memcmp(req->serverid, &conf_serverid, ntohs(conf_serverid.hdr.len) + sizeof(struct dhcpv6_opt_hdr))) {
+		log_ppp_error("dhcpv6: unmatched Server-ID option\n");
+		return;
+	}
+
 	if (!pd->clientid) {
-		log_ppp_error("dhcpv6: no Solicit or Request was received\n");
+		log_ppp_error("dhcpv6: no Request was received\n");
+		return;
+	}
+	
+	if (req->clientid->hdr.len != pd->clientid->hdr.len ||
+		memcmp(req->clientid, pd->clientid, ntohs(pd->clientid->hdr.len) + sizeof(struct dhcpv6_opt_hdr))) {
+		log_ppp_error("dhcpv6: unmatched Client-ID option\n");
 		return;
 	}
 	
 	dhcpv6_send_reply(req, pd, D6_REPLY);
 }
 
-static void dhcpv6_recv_rebind(struct dhcpv6_packet *pkt)
+static void dhcpv6_recv_rebind(struct dhcpv6_packet *req)
 {
-	dhcpv6_recv_renew(pkt);
+	// don't answer
 }
 
 static void dhcpv6_recv_release(struct dhcpv6_packet *pkt)
 {
-
+	// don't answer
 }
 
 static void dhcpv6_recv_decline(struct dhcpv6_packet *pkt)
 {
-
+	// don't answer
 }
 
 static void dhcpv6_recv_packet(struct dhcpv6_packet *pkt)
@@ -624,7 +641,7 @@ static void add_dnssl(const char *val)
 
 static void load_dns(void)
 {
-	struct conf_sect_t *s = conf_get_section("dnsv6");
+	struct conf_sect_t *s = conf_get_section("ipv6-dns");
 	struct conf_option_t *opt;
 	
 	if (!s)
@@ -656,13 +673,65 @@ static void load_dns(void)
 	}
 }
 
+static uint64_t parse_serverid(const char *opt)
+{
+	union {
+		uint64_t u64;
+		uint16_t u16[4];
+	} u;
+
+	int n[4];
+	int i;
+
+	if (sscanf(opt, "%x:%x:%x:%x", &n[0], &n[1], &n[2], &n[3]) != 4)
+		goto err;
+	
+	for (i = 0; i < 4; i++) {
+		if (n[i] < 0 || n[i] > 0xffff)
+			goto err;
+		u.u16[i] = htons(n[i]);
+	}
+
+	return u.u64;
+
+err:
+	log_error("dhcpv6: failed to parse server-id '%s'\n", opt);
+	return 0;
+}
+
 static void load_config(void)
 {
 	const char *opt;
+	uint64_t id;
 
-	opt = conf_get_opt("dhcpv6", "verbose");
+	opt = conf_get_opt("ipv6-dhcp", "verbose");
 	if (opt)
 		conf_verbose = atoi(opt);
+	
+	opt = conf_get_opt("ipv6-dhcp", "pref-lifetime");
+	if (opt)
+		conf_pref_lifetime = atoi(opt);
+	
+	opt = conf_get_opt("ipv6-dhcp", "valid-lifetime");
+	if (opt)
+		conf_valid_lifetime = atoi(opt);
+	
+	opt = conf_get_opt("ipv6-dhcp", "route-via-gw");
+	if (opt)
+		conf_route_via_gw = atoi(opt);
+	
+	opt = conf_get_opt("ipv6-dhcp", "server-id");
+	if (opt)
+		id = parse_serverid(opt);
+	else
+		id = htobe64(1);
+
+	conf_serverid.hdr.code = htons(D6_OPTION_SERVERID);
+	conf_serverid.hdr.len = htons(12);
+	conf_serverid.duid.type = htons(DUID_LL);
+	conf_serverid.duid.u.ll.htype = htons(27);
+	//conf_serverid.duid.u.llt.time = htonl(t - t0);
+	*(uint64_t *)conf_serverid.duid.u.ll.addr = id;
 	
 	load_dns();
 }

@@ -82,20 +82,20 @@ static void *parse_option(void *ptr, void *endptr, struct list_head *opt_list)
 	list_add_tail(&opt->entry, opt_list);
 
 	for (dopt = known_options; dopt->code; dopt++) {
-		if (dopt->code)
+		if (dopt->code == ntohs(opth->code))
 			break;
 	}
 	
 	if (dopt->len) {
 		endptr = ptr + sizeof(*opth) + ntohs(opth->len);
-		ptr += sizeof(*opth) + dopt->len;
+		ptr += dopt->len;
 		while (ptr < endptr) {
 			ptr = parse_option(ptr, endptr, &opt->opt_list);
 			if (!ptr)
 				return NULL;
 		}
 	} else
-		ptr = ptr + sizeof(*opth) + ntohs(opth->len);
+		ptr += sizeof(*opth) + ntohs(opth->len);
 	
 	return ptr;
 }
