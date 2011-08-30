@@ -240,8 +240,8 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 			memcpy(opt1->hdr + 1, opt->hdr + 1, ntohs(opt1->hdr->len));
 
 			ia_na = (struct dhcpv6_opt_ia_na *)opt1->hdr;
-			ia_na->T1 = 0;
-			ia_na->T2 = 0;
+			ia_na->T1 = conf_pref_lifetime == -1 ? -1 : htonl(conf_pref_lifetime / 2);
+			ia_na->T2 = conf_pref_lifetime == -1 ? -1 : htonl((conf_pref_lifetime * 4) / 5);
 
 			if (req->hdr->type == D6_RENEW && pd->addr_iaid != ia_na->iaid) {
 				insert_status(reply, opt1, D6_STATUS_NoBinding);
@@ -299,8 +299,8 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 			memcpy(opt1->hdr + 1, opt->hdr + 1, ntohs(opt1->hdr->len));
 			
 			ia_na = (struct dhcpv6_opt_ia_na *)opt1->hdr;
-			ia_na->T1 = 0;
-			ia_na->T2 = 0;
+			ia_na->T1 = conf_pref_lifetime == -1 ? -1 : htonl(conf_pref_lifetime / 2);
+			ia_na->T2 = conf_pref_lifetime == -1 ? -1 : htonl((conf_pref_lifetime * 4) / 5);
 			
 			if (!pd->ipv6_dp)
 				pd->ipv6_dp = ipdb_get_ipv6_prefix(req->ppp);
