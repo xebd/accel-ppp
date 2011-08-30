@@ -410,7 +410,7 @@ static void add_dnssl(const char *val)
 
 static void load_config(void)
 {
-	struct conf_sect_t *s = conf_get_section("dnsv6");
+	struct conf_sect_t *s = conf_get_section("ipv6-dns");
 	struct conf_option_t *opt;
 	
 	if (!s)
