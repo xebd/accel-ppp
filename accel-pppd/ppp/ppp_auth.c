@@ -1,8 +1,11 @@
 #include <stdlib.h>
 #include <string.h>
 #include <arpa/inet.h>
+#include <sys/ioctl.h>
+#include <linux/route.h>
 
 #include "ppp.h"
+#include "ipdb.h"
 #include "events.h"
 #include "ppp_lcp.h"
 #include "log.h"
@@ -322,6 +325,23 @@ static void __ppp_auth_started(struct ppp_t *ppp)
 	triton_event_fire(EV_PPP_AUTHORIZED, ppp);
 }
 
+static void delete_route(struct ppp_t *ppp)
+{
+	struct rtentry rt;
+	struct sockaddr_in *addr;
+
+	if (ppp->ipv4) {
+		memset(&rt, 0, sizeof(rt));
+		addr = (struct sockaddr_in *)&rt.rt_dst;
+		addr->sin_family = AF_INET;
+		addr->sin_addr.s_addr = ppp->ipv4->peer_addr;
+		rt.rt_flags = RTF_HOST;
+		rt.rt_metric = 1; 
+
+		ioctl(sock_fd, SIOCDELRT, &rt);
+	}
+}
+
 int __export ppp_auth_successed(struct ppp_t *ppp, char *username)
 {
 	struct ppp_t *p;
@@ -335,8 +355,10 @@ int __export ppp_auth_successed(struct ppp_t *ppp, char *username)
 				log_ppp_info1("%s: second session denied\n", username);
 				return -1;
 			} else {
-				if (conf_single_session == 1)
+				if (conf_single_session == 1) {
+					delete_route(p);
 					triton_context_call(p->ctrl->ctx, (triton_event_func)ppp_terminate_sec, p);
+				}
 			}
 		}
 	}
