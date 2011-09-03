@@ -3,10 +3,10 @@
 
 #include <pthread.h>
 
-#include <openssl/des.h>
-
 #include <linux/if.h>
 #include <linux/if_pppox.h>
+
+#include "crypto.h"
 
 /* PPPoE codes */
 #define CODE_PADI           0x09

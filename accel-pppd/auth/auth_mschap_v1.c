@@ -8,9 +8,7 @@
 #include <byteswap.h>
 #include <arpa/inet.h>
 
-#include <openssl/md4.h>
-#include <openssl/des.h>
-#include <openssl/sha.h>
+#include "crypto.h"
 
 #include "log.h"
 #include "ppp.h"

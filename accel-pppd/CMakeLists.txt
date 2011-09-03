@@ -1,17 +1,3 @@
-INCLUDE(CheckLibraryExists)
-INCLUDE(CheckIncludeFiles)
-
-CHECK_LIBRARY_EXISTS(crypto MD5_Init "" HAVE_SSL)
-IF (NOT HAVE_SSL)
-	MESSAGE(FATAL_ERROR "openssl library not found")
-ENDIF (NOT HAVE_SSL)
-
-SET(CMAKE_REQUIRED_INCLUDES "openssl")
-CHECK_INCLUDE_FILES("md5.h" HAVE_SSL)
-IF (NOT HAVE_SSL)
-	MESSAGE(FATAL_ERROR "openssl headers not found")
-ENDIF (NOT HAVE_SSL)
-
 SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fvisibility=hidden -fno-strict-aliasing -D_GNU_SOURCE -DPTHREAD_SPINLOCK -fPIC")
 
 IF (EXISTS ${CMAKE_HOME_DIRECTORY}/.git AND NOT DEFINED IGNORE_GIT)
@@ -89,7 +75,7 @@ ADD_EXECUTABLE(accel-pppd
 	memdebug.c
 )
 
-TARGET_LINK_LIBRARIES(accel-pppd triton rt pthread crypto pcre)
+TARGET_LINK_LIBRARIES(accel-pppd triton rt pthread ${crypto_lib} pcre)
 set_property(TARGET accel-pppd PROPERTY CMAKE_SKIP_BUILD_RPATH FALSE)
 set_property(TARGET accel-pppd PROPERTY CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
 set_property(TARGET accel-pppd PROPERTY INSTALL_RPATH_USE_LINK_PATH FALSE)

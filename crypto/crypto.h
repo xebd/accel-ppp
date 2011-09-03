@@ -1,0 +1,50 @@
+#ifndef __CRYPTO_H
+#define __CRYPTO_H
+
+#ifdef CRYPTO_OPENSSL
+
+#include <openssl/md4.h>
+#include <openssl/md5.h>
+#include <openssl/sha.h>
+#include <openssl/des.h>
+
+#else
+
+#ifdef CRYPTO_TOMCRYPT
+#include <tomcrypt.h>
+#else
+#include "tomcrypt.h"
+#endif
+
+typedef hash_state MD4_CTX;
+#define MD4_DIGEST_LENGTH 16
+#define MD4_Init(c) md4_init(c)
+#define MD4_Update(c, data, len) md4_process(c, (const unsigned char *)(data), (unsigned long)(len))
+#define MD4_Final(md, c) md4_done(c, (unsigned char*)(md))
+
+typedef hash_state MD5_CTX;
+#define MD5_DIGEST_LENGTH 16
+#define MD5_Init(c) md5_init(c)
+#define MD5_Update(c, data, len) md5_process(c, (const unsigned char *)(data), (unsigned long)(len))
+#define MD5_Final(md, c) md5_done(c, (unsigned char*)(md))
+
+typedef hash_state SHA_CTX;
+#define SHA_DIGEST_LENGTH 20
+#define SHA1_Init(c) sha1_init(c)
+#define SHA1_Update(c, data, len) sha1_process(c, (const unsigned char *)(data), (unsigned long)(len))
+#define SHA1_Final(md, c) sha1_done(c, (unsigned char*)(md))
+
+typedef unsigned char DES_cblock[8];
+typedef unsigned char const_DES_cblock[8];
+#define DES_key_schedule symmetric_key
+#define DES_ENCRYPT 1
+#define DES_DECRYPT 0
+#define DES_set_key(key, schedule) des_setup((const unsigned char *)key, 8, 0, schedule)
+
+int DES_set_key_checked(const_DES_cblock *key, DES_key_schedule *schedule);
+int DES_random_key(DES_cblock *ret);
+void DES_ecb_encrypt(const_DES_cblock *input, DES_cblock *output, DES_key_schedule *ks, int enc);
+
+#endif
+
+#endif

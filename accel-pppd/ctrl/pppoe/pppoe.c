@@ -13,7 +13,7 @@
 #include <arpa/inet.h>
 #include <printf.h>
 
-#include <openssl/md5.h>
+#include "crypto.h"
 
 #include "events.h"
 #include "triton.h"
@@ -459,7 +459,6 @@ static void generate_cookie(struct pppoe_serv_t *serv, const uint8_t *src, uint8
 		uint8_t raw[24];
 	} u1, u2;
 
-	memset(&key, 0, sizeof(key));
 	DES_random_key(&key);
 	DES_set_key(&key, &ks);
 

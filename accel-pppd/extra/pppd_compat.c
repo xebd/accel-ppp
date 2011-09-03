@@ -539,4 +539,4 @@ static void init(void)
 #endif
 }
 
-DEFINE_INIT(101, init);
+DEFINE_INIT(100, init);

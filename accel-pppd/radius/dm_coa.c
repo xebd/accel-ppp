@@ -9,7 +9,8 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <sys/socket.h>
-#include <openssl/md5.h>
+
+#include "crypto.h"
 
 #include "triton.h"
 #include "events.h"

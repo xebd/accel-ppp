@@ -7,7 +7,7 @@
 #include <netinet/in.h>
 #include "linux_ppp.h"
 
-#include <openssl/md5.h>
+#include "crypto.h"
 
 #include "log.h"
 #include "radius_p.h"

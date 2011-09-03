@@ -280,4 +280,4 @@ static void init(void)
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 
-DEFINE_INIT(100, init);
+DEFINE_INIT(200, init);
