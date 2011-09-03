@@ -12,6 +12,7 @@
 
 #include "log.h"
 #include "triton.h"
+#include "events.h"
 #include "radius_p.h"
 
 #include "memdebug.h"
@@ -63,12 +64,20 @@ struct rad_server_t *rad_server_get(int type)
 void rad_server_put(struct rad_server_t *s, int type)
 {
 	__sync_sub_and_fetch(&s->client_cnt[type], 1);
+
+	if (s->need_free && !s->client_cnt[0] && !s->client_cnt[1]) {
+		log_debug("radius: free(%i)\n", s->id);
+		_free(s);
+	}
 }
 
 int rad_server_req_enter(struct rad_req_t *req)
 {
 	struct timespec ts;
 	
+	if (req->serv->need_free)
+		return -1;
+
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	if (ts.tv_sec < req->serv->fail_time)
@@ -86,11 +95,12 @@ int rad_server_req_enter(struct rad_req_t *req)
 
 	if (req->serv->req_cnt >= req->serv->max_req_cnt) {
 		list_add_tail(&req->entry, &req->serv->req_queue);
+
 		pthread_mutex_unlock(&req->serv->lock);
 		triton_context_schedule();
 		pthread_mutex_lock(&req->serv->lock);
 
-		if (ts.tv_sec < req->serv->fail_time) {
+		if (ts.tv_sec < req->serv->fail_time || req->serv->need_free) {
 			pthread_mutex_unlock(&req->serv->lock);
 			return -1;
 		}
@@ -166,11 +176,14 @@ void rad_server_fail(struct rad_server_t *s)
 		log_warn("radius: server(%i) not responding\n", s->id);
 	}
 
-	while (!list_empty(&s->req_queue)) {
-		r = list_entry(s->req_queue.next, typeof(*r), entry);
-		list_del(&r->entry);
-		triton_context_wakeup(r->rpd->ppp->ctrl->ctx);
+	if (s->conf_fail_time) {
+		while (!list_empty(&s->req_queue)) {
+			r = list_entry(s->req_queue.next, typeof(*r), entry);
+			list_del(&r->entry);
+			triton_context_wakeup(r->rpd->ppp->ctrl->ctx);
+		}
 	}
+
 	pthread_mutex_unlock(&s->lock);
 }
 
@@ -188,6 +201,17 @@ void rad_server_reply(struct rad_server_t *s)
 
 static void __add_server(struct rad_server_t *s)
 {
+	struct rad_server_t *s1;
+
+	list_for_each_entry(s1, &serv_list, entry) {
+		if (s1->auth_addr == s->auth_addr && s1->acct_addr == s->acct_addr) {
+			s1->conf_fail_time = conf_fail_time;
+			s1->need_free = 0;
+			_free(s);
+			return;
+		}
+	}
+
 	s->id = ++num;
 	INIT_LIST_HEAD(&s->req_queue);
 	pthread_mutex_init(&s->lock, NULL);
@@ -342,19 +366,49 @@ static void add_server(const char *opt)
 	__add_server(s);
 }
 
-static void init(void)
+static void load_config(void)
 {
-	struct conf_sect_t *s = conf_get_section("radius");
+	struct conf_sect_t *sect = conf_get_section("radius");
 	struct conf_option_t *opt;
+	struct rad_server_t *s;
+	struct rad_req_t *r;
+	struct list_head *pos, *n;
 
-	add_server_old();
+	list_for_each_entry(s, &serv_list, entry)
+		s->need_free = 1;
 
-
-	list_for_each_entry(opt, &s->items, entry) {
+	list_for_each_entry(opt, &sect->items, entry) {
 		if (strcmp(opt->name, "server"))
 			continue;
 		add_server(opt->val);
 	}
+	
+	list_for_each_safe(pos, n, &serv_list) {
+		s = list_entry(pos, typeof(*s), entry);
+		if (s->need_free) {
+			list_del(&s->entry);
+
+			while (!list_empty(&s->req_queue)) {
+				r = list_entry(s->req_queue.next, typeof(*r), entry);
+				list_del(&r->entry);
+				triton_context_wakeup(r->rpd->ppp->ctrl->ctx);
+			}
+
+			if (!s->client_cnt[0] && !s->client_cnt[1]) {
+				log_debug("radius: free(%i)\n", s->id);
+				_free(s);
+			}
+		}
+	}
 }
 
-DEFINE_INIT(21, init);
+static void init(void)
+{
+	add_server_old();
+	
+	load_config();
+
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
+}
+
+DEFINE_INIT(52, init);

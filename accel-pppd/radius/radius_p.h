@@ -84,6 +84,7 @@ struct rad_server_t
 	int conf_fail_time;
 	int timeout_cnt;
 	pthread_mutex_t lock;
+	int need_free:1;
 };
 
 #define RAD_SERV_AUTH 0

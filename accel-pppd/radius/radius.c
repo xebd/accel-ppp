@@ -43,7 +43,7 @@ int conf_require_nas_ident;
 int conf_acct_interim_interval;
 
 int conf_accounting;
-int conf_fail_time = 60;
+int conf_fail_time;
 
 unsigned long stat_auth_sent;
 unsigned long stat_auth_lost;
