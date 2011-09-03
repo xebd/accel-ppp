@@ -324,10 +324,10 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 		if (ropt->state == IPCP_OPT_NAK) {
 			ptr1 = ptr;
 			ptr += ropt->lopt->h->send_conf_nak(ipcp, ropt->lopt, ptr);
-		}
-		if (conf_ppp_verbose) {
-			log_ppp_info2(" ");
-			ropt->lopt->h->print(log_ppp_info2, ropt->lopt, ptr1);
+			if (conf_ppp_verbose) {
+				log_ppp_info2(" ");
+				ropt->lopt->h->print(log_ppp_info2, ropt->lopt, ptr1);
+			}
 		}
 	}
 	
