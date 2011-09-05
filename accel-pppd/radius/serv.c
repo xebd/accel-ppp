@@ -13,12 +13,16 @@
 #include "log.h"
 #include "triton.h"
 #include "events.h"
+#include "cli.h"
+#include "utils.h"
 #include "radius_p.h"
 
 #include "memdebug.h"
 
 static int num;
 static LIST_HEAD(serv_list);
+
+static void __free_server(struct rad_server_t *);
 
 static struct rad_server_t *__rad_server_get(int type, struct rad_server_t *exclude)
 {
@@ -65,10 +69,8 @@ void rad_server_put(struct rad_server_t *s, int type)
 {
 	__sync_sub_and_fetch(&s->client_cnt[type], 1);
 
-	if (s->need_free && !s->client_cnt[0] && !s->client_cnt[1]) {
-		log_debug("radius: free(%i)\n", s->id);
-		_free(s);
-	}
+	if (s->need_free && !s->client_cnt[0] && !s->client_cnt[1])
+		__free_server(s);
 }
 
 int rad_server_req_enter(struct rad_req_t *req)
@@ -199,6 +201,59 @@ void rad_server_reply(struct rad_server_t *s)
 	s->timeout_cnt = 0;
 }
 
+
+static void show_stat(struct rad_server_t *s, void *client)
+{
+	char addr[17];
+	struct timespec ts;
+
+	u_inet_ntoa(s->auth_addr ? s->auth_addr : s->acct_addr, addr);
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+
+	cli_sendv(client, "radius(%i, %s):\r\n", s->id, addr);
+
+	if (s->conf_fail_time > 1) {
+		if (ts.tv_sec < s->fail_time)
+			cli_send(client, "  state: failed\r\n");
+		else
+			cli_send(client, "  state: active\r\n");
+
+		cli_sendv(client, "  fail count: %lu\r\n", s->stat_fail_cnt);
+	}
+
+	if (s->auth_addr) {
+		cli_sendv(client, "  auth sent: %lu\r\n", s->stat_auth_sent);
+		cli_sendv(client, "  auth lost(total/5m/1m): %lu/%lu/%lu\r\n",
+			s->stat_auth_lost, stat_accm_get_cnt(s->stat_auth_lost_5m), stat_accm_get_cnt(s->stat_auth_lost_1m));
+		cli_sendv(client, "  auth avg query time(5m/1m): %lu/%lu ms\r\n",
+			stat_accm_get_avg(s->stat_auth_query_5m), stat_accm_get_avg(s->stat_auth_query_1m));
+	}
+
+	if (s->acct_addr) {
+		cli_sendv(client, "  acct sent: %lu\r\n", s->stat_acct_sent);
+		cli_sendv(client, "  acct lost(total/5m/1m): %lu/%lu/%lu\r\n",
+			s->stat_acct_lost, stat_accm_get_cnt(s->stat_acct_lost_5m), stat_accm_get_cnt(s->stat_acct_lost_1m));
+		cli_sendv(client, "  acct avg query time(5m/1m): %lu/%lu ms\r\n",
+			stat_accm_get_avg(s->stat_acct_query_5m), stat_accm_get_avg(s->stat_acct_query_1m));
+
+		cli_sendv(client, "  interim sent: %lu\r\n", s->stat_interim_sent);
+		cli_sendv(client, "  interim lost(total/5m/1m): %lu/%lu/%lu\r\n",
+			s->stat_interim_lost, stat_accm_get_cnt(s->stat_interim_lost_5m), stat_accm_get_cnt(s->stat_interim_lost_1m));
+		cli_sendv(client, "  interim avg query time(5m/1m): %lu/%lu ms\r\n",
+			stat_accm_get_avg(s->stat_interim_query_5m), stat_accm_get_avg(s->stat_interim_query_1m));
+	}
+}
+
+static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
+{
+	struct rad_server_t *s;
+
+	list_for_each_entry(s, &serv_list, entry)
+		show_stat(s, client);
+
+	return CLI_CMD_OK;
+}
+
 static void __add_server(struct rad_server_t *s)
 {
 	struct rad_server_t *s1;
@@ -217,6 +272,43 @@ static void __add_server(struct rad_server_t *s)
 	pthread_mutex_init(&s->lock, NULL);
 	s->conf_fail_time = conf_fail_time;
 	list_add_tail(&s->entry, &serv_list);
+
+	s->stat_auth_lost_1m = stat_accm_create(60);
+	s->stat_auth_lost_5m = stat_accm_create(5 * 60);
+	s->stat_auth_query_1m = stat_accm_create(60);
+	s->stat_auth_query_5m = stat_accm_create(5 * 60);
+
+	s->stat_acct_lost_1m = stat_accm_create(60);
+	s->stat_acct_lost_5m = stat_accm_create(5 * 60);
+	s->stat_acct_query_1m = stat_accm_create(60);
+	s->stat_acct_query_5m = stat_accm_create(5 * 60);
+
+	s->stat_interim_lost_1m = stat_accm_create(60);
+	s->stat_interim_lost_5m = stat_accm_create(5 * 60);
+	s->stat_interim_query_1m = stat_accm_create(60);
+	s->stat_interim_query_5m = stat_accm_create(5 * 60);
+}
+
+static void __free_server(struct rad_server_t *s)
+{
+	log_debug("radius: free(%i)\n", s->id);
+
+	stat_accm_free(s->stat_auth_lost_1m);
+	stat_accm_free(s->stat_auth_lost_5m);
+	stat_accm_free(s->stat_auth_query_1m);
+	stat_accm_free(s->stat_auth_query_5m);
+
+	stat_accm_free(s->stat_acct_lost_1m);
+	stat_accm_free(s->stat_acct_lost_5m);
+	stat_accm_free(s->stat_acct_query_1m);
+	stat_accm_free(s->stat_acct_query_5m);
+
+	stat_accm_free(s->stat_interim_lost_1m);
+	stat_accm_free(s->stat_interim_lost_5m);
+	stat_accm_free(s->stat_interim_query_1m);
+	stat_accm_free(s->stat_interim_query_5m);
+
+	_free(s);
 }
 
 static int parse_server_old(const char *opt, in_addr_t *addr, int *port, char **secret)
@@ -394,10 +486,8 @@ static void load_config(void)
 				triton_context_wakeup(r->rpd->ppp->ctrl->ctx);
 			}
 
-			if (!s->client_cnt[0] && !s->client_cnt[1]) {
-				log_debug("radius: free(%i)\n", s->id);
-				_free(s);
-			}
+			if (!s->client_cnt[0] && !s->client_cnt[1])
+				__free_server(s);
 		}
 	}
 }
@@ -409,6 +499,8 @@ static void init(void)
 	load_config();
 
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
+
+	cli_register_simple_cmd2(show_stat_exec, NULL, 2, "show", "stat");
 }
 
 DEFINE_INIT(52, init);

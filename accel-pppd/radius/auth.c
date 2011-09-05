@@ -159,7 +159,7 @@ static int rad_auth_send(struct rad_req_t *req)
 		}
 
 		for(i = 0; i < conf_max_try; i++) {
-			__sync_add_and_fetch(&stat_auth_sent, 1);
+			__sync_add_and_fetch(&req->serv->stat_auth_sent, 1);
 			gettimeofday(&tv, NULL);
 			if (rad_req_send(req, conf_verbose))
 				goto out;
@@ -184,13 +184,13 @@ static int rad_auth_send(struct rad_req_t *req)
 
 			if (req->reply) {
 				dt = (req->reply->tv.tv_sec - tv.tv_sec) * 1000 + (req->reply->tv.tv_usec - tv.tv_usec) / 1000;
-				stat_accm_add(stat_auth_query_1m, dt);
-				stat_accm_add(stat_auth_query_5m, dt);
+				stat_accm_add(req->serv->stat_auth_query_1m, dt);
+				stat_accm_add(req->serv->stat_auth_query_5m, dt);
 				break;
 			} else {
-				__sync_add_and_fetch(&stat_auth_lost, 1);
-				stat_accm_add(stat_auth_lost_1m, 1);
-				stat_accm_add(stat_auth_lost_5m, 1);
+				__sync_add_and_fetch(&req->serv->stat_auth_lost, 1);
+				stat_accm_add(req->serv->stat_auth_lost_1m, 1);
+				stat_accm_add(req->serv->stat_auth_lost_5m, 1);
 			}
 		}
 		

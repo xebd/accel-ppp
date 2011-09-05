@@ -84,6 +84,30 @@ struct rad_server_t
 	int conf_fail_time;
 	int timeout_cnt;
 	pthread_mutex_t lock;
+
+	unsigned long stat_auth_sent;
+	unsigned long stat_auth_lost;
+	unsigned long stat_acct_sent;
+	unsigned long stat_acct_lost;
+	unsigned long stat_interim_sent;
+	unsigned long stat_interim_lost;
+	unsigned long stat_fail_cnt;
+
+	struct stat_accm_t *stat_auth_lost_1m;
+	struct stat_accm_t *stat_auth_lost_5m;
+	struct stat_accm_t *stat_auth_query_1m;
+	struct stat_accm_t *stat_auth_query_5m;
+
+	struct stat_accm_t *stat_acct_lost_1m;
+	struct stat_accm_t *stat_acct_lost_5m;
+	struct stat_accm_t *stat_acct_query_1m;
+	struct stat_accm_t *stat_acct_query_5m;
+
+	struct stat_accm_t *stat_interim_lost_1m;
+	struct stat_accm_t *stat_interim_lost_5m;
+	struct stat_accm_t *stat_interim_query_1m;
+	struct stat_accm_t *stat_interim_query_5m;
+
 	int need_free:1;
 };
 
@@ -109,13 +133,6 @@ extern int conf_dm_coa_port;
 extern int conf_acct_interim_interval;
 extern int conf_accounting;
 extern int conf_fail_time;
-
-extern unsigned long stat_auth_sent;
-extern unsigned long stat_auth_lost;
-extern unsigned long stat_acct_sent;
-extern unsigned long stat_acct_lost;
-extern unsigned long stat_interim_sent;
-extern unsigned long stat_interim_lost;
 
 int rad_check_nas_pack(struct rad_packet_t *pack);
 struct radius_pd_t *rad_find_session(const char *sessionid, const char *username, int port_id, in_addr_t ipaddr, const char *csid);
@@ -161,23 +178,10 @@ void rad_server_reply(struct rad_server_t *);
 
 struct stat_accm_t;
 struct stat_accm_t *stat_accm_create(unsigned int time);
+void stat_accm_free(struct stat_accm_t *);
 void stat_accm_add(struct stat_accm_t *, unsigned int);
 unsigned long stat_accm_get_cnt(struct stat_accm_t *);
 unsigned long stat_accm_get_avg(struct stat_accm_t *);
 
-extern struct stat_accm_t *stat_auth_lost_1m;
-extern struct stat_accm_t *stat_auth_lost_5m;
-extern struct stat_accm_t *stat_auth_query_1m;
-extern struct stat_accm_t *stat_auth_query_5m;
-
-extern struct stat_accm_t *stat_acct_lost_1m;
-extern struct stat_accm_t *stat_acct_lost_5m;
-extern struct stat_accm_t *stat_acct_query_1m;
-extern struct stat_accm_t *stat_acct_query_5m;
-
-extern struct stat_accm_t *stat_interim_lost_1m;
-extern struct stat_accm_t *stat_interim_lost_5m;
-extern struct stat_accm_t *stat_interim_query_1m;
-extern struct stat_accm_t *stat_interim_query_5m;
 #endif
 

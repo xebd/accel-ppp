@@ -35,6 +35,19 @@ struct stat_accm_t *stat_accm_create(unsigned int time)
 	return s;
 }
 
+void stat_accm_free(struct stat_accm_t *s)
+{
+	struct item_t *it;
+
+	while (!list_empty(&s->items)) {
+		it = list_entry(s->items.next, typeof(*it), entry);
+		list_del(&it->entry);
+		mempool_free(it);
+	}
+
+	_free(s);
+}
+
 static void stat_accm_clean(struct stat_accm_t *s)
 {
 	struct item_t *it;

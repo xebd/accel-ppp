@@ -12,7 +12,6 @@
 #include "pwdb.h"
 #include "ipdb.h"
 #include "ppp_auth.h"
-#include "cli.h"
 
 #include "radius_p.h"
 #include "attr_defs.h"
@@ -44,28 +43,6 @@ int conf_acct_interim_interval;
 
 int conf_accounting;
 int conf_fail_time;
-
-unsigned long stat_auth_sent;
-unsigned long stat_auth_lost;
-unsigned long stat_acct_sent;
-unsigned long stat_acct_lost;
-unsigned long stat_interim_sent;
-unsigned long stat_interim_lost;
-
-struct stat_accm_t *stat_auth_lost_1m;
-struct stat_accm_t *stat_auth_lost_5m;
-struct stat_accm_t *stat_auth_query_1m;
-struct stat_accm_t *stat_auth_query_5m;
-
-struct stat_accm_t *stat_acct_lost_1m;
-struct stat_accm_t *stat_acct_lost_5m;
-struct stat_accm_t *stat_acct_query_1m;
-struct stat_accm_t *stat_acct_query_5m;
-
-struct stat_accm_t *stat_interim_lost_1m;
-struct stat_accm_t *stat_interim_lost_5m;
-struct stat_accm_t *stat_interim_query_1m;
-struct stat_accm_t *stat_interim_query_5m;
 
 static LIST_HEAD(sessions);
 static pthread_rwlock_t sessions_lock = PTHREAD_RWLOCK_INITIALIZER;
@@ -426,30 +403,6 @@ int rad_check_nas_pack(struct rad_packet_t *pack)
 	return 0;
 }
 
-static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
-{
-	cli_send(client, "radius:\r\n");
-	cli_sendv(client, "  auth sent: %lu\r\n", stat_auth_sent);
-	cli_sendv(client, "  auth lost(total/5m/1m): %lu/%lu/%lu\r\n",
-		stat_auth_lost, stat_accm_get_cnt(stat_auth_lost_5m), stat_accm_get_cnt(stat_auth_lost_1m));
-	cli_sendv(client, "  auth avg query time(5m/1m): %lu/%lu ms\r\n",
-		stat_accm_get_avg(stat_auth_query_5m), stat_accm_get_avg(stat_auth_query_1m));
-
-	cli_sendv(client, "  acct sent: %lu\r\n", stat_acct_sent);
-	cli_sendv(client, "  acct lost(total/5m/1m): %lu/%lu/%lu\r\n",
-		stat_acct_lost, stat_accm_get_cnt(stat_acct_lost_5m), stat_accm_get_cnt(stat_acct_lost_1m));
-	cli_sendv(client, "  acct avg query time(5m/1m): %lu/%lu ms\r\n",
-		stat_accm_get_avg(stat_acct_query_5m), stat_accm_get_avg(stat_acct_query_1m));
-
-	cli_sendv(client, "  interim sent: %lu\r\n", stat_interim_sent);
-	cli_sendv(client, "  interim lost(total/5m/1m): %lu/%lu/%lu\r\n",
-		stat_interim_lost, stat_accm_get_cnt(stat_interim_lost_5m), stat_accm_get_cnt(stat_interim_lost_1m));
-	cli_sendv(client, "  interim avg query time(5m/1m): %lu/%lu ms\r\n",
-		stat_accm_get_avg(stat_interim_query_5m), stat_accm_get_avg(stat_interim_query_1m));
-
-	return CLI_CMD_OK;
-}
-
 void __export rad_register_plugin(struct ppp_t *ppp, struct rad_plugin_t *plugin)
 {
 	struct radius_pd_t *rpd = find_pd(ppp);
@@ -604,23 +557,6 @@ static void radius_init(void)
 	triton_event_register_handler(EV_PPP_FINISHING, (triton_event_func)ppp_finishing);
 	triton_event_register_handler(EV_PPP_FINISHED, (triton_event_func)ppp_finished);
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
-
-	cli_register_simple_cmd2(show_stat_exec, NULL, 2, "show", "stat");
-
-	stat_auth_lost_1m = stat_accm_create(60);
-	stat_auth_lost_5m = stat_accm_create(5 * 60);
-	stat_auth_query_1m = stat_accm_create(60);
-	stat_auth_query_5m = stat_accm_create(5 * 60);
-
-	stat_acct_lost_1m = stat_accm_create(60);
-	stat_acct_lost_5m = stat_accm_create(5 * 60);
-	stat_acct_query_1m = stat_accm_create(60);
-	stat_acct_query_5m = stat_accm_create(5 * 60);
-
-	stat_interim_lost_1m = stat_accm_create(60);
-	stat_interim_lost_5m = stat_accm_create(5 * 60);
-	stat_interim_query_1m = stat_accm_create(60);
-	stat_interim_query_5m = stat_accm_create(5 * 60);
 }
 
 DEFINE_INIT(51, radius_init);
