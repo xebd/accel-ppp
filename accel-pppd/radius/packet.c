@@ -135,7 +135,7 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 	}
 	
 	pack->buf = ptr;
-	gettimeofday(&pack->tv, NULL);
+	clock_gettime(CLOCK_MONOTONIC, &pack->tv);
 
 	while (1) {
 		if (addr)
@@ -736,7 +736,7 @@ int rad_packet_send(struct rad_packet_t *pack, int fd, struct sockaddr_in *addr)
 {
 	int n;
 
-	gettimeofday(&pack->tv, NULL);
+	clock_gettime(CLOCK_MONOTONIC, &pack->tv);
 
 	while (1) {
 		if (addr)

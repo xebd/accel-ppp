@@ -102,7 +102,7 @@ static int rad_acct_read(struct triton_md_handler_t *h)
 		return 0;
 
 	dt = (req->reply->tv.tv_sec - req->pack->tv.tv_sec) * 1000 + 
-		(req->reply->tv.tv_usec - req->pack->tv.tv_usec) / 1000;
+		(req->reply->tv.tv_nsec - req->pack->tv.tv_nsec) / 1000000;
 
 	stat_accm_add(req->serv->stat_interim_query_1m, dt);
 	stat_accm_add(req->serv->stat_interim_query_5m, dt);
@@ -293,7 +293,7 @@ int rad_acct_start(struct radius_pd_t *rpd)
 			}
 
 			dt = (rpd->acct_req->reply->tv.tv_sec - rpd->acct_req->pack->tv.tv_sec) * 1000 + 
-				(rpd->acct_req->reply->tv.tv_usec - rpd->acct_req->pack->tv.tv_usec) / 1000;
+				(rpd->acct_req->reply->tv.tv_nsec - rpd->acct_req->pack->tv.tv_nsec) / 1000000;
 			stat_accm_add(rpd->acct_req->serv->stat_acct_query_1m, dt);
 			stat_accm_add(rpd->acct_req->serv->stat_acct_query_5m, dt);
 
@@ -433,7 +433,7 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 				}
 
 				dt = (rpd->acct_req->reply->tv.tv_sec - rpd->acct_req->pack->tv.tv_sec) * 1000 + 
-					(rpd->acct_req->reply->tv.tv_usec - rpd->acct_req->pack->tv.tv_usec) / 1000;
+					(rpd->acct_req->reply->tv.tv_nsec - rpd->acct_req->pack->tv.tv_nsec) / 1000000;
 				stat_accm_add(rpd->acct_req->serv->stat_acct_query_1m, dt);
 				stat_accm_add(rpd->acct_req->serv->stat_acct_query_5m, dt);
 

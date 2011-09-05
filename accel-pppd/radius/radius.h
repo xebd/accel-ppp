@@ -90,7 +90,7 @@ struct rad_packet_t
 	int code;
 	uint8_t id;
 	int len;
-	struct timeval tv;
+	struct timespec tv;
 	struct list_head attrs;
 	void *buf;
 };
