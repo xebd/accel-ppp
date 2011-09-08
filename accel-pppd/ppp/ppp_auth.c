@@ -315,11 +315,12 @@ static void __ppp_auth_started(struct ppp_t *ppp)
 {
 	struct auth_layer_data_t *ad = container_of(ppp_find_layer_data(ppp, &auth_layer), typeof(*ad), ld);
 
+	if (ppp->terminating)
+		return;
+
 	log_ppp_debug("auth_layer_started\n");
 	ppp_layer_started(ppp, &ad->ld);
 
-	if (ppp->terminating)
-		return;
 
 	log_ppp_info1("%s: authentication successed\n", ppp->username);
 	triton_event_fire(EV_PPP_AUTHORIZED, ppp);
