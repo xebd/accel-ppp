@@ -623,10 +623,10 @@ static void ccp_recv(struct ppp_handler_t*h)
 	struct ppp_ccp_t *ccp = container_of(h, typeof(*ccp), hnd);
 	int r;
 
-	if (!ccp->starting || ccp->fsm.fsm_state == FSM_Closed || ccp->ppp->terminating) {
+	if (!ccp->starting || ccp->fsm.fsm_state == FSM_Closed || ccp->ppp->terminating || ccp->ppp->state == PPP_STATE_ACTIVE) {
 		if (conf_ppp_verbose)
 			log_ppp_warn("CCP: discarding packet\n");
-		if (ccp->fsm.fsm_state == FSM_Closed || !conf_ccp)
+		if (ccp->fsm.fsm_state == FSM_Closed || !conf_ccp || ccp->ppp->state == PPP_STATE_ACTIVE)
 			lcp_send_proto_rej(ccp->ppp, PPP_CCP);
 		return;
 	}

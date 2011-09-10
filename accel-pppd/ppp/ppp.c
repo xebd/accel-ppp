@@ -450,10 +450,12 @@ static void __ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 	
 
 	if (n->entry.next == &ppp->layers) {
-		ppp->state = PPP_STATE_ACTIVE;
-		__sync_sub_and_fetch(&ppp_stat.starting, 1);
-		__sync_add_and_fetch(&ppp_stat.active, 1);
-		ppp_ifup(ppp);
+		if (ppp->state == PPP_STATE_STARTING) {
+			ppp->state = PPP_STATE_ACTIVE;
+			__sync_sub_and_fetch(&ppp_stat.starting, 1);
+			__sync_add_and_fetch(&ppp_stat.active, 1);
+			ppp_ifup(ppp);
+		}
 	} else {
 		n = list_entry(n->entry.next, typeof(*n), entry);
 		list_for_each_entry(d, &n->items, entry) {
