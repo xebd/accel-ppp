@@ -749,8 +749,8 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 	if (l2tp_send_ICRP(conn))
 		return -1;
 		
-	if (l2tp_send_OCRQ(conn))
-		return -1;
+	/*if (l2tp_send_OCRQ(conn))
+		return -1;*/
 	
 	return 0;
 }
