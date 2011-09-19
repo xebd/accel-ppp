@@ -560,7 +560,7 @@ out_err:
 	return -1;
 }
 
-static int l2tp_send_OCRQ(struct l2tp_conn_t *conn)
+/*static int l2tp_send_OCRQ(struct l2tp_conn_t *conn)
 {
 	struct l2tp_packet_t *pack;
 
@@ -600,7 +600,7 @@ static int l2tp_send_OCRQ(struct l2tp_conn_t *conn)
 out_err:
 	l2tp_packet_free(pack);
 	return -1;
-}
+}*/
 
 
 static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack, struct in_pktinfo *pkt_info)
