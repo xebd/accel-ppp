@@ -16,6 +16,7 @@
 
 static LIST_HEAD(auth_handlers);
 static int extra_opt_len = 0;
+static int conf_noauth = 0;
 
 static struct lcp_option_t *auth_init(struct ppp_lcp_t *lcp);
 static void auth_free(struct ppp_lcp_t *lcp, struct lcp_option_t *opt);
@@ -116,7 +117,7 @@ static int auth_send_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, u
 	struct auth_data_t *d;
 	int n;
 
-	if (list_empty(&auth_opt->auth_list))
+	if (list_empty(&auth_opt->auth_list) || conf_noauth)
 		return 0;
 
 	if (!auth_opt->auth || auth_opt->auth->state == LCP_OPT_NAK) {
@@ -409,10 +410,23 @@ int __export ppp_auth_restart(struct ppp_t *ppp)
 	return 0;
 }
 
+static void load_config(void)
+{
+	const char *opt;
+
+	opt = conf_get_opt("auth", "noauth");
+	if (opt)
+		conf_noauth = atoi(opt);
+}
+
 static void ppp_auth_init()
 {
+	load_config();
+
 	ppp_register_layer("auth", &auth_layer);
 	lcp_option_register(&auth_opt_hnd);
+
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 
 DEFINE_INIT(3, ppp_auth_init);
