@@ -834,7 +834,7 @@ static void ev_shaper(struct ev_shaper_t *ev)
 	}
 }
 
-static void ev_ppp_started(struct ppp_t *ppp)
+static void ev_ppp_pre_up(struct ppp_t *ppp)
 {
 	struct shaper_pd_t *pd = find_pd(ppp, 1);
 	if (!pd)
@@ -1336,7 +1336,7 @@ static void init(void)
 		triton_event_register_handler(EV_RADIUS_COA, (triton_event_func)ev_radius_coa);
 	}
 #endif
-	triton_event_register_handler(EV_PPP_STARTED, (triton_event_func)ev_ppp_started);
+	triton_event_register_handler(EV_PPP_PRE_UP, (triton_event_func)ev_ppp_pre_up);
 	triton_event_register_handler(EV_CTRL_FINISHED, (triton_event_func)ev_ctrl_finished);
 	triton_event_register_handler(EV_SHAPER, (triton_event_func)ev_shaper);
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
