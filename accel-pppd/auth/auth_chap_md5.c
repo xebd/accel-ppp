@@ -10,6 +10,7 @@
 #include "crypto.h"
 
 #include "log.h"
+#include "events.h"
 #include "ppp.h"
 #include "ppp_auth.h"
 #include "ppp_lcp.h"
@@ -414,9 +415,9 @@ static void chap_recv(struct ppp_handler_t *h)
 		log_ppp_warn("chap-md5: unknown code received %x\n", hdr->code);
 }
 
-static void auth_chap_md5_init()
+static void load_config(void)
 {
-	char *opt;
+	const char *opt;
 
 	opt = conf_get_opt("auth", "timeout");
 	if (opt && atoi(opt) > 0)
@@ -431,9 +432,12 @@ static void auth_chap_md5_init()
 		conf_max_failure = atoi(opt);
 
 	opt = conf_get_opt("auth", "any-login");
-	if (opt && atoi(opt) > 0)
-		conf_any_login = 1;
+	if (opt)
+		conf_any_login = atoi(opt);
+}
 
+static void auth_chap_md5_init()
+{
 	urandom_fd=open("/dev/urandom", O_RDONLY);
 
 	if (urandom_fd < 0) {
@@ -441,8 +445,12 @@ static void auth_chap_md5_init()
 		return;
 	}
 
+	load_config();
+
 	if (ppp_auth_register_handler(&chap))
 		log_emerg("chap-md5: failed to register handler\n");
+	
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 
 DEFINE_INIT(6, auth_chap_md5_init);

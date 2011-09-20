@@ -618,6 +618,23 @@ static void chap_recv(struct ppp_handler_t *h)
 		log_ppp_warn("mschap-v2: unknown code received %x\n",hdr->code);
 }
 
+static void load_config(void)
+{
+	const char *opt;
+
+	opt = conf_get_opt("auth", "timeout");
+	if (opt && atoi(opt) > 0)
+		conf_timeout = atoi(opt);
+
+	opt = conf_get_opt("auth", "interval");
+	if (opt && atoi(opt) > 0)
+		conf_interval = atoi(opt);
+
+	opt = conf_get_opt("auth", "max-failure");
+	if (opt && atoi(opt) > 0)
+		conf_max_failure = atoi(opt);
+}
+
 static void auth_mschap_v2_init()
 {
 	urandom_fd = open("/dev/urandom", O_RDONLY);
@@ -626,8 +643,12 @@ static void auth_mschap_v2_init()
 		return;
 	}
 
+	load_config();
+
 	if (ppp_auth_register_handler(&chap))
 		log_emerg("mschap-v2: failed to register handler\n");
+
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 
 DEFINE_INIT(4, auth_mschap_v2_init);
