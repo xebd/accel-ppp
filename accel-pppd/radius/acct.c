@@ -220,6 +220,7 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 
 	__sync_add_and_fetch(&rpd->acct_req->serv->stat_interim_sent, 1);
 
+	rpd->acct_req->timeout.period = conf_timeout * 1000;
 	triton_timer_add(rpd->ppp->ctrl->ctx, &rpd->acct_req->timeout, 0);
 }
 
