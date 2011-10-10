@@ -392,14 +392,13 @@ static int ipcp_recv_conf_req(struct ppp_ipcp_t *ipcp, uint8_t *data, int size)
 	while (size > 0) {
 		hdr = (struct ipcp_opt_hdr_t *)data;
 
-		if (!hdr->len || hdr->len > size)
-			break;
-		
 		ropt = _malloc(sizeof(*ropt));
 		memset(ropt, 0, sizeof(*ropt));
 
-		ropt->len = hdr->len;
-
+		if (hdr->len > size)
+			ropt->len = size;
+		else
+			ropt->len = hdr->len;
 		ropt->hdr = hdr;
 		ropt->state = IPCP_OPT_NONE;
 		list_add_tail(&ropt->entry, &ipcp->ropt_list);
@@ -504,10 +503,7 @@ static int ipcp_recv_conf_rej(struct ppp_ipcp_t *ipcp, uint8_t *data, int size)
 
 	while (size > 0) {
 		hdr = (struct ipcp_opt_hdr_t *)data;
-	
-		if (!hdr->len || hdr->len > size)
-			break;
-
+		
 		list_for_each_entry(lopt, &ipcp->options, entry) {
 			if (lopt->id == hdr->id) {
 				if (!lopt->h->recv_conf_rej)
@@ -546,9 +542,6 @@ static int ipcp_recv_conf_nak(struct ppp_ipcp_t *ipcp, uint8_t *data, int size)
 	while (size > 0) {
 		hdr = (struct ipcp_opt_hdr_t *)data;
 		
-		if (!hdr->len || hdr->len > size)
-			break;
-
 		list_for_each_entry(lopt, &ipcp->options, entry) {
 			if (lopt->id == hdr->id) {
 				if (conf_ppp_verbose) {
@@ -589,9 +582,6 @@ static int ipcp_recv_conf_ack(struct ppp_ipcp_t *ipcp, uint8_t *data, int size)
 	while (size > 0) {
 		hdr = (struct ipcp_opt_hdr_t *)data;
 		
-		if (!hdr->len || hdr->len > size)
-			break;
-
 		list_for_each_entry(lopt, &ipcp->options, entry) {
 			if (lopt->id == hdr->id) {
 				if (conf_ppp_verbose) {
