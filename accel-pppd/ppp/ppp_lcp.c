@@ -368,20 +368,19 @@ static int lcp_recv_conf_req(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 	while (size > 0) {
 		hdr = (struct lcp_opt_hdr_t *)data;
 
+		if (!hdr->len || hdr->len > size)
+			break;
+
 		ropt = _malloc(sizeof(*ropt));
 		memset(ropt, 0, sizeof(*ropt));
 
-		if (hdr->len > size)
-			ropt->len = size;
-		else
-			ropt->len = hdr->len;
-
 		ropt->hdr = hdr;
+		ropt->len = hdr->len;
 		ropt->state = LCP_OPT_NONE;
 		list_add_tail(&ropt->entry, &lcp->ropt_list);
 
-		data += ropt->len;
-		size -= ropt->len;
+		data += hdr->len;
+		size -= hdr->len;
 	}
 	
 	list_for_each_entry(lopt, &lcp->options, entry)
@@ -460,6 +459,9 @@ static int lcp_recv_conf_rej(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 
 	while (size > 0) {
 		hdr = (struct lcp_opt_hdr_t *)data;
+
+		if (!hdr->len || hdr->len > size)
+			break;
 		
 		list_for_each_entry(lopt, &lcp->options, entry) {
 			if (lopt->id == hdr->id) {
@@ -502,6 +504,9 @@ static int lcp_recv_conf_nak(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 
 	while (size > 0) {
 		hdr = (struct lcp_opt_hdr_t *)data;
+
+		if (!hdr->len || hdr->len > size)
+			break;
 		
 		list_for_each_entry(lopt,&lcp->options,entry) {
 			if (lopt->id == hdr->id) {
@@ -542,6 +547,9 @@ static int lcp_recv_conf_ack(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 
 	while (size > 0) {
 		hdr = (struct lcp_opt_hdr_t *)data;
+
+		if (!hdr->len || hdr->len > size)
+			break;
 		
 		list_for_each_entry(lopt, &lcp->options, entry) {
 			if (lopt->id == hdr->id) {
