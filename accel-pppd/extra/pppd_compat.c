@@ -287,6 +287,7 @@ static void ev_ppp_finished(struct ppp_t *ppp)
 			triton_context_schedule();
 			pthread_mutex_lock(&pd->ip_down_hnd.lock);
 			pthread_mutex_unlock(&pd->ip_down_hnd.lock);
+			sigchld_unregister_handler(&pd->ip_down_hnd);
 		} else if (pid == 0) {
 			sigset_t set;
 			sigfillset(&set);
