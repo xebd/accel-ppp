@@ -10,6 +10,12 @@
 #include "triton_p.h"
 #include "memdebug.h"
 
+#if __WORDSIZE == 32
+#define WORKER_STACK_SIZE 64*1024
+#else
+#define WORKER_STACK_SIZE 128*1024
+#endif
+
 int thread_count = 2;
 int max_events = 64;
 
@@ -242,7 +248,7 @@ struct _triton_thread_t *create_thread()
 	}
 
 	pthread_attr_init(&attr);
-	pthread_attr_setstacksize(&attr, PTHREAD_STACK_MIN);
+	pthread_attr_setstacksize(&attr, WORKER_STACK_SIZE);
 
 	memset(thread, 0, sizeof(*thread));
 	pthread_mutex_init(&thread->sleep_lock, NULL);
