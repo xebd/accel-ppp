@@ -728,6 +728,9 @@ static void lcp_recv(struct ppp_handler_t*h)
 
 	if ((hdr->code == CONFACK || hdr->code == CONFNAK || hdr->code == CONFREJ) && hdr->id != lcp->fsm.id)
 		return;
+	
+	if ((hdr->code == CONFACK || hdr->code == CONFNAK || hdr->code == CONFREJ) && lcp->started)
+		return;
 
 	if (lcp->fsm.fsm_state == FSM_Initial || lcp->fsm.fsm_state == FSM_Closed || (lcp->ppp->terminating && (hdr->code != TERMACK && hdr->code != TERMREQ))) {
 		/*if (conf_ppp_verbose)
@@ -741,6 +744,12 @@ static void lcp_recv(struct ppp_handler_t*h)
 	switch(hdr->code) {
 		case CONFREQ:
 			r = lcp_recv_conf_req(lcp, (uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN);
+			if (lcp->started) {
+				if (r == LCP_OPT_ACK)
+					send_conf_ack(&lcp->fsm);
+				else
+					r = LCP_OPT_FAIL;
+			}
 			switch(r) {
 				case LCP_OPT_ACK:
 					ppp_fsm_recv_conf_req_ack(&lcp->fsm);

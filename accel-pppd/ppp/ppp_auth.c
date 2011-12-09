@@ -144,6 +144,16 @@ static int auth_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, u
 	struct auth_data_t *d;
 	int r;
 
+	if (auth_opt->started) {
+		if (!auth_opt->auth)
+			return LCP_OPT_REJ;
+
+		if (!ptr || ntohs(opt16->val) != auth_opt->auth->proto)
+			return LCP_OPT_NAK;
+
+		return LCP_OPT_ACK;
+	}
+
 	if (list_empty(&auth_opt->auth_list))
 		return LCP_OPT_REJ;
 		
