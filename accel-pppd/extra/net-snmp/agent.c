@@ -16,6 +16,7 @@
 #include "terminate.h"
 #include "shutdown.h"
 #include "sessionTable.h"
+#include "exec_cli.h"
 
 static const char *conf_agent_name = "accel-ppp";
 static int conf_master = 0;
@@ -96,6 +97,7 @@ static void *snmp_thread(void *a)
 	init_terminate();
 	init_shutdown();
 	init_sessionTable();
+	init_cli();
 
 	init_snmp(conf_agent_name);
 

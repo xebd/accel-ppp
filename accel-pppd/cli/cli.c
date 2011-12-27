@@ -128,7 +128,7 @@ static int split(char *buf, char **ptr)
 	return i;
 }
 
-int cli_process_cmd(struct cli_client_t *cln)
+int __export cli_process_cmd(struct cli_client_t *cln)
 {
 	struct cli_simple_cmd_t *cmd1;
 	struct cli_regexp_cmd_t *cmd2;

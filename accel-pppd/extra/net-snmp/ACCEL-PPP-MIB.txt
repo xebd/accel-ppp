@@ -323,4 +323,12 @@ shutdown OBJECT-TYPE
 			"shutdown accel-ppp"
     ::= { accelPPPAdmin 2 }
 
+cli OBJECT-TYPE
+    SYNTAX      OCTET STRING
+    MAX-ACCESS  write-only
+    STATUS      current
+    DESCRIPTION
+			"execute cli command"
+    ::= { accelPPPAdmin 3 }
+
 END

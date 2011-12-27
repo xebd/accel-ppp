@@ -12,6 +12,7 @@ SET(sources
 	statPPTP.c
 	terminate.c
 	shutdown.c
+	exec_cli.c
 )
 
 ADD_LIBRARY(net-snmp SHARED ${sources})
