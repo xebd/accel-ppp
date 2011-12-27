@@ -363,6 +363,10 @@ Path to file to write authentication failed session log.
 .BI "log-tcp=" x.x.x.x:port
 Send logs to specified host.
 .TP
+.BI "syslog=" ident[,facility]
+Send logs to system logger.
+Facility may be: daemon, local0-local7 or numeric value.
+.TP
 .BI "copy=" n
 If this options is given and greater then zero logging engine will duplicate session log in general log.
 (Useful when per-session/per-user logs are not used)
