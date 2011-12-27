@@ -40,7 +40,7 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 	if (!req->serv)
 		goto out_err;
 	
-	req->server_addr = req->serv->auth_addr;
+	req->server_addr = req->serv->addr;
 	req->server_port = req->serv->auth_port;
 
 	while (1) {
@@ -111,7 +111,6 @@ int rad_req_acct_fill(struct rad_req_t *req)
 {
 	struct ipv6db_addr_t *a;
 
-	req->server_addr = req->serv->acct_addr;
 	req->server_port = req->serv->acct_port;
 
 	memset(req->RA, 0, sizeof(req->RA));

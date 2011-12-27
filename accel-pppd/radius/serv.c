@@ -38,9 +38,9 @@ static struct rad_server_t *__rad_server_get(int type, struct rad_server_t *excl
 		if (s->fail_time && ts.tv_sec < s->fail_time)
 			continue;
 
-		if (type == RAD_SERV_AUTH && !s->auth_addr)
+		if (type == RAD_SERV_AUTH && !s->auth_port)
 			continue;
-		else if (type == RAD_SERV_ACCT && !s->acct_addr)
+		else if (type == RAD_SERV_ACCT && !s->acct_port)
 			continue;
 
 		if (!s0) {
@@ -85,7 +85,7 @@ int rad_server_req_enter(struct rad_req_t *req)
 	if (ts.tv_sec < req->serv->fail_time)
 		return -1;
 
-	if (!req->serv->max_req_cnt)
+	if (!req->serv->req_limit)
 		return 0;
 
 	pthread_mutex_lock(&req->serv->lock);
@@ -95,13 +95,15 @@ int rad_server_req_enter(struct rad_req_t *req)
 		return -1;
 	}
 
-	if (req->serv->req_cnt >= req->serv->max_req_cnt) {
+	if (req->serv->req_cnt >= req->serv->req_limit) {
 		list_add_tail(&req->entry, &req->serv->req_queue);
+		req->serv->queue_cnt++;
 
 		pthread_mutex_unlock(&req->serv->lock);
 		triton_context_schedule();
 		pthread_mutex_lock(&req->serv->lock);
 
+		req->serv->queue_cnt--;
 		if (ts.tv_sec < req->serv->fail_time || req->serv->need_free) {
 			pthread_mutex_unlock(&req->serv->lock);
 			return -1;
@@ -118,12 +120,12 @@ void rad_server_req_exit(struct rad_req_t *req)
 {
 	struct rad_req_t *r = NULL;
 	
-	if (!req->serv->max_req_cnt)
+	if (!req->serv->req_limit)
 		return;
 
 	pthread_mutex_lock(&req->serv->lock);
 	req->serv->req_cnt--;
-	if (req->serv->req_cnt < req->serv->max_req_cnt && !list_empty(&req->serv->req_queue)) {
+	if (req->serv->req_cnt < req->serv->req_limit && !list_empty(&req->serv->req_queue)) {
 		r = list_entry(req->serv->req_queue.next, typeof(*r), entry);
 		list_del(&r->entry);
 	}
@@ -152,13 +154,11 @@ int rad_server_realloc(struct rad_req_t *req)
 		req->hnd.fd = -1;
 	}
 
-	if (req->type == RAD_SERV_ACCT) {
-		req->server_addr = req->serv->acct_addr;
+	req->server_addr = req->serv->addr;
+	if (req->type == RAD_SERV_ACCT)
 		req->server_port = req->serv->acct_port;
-	} else {
-		req->server_addr = req->serv->auth_addr;
+	else
 		req->server_port = req->serv->auth_port;
-	}
 
 	return 0;
 }
@@ -207,7 +207,7 @@ static void show_stat(struct rad_server_t *s, void *client)
 	char addr[17];
 	struct timespec ts;
 
-	u_inet_ntoa(s->auth_addr ? s->auth_addr : s->acct_addr, addr);
+	u_inet_ntoa(s->addr, addr);
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	cli_sendv(client, "radius(%i, %s):\r\n", s->id, addr);
@@ -220,8 +220,11 @@ static void show_stat(struct rad_server_t *s, void *client)
 
 		cli_sendv(client, "  fail count: %lu\r\n", s->stat_fail_cnt);
 	}
+		
+	cli_sendv(client, "  request count: %lu\r\n", s->req_cnt);
+	cli_sendv(client, "  queue length: %lu\r\n", s->queue_cnt);
 
-	if (s->auth_addr) {
+	if (s->auth_port) {
 		cli_sendv(client, "  auth sent: %lu\r\n", s->stat_auth_sent);
 		cli_sendv(client, "  auth lost(total/5m/1m): %lu/%lu/%lu\r\n",
 			s->stat_auth_lost, stat_accm_get_cnt(s->stat_auth_lost_5m), stat_accm_get_cnt(s->stat_auth_lost_1m));
@@ -229,7 +232,7 @@ static void show_stat(struct rad_server_t *s, void *client)
 			stat_accm_get_avg(s->stat_auth_query_5m), stat_accm_get_avg(s->stat_auth_query_1m));
 	}
 
-	if (s->acct_addr) {
+	if (s->acct_port) {
 		cli_sendv(client, "  acct sent: %lu\r\n", s->stat_acct_sent);
 		cli_sendv(client, "  acct lost(total/5m/1m): %lu/%lu/%lu\r\n",
 			s->stat_acct_lost, stat_accm_get_cnt(s->stat_acct_lost_5m), stat_accm_get_cnt(s->stat_acct_lost_1m));
@@ -259,8 +262,9 @@ static void __add_server(struct rad_server_t *s)
 	struct rad_server_t *s1;
 
 	list_for_each_entry(s1, &serv_list, entry) {
-		if (s1->auth_addr == s->auth_addr && s1->acct_addr == s->acct_addr) {
-			s1->conf_fail_time = conf_fail_time;
+		if (s1->addr == s->addr && s1->auth_port == s->auth_port && s1->acct_port == s->acct_port) {
+			s1->conf_fail_time = s->conf_fail_time;
+			s1->req_limit = s->req_limit;
 			s1->need_free = 0;
 			_free(s);
 			return;
@@ -270,7 +274,6 @@ static void __add_server(struct rad_server_t *s)
 	s->id = ++num;
 	INIT_LIST_HEAD(&s->req_queue);
 	pthread_mutex_init(&s->lock, NULL);
-	s->conf_fail_time = conf_fail_time;
 	list_add_tail(&s->entry, &serv_list);
 
 	s->stat_auth_lost_1m = stat_accm_create(60);
@@ -334,12 +337,8 @@ static int parse_server_old(const char *opt, in_addr_t *addr, int *port, char **
 			return -1;
 	}
 
-	p1 = _strdup(p2 + 1);
-	p2 = *secret;
-	*secret = p1;
-	if (p2)
-		_free(p2);
-	
+	*secret = _strdup(p2 + 1);
+
 	_free(str);
 
 	return 0;
@@ -348,37 +347,59 @@ static int parse_server_old(const char *opt, in_addr_t *addr, int *port, char **
 static void add_server_old(void)
 {
 	const char *opt;
-	struct rad_server_t *s = _malloc(sizeof(*s));
-
-	memset(s, 0, sizeof(*s));
+	in_addr_t auth_addr = 0;
+	int auth_port;
+	char *auth_secret;
+	in_addr_t acct_addr = 0;
+	int acct_port;
+	char *acct_secret;
+	struct rad_server_t *s;
 
 	opt = conf_get_opt("radius", "auth-server");
 	if (opt) {
-		if (parse_server_old(opt, &s->auth_addr, &s->auth_port, &s->auth_secret)) {
+		if (parse_server_old(opt, &auth_addr, &auth_port, &auth_secret)) {
 			log_emerg("radius: failed to parse 'auth-server'\n");
-			goto out;
+			return;
 		}
-	}
+	} else
+		return;
 
 	opt = conf_get_opt("radius", "acct-server");
 	if (opt) {
-		if (parse_server_old(opt, &s->acct_addr, &s->acct_port, &s->acct_secret)) {
+		if (parse_server_old(opt, &acct_addr, &acct_port, &acct_secret)) {
 			log_emerg("radius: failed to parse 'acct-server'\n");
-			goto out;
+			return;
 		}
 		conf_accounting = 1;
 	}
 
-	if (s->auth_addr || s->acct_addr) {
+	s = _malloc(sizeof(*s));
+	memset(s, 0, sizeof(*s));
+	s->addr = auth_addr;
+	s->secret = auth_secret;
+	s->auth_port = auth_port;
+	s->conf_fail_time = conf_fail_time;
+
+	if (auth_addr == acct_addr && !strcmp(auth_secret, acct_secret)) {
+		s->acct_port = acct_port;
 		__add_server(s);
 		return;
 	}
+	
+	__add_server(s);
 
-out:
-	_free(s);
+	if (acct_addr) {
+		s = _malloc(sizeof(*s));
+		memset(s, 0, sizeof(*s));
+		s->addr = acct_addr;
+		s->secret = acct_secret;
+		s->acct_port = acct_port;
+		s->conf_fail_time = conf_fail_time;
+		__add_server(s);
+	}
 }
 
-static int parse_server(const char *_opt, struct rad_server_t *s)
+static int parse_server1(const char *_opt, struct rad_server_t *s)
 {
 	char *opt = _strdup(_opt);
 	char *ptr1, *ptr2, *ptr3, *endptr;
@@ -400,7 +421,7 @@ static int parse_server(const char *_opt, struct rad_server_t *s)
 	if (ptr3)
 		*ptr3 = 0;
 
-	s->auth_addr = s->acct_addr = inet_addr(opt);
+	s->addr = inet_addr(opt);
 
 	if (ptr2) {
 		if (ptr2[1]) {
@@ -408,8 +429,6 @@ static int parse_server(const char *_opt, struct rad_server_t *s)
 			if (*endptr)
 				goto out;
 		}
-		if (!s->auth_port)
-			s->auth_addr = 0;
 	} else
 		s->auth_port = 1812;
 	
@@ -419,21 +438,73 @@ static int parse_server(const char *_opt, struct rad_server_t *s)
 			if (*endptr)
 				goto out;
 		}
-		if (!s->acct_port)
-			s->acct_addr = 0;
 	} else
 		s->acct_port = 1813;
 
-	if (!s->auth_addr && !s->acct_addr)
-		goto out;
-
-	if (s->auth_addr)
-		s->auth_secret = _strdup(ptr1 + 1);
+	s->secret = _strdup(ptr1 + 1);
+	s->conf_fail_time = conf_fail_time;
 	
-	if (s->acct_addr) {
-		s->acct_secret = _strdup(ptr1 + 1);
-		conf_accounting = 1;
-	}
+	return 0;
+
+out:
+	_free(opt);
+
+	return -1;
+}
+
+static int parse_server2(const char *_opt, struct rad_server_t *s)
+{
+	char *opt = _strdup(_opt);
+	char *ptr1, *ptr2, *ptr3, *endptr;
+
+	ptr1 = strchr(opt, ',');
+	if (!ptr1)
+		goto out;
+	
+	ptr2 = strchr(ptr1 + 1, ',');
+
+	*ptr1 = 0;
+
+	s->addr = inet_addr(opt);
+
+	ptr3 = strstr(ptr2, ",auth-port=");
+	if (ptr3) {
+		s->auth_port = strtol(ptr3 + 11, &endptr, 10);
+		if (*endptr != ',' && *endptr != 0)
+			goto out;
+	} else
+		s->auth_port = 1812;
+
+	ptr3 = strstr(ptr2, ",acct-port=");
+	if (ptr3) {
+		s->acct_port = strtol(ptr3 + 11, &endptr, 10);
+		if (*endptr != ',' && *endptr != 0)
+			goto out;
+	} else
+		s->acct_port = 1813;
+
+	ptr3 = strstr(ptr2, ",req-limit=");
+	if (ptr3) {
+		s->req_limit = strtol(ptr3 + 11, &endptr, 10);
+		if (*endptr != ',' && *endptr != 0)
+			goto out;
+	} else
+		s->req_limit = conf_req_limit;
+
+	ptr3 = strstr(ptr2, ",fail-time=");
+	if (ptr3) {
+		s->conf_fail_time = strtol(ptr3 + 11, &endptr, 10);
+		if (*endptr != ',' && *endptr != 0)
+			goto out;
+	} else
+		s->conf_fail_time = conf_fail_time;
+
+	if (ptr2)
+		*ptr2 = 0;
+
+	s->secret = _strdup(ptr1 + 1);
+	
+	_free(opt);
 
 	return 0;
 
@@ -449,12 +520,17 @@ static void add_server(const char *opt)
 	
 	memset(s, 0, sizeof(*s));
 
-	if (parse_server(opt, s)) {
-		log_emerg("radius: failed to parse '%s'\n", opt);
-		_free(s);
-		return;
-	}
+	if (!parse_server1(opt,s))
+		goto add;
+	
+	if (!parse_server2(opt,s))
+		goto add;
 
+	log_emerg("radius: failed to parse '%s'\n", opt);
+	_free(s);
+	return;
+
+add:
 	__add_server(s);
 }
 
@@ -490,12 +566,20 @@ static void load_config(void)
 				__free_server(s);
 		}
 	}
+	
+	add_server_old();
+	
+	conf_accounting = 0;
+	list_for_each_entry(s, &serv_list, entry) {
+		if (s->acct_port) {
+			conf_accounting = 1;
+			break;
+		}
+	}
 }
 
 static void init(void)
 {
-	add_server_old();
-	
 	load_config();
 
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);

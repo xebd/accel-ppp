@@ -43,6 +43,7 @@ int conf_acct_interim_interval;
 
 int conf_accounting;
 int conf_fail_time;
+int conf_req_limit;
 
 static LIST_HEAD(sessions);
 static pthread_rwlock_t sessions_lock = PTHREAD_RWLOCK_INITIALIZER;
@@ -532,6 +533,10 @@ static int load_config(void)
 		conf_acct_delay_time = atoi(opt);
 
 	opt = conf_get_opt("radius", "fail-time");
+	if (opt)
+		conf_fail_time = atoi(opt);
+
+	opt = conf_get_opt("radius", "req-limit");
 	if (opt)
 		conf_fail_time = atoi(opt);
 

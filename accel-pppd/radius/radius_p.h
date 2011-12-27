@@ -70,14 +70,13 @@ struct rad_server_t
 {
 	struct list_head entry;
 	int id;
-	in_addr_t auth_addr;
+	in_addr_t addr;
+	char *secret;
 	int auth_port;
-	char *auth_secret;
-	in_addr_t acct_addr;
 	int acct_port;
-	char *acct_secret;
-	int max_req_cnt;
+	int req_limit;
 	int req_cnt;
+	int queue_cnt;
 	struct list_head req_queue;
 	int client_cnt[2];
 	time_t fail_time;
@@ -133,6 +132,7 @@ extern int conf_dm_coa_port;
 extern int conf_acct_interim_interval;
 extern int conf_accounting;
 extern int conf_fail_time;
+extern int conf_req_limit;
 
 int rad_check_nas_pack(struct rad_packet_t *pack);
 struct radius_pd_t *rad_find_session(const char *sessionid, const char *username, int port_id, in_addr_t ipaddr, const char *csid);

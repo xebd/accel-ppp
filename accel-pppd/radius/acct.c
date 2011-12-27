@@ -185,7 +185,7 @@ static void rad_acct_timeout(struct triton_timer_t *t)
 	if (conf_acct_delay_time) {
 		req->pack->id++;	
 		rad_packet_change_int(req->pack, NULL, "Acct-Delay-Time", dt);
-		req_set_RA(req, req->serv->acct_secret);
+		req_set_RA(req, req->serv->secret);
 	}
 
 	__rad_req_send(req);
@@ -214,7 +214,7 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 	rad_packet_change_val(rpd->acct_req->pack, NULL, "Acct-Status-Type", "Interim-Update");
 	if (conf_acct_delay_time)
 		rad_packet_change_int(rpd->acct_req->pack, NULL, "Acct-Delay-Time", 0);
-	req_set_RA(rpd->acct_req, rpd->acct_req->serv->acct_secret);
+	req_set_RA(rpd->acct_req, rpd->acct_req->serv->secret);
 
 	__rad_req_send(rpd->acct_req);
 
@@ -254,7 +254,7 @@ int rad_acct_start(struct radius_pd_t *rpd)
 
 	time(&rpd->acct_timestamp);
 	
-	if (req_set_RA(rpd->acct_req, rpd->acct_req->serv->acct_secret))
+	if (req_set_RA(rpd->acct_req, rpd->acct_req->serv->secret))
 		goto out_err;
 
 	while (1) {
@@ -264,7 +264,7 @@ int rad_acct_start(struct radius_pd_t *rpd)
 				log_ppp_warn("radius:acct_start: no servers available\n");
 				goto out_err;
 			}
-			if (req_set_RA(rpd->acct_req, rpd->acct_req->serv->acct_secret))
+			if (req_set_RA(rpd->acct_req, rpd->acct_req->serv->secret))
 				goto out_err;
 			continue;
 		}
@@ -273,7 +273,7 @@ int rad_acct_start(struct radius_pd_t *rpd)
 			if (conf_acct_delay_time) {
 				time(&ts);
 				rad_packet_change_int(rpd->acct_req->pack, NULL, "Acct-Delay-Time", ts - rpd->acct_timestamp);
-				if (req_set_RA(rpd->acct_req, rpd->acct_req->serv->acct_secret))
+				if (req_set_RA(rpd->acct_req, rpd->acct_req->serv->secret))
 					goto out_err;
 			}
 
@@ -319,7 +319,7 @@ int rad_acct_start(struct radius_pd_t *rpd)
 			log_ppp_warn("radius:acct_start: no servers available\n");
 			goto out_err;
 		}
-		if (req_set_RA(rpd->acct_req, rpd->acct_req->serv->acct_secret))
+		if (req_set_RA(rpd->acct_req, rpd->acct_req->serv->secret))
 			goto out_err;
 	}
 
@@ -393,7 +393,7 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 		}
 		rad_packet_change_val(rpd->acct_req->pack, NULL, "Acct-Status-Type", "Stop");
 		req_set_stat(rpd->acct_req, rpd->ppp);
-		req_set_RA(rpd->acct_req, rpd->acct_req->serv->acct_secret);
+		req_set_RA(rpd->acct_req, rpd->acct_req->serv->secret);
 		/// !!! rad_req_add_val(rpd->acct_req, "Acct-Terminate-Cause", "");
 		
 		if (rpd->acct_req->reply) {
@@ -410,7 +410,7 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 					log_ppp_warn("radius:acct_stop: no servers available\n");
 					break;
 				}
-				req_set_RA(rpd->acct_req, rpd->acct_req->serv->acct_secret);
+				req_set_RA(rpd->acct_req, rpd->acct_req->serv->secret);
 				continue;
 			}
 
@@ -419,7 +419,7 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 					time(&ts);
 					rad_packet_change_int(rpd->acct_req->pack, NULL, "Acct-Delay-Time", ts - rpd->acct_timestamp);
 					rpd->acct_req->pack->id++;
-					if (req_set_RA(rpd->acct_req, rpd->acct_req->serv->acct_secret))
+					if (req_set_RA(rpd->acct_req, rpd->acct_req->serv->secret))
 						break;
 				}
 				if (rad_req_send(rpd->acct_req, conf_verbose))
@@ -458,7 +458,7 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 				log_ppp_warn("radius:acct_stop: no servers available\n");
 				break;
 			}
-			req_set_RA(rpd->acct_req, rpd->acct_req->serv->acct_secret);
+			req_set_RA(rpd->acct_req, rpd->acct_req->serv->secret);
 		}
 
 		rad_req_free(rpd->acct_req);

@@ -30,7 +30,7 @@ static int decrypt_chap_mppe_keys(struct rad_req_t *req, struct rad_attr_t *attr
 	memcpy(plain, attr->val.octets, 32);
 
 	MD5_Init(&md5_ctx);
-	MD5_Update(&md5_ctx, req->serv->auth_secret, strlen(req->serv->auth_secret));
+	MD5_Update(&md5_ctx, req->serv->secret, strlen(req->serv->secret));
 	MD5_Update(&md5_ctx, req->pack->buf + 4, 16);
 	MD5_Final(md5, &md5_ctx);
 
@@ -38,7 +38,7 @@ static int decrypt_chap_mppe_keys(struct rad_req_t *req, struct rad_attr_t *attr
 		plain[i] ^= md5[i];
 	
 	MD5_Init(&md5_ctx);
-	MD5_Update(&md5_ctx, req->serv->auth_secret, strlen(req->serv->auth_secret));
+	MD5_Update(&md5_ctx, req->serv->secret, strlen(req->serv->secret));
 	MD5_Update(&md5_ctx, attr->val.octets, 16);
 	MD5_Final(md5, &md5_ctx);
 
@@ -74,7 +74,7 @@ static int decrypt_mppe_key(struct rad_req_t *req, struct rad_attr_t *attr, uint
 	}
 
 	MD5_Init(&md5_ctx);
-	MD5_Update(&md5_ctx, req->serv->auth_secret, strlen(req->serv->auth_secret));
+	MD5_Update(&md5_ctx, req->serv->secret, strlen(req->serv->secret));
 	MD5_Update(&md5_ctx, req->pack->buf + 4, 16);
 	MD5_Update(&md5_ctx, attr->val.octets, 2);
 	MD5_Final(md5, &md5_ctx);
@@ -90,7 +90,7 @@ static int decrypt_mppe_key(struct rad_req_t *req, struct rad_attr_t *attr, uint
 	}
 
 	MD5_Init(&md5_ctx);
-	MD5_Update(&md5_ctx, req->serv->auth_secret, strlen(req->serv->auth_secret));
+	MD5_Update(&md5_ctx, req->serv->secret, strlen(req->serv->secret));
 	MD5_Update(&md5_ctx, attr->val.octets + 2, 16);
 	MD5_Final(md5, &md5_ctx);
 
@@ -229,7 +229,7 @@ int rad_auth_pap(struct radius_pd_t *rpd, const char *username, va_list args)
 	if (!req)
 		return PWDB_DENIED;
 	
-	epasswd = encrypt_password(passwd, req->serv->auth_secret, req->RA, &epasswd_len);
+	epasswd = encrypt_password(passwd, req->serv->secret, req->RA, &epasswd_len);
 	if (!epasswd)
 		goto out;
 
