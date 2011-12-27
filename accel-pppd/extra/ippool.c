@@ -11,9 +11,20 @@
 
 #include "memdebug.h"
 
+struct ippool_t
+{
+	struct list_head entry;
+	char *name;
+	struct list_head gw_list;
+	struct list_head tunnel_list;
+	struct list_head items;
+	spinlock_t lock;
+};
+
 struct ippool_item_t
 {
 	struct list_head entry;
+	struct ippool_t *pool;
 	struct ipv4db_item_t it;
 };
 
@@ -23,14 +34,45 @@ struct ipaddr_t
 	in_addr_t addr;
 };
 
-static LIST_HEAD(gw_list);
-static LIST_HEAD(tunnel_list);
-static LIST_HEAD(ippool);
-static spinlock_t pool_lock = SPINLOCK_INITIALIZER;
 static struct ipdb_t ipdb;
 
 static in_addr_t conf_gw_ip_address;
 static int cnt;
+static LIST_HEAD(pool_list);
+static struct ippool_t *def_pool;
+
+struct ippool_t *create_pool(const char *name)
+{
+	struct ippool_t *p = malloc(sizeof(*p));
+
+	memset(p, 0, sizeof(*p));
+	if (name)
+		p->name = strdup(name);
+	INIT_LIST_HEAD(&p->gw_list);
+	INIT_LIST_HEAD(&p->tunnel_list);
+	INIT_LIST_HEAD(&p->items);
+	spinlock_init(&p->lock);
+
+	if (name)
+		list_add_tail(&p->entry, &pool_list);
+
+	return p;
+}
+
+struct ippool_t *find_pool(const char *name, int create)
+{
+	struct ippool_t *p;
+
+	list_for_each_entry(p, &pool_list, entry) {
+		if (!strcmp(p->name, name))
+			return p;
+	}
+
+	if (create)
+		return create_pool(name);
+	
+	return NULL;
+}
 
 static void parse_gw_ip_address(const char *val)
 {
@@ -98,11 +140,12 @@ static void add_range(struct list_head *list, const char *name)
 	uint32_t i,startip, endip;
 	struct ipaddr_t *ip;
 
-	if (parse1(name, &startip, &endip))
+	if (parse1(name, &startip, &endip)) {
 		if (parse2(name, &startip, &endip)) {
 			fprintf(stderr, "ippool: cann't parse '%s'\n", name);
 			_exit(EXIT_FAILURE);
 		}
+	}
 
 	for (i = startip; i <= endip; i++) {
 		ip = malloc(sizeof(*ip));
@@ -112,25 +155,25 @@ static void add_range(struct list_head *list, const char *name)
 	}
 }
 
-static void generate_pool(void)
+static void generate_pool(struct ippool_t *p)
 {
 	struct ippool_item_t *it;
 	struct ipaddr_t *addr = NULL;
 	struct ipaddr_t *peer_addr;
 
 	while (1) {
-		if (list_empty(&tunnel_list))
+		if (list_empty(&p->tunnel_list))
 			break;
 		else {
-			peer_addr = list_entry(tunnel_list.next, typeof(*peer_addr), entry);
+			peer_addr = list_entry(p->tunnel_list.next, typeof(*peer_addr), entry);
 			list_del(&peer_addr->entry);
 		}
 
 		if (!conf_gw_ip_address) {
-			if (list_empty(&gw_list))
+			if (list_empty(&p->gw_list))
 				break;
 			else {
-				addr = list_entry(gw_list.next, typeof(*addr), entry);
+				addr = list_entry(p->gw_list.next, typeof(*addr), entry);
 				list_del(&addr->entry);
 			}
 		}
@@ -141,6 +184,7 @@ static void generate_pool(void)
 			break;
 		}
 
+		it->pool = p;
 		it->it.owner = &ipdb;
 		if (conf_gw_ip_address)
 			it->it.addr = conf_gw_ip_address;
@@ -149,21 +193,30 @@ static void generate_pool(void)
 
 		it->it.peer_addr = peer_addr->addr;
 
-		list_add_tail(&it->entry, &ippool);
+		list_add_tail(&it->entry, &p->items);
 	}
 }
 
 static struct ipv4db_item_t *get_ip(struct ppp_t *ppp)
 {
 	struct ippool_item_t *it;
+	struct ippool_t *p;
 
-	spin_lock(&pool_lock);
-	if (!list_empty(&ippool)) {
-		it = list_entry(ippool.next, typeof(*it), entry);
+	if (ppp->ipv4_pool_name)
+		p = find_pool(ppp->ipv4_pool_name, 0);
+	else
+		p = def_pool;
+
+	if (!p)
+		return NULL;
+
+	spin_lock(&p->lock);
+	if (!list_empty(&p->items)) {
+		it = list_entry(p->items.next, typeof(*it), entry);
 		list_del(&it->entry);
 	} else
 		it = NULL;
-	spin_unlock(&pool_lock);
+	spin_unlock(&p->lock);
 
 	return it ? &it->it : NULL;
 }
@@ -172,9 +225,9 @@ static void put_ip(struct ppp_t *ppp, struct ipv4db_item_t *it)
 {
 	struct ippool_item_t *pit = container_of(it, typeof(*pit), it);
 
-	spin_lock(&pool_lock);
-	list_add_tail(&pit->entry, &ippool);
-	spin_unlock(&pool_lock);
+	spin_lock(&pit->pool->lock);
+	list_add_tail(&pit->entry, &pit->pool->items);
+	spin_unlock(&pit->pool->lock);
 }
 
 static struct ipdb_t ipdb = {
@@ -186,22 +239,38 @@ static void ippool_init(void)
 {
 	struct conf_sect_t *s = conf_get_section("ip-pool");
 	struct conf_option_t *opt;
+	struct ippool_t *p;
+	char *pool_name;
 	
 	if (!s)
 		return;
-	
+
+	def_pool = create_pool(NULL);
+
 	list_for_each_entry(opt, &s->items, entry) {
 		if (!strcmp(opt->name, "gw-ip-address"))
 			parse_gw_ip_address(opt->val);
-		else if (!strcmp(opt->name, "gw"))
-			add_range(&gw_list, opt->val);
-		else if (!strcmp(opt->name, "tunnel"))
-			add_range(&tunnel_list, opt->val);
-		else if (!opt->val)
-			add_range(&tunnel_list, opt->name);
+		else {
+			if (opt->val)
+				pool_name = strchr(opt->val, ',');
+			else
+				pool_name = strchr(opt->name, ',');
+
+			p = pool_name ? find_pool(pool_name + 1, 1) : def_pool;
+
+			if (!strcmp(opt->name, "gw"))
+				add_range(&p->gw_list, opt->val);
+			else if (!strcmp(opt->name, "tunnel"))
+				add_range(&p->tunnel_list, opt->val);
+			else if (!opt->val)
+				add_range(&p->tunnel_list, opt->name);
+		}
 	}
 
-	generate_pool();
+	generate_pool(def_pool);
+
+	list_for_each_entry(p, &pool_list, entry)
+		generate_pool(p);
 
 	ipdb_register(&ipdb);
 }

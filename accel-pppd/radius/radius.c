@@ -113,6 +113,12 @@ int rad_proc_attrs(struct rad_req_t *req)
 				a->addr = attr->val.ipv6prefix.prefix;
 				list_add_tail(&a->entry, &req->rpd->ipv6_dp.prefix_list);
 				break;
+			case Framed_Pool:
+				req->rpd->ppp->ipv4_pool_name = _strdup(attr->val.string);
+				break;
+			case Framed_IPv6_Pool:
+				req->rpd->ppp->ipv6_pool_name = _strdup(attr->val.string);
+				break;
 		}
 	}
 

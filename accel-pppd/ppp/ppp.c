@@ -239,6 +239,16 @@ static void destablish_ppp(struct ppp_t *ppp)
 		_free(ppp->username);
 		ppp->username = NULL;
 	}
+
+	if (ppp->ipv4_pool_name) {
+		_free(ppp->ipv4_pool_name);
+		ppp->ipv4_pool_name = NULL;
+	}
+	
+	if (ppp->ipv6_pool_name) {
+		_free(ppp->ipv6_pool_name);
+		ppp->ipv6_pool_name = NULL;
+	}
 	
 	if (ppp_shutdown && !ppp_stat.starting && !ppp_stat.active && !ppp_stat.finishing)
 		kill(getpid(), SIGTERM);

@@ -466,20 +466,20 @@ Specifies single IP address to be used as local address of ppp interfaces.
 .BI "gw=" range
 Specifies range of local address of ppp interfaces if form:
 .br
-.B x.x.x.x/mask
+.B x.x.x.x/mask[,pool_name]
 (for example 10.0.0.0/8)
 .br
-.B x.x.x.x-y
+.B x.x.x.x-y[,pool_name]
 (for example 10.0.0.1-254)
 .TP
 .BI "tunnel=" range
 Specifies range of remote address of ppp interfaces if form:
 .br
-.B x.x.x.x/mask
+.B x.x.x.x/mask[,pool_name]
 .br
-.B x.x.x.x-y
+.B x.x.x.x-y[,pool_name]
 .TP
-.BI "x.x.x.x/mask or x.x.x.x-y"
+.BI "x.x.x.x/mask[,pool_name] or x.x.x.x-y[,pool_name]"
 Also specifies range of remote address of ppp interfaces.
 .TP
 .SH [ipv6-pool]
