@@ -171,7 +171,6 @@ cont:
 
 		if (thread->ctx->need_free) {
 			log_debug2("- context %p removed\n", thread->ctx);
-			thread->ctx->ud->tpd = NULL;
 			mempool_free(thread->ctx);
 		}
 
