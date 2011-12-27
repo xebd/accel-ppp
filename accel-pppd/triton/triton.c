@@ -17,6 +17,7 @@
 #endif
 
 int thread_count = 2;
+int thread_count_max = 200;
 int max_events = 64;
 
 static spinlock_t threads_lock = SPINLOCK_INITIALIZER;
@@ -255,10 +256,8 @@ struct _triton_thread_t *create_thread()
 	pthread_mutex_init(&thread->sleep_lock, NULL);
 	pthread_cond_init(&thread->sleep_cond, NULL);
 	pthread_mutex_lock(&thread->sleep_lock);
-	if (pthread_create(&thread->thread, &attr, (void*(*)(void*))triton_thread, thread)) {
-		triton_log_error("pthread_create: %s", strerror(errno));
-		return NULL;
-	}
+	while (pthread_create(&thread->thread, &attr, (void*(*)(void*))triton_thread, thread))
+		sleep(1);
 
 	__sync_add_and_fetch(&triton_stat.thread_count, 1);
 	__sync_add_and_fetch(&triton_stat.thread_active, 1);
@@ -273,7 +272,8 @@ int triton_queue_ctx(struct _triton_context_t *ctx)
 		return 0;
 
 	spin_lock(&threads_lock);
-	if (list_empty(&sleep_threads) || need_config_reload || triton_stat.thread_active > thread_count) {
+	if (list_empty(&sleep_threads) || need_config_reload || triton_stat.thread_active > thread_count || 
+		(ctx->priority == 0 && triton_stat.thread_count > thread_count_max)) {
 		if (ctx->priority)
 			list_add(&ctx->entry2, &ctx_queue);
 		else
@@ -613,6 +613,10 @@ void __export triton_run()
 	opt = conf_get_opt("core", "thread-count");
 	if (opt && atoi(opt) > 0)
 		thread_count = atoi(opt);
+
+	opt = conf_get_opt("core", "thread-count-max");
+	if (opt && atoi(opt) > 0)
+		thread_count_max = atoi(opt);
 
 	for(i = 0; i < thread_count; i++) {
 		t = create_thread();

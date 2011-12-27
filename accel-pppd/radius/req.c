@@ -278,6 +278,7 @@ int rad_req_wait(struct rad_req_t *req, int timeout)
 	req->timeout.expire = rad_req_timeout;
 
 	triton_context_register(&req->ctx, req->rpd->ppp);
+	triton_context_set_priority(&req->ctx, 1);
 	triton_md_register_handler(&req->ctx, &req->hnd);
 	triton_md_enable_handler(&req->hnd, MD_MODE_READ);
 
