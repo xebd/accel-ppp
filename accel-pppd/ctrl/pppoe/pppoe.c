@@ -77,7 +77,7 @@ char *conf_ac_name;
 int conf_ifname_in_sid;
 char *conf_pado_delay;
 int conf_tr101 = 1;
-int conf_padi_limit = 1000;
+int conf_padi_limit = 0;
 
 static mempool_t conn_pool;
 static mempool_t pado_pool;
