@@ -69,6 +69,7 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	cli_sendv(client, "  active: %u\r\n", stat_active);
 	cli_sendv(client, "  delayed PADO: %u\r\n", stat_delayed_pado);
 	cli_sendv(client, "  recv PADI: %lu\r\n", stat_PADI_recv);
+	cli_sendv(client, "  drop PADI: %lu\r\n", stat_PADI_drop);
 	cli_sendv(client, "  sent PADO: %lu\r\n", stat_PADO_sent);
 	cli_sendv(client, "  recv PADR(dup): %lu(%lu)\r\n", stat_PADR_recv, stat_PADR_dup_recv);
 	cli_sendv(client, "  sent PADS: %lu\r\n", stat_PADS_sent);

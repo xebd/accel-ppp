@@ -64,24 +64,35 @@ struct delayed_pado_t
 	struct pppoe_tag *service_name;
 };
 
+struct padi_t
+{
+	struct list_head entry;
+	struct timespec ts;
+	uint8_t addr[ETH_ALEN];
+};
+
 int conf_verbose;
 char *conf_service_name;
 char *conf_ac_name;
 int conf_ifname_in_sid;
 char *conf_pado_delay;
 int conf_tr101 = 1;
+int conf_padi_limit = 1000;
 
 static mempool_t conn_pool;
 static mempool_t pado_pool;
+static mempool_t padi_pool;
 
 unsigned int stat_starting;
 unsigned int stat_active;
 unsigned int stat_delayed_pado;
 unsigned long stat_PADI_recv;
+unsigned long stat_PADI_drop;
 unsigned long stat_PADO_sent;
 unsigned long stat_PADR_recv;
 unsigned long stat_PADR_dup_recv;
 unsigned long stat_PADS_sent;
+unsigned int total_padi_cnt;
 
 pthread_rwlock_t serv_lock = PTHREAD_RWLOCK_INITIALIZER;
 LIST_HEAD(serv_list);
@@ -693,6 +704,51 @@ static void pado_timer(struct triton_timer_t *t)
 	free_delayed_pado(pado);
 }
 
+static int check_padi_limit(struct pppoe_serv_t *serv, uint8_t *addr)
+{
+	struct padi_t *padi;
+	struct timespec ts;
+
+	if (serv->padi_limit == 0)
+		return 0;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+
+	while (!list_empty(&serv->padi_list)) {
+		padi = list_entry(serv->padi_list.next, typeof(*padi), entry);
+		if ((ts.tv_sec - padi->ts.tv_sec) * 1000 + (ts.tv_nsec - padi->ts.tv_nsec) / 1000000 > 1000) {
+			list_del(&padi->entry);
+			mempool_free(padi);
+			__sync_sub_and_fetch(&total_padi_cnt, 1);
+		} else
+			break;
+	}
+	
+	if (serv->padi_cnt == serv->padi_limit)
+		return -1;
+	
+	if (conf_padi_limit && total_padi_cnt >= conf_padi_limit)
+		return -1;
+	
+	list_for_each_entry(padi, &serv->padi_list, entry) {
+		if (memcmp(padi->addr, addr, ETH_ALEN) == 0)
+			return -1;
+	}
+
+	padi = mempool_alloc(padi_pool);
+	if (!padi)
+		return -1;
+	
+	padi->ts = ts;
+	memcpy(padi->addr, addr, ETH_ALEN);
+	list_add_tail(&padi->entry, &serv->padi_list);
+	serv->padi_cnt++;
+
+	__sync_add_and_fetch(&total_padi_cnt, 1);
+
+	return 0;
+}
+
 static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 {
 	struct ethhdr *ethhdr = (struct ethhdr *)pack;
@@ -708,6 +764,11 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 
 	if (ppp_shutdown || pado_delay == -1)
 		return;
+
+	if (check_padi_limit(serv, ethhdr->h_source)) {
+		__sync_add_and_fetch(&stat_PADI_drop, 1);
+		return;
+	}
 
 	if (hdr->sid) {
 		log_warn("pppoe: discarding PADI packet (sid is not zero)\n");
@@ -1024,13 +1085,46 @@ static void pppoe_serv_close(struct triton_context_t *ctx)
 	pthread_mutex_unlock(&serv->lock);
 }
 
-void pppoe_server_start(const char *ifname, void *cli)
+static int parse_server(const char *opt, char **ifname, int *padi_limit)
+{
+	char *str = _strdup(opt);
+	char *ptr1, *ptr2, *endptr;
+
+	ptr1 = strchr(str, ',');
+	if (ptr1) {
+		ptr2 = strstr(ptr1, ",padi-limit=");
+		*padi_limit = strtol(ptr2 + 12, &endptr, 10);
+		if (*endptr != 0 && *endptr != ',')
+			goto out_err;
+
+		*ptr1 = 0;
+	}
+
+	*ifname = str;
+
+	return 0;
+
+out_err:
+	_free(str);
+	return -1;
+}
+
+void pppoe_server_start(const char *opt, void *cli)
 {
 	struct pppoe_serv_t *serv;
 	int sock;
-	int opt = 1;
+	int f = 1;
 	struct ifreq ifr;
 	struct sockaddr_ll sa;
+	char *ifname;
+	int padi_limit = conf_padi_limit;
+
+	if (parse_server(opt, &ifname, &padi_limit)) {
+		if (cli)
+			cli_sendv(cli, "failed to parse '%s'\r\n", opt);
+		else
+			log_error("pppoe: failed to parse '%s'\r\n", opt);
+	}
 
 	pthread_rwlock_rdlock(&serv_lock);
 	list_for_each_entry(serv, &serv_list, entry) {
@@ -1062,7 +1156,7 @@ void pppoe_server_start(const char *ifname, void *cli)
 		return;
 	}
 
-	if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &opt, sizeof(opt))) {
+	if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &f, sizeof(f))) {
 		if (cli)
 			cli_sendv(cli, "setsockopt(SO_BROADCAST): %s\r\n", strerror(errno));
 		log_emerg("pppoe: setsockopt(SO_BROADCAST): %s\n", strerror(errno));
@@ -1141,6 +1235,8 @@ void pppoe_server_start(const char *ifname, void *cli)
 
 	INIT_LIST_HEAD(&serv->conn_list);
 	INIT_LIST_HEAD(&serv->pado_list);
+	INIT_LIST_HEAD(&serv->padi_list);
+	serv->padi_limit = padi_limit;
 
 	triton_context_register(&serv->ctx, NULL);
 	triton_md_register_handler(&serv->ctx, &serv->hnd);
@@ -1298,6 +1394,10 @@ static void load_config(void)
 	opt = conf_get_opt("pppoe", "tr101");
 	if (opt)
 		conf_tr101 = atoi(opt);
+	
+	opt = conf_get_opt("pppoe", "padi-limit");
+	if (opt)
+		conf_padi_limit = atoi(opt);
 }
 
 static void pppoe_init(void)
@@ -1307,6 +1407,7 @@ static void pppoe_init(void)
 
 	conn_pool = mempool_create(sizeof(struct pppoe_conn_t));
 	pado_pool = mempool_create(sizeof(struct delayed_pado_t));
+	padi_pool = mempool_create(sizeof(struct padi_t));
 
 	if (!s) {
 		log_emerg("pppoe: no configuration, disabled...\n");

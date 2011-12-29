@@ -81,7 +81,12 @@ struct pppoe_serv_t
 
 	unsigned int conn_cnt;
 	struct list_head conn_list;
+
 	struct list_head pado_list;
+
+	struct list_head padi_list;
+	int padi_cnt;
+	int padi_limit;
 };
 
 extern int conf_verbose;
@@ -96,6 +101,7 @@ extern unsigned long stat_PADO_sent;
 extern unsigned long stat_PADR_recv;
 extern unsigned long stat_PADR_dup_recv;
 extern unsigned long stat_PADS_sent;
+extern unsigned long stat_PADI_drop;
 
 extern pthread_rwlock_t serv_lock;
 extern struct list_head serv_list;
