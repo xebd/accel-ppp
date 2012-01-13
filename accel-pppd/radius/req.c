@@ -14,8 +14,6 @@
 
 #include "memdebug.h"
 
-static int urandom_fd;
-
 static int rad_req_read(struct triton_md_handler_t *h);
 static void rad_req_timeout(struct triton_timer_t *t);
 
@@ -177,6 +175,8 @@ static int make_socket(struct rad_req_t *req)
 		log_ppp_error("radius:socket: %s\n", strerror(errno));
 		return -1;
 	}
+	
+	fcntl(req->hnd.fd, F_SETFD, fcntl(req->hnd.fd, F_GETFD) | FD_CLOEXEC);
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
@@ -298,11 +298,6 @@ int rad_req_wait(struct rad_req_t *req, int timeout)
 
 static void req_init(void)
 {
-	urandom_fd = open("/dev/urandom", O_RDONLY);
-	if (!urandom_fd) {
-		log_emerg("radius:req: open /dev/urandom: %s\n", strerror(errno));
-		_exit(EXIT_FAILURE);
-	}
 }
 
 DEFINE_INIT(50, req_init);

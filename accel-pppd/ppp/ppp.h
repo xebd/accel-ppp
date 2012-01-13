@@ -203,4 +203,5 @@ extern struct ppp_stat_t ppp_stat;
 
 extern int sock_fd; // internet socket for ioctls
 extern int sock6_fd; // internet socket for ioctls
+extern int urandom_fd;
 #endif

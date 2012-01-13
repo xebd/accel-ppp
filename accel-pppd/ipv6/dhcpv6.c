@@ -964,6 +964,8 @@ static void init(void)
 		log_error("dhcpv6: socket: %s\n", strerror(errno));
 		return;
 	}
+	
+	fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sin6_family = AF_INET6;

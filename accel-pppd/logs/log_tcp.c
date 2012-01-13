@@ -210,6 +210,8 @@ static void start_connect(struct tcp_target_t *t)
 		return;
 	}
 	
+	fcntl(t->hnd.fd, F_SETFD, fcntl(t->hnd.fd, F_GETFD) | FD_CLOEXEC);
+	
 	if (fcntl(t->hnd.fd, F_SETFL, O_NONBLOCK)) {
     log_emerg("log-tcp: failed to set nonblocking mode: %s\n", strerror(errno));
 		close(t->hnd.fd);

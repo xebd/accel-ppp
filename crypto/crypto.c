@@ -116,5 +116,6 @@ void DES_ecb_encrypt(const_DES_cblock *input, DES_cblock *output, DES_key_schedu
 static void __attribute__((constructor)) init(void)
 {
 	urandom_fd = open("/dev/urandom", O_RDONLY);
+	fcntl(urandom_fd, F_SETFD, fcntl(urandom_fd, F_GETFD) | FD_CLOEXEC);
 }
 #endif

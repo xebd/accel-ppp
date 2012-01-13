@@ -37,8 +37,6 @@ static int conf_interval = 0;
 static int conf_max_failure = 3;
 static int conf_any_login = 0;
 
-static int urandom_fd;
-
 struct chap_hdr_t
 {
 	uint16_t proto;
@@ -438,13 +436,6 @@ static void load_config(void)
 
 static void auth_chap_md5_init()
 {
-	urandom_fd=open("/dev/urandom", O_RDONLY);
-
-	if (urandom_fd < 0) {
-		log_emerg("chap-md5: failed to open /dev/urandom: %s\n", strerror(errno));
-		return;
-	}
-
 	load_config();
 
 	if (ppp_auth_register_handler(&chap))

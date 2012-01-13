@@ -262,6 +262,8 @@ static int ipv6_nd_start(struct ppp_t *ppp)
 		return -1;
 	}
 
+	fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
+
 	memset(&addr, 0, sizeof(addr));
 	addr.sin6_family = AF_INET6;
 	addr.sin6_addr.s6_addr32[0] = htons(0xfe80);

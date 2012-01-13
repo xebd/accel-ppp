@@ -271,6 +271,9 @@ static void init(void)
     log_emerg("radius:dm_coa: socket: %s\n", strerror(errno));
     return;
   }
+	
+	fcntl(serv.hnd.fd, F_SETFD, fcntl(serv.hnd.fd, F_GETFD) | FD_CLOEXEC);
+
   addr.sin_family = AF_INET;
   addr.sin_port = htons (conf_dm_coa_port);
 	if (conf_dm_coa_server)

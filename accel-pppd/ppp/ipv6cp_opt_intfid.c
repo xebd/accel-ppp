@@ -37,8 +37,6 @@ struct in6_ifreq {
         int             ifr6_ifindex; 
 };
 
-static int urandom_fd;
-
 static struct ipv6cp_option_t *ipaddr_init(struct ppp_ipv6cp_t *ipv6cp);
 static void ipaddr_free(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_option_t *opt);
 static int ipaddr_send_conf_req(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_option_t *opt, uint8_t *ptr);
@@ -393,8 +391,6 @@ static void init()
 {
 	if (sock6_fd < 0)
 		return;
-
-	urandom_fd = open("/dev/urandom", O_RDONLY);
 
 	ipv6cp_option_register(&ipaddr_opt_hnd);
 	load_config();

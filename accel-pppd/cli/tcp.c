@@ -300,6 +300,8 @@ static void start_server(const char *host, int port)
     log_emerg("cli: tcp: failed to create server socket: %s\n", strerror(errno));
     return;
   }
+	
+	fcntl(serv_hnd.fd, F_SETFD, fcntl(serv_hnd.fd, F_GETFD) | FD_CLOEXEC);
 
 	memset(&addr, 0, sizeof(addr));
   addr.sin_family = AF_INET;

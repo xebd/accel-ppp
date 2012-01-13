@@ -39,8 +39,6 @@ static char *conf_msg_failure = "E=691 R=0";
 static char *conf_msg_success = "Authentication successed";
 ;
 
-static int urandom_fd;
-
 struct chap_hdr_t
 {
 	uint16_t proto;
@@ -504,12 +502,6 @@ static void load_config(void)
 
 static void auth_mschap_v1_init()
 {
-	urandom_fd = open("/dev/urandom", O_RDONLY);
-	if (urandom_fd < 0) {
-		log_emerg("mschap-v1: failed to open /dev/urandom: %s\n", strerror(errno));
-		return;
-	}
-
 	load_config();
 
 	if (ppp_auth_register_handler(&chap))

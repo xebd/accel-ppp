@@ -33,6 +33,7 @@ __export LIST_HEAD(ppp_list);
 
 int __export sock_fd;
 int __export sock6_fd;
+int __export urandom_fd;
 
 int __export ppp_shutdown;
 
@@ -102,6 +103,8 @@ int __export establish_ppp(struct ppp_t *ppp)
 		log_ppp_error("open(chan) /dev/ppp: %s\n", strerror(errno));
 		return -1;
 	}
+	
+	fcntl(ppp->chan_fd, F_SETFD, fcntl(ppp->chan_fd, F_GETFD) | FD_CLOEXEC);
 
 	if (ioctl(ppp->chan_fd, PPPIOCATTCHAN, &ppp->chan_idx) < 0) {
 		log_ppp_error("ioctl(PPPIOCATTCHAN): %s\n", strerror(errno));
@@ -113,6 +116,8 @@ int __export establish_ppp(struct ppp_t *ppp)
 		log_ppp_error("open(unit) /dev/ppp: %s\n", strerror(errno));
 		goto exit_close_chan;
 	}
+	
+	fcntl(ppp->unit_fd, F_SETFD, fcntl(ppp->unit_fd, F_GETFD) | FD_CLOEXEC);
 
 	ppp->unit_idx = -1;
 	if (ioctl(ppp->unit_fd, PPPIOCNEWUNIT, &ppp->unit_idx) < 0) {
@@ -756,10 +761,22 @@ static void init(void)
 		perror("socket");
 		_exit(EXIT_FAILURE);
 	}
+	
+	fcntl(sock_fd, F_SETFD, fcntl(sock_fd, F_GETFD) | FD_CLOEXEC);
 
 	sock6_fd = socket(AF_INET6, SOCK_DGRAM, 0);
 	if (sock6_fd < 0)
 		log_warn("ppp: kernel doesn't support ipv6\n");
+	else
+		fcntl(sock6_fd, F_SETFD, fcntl(sock6_fd, F_GETFD) | FD_CLOEXEC);
+
+	urandom_fd = open("/dev/urandom", O_RDONLY);
+	if (urandom_fd < 0) {
+		log_emerg("failed to open /dev/urandom: %s\n", strerror(errno));
+		return;
+	}
+	
+	fcntl(urandom_fd, F_SETFD, fcntl(urandom_fd, F_GETFD) | FD_CLOEXEC);
 
 	opt = conf_get_opt("ppp", "seq-file");
 	if (!opt)

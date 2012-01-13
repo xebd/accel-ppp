@@ -244,6 +244,8 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 		mempool_free(conn);
 		return -1;
 	}
+	
+	fcntl(conn->hnd.fd, F_SETFD, fcntl(conn->hnd.fd, F_GETFD) | FD_CLOEXEC);
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
@@ -358,6 +360,8 @@ static int l2tp_connect(struct l2tp_conn_t *conn)
 		log_ppp_error("l2tp: socket(AF_PPPOX): %s\n", strerror(errno));
 		return -1;
 	}
+	
+	fcntl(conn->tunnel_fd, F_SETFD, fcntl(conn->tunnel_fd, F_GETFD) | FD_CLOEXEC);
 
 	conn->ppp.fd = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
 	if (!conn->ppp.fd) {
@@ -366,6 +370,8 @@ static int l2tp_connect(struct l2tp_conn_t *conn)
 		log_ppp_error("l2tp: socket(AF_PPPOX): %s\n", strerror(errno));
 		return -1;
 	}
+	
+	fcntl(conn->ppp.fd, F_SETFD, fcntl(conn->ppp.fd, F_GETFD) | FD_CLOEXEC);
 
 	if (connect(conn->tunnel_fd, (struct sockaddr *)&pppox_addr, sizeof(pppox_addr)) < 0) {
 		log_ppp_error("l2tp: connect(tunnel): %s\n", strerror(errno));
@@ -1043,6 +1049,8 @@ static void start_udp_server(void)
 		log_emerg("l2tp: socket: %s\n", strerror(errno));
 		return;
 	}
+	
+	fcntl(udp_serv.hnd.fd, F_SETFD, fcntl(udp_serv.hnd.fd, F_GETFD) | FD_CLOEXEC);
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;

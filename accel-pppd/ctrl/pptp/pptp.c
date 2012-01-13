@@ -298,6 +298,9 @@ static int pptp_out_call_rqst(struct pptp_conn_t *conn)
 		log_ppp_error("failed to create PPTP socket (%s)\n", strerror(errno));
 		return -1;
 	}
+
+	fcntl(pptp_sock, F_SETFD, fcntl(pptp_sock, F_GETFD) | FD_CLOEXEC);
+
 	if (bind(pptp_sock, (struct sockaddr*)&src_addr, sizeof(src_addr))) {
 		log_ppp_error("failed to bind PPTP socket (%s)\n", strerror(errno));
 		close(pptp_sock);
@@ -741,7 +744,10 @@ static void pptp_init(void)
     log_emerg("pptp: failed to create server socket: %s\n", strerror(errno));
     return;
   }
-  addr.sin_family = AF_INET;
+	
+	fcntl(serv.hnd.fd, F_SETFD, fcntl(serv.hnd.fd, F_GETFD) | FD_CLOEXEC);
+  
+	addr.sin_family = AF_INET;
   addr.sin_port = htons(PPTP_PORT);
 
 	opt = conf_get_opt("pptp", "bind");

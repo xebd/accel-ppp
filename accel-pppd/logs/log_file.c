@@ -106,6 +106,8 @@ static int log_file_open(struct log_file_t *lf, const char *fname)
 		return -1;
 	} 
 	
+	fcntl(lf->fd, F_SETFD, fcntl(lf->fd, F_GETFD) | FD_CLOEXEC);
+	
 	lf->offset = lseek(lf->fd, 0, SEEK_END);
 	
 	return 0;
@@ -412,6 +414,7 @@ static void fail_reopen(void)
 		log_emerg("log_file: open '%s': %s\n", fname, strerror(errno));
 		return;
 	}
+	fcntl(fd, F_SETFD, fcntl(fd, F_GETFD) | FD_CLOEXEC);
 	fail_log_file->new_fd = fd;
 }
 
@@ -424,6 +427,7 @@ static void general_reopen(void)
 		log_emerg("log_file: open '%s': %s\n", fname, strerror(errno));
 		return;
 	}
+	fcntl(fd, F_SETFD, fcntl(fd, F_GETFD) | FD_CLOEXEC);
 	log_file->new_fd = fd;
 }
 

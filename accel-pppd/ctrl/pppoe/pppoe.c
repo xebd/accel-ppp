@@ -305,6 +305,8 @@ static void connect_channel(struct pppoe_conn_t *conn)
 		log_error("pppoe: socket(PPPOX): %s\n", strerror(errno));
 		goto out_err;
 	}
+	
+	fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
 
 	memset(&sp, 0, sizeof(sp));
 
@@ -1155,6 +1157,8 @@ void pppoe_server_start(const char *opt, void *cli)
 		_free(serv);
 		return;
 	}
+	
+	fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
 
 	if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &f, sizeof(f))) {
 		if (cli)
@@ -1322,22 +1326,12 @@ void __export pppoe_get_stat(unsigned int **starting, unsigned int **active)
 
 static int init_secret(struct pppoe_serv_t *serv)
 {
-	int fd;
 	DES_cblock key;
 
-	fd = open("/dev/urandom", O_RDONLY);
-	if (fd < 0) {
-		log_emerg("pppoe: cann't open /dev/urandom: %s\n", strerror(errno));
-		return -1;
-	}
-
-	if (read(fd, serv->secret, SECRET_LENGTH) < 0) {
+	if (read(urandom_fd, serv->secret, SECRET_LENGTH) < 0) {
 		log_emerg("pppoe: faild to read /dev/urandom\n", strerror(errno));
-		close(fd);
 		return -1;
 	}
-
-	close(fd);
 
 	memset(key, 0, sizeof(key));
 	DES_random_key(&key);
