@@ -168,11 +168,11 @@ cont:
 			goto cont;
 		}
 		thread->ctx->thread = NULL;
+
 		spin_unlock(&thread->ctx->lock);
 
 		if (thread->ctx->need_free) {
 			log_debug2("- context %p removed\n", thread->ctx);
-			thread->ctx->ud->tpd = NULL;
 			mempool_free(thread->ctx);
 		}
 
@@ -349,20 +349,25 @@ void __export triton_context_unregister(struct triton_context_t *ud)
 		}
 		abort();
 	}
+
 	if (!list_empty(&ctx->pending_handlers)) {
 		triton_log_error("BUG:ctx:triton_unregister_ctx: pending_handlers is not empty");
 		abort();
 	}
+
 	if (!list_empty(&ctx->timers)) {
 		triton_log_error("BUG:ctx:triton_unregister_ctx: timers is not empty");
 		abort();
 	}
+
 	if (!list_empty(&ctx->pending_timers)) {
 		triton_log_error("BUG:ctx:triton_unregister_ctx: pending_timers is not empty");
 		abort();
 	}
 
 	ctx->need_free = 1;
+	ud->tpd = NULL;
+
 	spin_lock(&ctx_list_lock);
 	list_del(&ctx->entry);
 	if (__sync_sub_and_fetch(&triton_stat.context_count, 1) == 1) {

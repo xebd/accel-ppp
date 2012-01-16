@@ -163,6 +163,8 @@ void __export log_debug(const char *fmt,...)
 void __export log_debug2(const char *fmt,...)
 {
 	va_list ap;
+	if (!debug_file)
+		return;
 	va_start(ap, fmt);
 	vfprintf(debug_file, fmt, ap);
 	va_end(ap);
