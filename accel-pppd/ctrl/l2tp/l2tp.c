@@ -44,12 +44,12 @@
 #define STATE_CLOSE      0
 
 int conf_verbose = 0;
-int conf_timeout = 60;
-int conf_rtimeout = 5;
-int conf_retransmit = 5;
-int conf_hello_interval = 60;
-int conf_dir300_quirk = 0;
-char *conf_host_name = NULL;
+static int conf_timeout = 60;
+static int conf_rtimeout = 5;
+static int conf_retransmit = 5;
+static int conf_hello_interval = 60;
+static int conf_dir300_quirk = 0;
+static const char *conf_host_name = "accel-ppp";
 
 static unsigned int stat_active;
 static unsigned int stat_starting;
@@ -512,11 +512,13 @@ static void l2tp_send_SCCRP(struct l2tp_conn_t *conn)
 	
 	if (l2tp_packet_add_int16(pack, Protocol_Version, L2TP_V2_PROTOCOL_VERSION, 1))
 		goto out_err;
-	if (conf_host_name && l2tp_packet_add_string(pack, Host_Name, conf_host_name, 1))
+	if (l2tp_packet_add_string(pack, Host_Name, conf_host_name, 1))
 		goto out_err;
 	if (l2tp_packet_add_int32(pack, Framing_Capabilities, conn->framing_cap, 1))
 		goto out_err;
 	if (l2tp_packet_add_int16(pack, Assigned_Tunnel_ID, conn->tid, 1))
+		goto out_err;
+	if (l2tp_packet_add_string(pack, Vendor_Name, "accel-ppp", 0))
 		goto out_err;
 
 	if (l2tp_send(conn, pack, 0))
@@ -1108,7 +1110,7 @@ void __export l2tp_get_stat(unsigned int **starting, unsigned int **active)
 
 static void load_config(void)
 {
-	char *opt;
+	const char *opt;
 
 	opt = conf_get_opt("l2tp", "verbose");
 	if (opt && atoi(opt) > 0)
@@ -1130,13 +1132,11 @@ static void load_config(void)
 	if (opt && atoi(opt) > 0)
 		conf_retransmit = atoi(opt);
 
-	if (conf_host_name)
-		_free(conf_host_name);
 	opt = conf_get_opt("l2tp", "host-name");
 	if (opt)
-		conf_host_name = _strdup(opt);
+		conf_host_name = opt;
 	else
-		conf_host_name = NULL;
+		conf_host_name = "accel-ppp";
 	
 	opt = conf_get_opt("l2tp", "dir300_quirk");
 	if (opt)
