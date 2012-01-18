@@ -24,6 +24,8 @@
 #include "iprange.h"
 #include "cli.h"
 
+#include "connlimit.h"
+
 #include "memdebug.h"
 
 #include "l2tp.h"
@@ -621,6 +623,9 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 	struct l2tp_attr_t *router_id = NULL;
 	
 	if (ppp_shutdown)
+		return 0;
+	
+	if (triton_module_loaded("connlimit") && connlimit_check(cl_key_from_ipv4(pack->addr.sin_addr.s_addr)))
 		return 0;
 
 	list_for_each_entry(attr, &pack->attrs, entry) {

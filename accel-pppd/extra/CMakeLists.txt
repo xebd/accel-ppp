@@ -5,8 +5,9 @@ ADD_LIBRARY(sigchld SHARED sigchld.c)
 ADD_LIBRARY(chap-secrets SHARED chap-secrets.c)
 ADD_LIBRARY(logwtmp SHARED logwtmp.c)
 TARGET_LINK_LIBRARIES(logwtmp util)
+ADD_LIBRARY(connlimit SHARED connlimit.c)
 
-INSTALL(TARGETS pppd_compat ippool ipv6pool sigchld chap-secrets logwtmp
+INSTALL(TARGETS pppd_compat ippool ipv6pool sigchld chap-secrets logwtmp connlimit
 	LIBRARY DESTINATION lib/accel-ppp
 )
 

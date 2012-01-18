@@ -23,6 +23,8 @@
 #include "utils.h"
 #include "cli.h"
 
+#include "connlimit.h"
+
 #include "memdebug.h"
 
 #define STATE_IDLE 0
@@ -627,6 +629,11 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		if (ppp_shutdown) {
 			close(sock);
 			continue;
+		}
+
+		if (triton_module_loaded("connlimit") && connlimit_check(cl_key_from_ipv4(addr.sin_addr.s_addr))) {
+			close(sock);
+			return 0;
 		}
 
 		log_info2("pptp: new connection from %s\n", inet_ntoa(addr.sin_addr));

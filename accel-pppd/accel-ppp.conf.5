@@ -515,3 +515,15 @@ fc00:0:1:ffff::/64
 .BI "delegate=" ipv6prefix/mask,prefix_len
 Specifies range of prefixes to delegate to clients through DHCPv6 prefix delegation (rfc3633).
 Format is same as described above.
+.TP
+.SH [connlimit]
+.br
+This module limits connection rate from single source.
+.TP
+.BI "limit=" count/time
+Specifies acceptable rate of connections, for example limit=1/s or limit=10/m.
+.TP
+.BI "burst=" count
+.TP
+.BI "timeout=" n
+Specifies timeout in seconds after which module doesn't check rate until burst number of connections will be arrived.

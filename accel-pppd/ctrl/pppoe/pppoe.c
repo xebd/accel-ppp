@@ -26,6 +26,8 @@
 #include "radius.h"
 #endif
 
+#include "connlimit.h"
+
 #include "pppoe.h"
 
 #include "memdebug.h"
@@ -712,7 +714,7 @@ static int check_padi_limit(struct pppoe_serv_t *serv, uint8_t *addr)
 	struct timespec ts;
 
 	if (serv->padi_limit == 0)
-		return 0;
+		goto connlimit_check;
 
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 
@@ -747,6 +749,10 @@ static int check_padi_limit(struct pppoe_serv_t *serv, uint8_t *addr)
 	serv->padi_cnt++;
 
 	__sync_add_and_fetch(&total_padi_cnt, 1);
+
+connlimit_check:
+	if (triton_module_loaded("connlimit") && connlimit_check(cl_key_from_mac(addr)))
+		return -1;
 
 	return 0;
 }
