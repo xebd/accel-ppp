@@ -49,6 +49,8 @@ int __export connlimit_check(uint64_t key)
 				it->ts = ts;
 				list_move(&it->entry, &items);
 				it->count = 0;
+				r = 0;
+				break;
 			}
 			it->count++;
 			if (it->count >= conf_burst) {
