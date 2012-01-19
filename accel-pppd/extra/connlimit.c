@@ -45,6 +45,11 @@ int __export connlimit_check(uint64_t key)
 		d = (ts.tv_sec - it->ts.tv_sec) * 1000 + (ts.tv_nsec - it->ts.tv_nsec) / 1000000;
 
 		if (it->key == key) {
+			if (d >= conf_burst_timeout) {
+				it->ts = ts;
+				list_move(&it->entry, &items);
+				it->count = 0;
+			}
 			it->count++;
 			if (it->count >= conf_burst) {
 				if (d >= conf_limit_timeout) {
@@ -53,13 +58,8 @@ int __export connlimit_check(uint64_t key)
 					r = 0;
 				} else
 					r = -1;
-			} else {
-				if (d >= conf_burst_timeout) {
-					it->ts = ts;
-					list_move(&it->entry, &items);
-				}
+			} else
 				r = 0;
-			}
 			break;
 		}
 
