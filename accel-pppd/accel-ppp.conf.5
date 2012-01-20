@@ -118,13 +118,13 @@ If this option is
 .B deny
 then accel-ppp will deny second session authorization.
 .TP
-.BI "mppe=" require|prefere|deny
+.BI "mppe=" require|prefer|deny
 Specifies mppe negotioation preference.
 .br
 .B require
 - ask client for mppe, if it rejects drop connection
 .br
-.B prefere
+.B prefer
 - ask client for mppe, if it rejects don't fail.
 .br
 .B deny
@@ -133,7 +133,7 @@ Specifies mppe negotioation preference.
 Default behavior - don't ask client for mppe, but allow it if client wants.
 Please note that RADIUS may override this option by MS-MPPE-Encryption-Policy attribute.
 .TP
-.BI "ipv4=" deny|allow|prefere|require
+.BI "ipv4=" deny|allow|prefer|require
 Specify IPv4 (IPCP) negotioation algorithm:
 .br
 .B deny
@@ -142,13 +142,13 @@ Specify IPv4 (IPCP) negotioation algorithm:
 .B allow
 - negotiate IPv4 only if client requests.
 .br
-.B prefere
+.B prefer
 - ask client for IPv4 negotiation, don't fail if he rejects.
 .br
 .B require
 - require IPv4 negotiation.
 .TP
-.BI "ipv6=" deny|allow|prefere|require
+.BI "ipv6=" deny|allow|prefer|require
 Parameters are same as above.
 .TP
 .BI "ipv6-intf-id=" x:x:x:x|random

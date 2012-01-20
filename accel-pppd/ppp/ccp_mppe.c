@@ -308,7 +308,7 @@ static void load_config(void)
 	if (opt) {
 		if (!strcmp(opt,"require"))
 			conf_mppe = 2;
-		else if (!strcmp(opt,"prefere"))
+		else if (!strcmp(opt,"prefer") || !strcmp(opt,"prefere"))
 			conf_mppe = 1;
 		else if (!strcmp(opt,"deny"))
 			conf_mppe = 0;

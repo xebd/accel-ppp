@@ -811,7 +811,7 @@ static void load_config(void)
 			conf_ipv4 = IPV4_DENY;
 		else if (!strcmp(opt, "allow"))
 			conf_ipv4 = IPV4_ALLOW;
-		else if (!strcmp(opt, "prefere"))
+		else if (!strcmp(opt, "prefer") || !strcmp(opt, "prefere"))
 			conf_ipv4 = IPV4_PREFERE;
 		else if (!strcmp(opt, "require"))
 			conf_ipv4 = IPV4_REQUIRE;

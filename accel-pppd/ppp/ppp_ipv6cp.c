@@ -811,7 +811,7 @@ static void load_config(void)
 			conf_ipv6 = IPV6_DENY;
 		else if (!strcmp(opt, "allow"))
 			conf_ipv6 = IPV6_ALLOW;
-		else if (!strcmp(opt, "prefere"))
+		else if (!strcmp(opt, "prefer") || !strcmp(opt, "prefere"))
 			conf_ipv6 = IPV6_PREFERE;
 		else if (!strcmp(opt, "require"))
 			conf_ipv6 = IPV6_REQUIRE;
