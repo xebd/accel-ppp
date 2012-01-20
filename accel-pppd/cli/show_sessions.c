@@ -148,7 +148,7 @@ static int show_ses_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 				return CLI_CMD_OK;
 			}
 		} else if (!strcmp(f[i], "match")) {
-			if (i == f_cnt - 2)
+			if (i == f_cnt - 1)
 				return CLI_CMD_SYNTAX;
 			match_key = find_column(f[++i]);
 			if (!match_key) {
