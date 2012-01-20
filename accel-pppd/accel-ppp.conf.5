@@ -166,16 +166,12 @@ Specify peer interface identifier for IPv6.
 .BI "ipv6-accept-peer-intf-id=" 0|1
 Specify whether to accept peer's interface identifier.
 .TP
-.SH [lcp]
-.br
-PPP LCP module configuration
-.TP
-.BI "echo-interval=" n
+.BI "lcp-echo-interval=" n
 If this option is given and greater then 0 then lcp module will send echo-request every 
 .B n
 seconds.
 .TP
-.BI "echo-failure=" n
+.BI "lcp-echo-failure=" n
 Specifies maximum number of echo-requests may be sent without valid echo-reply, if exceeds connection will be terminated.
 .TP
 .SH [dns]

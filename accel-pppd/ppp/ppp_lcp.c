@@ -857,11 +857,19 @@ static void load_config(void)
 	char *opt;
 
 	opt = conf_get_opt("lcp", "echo-interval");
-	if (opt && atoi(opt) > 0)
+	if (opt && atoi(opt) >= 0)
 		conf_echo_interval = atoi(opt);
 
 	opt = conf_get_opt("lcp", "echo-failure");
-	if (opt && atoi(opt) > 0)
+	if (opt && atoi(opt) >= 0)
+		conf_echo_failure = atoi(opt);
+
+	opt = conf_get_opt("ppp", "lcp-echo-interval");
+	if (opt && atoi(opt) >= 0)
+		conf_echo_interval = atoi(opt);
+
+	opt = conf_get_opt("ppp", "lcp-echo-failure");
+	if (opt && atoi(opt) >= 0)
 		conf_echo_failure = atoi(opt);
 }
 
