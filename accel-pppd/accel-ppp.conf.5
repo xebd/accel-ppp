@@ -523,3 +523,41 @@ Specifies acceptable rate of connections, for example limit=1/s or limit=10/m.
 .TP
 .BI "timeout=" n
 Specifies timeout in seconds after which module doesn't check rate until burst number of connections will be arrived.
+.TP
+.SH [shaper]
+.br
+This module controls shaper.
+.TP
+.BI "attr=" name
+Specifies which radius attribute contains rate information. Default - Filter-ID.
+.TP
+.BI "attr-up=" name
+.TP
+.BI "attr-down=" name
+Specifies which radius attributes contains rate information for upstream and downstream respectively.
+.TP
+.BI "burst-factor=" n
+Burst will be calculated as rate multyply burst-factor.
+.TP
+.BI "up-burst-factor=" n
+.TP
+.BI "down-burst-factor=" n
+Specifies burst factor for upstream and downstream respectively.
+.TP
+.BI "latency=" n
+Specifies latency (in miliseconds) parameter of tbf qdisc.
+.TP
+.BI "mpu=" n
+Specifies mpu parameter of tbf qdisc and policer.
+.TP
+.BI "r2q=" n
+Specifies r2q parameter of root htb qdisc.
+.TP
+.BI "quantum=" n
+Specifies quantum parameter of htb classes.
+.TP
+.BI "up-limiter=" police|htb
+Specifes upstream rate limiting method.
+.TP
+.BI "down-limiter=" tbf|htb
+Specifies downstream rate limiting method.
