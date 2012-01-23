@@ -479,6 +479,8 @@ int init_ifb(const char *name)
 		.quantum = conf_r2q,
 		.qdisc = qdisc_htb_root,
 	};
+
+	system("modprobe ifb");
 	
 	memset(&ifr, 0, sizeof(ifr));
 	strcpy(ifr.ifr_name, name);
