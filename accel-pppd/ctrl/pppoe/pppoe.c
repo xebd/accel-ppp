@@ -1405,6 +1405,8 @@ static void pppoe_init(void)
 	struct conf_sect_t *s = conf_get_section("pppoe");
 	struct conf_option_t *opt;
 
+	system("modprobe pppoe");
+
 	conn_pool = mempool_create(sizeof(struct pppoe_conn_t));
 	pado_pool = mempool_create(sizeof(struct delayed_pado_t));
 	padi_pool = mempool_create(sizeof(struct padi_t));

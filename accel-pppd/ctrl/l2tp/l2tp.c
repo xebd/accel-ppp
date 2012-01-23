@@ -1150,6 +1150,8 @@ static void load_config(void)
 
 static void l2tp_init(void)
 {
+	system("modprobe pppol2tp &> /dev/null || modprobe l2tp_ppp &> /dev/null");
+	
 	l2tp_conn = malloc(L2TP_MAX_TID * sizeof(void *));
 	memset(l2tp_conn, 0, L2TP_MAX_TID * sizeof(void *));
 

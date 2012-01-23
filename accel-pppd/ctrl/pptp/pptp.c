@@ -745,7 +745,9 @@ static void pptp_init(void)
 {
 	struct sockaddr_in addr;
 	char *opt;
-	
+
+	system("modprobe pptp");
+
 	serv.hnd.fd = socket(PF_INET, SOCK_STREAM, 0);
   if (serv.hnd.fd < 0) {
     log_emerg("pptp: failed to create server socket: %s\n", strerror(errno));
