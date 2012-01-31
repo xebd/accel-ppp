@@ -510,4 +510,4 @@ static void auth_mschap_v1_init()
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 
-DEFINE_INIT(5, auth_mschap_v1_init);
+DEFINE_INIT(4, auth_mschap_v1_init);

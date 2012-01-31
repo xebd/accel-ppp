@@ -288,4 +288,4 @@ static void auth_pap_init()
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 
-DEFINE_INIT(7, auth_pap_init);
+DEFINE_INIT(4, auth_pap_init);
