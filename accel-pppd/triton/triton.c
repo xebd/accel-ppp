@@ -89,6 +89,7 @@ static void* triton_thread(struct _triton_thread_t *thread)
 	sigfillset(&set);
 	sigdelset(&set, SIGKILL);
 	sigdelset(&set, SIGSTOP);
+	sigdelset(&set, SIGSEGV);
 	pthread_sigmask(SIG_BLOCK, &set, NULL);
 
 	sigemptyset(&set);
@@ -539,7 +540,7 @@ static void ru_update(struct triton_timer_t *t)
 void __export triton_register_init(int order, void (*func)(void))
 {
 	struct _triton_init_t *i1, *i = _malloc(sizeof(*i));
-	struct list_head *p = init_list.prev;
+	struct list_head *p = init_list.next;
 
 
 	i->order = order;
@@ -547,11 +548,11 @@ void __export triton_register_init(int order, void (*func)(void))
 
 	while (p != &init_list) {
 		i1 = list_entry(p, typeof(*i1), entry);
-		if (order > i1->order)
+		if (order < i1->order)
 			break;
-		p = p->prev;
+		p = p->next;
 	}
-	list_add(&i->entry, p);
+	list_add_tail(&i->entry, p);
 }
 
 int __export triton_init(const char *conf_file)
