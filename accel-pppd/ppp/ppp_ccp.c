@@ -728,6 +728,11 @@ static void ccp_recv_proto_rej(struct ppp_handler_t *h)
 {
 	struct ppp_ccp_t *ccp = container_of(h, typeof(*ccp), hnd);
 
+	if (!ccp->ld.passive) {
+		ppp_terminate(ccp->ppp, TERM_USER_ERROR, 0);
+		return;
+	}
+
 	if (ccp->fsm.fsm_state == FSM_Initial || ccp->fsm.fsm_state == FSM_Closed)
 		return;
 	
