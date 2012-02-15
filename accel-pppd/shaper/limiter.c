@@ -440,7 +440,7 @@ int install_limiter(struct ppp_t *ppp, int down_speed, int down_burst, int up_sp
 	if (conf_up_limiter == LIM_POLICE)
 		r = install_police(&rth, ppp->ifindex, up_speed, up_burst);
 	else
-		r = install_htb_ifb(&rth, ppp->ifindex, ppp->unit_idx + 1, down_speed, down_burst);
+		r = install_htb_ifb(&rth, ppp->ifindex, ppp->unit_idx + 1, up_speed, up_burst);
 	
 	rtnl_close(&rth);
 
