@@ -24,12 +24,6 @@
 #define TCA_BUF_MAX 64*1024
 #define MAX_MSG 16384
 
-static __thread struct {
-		struct nlmsghdr 	n;
-		struct tcmsg 		t;
-		char buf[TCA_BUF_MAX];
-} req;
-
 struct qdisc_opt
 {
 	char *kind;
@@ -129,6 +123,12 @@ static int qdisc_htb_class(struct qdisc_opt *qopt, struct nlmsghdr *n)
 
 static int tc_qdisc_modify(struct rtnl_handle *rth, int ifindex, int cmd, unsigned flags, struct qdisc_opt *opt)
 {
+	struct {
+			struct nlmsghdr 	n;
+			struct tcmsg 		t;
+			char buf[TCA_BUF_MAX];
+	} req;
+
 	memset(&req, 0, sizeof(req));
 
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct tcmsg));
@@ -209,6 +209,12 @@ static int install_police(struct rtnl_handle *rth, int ifindex, int rate, int bu
 	int mtu = 0, flowid = 1;
 	unsigned int linklayer  = LINKLAYER_ETHERNET; /* Assume ethernet */
 
+	struct {
+			struct nlmsghdr 	n;
+			struct tcmsg 		t;
+			char buf[TCA_BUF_MAX];
+	} req;
+
 	struct qdisc_opt opt1 = {
 		.kind = "ingress",
 		.handle = 0xffff0000,
@@ -286,6 +292,12 @@ static int install_police(struct rtnl_handle *rth, int ifindex, int rate, int bu
 static int install_htb_ifb(struct rtnl_handle *rth, int ifindex, __u32 priority, int rate, int burst)
 {
 	struct rtattr *tail, *tail1, *tail2, *tail3;
+
+	struct {
+			struct nlmsghdr 	n;
+			struct tcmsg 		t;
+			char buf[TCA_BUF_MAX];
+	} req;
 
 	struct qdisc_opt opt1 = {
 		.kind = "htb",
@@ -471,6 +483,12 @@ int init_ifb(const char *name)
 	struct rtattr *tail;
 	struct ifreq ifr;
 	int r;
+
+	struct {
+			struct nlmsghdr 	n;
+			struct tcmsg 		t;
+			char buf[TCA_BUF_MAX];
+	} req;
 	
 	struct qdisc_opt opt = {
 		.kind = "htb",
