@@ -10,11 +10,7 @@
 #include "triton_p.h"
 #include "memdebug.h"
 
-#if __WORDSIZE == 32
-#define WORKER_STACK_SIZE 64*1024
-#else
-#define WORKER_STACK_SIZE 128*1024
-#endif
+#define WORKER_STACK_SIZE 1024*1024
 
 int thread_count = 2;
 int thread_count_max = 200;
