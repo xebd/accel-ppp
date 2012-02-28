@@ -110,7 +110,7 @@ static int qdisc_htb_class(struct qdisc_opt *qopt, struct nlmsghdr *n)
 		log_ppp_error("shaper: failed to calculate ceil rate table.\n");
 		return -1;
 	}
-	opt.cbuffer = tc_calc_xmittime(opt.ceil.rate, qopt->buffer);
+	opt.cbuffer = tc_calc_xmittime(opt.ceil.rate, conf_cburst);
 	
 	tail = NLMSG_TAIL(n);
 	addattr_l(n, 1024, TCA_OPTIONS, NULL, 0);

@@ -14,6 +14,7 @@ extern double conf_latency;
 extern int conf_mpu;
 extern int conf_quantum;
 extern int conf_r2q;
+extern int conf_cburst;
 extern int conf_ifb_ifindex;
 
 int install_limiter(struct ppp_t *ppp, int down_speed, int down_burst, int up_speed, int up_burst);
