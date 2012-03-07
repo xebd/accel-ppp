@@ -87,6 +87,7 @@ struct pppoe_serv_t
 	struct list_head padi_list;
 	int padi_cnt;
 	int padi_limit;
+	time_t last_padi_limit_warn;
 };
 
 extern int conf_verbose;
