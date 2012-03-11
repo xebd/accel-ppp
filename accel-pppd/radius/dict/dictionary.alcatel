@@ -1,0 +1,17 @@
+VENDOR          Alcatel-IPD               6527
+
+BEGIN-VENDOR    Alcatel-IPD
+
+ATTRIBUTE Alc-Primary-Dns                    9      ipaddr
+ATTRIBUTE Alc-Secondary-Dns                 10      ipaddr
+ATTRIBUTE Alc-Subsc-ID-Str                  11      string
+ATTRIBUTE Alc-Subsc-Prof-Str                12      string
+ATTRIBUTE Alc-SLA-Prof-Str                  13      string
+ATTRIBUTE Alc-Force-Renew                   14      string  
+ATTRIBUTE Alc-Create-Host                   15      string 
+ATTRIBUTE Alc-ANCP-Str                      16      string
+ATTRIBUTE Alc-Retail-Serv-Id                17      integer
+ATTRIBUTE Alc-Default-Router                18      ipaddr
+
+
+END-VENDOR	Alcatel-IPD
