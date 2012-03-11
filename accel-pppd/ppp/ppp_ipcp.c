@@ -91,6 +91,9 @@ static struct ppp_layer_data_t *ipcp_layer_init(struct ppp_t *ppp)
 	
 	ppp_register_unit_handler(ppp, &ipcp->hnd);
 
+	INIT_LIST_HEAD(&ipcp->options);
+	ipcp_options_init(ipcp);
+
 	ipcp->fsm.proto = PPP_IPCP;
 	ppp_fsm_init(&ipcp->fsm);
 
@@ -104,7 +107,6 @@ static struct ppp_layer_data_t *ipcp_layer_init(struct ppp_t *ppp)
 	ipcp->fsm.send_term_req = send_term_req;
 	ipcp->fsm.send_term_ack = send_term_ack;
 
-	INIT_LIST_HEAD(&ipcp->options);
 	INIT_LIST_HEAD(&ipcp->ropt_list);
 
 	ipcp->ld.passive = conf_ipv4 == IPV4_ALLOW || conf_ipv4 == IPV4_DENY;
@@ -127,8 +129,6 @@ int ipcp_layer_start(struct ppp_layer_data_t *ld)
 	struct ppp_ipcp_t *ipcp = container_of(ld, typeof(*ipcp), ld);
 	
 	log_ppp_debug("ipcp_layer_start\n");
-
-	ipcp_options_init(ipcp);
 
 	ipcp->starting = 1;
 

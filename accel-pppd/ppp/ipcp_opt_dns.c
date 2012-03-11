@@ -37,6 +37,7 @@ static struct ipcp_option_handler_t dns1_opt_hnd=
 	.free=dns_free,
 	.print=dns1_print,
 };
+
 static struct ipcp_option_handler_t dns2_opt_hnd=
 {
 	.init=dns2_init,
@@ -139,6 +140,17 @@ static void dns2_print(void (*print)(const char *fmt,...),struct ipcp_option_t *
 	print("<dns2 %s>",inet_ntoa(in));
 }
 
+static void ev_dns(struct ev_dns_t *ev)
+{
+	struct dns_option_t *dns_opt;
+
+	dns_opt = container_of(ipcp_find_option(ev->ppp, &dns1_opt_hnd), typeof(*dns_opt), opt);
+	dns_opt->addr = ev->dns1;
+
+	dns_opt = container_of(ipcp_find_option(ev->ppp, &dns2_opt_hnd), typeof(*dns_opt), opt);
+	dns_opt->addr = ev->dns2;
+}
+
 static void load_config(void)
 {
 	char *opt;
@@ -159,6 +171,8 @@ static void dns_opt_init()
 
 	load_config();
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
+
+	triton_event_register_handler(EV_DNS, (triton_event_func)ev_dns);
 }
 
 DEFINE_INIT(4, dns_opt_init);

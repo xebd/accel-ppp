@@ -2,6 +2,7 @@
 #define __EVENTS_H
 
 #include <stdint.h>
+#include <netinet/in.h>
 
 #define EV_PPP_STARTING     1
 #define EV_PPP_STARTED      2
@@ -18,6 +19,7 @@
 #define EV_IP_CHANGED       100
 #define EV_SHAPER           101
 #define EV_MPPE_KEYS        102
+#define EV_DNS              103
 #define EV_RADIUS_ACCESS_ACCEPT 200
 #define EV_RADIUS_COA           201
 
@@ -44,6 +46,13 @@ struct ev_shaper_t
 {
 	struct ppp_t *ppp;
 	const char *val;
+};
+
+struct ev_dns_t
+{
+	struct ppp_t *ppp;
+	in_addr_t dns1;
+	in_addr_t dns2;
 };
 
 #endif

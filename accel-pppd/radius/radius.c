@@ -57,13 +57,28 @@ int rad_proc_attrs(struct rad_req_t *req)
 {
 	struct rad_attr_t *attr;
 	struct ipv6db_addr_t *a;
+	struct ev_dns_t dns;
 	int res = 0;
 
+	dns.ppp = NULL;
 	req->rpd->acct_interim_interval = conf_acct_interim_interval;
 
 	list_for_each_entry(attr, &req->reply->attrs, entry) {
-		if (attr->vendor)
+		if (attr->vendor && attr->vendor->id == Vendor_Microsoft) {
+			switch (attr->attr->id) {
+				case MS_Primary_DNS_Server:
+					dns.ppp = req->rpd->ppp;
+					dns.dns1 = attr->val.ipaddr;
+					break;
+				case MS_Secondary_DNS_Server:
+					dns.ppp = req->rpd->ppp;
+					dns.dns2 = attr->val.ipaddr;
+					break;
+			}
 			continue;
+		} else if (attr->vendor)
+			continue;
+
 		switch(attr->attr->id) {
 			case Framed_IP_Address:
 				if (!conf_gw_ip_address)
@@ -122,6 +137,9 @@ int rad_proc_attrs(struct rad_req_t *req)
 				break;
 		}
 	}
+
+	if (dns.ppp)
+		triton_event_fire(EV_DNS, &dns);
 
 	return res;
 }
