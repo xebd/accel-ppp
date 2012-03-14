@@ -18,6 +18,7 @@
 #include "events.h"
 #include "ppp.h"
 #include "ppp_fsm.h"
+#include "ipdb.h"
 #include "log.h"
 #include "spinlock.h"
 #include "mempool.h"
@@ -253,6 +254,16 @@ static void destablish_ppp(struct ppp_t *ppp)
 	if (ppp->ipv6_pool_name) {
 		_free(ppp->ipv6_pool_name);
 		ppp->ipv6_pool_name = NULL;
+	}
+	
+	if (ppp->ipv4) {
+		ipdb_put_ipv4(ppp, ppp->ipv4);
+		ppp->ipv4 = NULL;
+	}
+
+	if (ppp->ipv6) {
+		ipdb_put_ipv6(ppp, ppp->ipv6);
+		ppp->ipv6 = NULL;
 	}
 	
 	if (ppp_shutdown && !ppp_stat.starting && !ppp_stat.active && !ppp_stat.finishing)
