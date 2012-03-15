@@ -49,10 +49,12 @@ struct pppd_compat_pd_t
 	int res;
 	int bytes_sent;
 	int bytes_rcvd;
+	in_addr_t ipv4_addr;
+	in_addr_t ipv4_peer_addr;
 };
 
 static struct pppd_compat_pd_t *find_pd(struct ppp_t *ppp);
-static void fill_argv(char **argv, struct ppp_t *ppp, char *path);
+static void fill_argv(char **argv, struct pppd_compat_pd_t *pd, char *path);
 static void fill_env(char **env, struct pppd_compat_pd_t *pd);
 #ifdef RADIUS
 static void remove_radattr(struct ppp_t *ppp);
@@ -135,9 +137,14 @@ static void ev_ppp_pre_up(struct ppp_t *ppp)
 	if (!pd)
 		return;
 
+	if (ppp->ipv4) {
+		pd->ipv4_addr = ppp->ipv4->addr;
+		pd->ipv4_peer_addr = ppp->ipv4->peer_addr;
+	}
+
 	argv[4] = ipaddr;
 	argv[5] = peer_ipaddr;
-	fill_argv(argv, ppp, conf_ip_up);
+	fill_argv(argv, pd, conf_ip_up);
 	
 	env[0] = peername;
 	env[1] = NULL;
@@ -184,10 +191,10 @@ static void ev_ppp_started(struct ppp_t *ppp)
 	
 	if (!pd)
 		return;
-
+	
 	argv[4] = ipaddr;
 	argv[5] = peer_ipaddr;
-	fill_argv(argv, ppp, conf_ip_up);
+	fill_argv(argv, pd, conf_ip_up);
 	
 	env[0] = peername;
 	env[1] = NULL;
@@ -266,7 +273,7 @@ static void ev_ppp_finished(struct ppp_t *ppp)
 
 	argv[4] = ipaddr;
 	argv[5] = peer_ipaddr;
-	fill_argv(argv, pd->ppp, conf_ip_down);
+	fill_argv(argv, pd, conf_ip_down);
 
 	env[0] = peername;
 	env[1] = connect_time;
@@ -346,7 +353,7 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 
 	argv[4] = ipaddr;
 	argv[5] = peer_ipaddr;
-	fill_argv(argv, pd->ppp, conf_ip_change);
+	fill_argv(argv, pd, conf_ip_change);
 
 	env[0] = peername;
 	env[1] = NULL;
@@ -476,15 +483,15 @@ static struct pppd_compat_pd_t *find_pd(struct ppp_t *ppp)
 	return NULL;
 }
 
-static void fill_argv(char **argv, struct ppp_t *ppp, char *path)
+static void fill_argv(char **argv, struct pppd_compat_pd_t *pd, char *path)
 {
 	argv[0] = path;
-	argv[1] = ppp->ifname;
+	argv[1] = pd->ppp->ifname;
 	argv[2] = "none";
 	argv[3] = "0";
-	u_inet_ntoa(ppp->ipv4 ? ppp->ipv4->addr : 0, argv[4]);
-	u_inet_ntoa(ppp->ipv4 ? ppp->ipv4->peer_addr : 0, argv[5]);
-	argv[6] = ppp->ctrl->calling_station_id;
+	u_inet_ntoa(pd->ipv4_addr, argv[4]);
+	u_inet_ntoa(pd->ipv4_peer_addr, argv[5]);
+	argv[6] = pd->ppp->ctrl->calling_station_id;
 	argv[7] = NULL;
 }
 
