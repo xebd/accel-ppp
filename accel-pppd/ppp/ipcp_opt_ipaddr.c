@@ -58,6 +58,9 @@ static void ipaddr_free(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt)
 {
 	struct ipaddr_option_t *ipaddr_opt = container_of(opt, typeof(*ipaddr_opt), opt);
 
+	if (ipcp->ppp->ipv4)
+		ipdb_put_ipv4(ipcp->ppp, ipcp->ppp->ipv4);
+
 	_free(ipaddr_opt);
 }
 

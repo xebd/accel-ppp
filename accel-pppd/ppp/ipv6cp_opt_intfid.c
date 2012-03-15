@@ -79,6 +79,9 @@ static void ipaddr_free(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_option_t *opt
 {
 	struct ipaddr_option_t *ipaddr_opt=container_of(opt,typeof(*ipaddr_opt),opt);
 
+	if (ipv6cp->ppp->ipv6)
+		ipdb_put_ipv6(ipv6cp->ppp, ipv6cp->ppp->ipv6);
+
 	_free(ipaddr_opt);
 }
 
