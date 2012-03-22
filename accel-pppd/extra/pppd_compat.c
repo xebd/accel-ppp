@@ -67,9 +67,9 @@ static void ip_pre_up_handler(struct sigchld_handler_t *h, int status)
 	if (conf_verbose) {
 		log_switch(NULL, pd->ppp);
 		log_ppp_info2("pppd_compat: ip-pre-up finished (%i)\n", status);
-		pd->res = status;
 	}
 	sched_yield();
+	pd->res = status;
 	triton_context_wakeup(pd->ppp->ctrl->ctx);
 }
 
