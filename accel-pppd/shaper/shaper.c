@@ -751,7 +751,7 @@ static void load_time_ranges(void)
 		if (r) {
 			list_add_tail(&r->entry, &time_range_list);
 			if (r->begin.expire_tv.tv_sec > r->end.expire_tv.tv_sec) {
-				if (ts >= r->begin.expire_tv.tv_sec && ts <= r->end.expire_tv.tv_sec + 24*60*60)
+				if (ts >= r->begin.expire_tv.tv_sec || ts <= r->end.expire_tv.tv_sec)
 					time_range_begin_timer(&r->begin);
 			} else {
 				if (ts >= r->begin.expire_tv.tv_sec && ts <= r->end.expire_tv.tv_sec)
