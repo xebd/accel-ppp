@@ -32,7 +32,7 @@ static int mppe_recv_conf_nak(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, u
 static int mppe_recv_conf_rej(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, uint8_t *ptr);
 static void mppe_print(void (*print)(const char *fmt,...),struct ccp_option_t*, uint8_t *ptr);
 
-static int conf_mppe = -1;
+static int conf_mppe = MPPE_ALLOW;
 
 struct mppe_option_t
 {
@@ -59,18 +59,24 @@ static struct ccp_option_t *mppe_init(struct ppp_ccp_t *ccp)
 {
 	struct mppe_option_t *mppe_opt = _malloc(sizeof(*mppe_opt));
 	memset(mppe_opt, 0, sizeof(*mppe_opt));
+	int mppe;
 
-	if (conf_mppe != -1)
-		mppe_opt->policy = conf_mppe;
+	if (ccp->ppp->ctrl->mppe == MPPE_UNSET)
+		mppe = conf_mppe;
+	else
+		mppe = ccp->ppp->ctrl->mppe;
+
+	if (mppe != MPPE_ALLOW)
+		mppe_opt->policy = mppe;
 	else
 		mppe_opt->policy = 1;
 
-	if (conf_mppe > 0)
+	if (mppe > 0)
 		mppe_opt->mppe = 1;
 	else
 		mppe_opt->mppe = -1;
 	
-	if (conf_mppe == 2)
+	if (mppe == MPPE_REQUIRE)
 		ccp->ld.passive = 0;
 
 	mppe_opt->opt.id = CI_MPPE;
@@ -165,6 +171,12 @@ static int mppe_recv_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, u
 {
 	struct mppe_option_t *mppe_opt = container_of(opt, typeof(*mppe_opt), opt);
 	struct ccp_opt32_t *opt32 = (struct ccp_opt32_t *)ptr;
+	int mppe;
+
+	if (ccp->ppp->ctrl->mppe == MPPE_UNSET)
+		mppe = conf_mppe;
+	else
+		mppe = ccp->ppp->ctrl->mppe;
 
 	if (!ptr) {
 		if (mppe_opt->policy == 2)
@@ -181,7 +193,7 @@ static int mppe_recv_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, u
 	} else if (mppe_opt->policy == 1) {
 		if (ntohl(opt32->val)  == (MPPE_S | MPPE_H))
 			mppe_opt->mppe = 1;
-		else if ((ntohl(opt32->val) & (MPPE_S | MPPE_H)) || conf_mppe == 1) {
+		else if ((ntohl(opt32->val) & (MPPE_S | MPPE_H)) || mppe == 1) {
 			mppe_opt->mppe = 1;
 			return CCP_OPT_NAK;
 		} else if (opt32->val) {
@@ -271,6 +283,7 @@ static void ev_mppe_keys(struct ev_mppe_keys_t *ev)
 {
 	struct ppp_ccp_t *ccp = ccp_find_layer_data(ev->ppp);
 	struct mppe_option_t *mppe_opt = container_of(ccp_find_option(ev->ppp, &mppe_opt_hnd), typeof(*mppe_opt), opt);
+	int mppe;
 
 	memcpy(mppe_opt->recv_key, ev->recv_key, 16);
 	memcpy(mppe_opt->send_key, ev->send_key, 16);
@@ -284,19 +297,26 @@ static void ev_mppe_keys(struct ev_mppe_keys_t *ev)
 		return;
 	}
 	
-	mppe_opt->policy = ev->policy;
+	if (ccp->ppp->ctrl->mppe == MPPE_UNSET)
+		mppe = conf_mppe;
+	else
+		mppe = ev->ppp->ctrl->mppe;
 
-	if (ev->policy == 2) {
-		mppe_opt->mppe = 1;
-		ccp->ld.passive = 0;
-	} else if (ev->policy == 1) {
-		if (conf_mppe == 1)
+	if (ev->ppp->ctrl->mppe == MPPE_UNSET) {
+		mppe_opt->policy = ev->policy;
+
+		if (ev->policy == 2) {
 			mppe_opt->mppe = 1;
-		else
-			mppe_opt->mppe = -1;
+			ccp->ld.passive = 0;
+		} else if (ev->policy == 1) {
+			if (mppe == 1)
+				mppe_opt->mppe = 1;
+			else
+				mppe_opt->mppe = -1;
 
-		if (conf_mppe == 2)
-			ccp->ld.passive = 1;
+			if (mppe == 2)
+				ccp->ld.passive = 1;
+		}
 	}
 }
 
@@ -307,13 +327,13 @@ static void load_config(void)
 	opt = conf_get_opt("ppp", "mppe");
 	if (opt) {
 		if (!strcmp(opt,"require"))
-			conf_mppe = 2;
+			conf_mppe = MPPE_REQUIRE;
 		else if (!strcmp(opt,"prefer") || !strcmp(opt,"prefere"))
-			conf_mppe = 1;
+			conf_mppe = MPPE_PREFER;
 		else if (!strcmp(opt,"deny"))
-			conf_mppe = 0;
+			conf_mppe = MPPE_DENY;
 	} else
-		conf_mppe = -1;
+		conf_mppe = MPPE_ALLOW;
 }
 
 static void mppe_opt_init()

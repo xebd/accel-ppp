@@ -80,6 +80,7 @@ int conf_ifname_in_sid;
 char *conf_pado_delay;
 int conf_tr101 = 1;
 int conf_padi_limit = 0;
+int conf_mppe = MPPE_UNSET;
 
 static mempool_t conn_pool;
 static mempool_t pado_pool;
@@ -263,6 +264,7 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 	conn->ctrl.max_mtu = MAX_PPPOE_MTU;
 	conn->ctrl.type = CTRL_TYPE_PPPOE;
 	conn->ctrl.name = "pppoe";
+	conn->ctrl.mppe = conf_mppe;
 
 	conn->ctrl.calling_station_id = _malloc(IFNAMSIZ + 19);
 	conn->ctrl.called_station_id = _malloc(IFNAMSIZ + 19);
@@ -1407,6 +1409,19 @@ static void load_config(void)
 	opt = conf_get_opt("pppoe", "padi-limit");
 	if (opt)
 		conf_padi_limit = atoi(opt);
+
+	conf_mppe = MPPE_UNSET;
+	opt = conf_get_opt("l2tp", "mppe");
+	if (opt) {
+		if (strcmp(opt, "deny") == 0)
+			conf_mppe = MPPE_DENY;
+		else if (strcmp(opt, "allow") == 0)
+			conf_mppe = MPPE_ALLOW;
+		else if (strcmp(opt, "prefer") == 0)
+			conf_mppe = MPPE_PREFER;
+		else if (strcmp(opt, "require") == 0)
+			conf_mppe = MPPE_REQUIRE;
+	}
 }
 
 static void pppoe_init(void)

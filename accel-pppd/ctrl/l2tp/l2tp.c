@@ -52,6 +52,7 @@ static int conf_retransmit = 5;
 static int conf_hello_interval = 60;
 static int conf_dir300_quirk = 0;
 static const char *conf_host_name = "accel-ppp";
+static int conf_mppe = MPPE_UNSET;
 
 static unsigned int stat_active;
 static unsigned int stat_starting;
@@ -310,6 +311,7 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 	conn->ctrl.started = l2tp_ppp_started;
 	conn->ctrl.finished = l2tp_ppp_finished;
 	conn->ctrl.max_mtu = 1420;
+	conn->ctrl.mppe = conf_mppe;
 
 	conn->ctrl.calling_station_id = _malloc(17);
 	conn->ctrl.called_station_id = _malloc(17);
@@ -1146,6 +1148,19 @@ static void load_config(void)
 	opt = conf_get_opt("l2tp", "dir300_quirk");
 	if (opt)
 		conf_dir300_quirk = atoi(opt);
+	
+	conf_mppe = MPPE_UNSET;
+	opt = conf_get_opt("l2tp", "mppe");
+	if (opt) {
+		if (strcmp(opt, "deny") == 0)
+			conf_mppe = MPPE_DENY;
+		else if (strcmp(opt, "allow") == 0)
+			conf_mppe = MPPE_ALLOW;
+		else if (strcmp(opt, "prefer") == 0)
+			conf_mppe = MPPE_PREFER;
+		else if (strcmp(opt, "require") == 0)
+			conf_mppe = MPPE_REQUIRE;
+	}
 }
 
 static void l2tp_init(void)

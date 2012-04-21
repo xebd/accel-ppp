@@ -58,6 +58,8 @@ static int conf_timeout = 5;
 static int conf_echo_interval = 0;
 static int conf_echo_failure = 3;
 static int conf_verbose = 0;
+static int conf_mppe = MPPE_UNSET;
+
 static mempool_t conn_pool;
 
 static unsigned int stat_starting;
@@ -668,6 +670,7 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		conn->ctrl.max_mtu = PPTP_MAX_MTU;
 		conn->ctrl.type = CTRL_TYPE_PPTP;
 		conn->ctrl.name = "pptp";
+		conn->ctrl.mppe = conf_mppe;
 		
 		conn->ctrl.calling_station_id = _malloc(17);
 		conn->ctrl.called_station_id = _malloc(17);
@@ -739,6 +742,19 @@ static void load_config(void)
 	opt = conf_get_opt("pptp", "verbose");
 	if (opt && atoi(opt) > 0)
 		conf_verbose = 1;
+	
+	conf_mppe = MPPE_UNSET;
+	opt = conf_get_opt("pptp", "mppe");
+	if (opt) {
+		if (strcmp(opt, "deny") == 0)
+			conf_mppe = MPPE_DENY;
+		else if (strcmp(opt, "allow") == 0)
+			conf_mppe = MPPE_ALLOW;
+		else if (strcmp(opt, "prefer") == 0)
+			conf_mppe = MPPE_PREFER;
+		else if (strcmp(opt, "require") == 0)
+			conf_mppe = MPPE_REQUIRE;
+	}
 }
 
 static void pptp_init(void)

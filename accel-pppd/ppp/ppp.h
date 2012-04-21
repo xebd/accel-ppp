@@ -60,6 +60,12 @@
 #define CTRL_TYPE_L2TP  2
 #define CTRL_TYPE_PPPOE 3
 
+#define MPPE_UNSET   -2
+#define MPPE_ALLOW   -1
+#define MPPE_DENY    0
+#define MPPE_PREFER  1
+#define MPPE_REQUIRE 2
+
 struct ppp_t;
 
 struct ipv4db_item_t;
@@ -71,6 +77,7 @@ struct ppp_ctrl_t
 	int type;
 	const char *name;
 	int max_mtu;
+	int mppe;
 	char *calling_station_id;
 	char *called_station_id;
 	void (*started)(struct ppp_t*);

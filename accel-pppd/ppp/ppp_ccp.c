@@ -719,6 +719,7 @@ static void ccp_recv(struct ppp_handler_t*h)
 			ppp_fsm_recv_code_rej_bad(&ccp->fsm);
 			break;
 		default:
+			log_ppp_info2("recv [CCP Unknown code=%x id=%x]\n", hdr->code, hdr->id);
 			ppp_fsm_recv_unk(&ccp->fsm);
 			break;
 	}
