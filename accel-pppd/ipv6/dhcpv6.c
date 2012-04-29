@@ -953,6 +953,7 @@ static void init(void)
 {
 	struct sockaddr_in6 addr;
 	int sock;
+	int f = 1;
 
 	if (!triton_module_loaded("ipv6_nd"))
 		log_warn("dhcpv6: ipv6_nd module is not loaded, you probably get misconfigured network environment\n");
@@ -966,6 +967,7 @@ static void init(void)
 	}
 	
 	fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
+  setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &f, sizeof(f));  
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sin6_family = AF_INET6;
