@@ -556,7 +556,7 @@ static int load_config(void)
 
 	opt = conf_get_opt("radius", "req-limit");
 	if (opt)
-		conf_fail_time = atoi(opt);
+		conf_req_limit = atoi(opt);
 
 	return 0;
 }
