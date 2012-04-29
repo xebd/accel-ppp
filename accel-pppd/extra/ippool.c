@@ -5,9 +5,14 @@
 #include <string.h>
 #include <arpa/inet.h>
 
+#include "events.h"
 #include "ipdb.h"
 #include "list.h"
 #include "spinlock.h"
+
+#ifdef RADIUS
+#include "radius.h"
+#endif
 
 #include "memdebug.h"
 
@@ -37,6 +42,9 @@ struct ipaddr_t
 static struct ipdb_t ipdb;
 
 static in_addr_t conf_gw_ip_address;
+static int conf_vendor = 0;
+static int conf_attr = 88; // Framed-Pool
+
 static int cnt;
 static LIST_HEAD(pool_list);
 static struct ippool_t *def_pool;
@@ -235,6 +243,74 @@ static struct ipdb_t ipdb = {
 	.put_ipv4 = put_ip,
 };
 
+#ifdef RADIUS
+static int parse_attr(struct ppp_t *ppp, struct rad_attr_t *attr)
+{
+	if (attr->len > sizeof("ip:addr-pool=") && memcmp(attr->val.string, "ip:addr-pool=", sizeof("ip:addr-pool=") - 1) == 0)
+		ppp->ipv4_pool_name = _strdup(attr->val.string + sizeof("ip:addr-pool=") - 1);
+	else if (!attr->vendor)
+		ppp->ipv4_pool_name = _strdup(attr->val.string);
+	else
+		return -1;
+	
+	return 0;
+}
+
+static void ev_radius_access_accept(struct ev_radius_t *ev)
+{
+	struct rad_attr_t *attr;
+
+	list_for_each_entry(attr, &ev->reply->attrs, entry) {
+		if (attr->attr->type != ATTR_TYPE_STRING)
+			continue;
+		if (attr->vendor && attr->vendor->id != conf_vendor)
+			continue;
+		if (!attr->vendor && conf_vendor)
+			continue;
+		if (attr->attr->id != conf_attr)
+			continue;
+		if (parse_attr(ev->ppp, attr))
+			continue;
+		break;
+	}
+}
+
+static int parse_attr_opt(const char *opt)
+{
+	struct rad_dict_attr_t *attr;
+	struct rad_dict_vendor_t *vendor;
+
+	if (conf_vendor)
+		vendor = rad_dict_find_vendor_id(conf_vendor);
+	else
+		vendor = NULL;
+
+	if (conf_vendor) {
+		if (vendor)
+			attr = rad_dict_find_vendor_attr(vendor, opt);
+		else
+			attr = NULL;
+	}else
+		attr = rad_dict_find_attr(opt);
+
+	if (attr)
+		return attr->id;
+
+	return atoi(opt);
+}
+
+static int parse_vendor_opt(const char *opt)
+{
+	struct rad_dict_vendor_t *vendor;
+
+	vendor = rad_dict_find_vendor_name(opt);
+	if (vendor)
+		return vendor->id;
+	
+	return atoi(opt);
+}
+#endif
+
 static void ippool_init(void)
 {
 	struct conf_sect_t *s = conf_get_section("ip-pool");
@@ -248,6 +324,13 @@ static void ippool_init(void)
 	def_pool = create_pool(NULL);
 
 	list_for_each_entry(opt, &s->items, entry) {
+#ifdef RADIUS
+		if (!strcmp(opt->name, "vendor"))
+			conf_vendor = parse_vendor_opt(opt->val);
+		else if (!strcmp(opt->name, "attr"))
+			conf_attr = parse_attr_opt(opt->val);
+		else
+#endif
 		if (!strcmp(opt->name, "gw-ip-address"))
 			parse_gw_ip_address(opt->val);
 		else {
@@ -273,6 +356,10 @@ static void ippool_init(void)
 		generate_pool(p);
 
 	ipdb_register(&ipdb);
+
+#ifdef RADIUS
+	triton_event_register_handler(EV_RADIUS_ACCESS_ACCEPT, (triton_event_func)ev_radius_access_accept);
+#endif
 }
 
 DEFINE_INIT(51, ippool_init);
