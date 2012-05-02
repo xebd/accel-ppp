@@ -118,10 +118,10 @@ struct ppp_lcp_t
 	struct list_head options;
 
 	struct triton_timer_t echo_timer;
-	int echo_interval;
-	int echo_failure;
 	int echo_sent;
 	int magic;
+	unsigned long last_ipackets;
+	time_t last_echo_ts;
 
 	struct list_head ropt_list; // last received ConfReq
 	int ropt_len;

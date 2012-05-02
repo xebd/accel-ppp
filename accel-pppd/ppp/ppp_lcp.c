@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <arpa/inet.h>
 #include "linux_ppp.h"
 
@@ -23,8 +24,9 @@ struct recv_opt_t
 	struct lcp_option_t *lopt;
 };
 
-static int conf_echo_interval = 0;
-static int conf_echo_failure = 3;
+static int conf_echo_interval = 10;
+static int conf_echo_failure = 0;
+static int conf_echo_timeout = 60;
 
 static LIST_HEAD(option_handlers);
 static struct ppp_layer_t lcp_layer;
@@ -575,6 +577,21 @@ static int lcp_recv_conf_ack(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 	return res;
 }
 
+static void lcp_update_echo_timer(struct ppp_lcp_t *lcp)
+{
+	if (lcp->echo_timer.period != conf_echo_interval * 1000) {
+		if (!conf_echo_interval)
+			triton_timer_del(&lcp->echo_timer);
+		else {
+			lcp->echo_timer.period = conf_echo_interval * 1000;
+			if (lcp->echo_timer.tpd)
+				triton_timer_mod(&lcp->echo_timer, 0);
+			else
+				triton_timer_add(lcp->ppp->ctrl->ctx, &lcp->echo_timer, 0);
+		}
+	}
+}
+
 static void lcp_recv_echo_repl(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 {
 	uint32_t magic;
@@ -594,8 +611,8 @@ static void lcp_recv_echo_repl(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 		}
 	}
 
-	lcp->fsm.id++;
 	lcp->echo_sent = 0;
+	lcp_update_echo_timer(lcp);
 }
 
 static void send_echo_reply(struct ppp_lcp_t *lcp)
@@ -604,6 +621,7 @@ static void send_echo_reply(struct ppp_lcp_t *lcp)
 	//uint32_t magic = *(uint32_t *)(hdr + 1);
 
 	lcp->echo_sent = 0;
+	lcp_update_echo_timer(lcp);
 
 	hdr->code = ECHOREP;
 	*(uint32_t *)(hdr + 1) = htonl(lcp->magic);
@@ -617,6 +635,9 @@ static void send_echo_reply(struct ppp_lcp_t *lcp)
 static void send_echo_request(struct triton_timer_t *t)
 {
 	struct ppp_lcp_t *lcp = container_of(t, typeof(*lcp), echo_timer);
+	struct ifpppstatsreq ifreq;
+	int f = 0;
+	time_t ts;
 	struct lcp_echo_req_t
 	{
 		struct lcp_hdr_t hdr;
@@ -624,27 +645,56 @@ static void send_echo_request(struct triton_timer_t *t)
 	} __attribute__((packed)) msg = {
 		.hdr.proto = htons(PPP_LCP),
 		.hdr.code = ECHOREQ,
-		.hdr.id = lcp->fsm.id,
+		.hdr.id = lcp->fsm.id++,
 		.hdr.len = htons(8),
 		.magic = lcp->magic,
 	};
 
-	if (++lcp->echo_sent > lcp->echo_failure) {
+	++lcp->echo_sent;
+
+	if (conf_echo_timeout) {
+		if (lcp->echo_sent == 2) {
+			memset(&ifreq, 0, sizeof(ifreq));
+			ifreq.stats_ptr = (void *)&ifreq.stats;
+			strcpy(ifreq.ifr__name, lcp->ppp->ifname);
+		
+			if (ioctl(sock_fd, SIOCGPPPSTATS, &ifreq) == 0)
+				lcp->last_ipackets = ifreq.stats.p.ppp_ipackets;
+
+			time(&lcp->last_echo_ts);
+		} else if (lcp->echo_sent > 2) {
+			time(&ts);
+			memset(&ifreq, 0, sizeof(ifreq));
+			ifreq.stats_ptr = (void *)&ifreq.stats;
+			strcpy(ifreq.ifr__name, lcp->ppp->ifname);
+			if (ioctl(sock_fd, SIOCGPPPSTATS, &ifreq) == 0 && lcp->last_ipackets != ifreq.stats.p.ppp_ipackets) {
+				lcp->echo_sent = 1;
+				lcp_update_echo_timer(lcp);
+			} else if (ts - lcp->last_echo_ts > conf_echo_timeout) {
+				f = 1;
+			} else if (t->period > 3000) {
+				t->period = 0.8 * t->period;
+				triton_timer_mod(t, 0);
+			}
+		}
+	} else if (lcp->echo_sent > conf_echo_failure)
+		f = 1;
+
+	if (f) {
 		log_ppp_warn("lcp: no echo reply\n");
 		ppp_terminate(lcp->ppp, TERM_LOST_CARRIER, 1);
-	} else {
-		if (conf_ppp_verbose)
-			log_ppp_debug("send [LCP EchoReq id=%x <magic %x>]\n", msg.hdr.id, msg.magic);
+		return;
+	}
+
+	if (conf_ppp_verbose) {
+		log_ppp_debug("send [LCP EchoReq id=%x <magic %x>]\n", msg.hdr.id, msg.magic);
 		ppp_chan_send(lcp->ppp,&msg,ntohs(msg.hdr.len)+2);
 	}
 }
 
 static void start_echo(struct ppp_lcp_t *lcp)
 {
-	lcp->echo_interval = conf_echo_interval;
-	lcp->echo_failure = conf_echo_failure;
-
-	lcp->echo_timer.period = lcp->echo_interval * 1000;
+	lcp->echo_timer.period = conf_echo_interval * 1000;
 	lcp->echo_timer.expire = send_echo_request;
 	if (lcp->echo_timer.period && !lcp->echo_timer.tpd)
 		triton_timer_add(lcp->ppp->ctrl->ctx, &lcp->echo_timer, 0);
@@ -871,6 +921,10 @@ static void load_config(void)
 	opt = conf_get_opt("ppp", "lcp-echo-failure");
 	if (opt && atoi(opt) >= 0)
 		conf_echo_failure = atoi(opt);
+	
+	opt = conf_get_opt("ppp", "lcp-echo-timeout");
+	if (opt && atoi(opt) >= 0)
+		conf_echo_timeout = atoi(opt);
 }
 
 static void lcp_init(void)
