@@ -214,7 +214,9 @@ static int mppe_recv_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, u
 		}
 
 		log_ppp_debug(" (mppe enabled)");
-	}
+		ccp->ppp->comp = "mppe";
+	} else
+		ccp->ppp->comp = NULL;
 
 	return CCP_OPT_ACK;
 }

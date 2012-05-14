@@ -15,7 +15,7 @@
 #include "memdebug.h"
 
 #define CELL_SIZE 128
-#define DEF_COLUMNS "ifname,username,calling-sid,ip,rate-limit,type,state,uptime"
+#define DEF_COLUMNS "ifname,username,calling-sid,ip,rate-limit,type,comp,state,uptime"
 
 struct column_t
 {
@@ -450,6 +450,11 @@ static void print_sid(const struct ppp_t *ppp, char *buf)
 	snprintf(buf, CELL_SIZE, "%s", ppp->sessionid);
 }
 
+static void print_comp(const struct ppp_t *ppp, char *buf)
+{
+	snprintf(buf, CELL_SIZE, "%s", ppp->comp ? ppp->comp : "");
+}
+
 static void init(void)
 {
 	cli_register_simple_cmd2(show_ses_exec, show_ses_help, 2, "show", "sessions");
@@ -463,6 +468,7 @@ static void init(void)
 	cli_show_ses_register("calling-sid", "calling station id", print_calling_sid);
 	cli_show_ses_register("called-sid", "called station id", print_called_sid);
 	cli_show_ses_register("sid", "session id", print_sid);
+	cli_show_ses_register("comp", "compression/ecnryption method", print_comp);
 }
 
 DEFINE_INIT(12, init);

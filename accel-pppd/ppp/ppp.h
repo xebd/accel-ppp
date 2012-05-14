@@ -114,6 +114,7 @@ struct ppp_t
 	struct ipv6db_item_t *ipv6;
 	char *ipv4_pool_name;
 	char *ipv6_pool_name;
+	const char *comp;
 
 	struct ppp_ctrl_t *ctrl;
 
