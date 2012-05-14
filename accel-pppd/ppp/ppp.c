@@ -202,6 +202,8 @@ exit_close_chan:
 
 static void destablish_ppp(struct ppp_t *ppp)
 {
+	triton_event_fire(EV_PPP_PRE_FINISHED, ppp);
+
 	pthread_rwlock_wrlock(&ppp_lock);
 	list_del(&ppp->entry);
 	pthread_rwlock_unlock(&ppp_lock);

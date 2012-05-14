@@ -538,7 +538,7 @@ static void init(void)
 	triton_event_register_handler(EV_PPP_PRE_UP, (triton_event_func)ev_ppp_pre_up);
 	triton_event_register_handler(EV_PPP_STARTED, (triton_event_func)ev_ppp_started);
 	triton_event_register_handler(EV_PPP_FINISHING, (triton_event_func)ev_ppp_finishing);
-	triton_event_register_handler(EV_PPP_FINISHED, (triton_event_func)ev_ppp_finished);
+	triton_event_register_handler(EV_PPP_PRE_FINISHED, (triton_event_func)ev_ppp_finished);
 #ifdef RADIUS
 	if (triton_module_loaded("radius")) {
 		triton_event_register_handler(EV_RADIUS_ACCESS_ACCEPT, (triton_event_func)ev_radius_access_accept);
