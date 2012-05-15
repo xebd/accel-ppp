@@ -325,11 +325,12 @@ static void ippool_init(void)
 
 	list_for_each_entry(opt, &s->items, entry) {
 #ifdef RADIUS
-		if (!strcmp(opt->name, "vendor"))
-			conf_vendor = parse_vendor_opt(opt->val);
-		else if (!strcmp(opt->name, "attr"))
-			conf_attr = parse_attr_opt(opt->val);
-		else
+		if (triton_module_loaded("radius")) {
+			if (!strcmp(opt->name, "vendor"))
+				conf_vendor = parse_vendor_opt(opt->val);
+			else if (!strcmp(opt->name, "attr"))
+				conf_attr = parse_attr_opt(opt->val);
+		} else
 #endif
 		if (!strcmp(opt->name, "gw-ip-address"))
 			parse_gw_ip_address(opt->val);
@@ -358,7 +359,8 @@ static void ippool_init(void)
 	ipdb_register(&ipdb);
 
 #ifdef RADIUS
-	triton_event_register_handler(EV_RADIUS_ACCESS_ACCEPT, (triton_event_func)ev_radius_access_accept);
+	if (triton_module_loaded("radius"))
+		triton_event_register_handler(EV_RADIUS_ACCESS_ACCEPT, (triton_event_func)ev_radius_access_accept);
 #endif
 }
 

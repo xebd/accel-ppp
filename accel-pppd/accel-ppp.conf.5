@@ -576,3 +576,7 @@ Specifes upstream rate limiting method.
 .TP
 .BI "down-limiter=" tbf|htb
 Specifies downstream rate limiting method.
+.TP
+.BI "leaf-qdisc=" "qdisc parameters"
+In case if htb is used as up-limiter or down-limiter specified leaf qdisc can be attached automaticaly.
+At present on sfq qdisc is implemented. Parameters are same as for tc: [ limit NUMBER ] [ perturn SECS ] [ quantum BYTES ].

@@ -44,6 +44,11 @@ int conf_ifb_ifindex;
 int conf_up_limiter = LIM_POLICE;
 int conf_down_limiter = LIM_TBF;
 
+int conf_leaf_qdisc;
+int conf_lq_arg1;
+int conf_lq_arg2;
+int conf_lq_arg3;
+
 static int temp_down_speed;
 static int temp_up_speed;
 
@@ -894,6 +899,13 @@ static void load_config(void)
 		log_warn("shaper: requested 'htb' upstream limiter, but no 'ifb' specified, falling back to police...\n");
 		conf_up_limiter = LIM_POLICE;
 	}
+
+	opt = conf_get_opt("shaper", "leaf-qdisc");
+	if (opt)
+		leaf_qdisc_parse(opt);
+	else
+		conf_leaf_qdisc = 0;
+
 
 	opt = conf_get_opt("shaper", "verbose");
 	if (opt && atoi(opt) > 0)

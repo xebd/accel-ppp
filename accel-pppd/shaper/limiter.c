@@ -21,22 +21,6 @@
 #include "tc_core.h"
 #include "libnetlink.h"
 
-#define TCA_BUF_MAX 64*1024
-#define MAX_MSG 16384
-
-struct qdisc_opt
-{
-	char *kind;
-	int handle;
-	int parent;
-	double latency;
-	int rate;
-	int buffer;
-	int quantum;
-	int defcls;
-	int (*qdisc)(struct qdisc_opt *opt, struct nlmsghdr *n);
-};
-
 static int qdisc_tbf(struct qdisc_opt *qopt, struct nlmsghdr *n)
 {
 	struct tc_tbf_qopt opt;
@@ -121,7 +105,7 @@ static int qdisc_htb_class(struct qdisc_opt *qopt, struct nlmsghdr *n)
 	return 0;
 }
 
-static int tc_qdisc_modify(struct rtnl_handle *rth, int ifindex, int cmd, unsigned flags, struct qdisc_opt *opt)
+int tc_qdisc_modify(struct rtnl_handle *rth, int ifindex, int cmd, unsigned flags, struct qdisc_opt *opt)
 {
 	struct {
 			struct nlmsghdr 	n;
@@ -446,13 +430,19 @@ int install_limiter(struct ppp_t *ppp, int down_speed, int down_burst, int up_sp
 
 	if (conf_down_limiter == LIM_TBF)
 		r = install_tbf(&rth, ppp->ifindex, down_speed, down_burst);
-	else
+	else {
 		r = install_htb(&rth, ppp->ifindex, down_speed, down_burst);
+		if (r == 0)
+			r = install_leaf_qdisc(&rth, ppp->ifindex, 0x00010001, 0x00020000);
+	}
 
 	if (conf_up_limiter == LIM_POLICE)
 		r = install_police(&rth, ppp->ifindex, up_speed, up_burst);
-	else
+	else {
 		r = install_htb_ifb(&rth, ppp->ifindex, ppp->unit_idx + 1, up_speed, up_burst);
+		if (r == 0)
+			r = install_leaf_qdisc(&rth, conf_ifb_ifindex, 0x00010001 + ppp->unit_idx + 1, (1 + ppp->unit_idx + 1) << 16);
+	}
 	
 	rtnl_close(&rth);
 

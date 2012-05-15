@@ -8,6 +8,9 @@
 #include <linux/if_addr.h>
 #include <linux/neighbour.h>
 
+#define TCA_BUF_MAX 64*1024
+#define MAX_MSG 16384
+
 struct rtnl_handle
 {
 	int			fd;
