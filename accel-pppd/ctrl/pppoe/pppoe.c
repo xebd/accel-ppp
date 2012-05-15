@@ -1429,7 +1429,8 @@ static void pppoe_init(void)
 	struct conf_sect_t *s = conf_get_section("pppoe");
 	struct conf_option_t *opt;
 
-	system("modprobe pppoe");
+	if (system("modprobe -q pppoe"))
+		log_warn("failed to load pppoe kernel module\n");
 
 	conn_pool = mempool_create(sizeof(struct pppoe_conn_t));
 	pado_pool = mempool_create(sizeof(struct delayed_pado_t));

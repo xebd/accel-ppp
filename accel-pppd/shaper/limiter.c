@@ -488,7 +488,8 @@ int init_ifb(const char *name)
 		.qdisc = qdisc_htb_root,
 	};
 
-	system("modprobe ifb");
+	if (system("modprobe -q ifb"))
+		log_warn("failed to load ifb kernel module\n");
 	
 	memset(&ifr, 0, sizeof(ifr));
 	strcpy(ifr.ifr_name, name);
