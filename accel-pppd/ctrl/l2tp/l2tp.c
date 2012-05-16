@@ -23,6 +23,7 @@
 #include "utils.h"
 #include "iprange.h"
 #include "cli.h"
+#include "crypto.h"
 
 #include "connlimit.h"
 
@@ -52,6 +53,7 @@ static int conf_retransmit = 5;
 static int conf_hello_interval = 60;
 static int conf_dir300_quirk = 0;
 static const char *conf_host_name = "accel-ppp";
+static const char *conf_secret = NULL;
 static int conf_mppe = MPPE_UNSET;
 
 static unsigned int stat_active;
@@ -80,6 +82,8 @@ struct l2tp_conn_t
 	uint16_t peer_tid;
 	uint16_t peer_sid;
 	uint32_t framing_cap;
+	uint16_t challenge_len;
+	l2tp_value_t challenge;
 
 	int retransmit;
 	uint16_t Ns, Nr;
@@ -153,7 +157,8 @@ static void l2tp_disconnect(struct l2tp_conn_t *conn)
 
 	if (conn->ppp.chan_name)
 		_free(conn->ppp.chan_name);
-	
+	if (conn->challenge_len)
+	    _free(conn->challenge.octets);
 	_free(conn->ctrl.calling_station_id);
 	_free(conn->ctrl.called_station_id);
 
@@ -224,7 +229,8 @@ static void l2tp_conn_close(struct triton_context_t *ctx)
 		l2tp_disconnect(conn);
 }
 
-static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack, struct in_pktinfo *pkt_info, struct l2tp_attr_t *assigned_tid, struct l2tp_attr_t *framing_cap)
+static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack, struct in_pktinfo *pkt_info, struct l2tp_attr_t *assigned_tid, 
+    struct l2tp_attr_t *framing_cap, struct l2tp_attr_t *challenge)
 {
 	struct l2tp_conn_t *conn;
 	struct sockaddr_in addr;
@@ -295,6 +301,23 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 	memcpy(&conn->addr, &pack->addr, sizeof(pack->addr));
 	conn->peer_tid = assigned_tid->val.uint16;
 	conn->framing_cap = framing_cap->val.uint32;
+
+	/* If challenge set in SCCRQ, we need to calculate response for SCCRP */
+	if (challenge && challenge->length <= 16) {
+		char state = 2; /* SCCRP, TODO: define them in some .h? */
+		MD5_CTX md5_ctx;
+		uint8_t md5[MD5_DIGEST_LENGTH];
+
+		MD5_Init(&md5_ctx);
+		MD5_Update(&md5_ctx, &state, 1);
+		MD5_Update(&md5_ctx, conf_secret, strlen(conf_secret));
+		MD5_Update(&md5_ctx, challenge->val.octets, challenge->length);
+		MD5_Final(md5, &md5_ctx);
+
+		conn->challenge_len = MD5_DIGEST_LENGTH;
+		conn->challenge.octets = _malloc(MD5_DIGEST_LENGTH);
+		memcpy(conn->challenge.octets, &md5, MD5_DIGEST_LENGTH);
+	}
 
 	conn->ctx.before_switch = log_switch;
 	conn->ctx.close = l2tp_conn_close;
@@ -524,6 +547,11 @@ static void l2tp_send_SCCRP(struct l2tp_conn_t *conn)
 		goto out_err;
 	if (l2tp_packet_add_string(pack, Vendor_Name, "accel-ppp", 0))
 		goto out_err;
+	/* If challenge response available */
+	if (conn->challenge_len) {
+	    if (l2tp_packet_add_octets(pack, Challenge_Response, conn->challenge.octets, 16, 1))
+		goto out_err;
+	}
 
 	if (l2tp_send(conn, pack, 0))
 		goto out;
@@ -623,6 +651,7 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 	struct l2tp_attr_t *assigned_cid = NULL;
 	struct l2tp_attr_t *framing_cap = NULL;
 	struct l2tp_attr_t *router_id = NULL;
+	struct l2tp_attr_t *challenge = NULL;
 	
 	if (ppp_shutdown)
 		return 0;
@@ -642,9 +671,8 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 				assigned_tid = attr;
 				break;
 			case Challenge:
-				if (conf_verbose)
-					log_warn("l2tp: Challenge in SCCRQ is not supported\n");
-				return -1;
+				challenge = attr;
+				break;
 			case Assigned_Connection_ID:
 				assigned_cid = attr;
 				break;
@@ -675,7 +703,7 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 			return -1;
 		}
 		
-		if (l2tp_tunnel_alloc(serv, pack, pkt_info, assigned_tid, framing_cap))
+		if (l2tp_tunnel_alloc(serv, pack, pkt_info, assigned_tid, framing_cap, challenge))
 			return -1;
 
 	} else if (assigned_cid) {
@@ -684,6 +712,12 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 	} else {
 		if (conf_verbose)
 			log_warn("l2tp: SCCRQ: no Assigned-Tunnel-ID or Assigned-Connection-ID present in message\n");
+		return -1;
+	}
+
+	if (conf_secret && !challenge) {
+		if (conf_verbose)
+			log_warn("l2tp: SCCRQ: no Challenge present in message\n");
 		return -1;
 	}
 
@@ -1144,7 +1178,11 @@ static void load_config(void)
 		conf_host_name = opt;
 	else
 		conf_host_name = "accel-ppp";
-	
+
+	opt = conf_get_opt("l2tp", "secret");
+	if (opt)
+		conf_secret = opt;
+
 	opt = conf_get_opt("l2tp", "dir300_quirk");
 	if (opt)
 		conf_dir300_quirk = atoi(opt);
