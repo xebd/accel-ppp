@@ -66,6 +66,7 @@ struct l2tp_packet_t
 };
 
 extern int conf_verbose;
+extern int conf_avp_permissive;
 
 struct l2tp_dict_attr_t *l2tp_dict_find_attr_by_name(const char *name);
 struct l2tp_dict_attr_t *l2tp_dict_find_attr_by_id(int id);

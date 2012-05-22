@@ -172,19 +172,22 @@ int l2tp_recv(int fd, struct l2tp_packet_t **p, struct in_pktinfo *pkt_info)
 		if (hdr->L == 0) {
 			if (conf_verbose)
 				log_warn("l2tp: incorrect message received (L=0)\n");
-			goto out_err_hdr;
+			if (!conf_avp_permissive)
+			    goto out_err_hdr;
 		}
 
 		if (hdr->S == 0) {
 			if (conf_verbose)
 				log_warn("l2tp: incorrect message received (S=0)\n");
-			goto out_err_hdr;
+			if (!conf_avp_permissive)
+			    goto out_err_hdr;
 		}
 
 		if (hdr->O == 1) {
 			if (conf_verbose)
 				log_warn("l2tp: incorrect message received (O=1)\n");
-			goto out_err_hdr;
+			if (!conf_avp_permissive)
+			    goto out_err_hdr;
 		}
 	} else if (hdr->ver != 3) {
 		if (conf_verbose)
@@ -222,19 +225,21 @@ int l2tp_recv(int fd, struct l2tp_packet_t **p, struct in_pktinfo *pkt_info)
 		if (!da) {
 			if (conf_verbose)
 				log_warn("l2tp: unknown avp received (type=%i, M=%u)\n", ntohs(avp->type), avp->M);
-			if (avp->M)
+			if (avp->M && !conf_avp_permissive)
 				goto out_err;
 		} else {
 			if (da->M != -1 && da->M != avp->M) {
 				if (conf_verbose)
 					log_warn("l2tp: incorrect avp received (type=%i, M=%i, must be %i)\n", ntohs(avp->type), avp->M, da->M);
-				goto out_err;
+				if (!conf_avp_permissive)
+				    goto out_err;
 			}
 
 			if (da->H != -1 && da->H != avp->H) {
 				if (conf_verbose)
 					log_warn("l2tp: incorrect avp received (type=%i, H=%i, must be %i)\n", ntohs(avp->type), avp->H, da->H);
-				goto out_err;
+				if (!conf_avp_permissive)
+				    goto out_err;
 			}
 
 			if (avp->H) {

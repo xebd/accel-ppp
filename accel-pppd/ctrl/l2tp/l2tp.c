@@ -47,6 +47,7 @@
 #define STATE_CLOSE      0
 
 int conf_verbose = 0;
+int conf_avp_permissive = 0;
 static int conf_timeout = 60;
 static int conf_rtimeout = 5;
 static int conf_retransmit = 5;
@@ -1156,6 +1157,10 @@ static void load_config(void)
 	opt = conf_get_opt("l2tp", "verbose");
 	if (opt && atoi(opt) > 0)
 		conf_verbose = 1;
+
+	opt = conf_get_opt("l2tp", "avp_permissive");
+	if (opt && atoi(opt) > 0)
+		conf_avp_permissive = 1;
 
 	opt = conf_get_opt("l2tp", "hello-interval");
 	if (opt && atoi(opt) > 0)
