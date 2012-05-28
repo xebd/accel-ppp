@@ -66,9 +66,8 @@ ADD_EXECUTABLE(accel-pppd
 
 	pwdb.c
 	ipdb.c
-
+	fdtrash.c
 	iprange.c
-
 	utils.c
 
 	log.c
