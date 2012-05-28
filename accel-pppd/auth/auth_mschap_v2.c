@@ -606,15 +606,11 @@ static void chap_recv(struct ppp_handler_t *h)
 {
 	struct chap_auth_data_t *d = container_of(h, typeof(*d), h);
 	struct chap_hdr_t *hdr = (struct chap_hdr_t *)d->ppp->buf;
-	static int drop=1;
 
 	if (d->ppp->buf_size < sizeof(*hdr) || ntohs(hdr->len) < HDR_LEN || ntohs(hdr->len) < d->ppp->buf_size - 2) {
 		log_ppp_warn("mschap-v2: short packet received\n");
 		return;
 	}
-
-	if (drop-- == 1)
-		return;
 
 	if (hdr->code == CHAP_RESPONSE)
 		chap_recv_response(d, hdr);
