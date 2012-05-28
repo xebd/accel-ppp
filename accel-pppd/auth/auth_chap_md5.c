@@ -79,7 +79,7 @@ struct chap_auth_data_t
 	int started:1;
 };
 
-static void chap_send_challenge(struct chap_auth_data_t *ad);
+static void chap_send_challenge(struct chap_auth_data_t *ad, int new);
 static void chap_recv(struct ppp_handler_t *h);
 static void chap_timeout_timer(struct triton_timer_t *t);
 static void chap_restart_timer(struct triton_timer_t *t);
@@ -134,7 +134,7 @@ static int chap_start(struct ppp_t *ppp, struct auth_data_t *auth)
 
 	ppp_register_chan_handler(ppp, &d->h);
 
-	chap_send_challenge(d);
+	chap_send_challenge(d, 1);
 
 	return 0;
 }
@@ -168,7 +168,7 @@ static void chap_timeout_timer(struct triton_timer_t *t)
 			ppp_auth_failed(d->ppp, NULL);
 	} else {
 		--d->id;
-		chap_send_challenge(d);
+		chap_send_challenge(d, 0);
 	}
 }
 
@@ -176,7 +176,7 @@ static void chap_restart_timer(struct triton_timer_t *t)
 {
 	struct chap_auth_data_t *d = container_of(t, typeof(*d), interval);
 	
-	chap_send_challenge(d);
+	chap_send_challenge(d, 1);
 }
 
 static int lcp_send_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *ptr)
@@ -224,7 +224,7 @@ static void chap_send_success(struct chap_auth_data_t *ad)
 	ppp_chan_send(ad->ppp, &msg, ntohs(msg.hdr.len) + 2);
 }
 
-static void chap_send_challenge(struct chap_auth_data_t *ad)
+static void chap_send_challenge(struct chap_auth_data_t *ad, int new)
 {
 	struct chap_challenge_t msg =	{
 		.hdr.proto = htons(PPP_CHAP),
@@ -234,7 +234,9 @@ static void chap_send_challenge(struct chap_auth_data_t *ad)
 		.val_size = VALUE_SIZE,
 	};
 
-	read(urandom_fd, ad->val, VALUE_SIZE);
+	if (new)
+		read(urandom_fd, ad->val, VALUE_SIZE);
+
 	memcpy(msg.val, ad->val, VALUE_SIZE);
 
 	if (conf_ppp_verbose) {
@@ -379,7 +381,7 @@ static int chap_restart(struct ppp_t *ppp, struct auth_data_t *auth)
 {
 	struct chap_auth_data_t *d = container_of(auth, typeof(*d), auth);
 	
-	chap_send_challenge(d);
+	chap_send_challenge(d, 1);
 
 	return 0;
 }
