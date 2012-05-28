@@ -52,9 +52,10 @@ static void unpack_msg(struct log_msg_t *msg)
 
 static void set_hdr(struct log_msg_t *msg, struct ppp_t *ppp)
 {
-	if (ppp)
-		sprintf(msg->hdr->msg, "%s:%s: ", ppp->ifname, ppp->username ? ppp->username : "");
-	else 
+	if (ppp) {
+		if (snprintf(msg->hdr->msg, LOG_CHUNK_SIZE, "%s:%s: ", ppp->ifname, ppp->username ? ppp->username : ""))
+			strcpy(msg->hdr->msg + LOG_CHUNK_SIZE - 3, ": ");
+	} else 
 		msg->hdr->msg[0] = 0;
 }
 
