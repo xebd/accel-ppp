@@ -19,6 +19,7 @@
 #include "ppp.h"
 #include "ppp_fsm.h"
 #include "log.h"
+#include "fdtrash.h"
 #include "spinlock.h"
 #include "mempool.h"
 
@@ -223,9 +224,9 @@ static void destablish_ppp(struct ppp_t *ppp)
 	triton_md_unregister_handler(&ppp->chan_hnd);
 	triton_md_unregister_handler(&ppp->unit_hnd);
 	
-	close(ppp->unit_fd);
-	close(ppp->chan_fd);
-	close(ppp->fd);
+	fdtrash_add(ppp->unit_fd);
+	fdtrash_add(ppp->chan_fd);
+	fdtrash_add(ppp->fd);
 
 	ppp->unit_fd = -1;
 	ppp->chan_fd = -1;

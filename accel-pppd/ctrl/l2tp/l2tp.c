@@ -26,6 +26,7 @@
 #include "crypto.h"
 
 #include "connlimit.h"
+#include "fdtrash.h"
 
 #include "memdebug.h"
 
@@ -116,7 +117,6 @@ static void l2tp_disconnect(struct l2tp_conn_t *conn)
 	struct l2tp_packet_t *pack;
 
 	triton_md_unregister_handler(&conn->hnd);
-	close(conn->hnd.fd);
 
 	if (conn->timeout_timer.tpd)
 		triton_timer_del(&conn->timeout_timer);
@@ -139,10 +139,12 @@ static void l2tp_disconnect(struct l2tp_conn_t *conn)
 	pthread_mutex_unlock(&l2tp_lock);
 
 	if (conn->ppp.fd != -1)
-		close(conn->ppp.fd);
+		fdtrash_add(conn->ppp.fd);
 	
 	if (conn->tunnel_fd != -1)
-		close(conn->tunnel_fd);
+		fdtrash_add(conn->tunnel_fd);
+	
+	fdtrash_add(conn->hnd.fd);
 
 	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp);
 	
