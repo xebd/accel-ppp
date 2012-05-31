@@ -1386,9 +1386,9 @@ static void load_config(void)
 
 	opt = conf_get_opt("pppoe", "ifname-in-sid");
 	if (opt) {
-		if (!strcmp(opt, "called-sid"))
+		if (!strcmp(opt, "calling-sid"))
 			conf_ifname_in_sid = 1;
-		else if (!strcmp(opt, "calling-sid"))
+		else if (!strcmp(opt, "callied-sid"))
 			conf_ifname_in_sid = 2;
 		else if (!strcmp(opt, "both"))
 			conf_ifname_in_sid = 3;
