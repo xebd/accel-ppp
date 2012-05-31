@@ -337,44 +337,39 @@ static void __ppp_auth_started(struct ppp_t *ppp)
 	triton_event_fire(EV_PPP_AUTHORIZED, ppp);
 }
 
-static void delete_route(struct ppp_t *ppp)
+static void ifdown(struct ppp_t *ppp)
 {
-	struct rtentry rt;
-	struct sockaddr_in *addr;
+	struct ifreq ifr;
+	
+	memset(&ifr, 0, sizeof(ifr));
+	strcpy(ifr.ifr_name, ppp->ifname);
 
-	if (ppp->ipv4) {
-		memset(&rt, 0, sizeof(rt));
-		addr = (struct sockaddr_in *)&rt.rt_dst;
-		addr->sin_family = AF_INET;
-		addr->sin_addr.s_addr = ppp->ipv4->peer_addr;
-		rt.rt_flags = RTF_HOST;
-		rt.rt_metric = 1; 
-
-		ioctl(sock_fd, SIOCDELRT, &rt);
-	}
+	ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
 }
 
 int __export ppp_auth_successed(struct ppp_t *ppp, char *username)
 {
 	struct ppp_t *p;
 	struct auth_layer_data_t *ad = container_of(ppp_find_layer_data(ppp, &auth_layer), typeof(*ad), ld);
-	
-	pthread_rwlock_rdlock(&ppp_lock);
-	list_for_each_entry(p, &ppp_list, entry) {
-		if (p->username && !strcmp(p->username, username)) {
-			if (conf_single_session == 0) {
-				pthread_rwlock_unlock(&ppp_lock);
-				log_ppp_info1("%s: second session denied\n", username);
-				return -1;
-			} else {
-				if (conf_single_session == 1) {
-					delete_route(p);
-					triton_context_call(p->ctrl->ctx, (triton_event_func)ppp_terminate_sec, p);
+
+	if (conf_single_session >= 0) {
+		pthread_rwlock_rdlock(&ppp_lock);
+		list_for_each_entry(p, &ppp_list, entry) {
+			if (p->username && !strcmp(p->username, username)) {
+				if (conf_single_session == 0) {
+					pthread_rwlock_unlock(&ppp_lock);
+					log_ppp_info1("%s: second session denied\n", username);
+					return -1;
+				} else {
+					if (conf_single_session == 1) {
+						ifdown(p);
+						triton_context_call(p->ctrl->ctx, (triton_event_func)ppp_terminate_sec, p);
+					}
 				}
 			}
 		}
+		pthread_rwlock_unlock(&ppp_lock);
 	}
-	pthread_rwlock_unlock(&ppp_lock);
 
 	pthread_rwlock_wrlock(&ppp_lock);
 	ppp->username = username;
