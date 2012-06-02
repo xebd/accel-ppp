@@ -19,7 +19,8 @@ static void __close(void *arg)
 
 void __export fdtrash_add(long fd)
 {
-	triton_context_call(&ctx, (triton_event_func)__close, (void *)fd);
+	if (ctx.tpd)
+		triton_context_call(&ctx, (triton_event_func)__close, (void *)fd);
 }
 
 static void init()
