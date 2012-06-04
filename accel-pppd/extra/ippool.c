@@ -326,11 +326,16 @@ static void ippool_init(void)
 	list_for_each_entry(opt, &s->items, entry) {
 #ifdef RADIUS
 		if (triton_module_loaded("radius")) {
-			if (!strcmp(opt->name, "vendor"))
+			if (!strcmp(opt->name, "vendor")) {
 				conf_vendor = parse_vendor_opt(opt->val);
-			else if (!strcmp(opt->name, "attr"))
+				continue;
+			}
+			
+			if (!strcmp(opt->name, "attr")) {
 				conf_attr = parse_attr_opt(opt->val);
-		} else
+				continue;
+			}
+		}
 #endif
 		if (!strcmp(opt->name, "gw-ip-address"))
 			parse_gw_ip_address(opt->val);
