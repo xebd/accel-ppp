@@ -27,7 +27,6 @@
 #endif
 
 #include "connlimit.h"
-#include "fdtrash.h"
 
 #include "pppoe.h"
 
@@ -118,7 +117,7 @@ static void disconnect(struct pppoe_conn_t *conn)
 
 	pppoe_send_PADT(conn);
 
-	fdtrash_add(conn->disc_sock);
+	close(conn->disc_sock);
 
 
 	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp);

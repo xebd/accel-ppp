@@ -22,7 +22,6 @@
 #include "iprange.h"
 #include "utils.h"
 #include "cli.h"
-#include "fdtrash.h"
 
 #include "connlimit.h"
 
@@ -77,7 +76,7 @@ static void disconnect(struct pptp_conn_t *conn)
 	log_ppp_debug("pptp: disconnect\n");
 
 	triton_md_unregister_handler(&conn->hnd);
-	fdtrash_add(conn->hnd.fd);
+	close(conn->hnd.fd);
 	
 	if (conn->timeout_timer.tpd)
 		triton_timer_del(&conn->timeout_timer);
