@@ -5,10 +5,11 @@
 #include <stdint.h>
 #include <string.h>
 #include <errno.h>
-#include <sys/ioctl.h>
 #include <arpa/inet.h>
 #include <features.h>
 #include <signal.h>
+#include <sys/socket.h>
+#include <sys/ioctl.h>
 #include "linux_ppp.h"
 
 #include "crypto.h"
@@ -18,6 +19,7 @@
 #include "events.h"
 #include "ppp.h"
 #include "ppp_fsm.h"
+#include "ipdb.h"
 #include "log.h"
 #include "spinlock.h"
 #include "mempool.h"
@@ -27,6 +29,7 @@
 int __export conf_ppp_verbose;
 int conf_sid_ucase;
 int conf_single_session = -1;
+int conf_unit_cache = 0;
 
 pthread_rwlock_t __export ppp_lock = PTHREAD_RWLOCK_INITIALIZER;
 __export LIST_HEAD(ppp_list);
@@ -55,6 +58,18 @@ struct layer_node_t
 	struct list_head items;
 };
 
+struct pppunit_cache
+{
+	struct list_head entry;
+	int fd;
+	int unit_idx;
+};
+
+static pthread_mutex_t uc_lock = PTHREAD_MUTEX_INITIALIZER;
+static LIST_HEAD(uc_list);
+static int uc_size;
+static mempool_t uc_pool;
+
 static int ppp_chan_read(struct triton_md_handler_t*);
 static int ppp_unit_read(struct triton_md_handler_t*);
 static void init_layers(struct ppp_t *);
@@ -68,6 +83,9 @@ void __export ppp_init(struct ppp_t *ppp)
 	INIT_LIST_HEAD(&ppp->chan_handlers);
 	INIT_LIST_HEAD(&ppp->unit_handlers);
 	INIT_LIST_HEAD(&ppp->pd_list);
+	ppp->fd = -1;
+	ppp->chan_fd = -1;
+	ppp->unit_fd = -1;
 }
 
 static void generate_sessionid(struct ppp_t *ppp)
@@ -91,6 +109,7 @@ static void generate_sessionid(struct ppp_t *ppp)
 int __export establish_ppp(struct ppp_t *ppp)
 {
 	struct ifreq ifr;
+	struct pppunit_cache *uc = NULL;
 
 	/* Open an instance of /dev/ppp and connect the channel to it */
 	if (ioctl(ppp->fd, PPPIOCGCHAN, &ppp->chan_idx) == -1) {
@@ -111,18 +130,39 @@ int __export establish_ppp(struct ppp_t *ppp)
 		goto exit_close_chan;
 	}
 
-	ppp->unit_fd = open("/dev/ppp", O_RDWR);
-	if (ppp->unit_fd < 0) {
-		log_ppp_error("open(unit) /dev/ppp: %s\n", strerror(errno));
-		goto exit_close_chan;
+	if (uc_size) {
+		pthread_mutex_lock(&uc_lock);
+		if (!list_empty(&uc_list)) {
+			uc = list_entry(uc_list.next, typeof(*uc), entry);
+			list_del(&uc->entry);
+			--uc_size;
+		}
+		pthread_mutex_unlock(&uc_lock);
 	}
-	
-	fcntl(ppp->unit_fd, F_SETFD, fcntl(ppp->unit_fd, F_GETFD) | FD_CLOEXEC);
 
-	ppp->unit_idx = -1;
-	if (ioctl(ppp->unit_fd, PPPIOCNEWUNIT, &ppp->unit_idx) < 0) {
-		log_ppp_error("ioctl(PPPIOCNEWUNIT): %s\n", strerror(errno));
-		goto exit_close_unit;
+	if (uc) {
+		ppp->unit_fd = uc->fd;
+		ppp->unit_idx = uc->unit_idx;
+		mempool_free(uc);
+	} else {
+		ppp->unit_fd = open("/dev/ppp", O_RDWR);
+		if (ppp->unit_fd < 0) {
+			log_ppp_error("open(unit) /dev/ppp: %s\n", strerror(errno));
+			goto exit_close_chan;
+		}
+		
+		fcntl(ppp->unit_fd, F_SETFD, fcntl(ppp->unit_fd, F_GETFD) | FD_CLOEXEC);
+
+		ppp->unit_idx = -1;
+		if (ioctl(ppp->unit_fd, PPPIOCNEWUNIT, &ppp->unit_idx) < 0) {
+			log_ppp_error("ioctl(PPPIOCNEWUNIT): %s\n", strerror(errno));
+			goto exit_close_unit;
+		}
+	
+		if (fcntl(ppp->unit_fd, F_SETFL, O_NONBLOCK)) {
+			log_ppp_error("ppp: cann't to set nonblocking mode: %s\n", strerror(errno));
+			goto exit_close_unit;
+		}
 	}
 
   if (ioctl(ppp->chan_fd, PPPIOCCONNECT, &ppp->unit_idx) < 0) {
@@ -135,11 +175,6 @@ int __export establish_ppp(struct ppp_t *ppp)
 		goto exit_close_unit;
 	}
 	
-	if (fcntl(ppp->unit_fd, F_SETFL, O_NONBLOCK)) {
-		log_ppp_error("ppp: cann't to set nonblocking mode: %s\n", strerror(errno));
-		goto exit_close_unit;
-	}
-
 	ppp->start_time = time(NULL);
 	generate_sessionid(ppp);
 	sprintf(ppp->ifname, "ppp%i", ppp->unit_idx);
@@ -202,6 +237,8 @@ exit_close_chan:
 
 static void destablish_ppp(struct ppp_t *ppp)
 {
+	struct pppunit_cache *uc;
+
 	triton_event_fire(EV_PPP_PRE_FINISHED, ppp);
 
 	pthread_rwlock_wrlock(&ppp_lock);
@@ -223,7 +260,18 @@ static void destablish_ppp(struct ppp_t *ppp)
 	triton_md_unregister_handler(&ppp->chan_hnd);
 	triton_md_unregister_handler(&ppp->unit_hnd);
 	
-	close(ppp->unit_fd);
+	if (uc_size < conf_unit_cache) {
+		uc = mempool_alloc(uc_pool);
+		uc->fd = ppp->unit_fd;
+		uc->unit_idx = ppp->unit_idx;
+
+		pthread_mutex_lock(&uc_lock);
+		list_add_tail(&uc->entry, &uc_list);
+		++uc_size;
+		pthread_mutex_unlock(&uc_lock);
+	} else
+		close(ppp->unit_fd);
+
 	close(ppp->chan_fd);
 	close(ppp->fd);
 
@@ -356,13 +404,15 @@ cont:
 			return 0;
 		}
 
-		//printf("ppp_unit_read: ");
+		//printf("ppp_unit_read: %i\n", ppp->buf_size);
+		if (ppp->buf_size == 0)
+			return 0;
 		//print_buf(ppp->buf,ppp->buf_size);
 
-		if (ppp->buf_size == 0) {
+		/*if (ppp->buf_size == 0) {
 			ppp_terminate(ppp, TERM_NAS_ERROR, 1);
 			return 1;
-		}
+		}*/
 
 		if (ppp->buf_size < 2) {
 			log_ppp_error("ppp_unit_read: short read %i\n", ppp->buf_size);
@@ -404,51 +454,6 @@ void ppp_recv_proto_rej(struct ppp_t *ppp, uint16_t proto)
 			return;
 		}
 	}
-}
-
-static void ppp_ifup(struct ppp_t *ppp)
-{
-	struct ifreq ifr;
-	struct npioctl np;
-	
-	triton_event_fire(EV_PPP_ACCT_START, ppp);
-	if (ppp->stop_time)
-		return;
-
-	triton_event_fire(EV_PPP_PRE_UP, ppp);
-	if (ppp->stop_time)
-		return;
-
-	memset(&ifr, 0, sizeof(ifr));
-	strcpy(ifr.ifr_name, ppp->ifname);
-
-	if (ioctl(sock_fd, SIOCGIFFLAGS, &ifr))
-		log_ppp_error("ppp: failed to get interface flags: %s\n", strerror(errno));
-
-	ifr.ifr_flags |= IFF_UP | IFF_POINTOPOINT;
-
-	if (ioctl(sock_fd, SIOCSIFFLAGS, &ifr))
-		log_ppp_error("ppp: failed to set interface flags: %s\n", strerror(errno));
-
-	if (ppp->ipv4) {
-		np.protocol = PPP_IP;
-		np.mode = NPMODE_PASS;
-
-		if (ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
-			log_ppp_error("ppp: failed to set NP (IPv4) mode: %s\n", strerror(errno));
-	}
-	
-	if (ppp->ipv6) {
-		np.protocol = PPP_IPV6;
-		np.mode = NPMODE_PASS;
-
-		if (ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
-			log_ppp_error("ppp: failed to set NP (IPv6) mode: %s\n", strerror(errno));
-	}
-	
-	ppp->ctrl->started(ppp);
-
-	triton_event_fire(EV_PPP_STARTED, ppp);
 }
 
 static void __ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
@@ -552,6 +557,8 @@ void __export ppp_terminate(struct ppp_t *ppp, int cause, int hard)
 	ppp->state = PPP_STATE_FINISHING;
 
 	log_ppp_debug("ppp_terminate\n");
+
+	ppp_ifdown(ppp);
 
 	triton_event_fire(EV_PPP_FINISHING, ppp);
 
@@ -749,6 +756,12 @@ static void load_config(void)
 			conf_single_session = 1;
 	} else 
 		conf_single_session = -1;
+	
+	opt = conf_get_opt("ppp", "unit-cache");
+	if (opt && atoi(opt) > 0)
+		conf_unit_cache = atoi(opt);
+	else
+		conf_unit_cache = 0;
 }
 
 static void init(void)
@@ -757,6 +770,7 @@ static void init(void)
 	FILE *f;
 
 	buf_pool = mempool_create(PPP_MRU);
+	uc_pool = mempool_create(sizeof(struct pppunit_cache));
 
 	sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sock_fd < 0) {

@@ -177,6 +177,10 @@ Specifies maximum number of echo-requests may be sent without valid echo-reply, 
 .BI "lcp-echo-timeout=" sec
 Specifies timeout in seconds to wait for any peer activity. If this option specified it turns on adaptive lcp echo functionality and "lcp-echo-failure" is not used.
 .TP
+.BI "unit-cache=" n
+Specifies number of interfaces to keep in cache. It means that don't destory interface after corresponding session is destoyed, instead place it to cache and use it later for new sessions repeatedly.
+This should reduce kernel-level interface creation/deletion rate lack.
+.TP
 .SH [dns]
 .TP
 .BI "dns1=" x.x.x.x

@@ -11,6 +11,7 @@
 
 #include "ppp.h"
 #include "ppp_ipv6cp.h"
+#include "ipdb.h"
 
 #include "memdebug.h"
 
@@ -208,6 +209,11 @@ static void ipv6cp_layer_finished(struct ppp_fsm_t *fsm)
 		ppp_terminate(ipv6cp->ppp, TERM_USER_ERROR, 0);
 	
 	fsm->fsm_state = FSM_Closed;
+
+	if (ipv6cp->ppp->ipv6) {
+		ipdb_put_ipv6(ipv6cp->ppp, ipv6cp->ppp->ipv6);
+		ipv6cp->ppp->ipv6 = NULL;
+	}
 }
 
 static void ipv6cp_layer_down(struct ppp_fsm_t *fsm)

@@ -30,13 +30,6 @@ static int conf_peer_intf_id = INTF_ID_FIXED;
 static uint64_t conf_peer_intf_id_val = 2;
 static int conf_accept_peer_intf_id;
 
-// from /usr/include/linux/ipv6.h
-struct in6_ifreq {
-        struct in6_addr ifr6_addr;
-        __u32           ifr6_prefixlen;
-        int             ifr6_ifindex; 
-};
-
 static struct ipv6cp_option_t *ipaddr_init(struct ppp_ipv6cp_t *ipv6cp);
 static void ipaddr_free(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_option_t *opt);
 static int ipaddr_send_conf_req(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_option_t *opt, uint8_t *ptr);
@@ -79,8 +72,10 @@ static void ipaddr_free(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_option_t *opt
 {
 	struct ipaddr_option_t *ipaddr_opt=container_of(opt,typeof(*ipaddr_opt),opt);
 
-	if (ipv6cp->ppp->ipv6)
+	if (ipv6cp->ppp->ipv6) {
 		ipdb_put_ipv6(ipv6cp->ppp, ipv6cp->ppp->ipv6);
+		ipv6cp->ppp->ipv6 = NULL;
+	}
 
 	_free(ipaddr_opt);
 }
@@ -211,39 +206,10 @@ static int ipaddr_send_conf_nak(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_optio
 	return 10;
 }
 
-static void devconf(struct ppp_t *ppp, const char *attr, const char *val)
-{
-	int fd;
-	char fname[PATH_MAX];
-
-	sprintf(fname, "/proc/sys/net/ipv6/conf/%s/%s", ppp->ifname, attr);
-	fd = open(fname, O_WRONLY);
-	if (!fd) {
-		log_ppp_error("ppp:ipv6cp: failed to open '%s': %s\n", fname, strerror(errno));
-		return;
-	}
-
-	write(fd, val, strlen(val));
-
-	close(fd);
-}
-
-static void build_addr(struct ipv6db_addr_t *a, uint64_t intf_id, struct in6_addr *addr)
-{
-	memcpy(addr, &a->addr, sizeof(*addr));
-
-	if (a->prefix_len <= 64)
-		*(uint64_t *)(addr->s6_addr + 8) = intf_id;
-	else
-		*(uint64_t *)(addr->s6_addr + 8) |= intf_id & ((1 << (128 - a->prefix_len)) - 1);
-}
-
 static int ipaddr_recv_conf_req(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_option_t *opt, uint8_t *ptr)
 {
 	struct ipaddr_option_t *ipaddr_opt = container_of(opt, typeof(*ipaddr_opt), opt);
 	struct ipv6cp_opt64_t *opt64 = (struct ipv6cp_opt64_t* )ptr;
-	struct in6_ifreq ifr6;
-	struct ipv6db_addr_t *a;
 	int r;
 
 	if (opt64->hdr.len != 10)
@@ -265,48 +231,11 @@ static int ipaddr_recv_conf_req(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_optio
 
 	if (opt64->val && ipv6cp->ppp->ipv6->peer_intf_id == opt64->val && opt64->val != ipv6cp->ppp->ipv6->intf_id) {
 		ipv6cp->delay_ack = ccp_ipcp_started(ipv6cp->ppp);
-		goto ack;
+		ipaddr_opt->started = 1;
+		return IPV6CP_OPT_ACK;
 	}
 		
 	return IPV6CP_OPT_NAK;
-
-ack:
-	if (ipaddr_opt->started)
-		return IPV6CP_OPT_ACK;
-	
-	ipaddr_opt->started = 1;
-
-	devconf(ipv6cp->ppp, "accept_ra", "0");
-	devconf(ipv6cp->ppp, "autoconf", "0");
-	devconf(ipv6cp->ppp, "forwarding", "1");
-
-	memset(&ifr6, 0, sizeof(ifr6));
-	ifr6.ifr6_addr.s6_addr32[0] = htons(0xfe80);
-	*(uint64_t *)(ifr6.ifr6_addr.s6_addr + 8) = ipv6cp->ppp->ipv6->intf_id;
-	ifr6.ifr6_prefixlen = 64;
-	ifr6.ifr6_ifindex = ipv6cp->ppp->ifindex;
-
-	if (ioctl(sock6_fd, SIOCSIFADDR, &ifr6)) {
-		log_ppp_error("ppp:ipv6cp: ioctl(SIOCSIFADDR): %s\n", strerror(errno));
-		return IPV6CP_OPT_REJ;
-	}
-	
-	list_for_each_entry(a, &ipv6cp->ppp->ipv6->addr_list, entry) {
-		if (a->prefix_len == 128)
-			continue;
-
-		build_addr(a, ipv6cp->ppp->ipv6->intf_id, &ifr6.ifr6_addr);
-		ifr6.ifr6_prefixlen = a->prefix_len;
-
-		if (ioctl(sock6_fd, SIOCSIFADDR, &ifr6)) {
-			log_ppp_error("ppp:ipv6cp: ioctl(SIOCSIFADDR): %s\n", strerror(errno));
-			return IPV6CP_OPT_REJ;
-		}
-	
-			
-	}
-
-	return IPV6CP_OPT_ACK;
 }
 
 static void ipaddr_print(void (*print)(const char *fmt,...), struct ipv6cp_option_t *opt, uint8_t *ptr)

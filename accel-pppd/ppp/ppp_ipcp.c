@@ -11,6 +11,7 @@
 
 #include "ppp.h"
 #include "ppp_ipcp.h"
+#include "ipdb.h"
 
 #include "memdebug.h"
 
@@ -208,6 +209,11 @@ static void ipcp_layer_finished(struct ppp_fsm_t *fsm)
 		ppp_terminate(ipcp->ppp, TERM_USER_ERROR, 0);
 	
 	fsm->fsm_state = FSM_Closed;
+	
+	if (ipcp->ppp->ipv4) {
+		ipdb_put_ipv4(ipcp->ppp, ipcp->ppp->ipv4);
+		ipcp->ppp->ipv4 = NULL;
+	}
 }
 
 static void ipcp_layer_down(struct ppp_fsm_t *fsm)

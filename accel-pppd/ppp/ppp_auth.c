@@ -337,16 +337,6 @@ static void __ppp_auth_started(struct ppp_t *ppp)
 	triton_event_fire(EV_PPP_AUTHORIZED, ppp);
 }
 
-static void ifdown(struct ppp_t *ppp)
-{
-	struct ifreq ifr;
-	
-	memset(&ifr, 0, sizeof(ifr));
-	strcpy(ifr.ifr_name, ppp->ifname);
-
-	ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
-}
-
 int __export ppp_auth_successed(struct ppp_t *ppp, char *username)
 {
 	struct ppp_t *p;
@@ -362,7 +352,7 @@ int __export ppp_auth_successed(struct ppp_t *ppp, char *username)
 					return -1;
 				} else {
 					if (conf_single_session == 1) {
-						ifdown(p);
+						ppp_ifdown(p);
 						triton_context_call(p->ctrl->ctx, (triton_event_func)ppp_terminate_sec, p);
 					}
 				}
