@@ -1388,7 +1388,7 @@ static void load_config(void)
 	if (opt) {
 		if (!strcmp(opt, "calling-sid"))
 			conf_ifname_in_sid = 1;
-		else if (!strcmp(opt, "callied-sid"))
+		else if (!strcmp(opt, "called-sid"))
 			conf_ifname_in_sid = 2;
 		else if (!strcmp(opt, "both"))
 			conf_ifname_in_sid = 3;
