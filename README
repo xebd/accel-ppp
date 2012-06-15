@@ -21,7 +21,7 @@ Features
 11. Extensible user/password database, implemented Radius, pppd compatible chap-secrets sources
 12. Extensible IP pool, implemented Radius, chap-secrets and static pools
 13. Supported pppd compatible ip-up/ip-down scripts
-14. Builtin tbf shaper manager
+14. Builtin tbf/htb shaper manager
 15. Command line interface via telnet
 16. SNMP support (master or subagent via AgentX)
 
@@ -66,23 +66,23 @@ read man accel-ppp.conf
 
 Built-in shaper
 --------------
-accel-ppp supports tbf based shaper manager.
-To enable it uncomment shaper_tbf in [modules] section.
+accel-ppp supports tbf and htb based shaper manager.
+To enable it uncomment shaper in [modules] section.
 It accepts radius attributes in various formats: rate, down-rate/up-rate and cisco-like. Values have to be in kilobits except cisco-like.
 For example:
 Filter-Id=1000 (means 1000Kbit both up-stream and down-stream rate)
 Filter-Id=2000/3000 (means 2000Kbit down-stream rate and 3000Kbit up-stream rate)
 To change radius attribute which containes rate information use 'attr' option, for example:
-[tbf]
+[shaper]
 attr=My-Custom-Rate-Attribute
 of course this attribute have to be in radius dictionary.
 To specify different attributes for down-stream and up-stream rates use 'attr-down' and 'attr-up' options, for example:
-[tbf]
+[shaper]
 attr-down=PPPD-Downstream-Speed
 attr-up=PPPD-Upstream-Speed
 
 If you want to use cisco-like format configure accel-ppp as following:
-[tbf]
+[shaper]
 vendor=Cisco
 attr=Cisco-AVPair
 and send two attributes:
@@ -95,15 +95,15 @@ Advanced shaper using
 1. Burst configuration.
 If you not using cisco-like format then burst calculates from rate and specified burst factors.
 To specify burst factors use 'down-burst-factor' and 'up-burst-factor' options, for example:
-[tbf]
+[shaper]
 down-burst-factor=1.0
 up-burst-factor=10.0
-which means that burst for tbf qdisc will be calculated as down-stream rate multiply to 1.0 and burst for policer will be calculated as up-stream rate multiply to 10.0.
+which means that burst for tbf/htb qdisc will be calculated as down-stream rate multiply to 1.0 and burst for policer/htb will be calculated as up-stream rate multiply to 10.0.
 
 2. Time ranges.
 You can specify time ranges to authomatic rate reconfiguration.
 To specify time ranges use following sample configuration:
-[tbf]
+[shaper]
 time-range=1,1:00-3:00
 time-range=2,3:00-5:00
 time-range=3,5:00-7:00
@@ -162,14 +162,9 @@ Warning !!!
    of pptpd exists.
 
 
-Thanks
-------
-Thanks to Kirill Yushkov for debug support and donations.
-
-
 Contacts
 --------
-http://accel-pptp.sourceforge.net/
+http://accel-ppp.sourceforge.net/
 mail: xeb@mail.ru
 ICQ: 337258064
 Jabber: xeb@xeb.homelinux.net
