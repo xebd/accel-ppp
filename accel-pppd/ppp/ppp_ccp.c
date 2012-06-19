@@ -180,7 +180,9 @@ void ccp_layer_free(struct ppp_layer_data_t *ld)
 	struct ppp_ccp_t *ccp = container_of(ld, typeof(*ccp), ld);
 	
 	log_ppp_debug("ccp_layer_free\n");
-		
+
+	ccp_set_flags(ccp->ppp->unit_fd, 0, 0);
+
 	ppp_unregister_handler(ccp->ppp, &ccp->hnd);
 	ccp_options_free(ccp);
 	ppp_fsm_free(&ccp->fsm);
