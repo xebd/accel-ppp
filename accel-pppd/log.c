@@ -25,8 +25,8 @@
 
 struct log_pd_t
 {
-	struct ppp_pd_t pd;
-	struct ppp_t *ppp;
+	struct ap_private pd;
+	struct ap_session *ses;
 	struct list_head msgs;
 	struct log_msg_t *msg;
 	int authorized:1;
@@ -48,7 +48,7 @@ static mempool_t msg_pool;
 static mempool_t _msg_pool;
 static mempool_t chunk_pool;
 
-static __thread struct ppp_t *cur_ppp;
+static __thread struct ap_session *cur_ses;
 static __thread struct _log_msg_t *cur_msg;
 static __thread char *stat_buf;
 static pthread_key_t stat_buf_key;
@@ -59,15 +59,15 @@ static FILE *debug_file;
 static void _log_free_msg(struct _log_msg_t *msg);
 static struct log_msg_t *clone_msg(struct _log_msg_t *msg);
 static int add_msg(struct _log_msg_t *msg, const char *buf);
-//static struct log_pd_t *find_pd(struct ppp_t *ppp);
-static void write_msg(FILE *f, struct _log_msg_t *msg, struct ppp_t *ppp);
+//static struct log_pd_t *find_pd(struct ap_session *ses);
+static void write_msg(FILE *f, struct _log_msg_t *msg, struct ap_session *ses);
 
 static void stat_buf_free(void *ptr)
 {
 	_free(ptr);
 }
 
-static void do_log(int level, const char *fmt, va_list ap, struct ppp_t *ppp)
+static void do_log(int level, const char *fmt, va_list ap, struct ap_session *ses)
 {
 	struct log_target_t *t;
 	struct log_msg_t *m;
@@ -96,13 +96,13 @@ static void do_log(int level, const char *fmt, va_list ap, struct ppp_t *ppp)
 		return;
 
 	if (debug_file)
-		write_msg(debug_file, cur_msg, ppp);
+		write_msg(debug_file, cur_msg, ses);
 
 	list_for_each_entry(t, &targets, entry) {
 		m = clone_msg(cur_msg);
 		if (!m)
 			break;
-		t->log(t, m, ppp);
+		t->log(t, m, ses);
 	}
 
 out:
@@ -183,7 +183,7 @@ void __export log_ppp_error(const char *fmt,...)
 	if (log_level >= LOG_ERROR) {
 		va_list ap;
 		va_start(ap, fmt);
-		do_log(LOG_ERROR, fmt, ap, cur_ppp);
+		do_log(LOG_ERROR, fmt, ap, cur_ses);
 		va_end(ap);
 	}
 }
@@ -193,7 +193,7 @@ void __export log_ppp_warn(const char *fmt,...)
 	if (log_level >= LOG_WARN) {
 		va_list ap;
 		va_start(ap, fmt);
-		do_log(LOG_WARN, fmt, ap, cur_ppp);
+		do_log(LOG_WARN, fmt, ap, cur_ses);
 		va_end(ap);
 	}
 }
@@ -203,7 +203,7 @@ void __export log_ppp_info1(const char *fmt,...)
 	if (log_level >= LOG_INFO1) {
 		va_list ap;
 		va_start(ap, fmt);
-		do_log(LOG_INFO1, fmt, ap, cur_ppp);
+		do_log(LOG_INFO1, fmt, ap, cur_ses);
 		va_end(ap);
 	}
 }
@@ -213,7 +213,7 @@ void __export log_ppp_info2(const char *fmt,...)
 	if (log_level >= LOG_INFO2) {
 		va_list ap;
 		va_start(ap, fmt);
-		do_log(LOG_INFO2, fmt, ap, cur_ppp);
+		do_log(LOG_INFO2, fmt, ap, cur_ses);
 		va_end(ap);
 	}
 }
@@ -223,7 +223,7 @@ void __export log_ppp_debug(const char *fmt,...)
 	if (log_level >= LOG_DEBUG) {
 		va_list ap;
 		va_start(ap, fmt);
-		do_log(LOG_DEBUG, fmt, ap, cur_ppp);
+		do_log(LOG_DEBUG, fmt, ap, cur_ses);
 		va_end(ap);
 	}
 }
@@ -232,7 +232,7 @@ void __export log_ppp_msg(const char *fmt,...)
 {
 	va_list ap;
 	va_start(ap, fmt);
-	do_log(LOG_MSG, fmt, ap, cur_ppp);
+	do_log(LOG_MSG, fmt, ap, cur_ses);
 	va_end(ap);
 }
 
@@ -326,12 +326,12 @@ static int add_msg(struct _log_msg_t *msg, const char *buf)
 	return 0;
 }
 
-static void write_msg(FILE *f, struct _log_msg_t *msg, struct ppp_t *ppp)
+static void write_msg(FILE *f, struct _log_msg_t *msg, struct ap_session *ses)
 {
 	struct log_chunk_t *chunk;
 
-	if (ppp)
-		sprintf(stat_buf,"%s: %s: ", ppp->ifname, ppp->sessionid);
+	if (ses)
+		sprintf(stat_buf,"%s: %s: ", ses->ifname, ses->sessionid);
 	else
 		stat_buf[0] = 0;
 	
@@ -342,12 +342,12 @@ static void write_msg(FILE *f, struct _log_msg_t *msg, struct ppp_t *ppp)
 	fflush(f);
 }
 
-/*static struct log_pd_t *find_pd(struct ppp_t *ppp)
+/*static struct log_pd_t *find_pd(struct ap_session *ses)
 {
-	struct ppp_pd_t *pd;
+	struct ap_private *pd;
 	struct log_pd_t *lpd;
 
-	list_for_each_entry(pd, &ppp->pd_list, entry) {
+	list_for_each_entry(pd, &ses->pd_list, entry) {
 		if (pd->key == &pd_key) {
 			lpd = container_of(pd, typeof(*lpd), pd);
 			return lpd;
@@ -357,7 +357,7 @@ static void write_msg(FILE *f, struct _log_msg_t *msg, struct ppp_t *ppp)
 	abort();
 }
 
-static void ev_ctrl_starting(struct ppp_t *ppp)
+static void ev_ctrl_starting(struct ap_session *ses)
 {
 	struct log_pd_t *lpd = _malloc(sizeof(*lpd));
 	if (!lpd) {
@@ -369,10 +369,10 @@ static void ev_ctrl_starting(struct ppp_t *ppp)
 	lpd->pd.key = &pd_key;
 	lpd->ppp = ppp;
 	INIT_LIST_HEAD(&lpd->msgs);
-	list_add_tail(&lpd->pd.entry, &ppp->pd_list);
+	list_add_tail(&lpd->pd.entry, &ses->pd_list);
 }
 
-static void ev_ctrl_finished(struct ppp_t *ppp)
+static void ev_ctrl_finished(struct ap_session *ses)
 {
 	struct log_pd_t *lpd = find_pd(ppp);
 	struct _log_msg_t *msg;
@@ -414,7 +414,7 @@ static void ev_ctrl_finished(struct ppp_t *ppp)
 	_free(lpd);
 }
 
-static void ev_ppp_authorized(struct ppp_t *ppp)
+static void ev_ppp_authorized(struct ap_session *ses)
 {
 	struct log_pd_t *lpd = find_pd(ppp);
 	struct _log_msg_t *msg;
@@ -446,7 +446,7 @@ static void ev_ppp_authorized(struct ppp_t *ppp)
 
 void __export log_switch(struct triton_context_t *ctx, void *arg)
 {
-	cur_ppp = (struct ppp_t *)arg;
+	cur_ses = (struct ap_session *)arg;
 }
 
 

@@ -4,7 +4,7 @@
 #include <stdarg.h>
 #include "list.h"
 
-struct ppp_t;
+struct ap_session;
 
 #define PWDB_SUCCESS 0
 #define PWDB_DENIED  1
@@ -13,12 +13,12 @@ struct ppp_t;
 struct pwdb_t
 {
 	struct list_head entry;
-	int (*check)(struct pwdb_t *, struct ppp_t *, const char *username, int type, va_list args);
-	char* (*get_passwd)(struct pwdb_t *, struct ppp_t *, const char *username);
+	int (*check)(struct pwdb_t *, struct ap_session *, const char *username, int type, va_list args);
+	char* (*get_passwd)(struct pwdb_t *, struct ap_session *, const char *username);
 };
 
-int pwdb_check(struct ppp_t *, const char *username, int type, ...);
-char *pwdb_get_passwd(struct ppp_t *, const char *username);
+int pwdb_check(struct ap_session *, const char *username, int type, ...);
+char *pwdb_get_passwd(struct ap_session *, const char *username);
 
 void pwdb_register(struct pwdb_t *);
 void pwdb_unregister(struct pwdb_t *);

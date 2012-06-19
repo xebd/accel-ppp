@@ -59,8 +59,8 @@ struct time_range_pd_t;
 struct shaper_pd_t
 {
 	struct list_head entry;
-	struct ppp_t *ppp;
-	struct ppp_pd_t pd;
+	struct ap_session *ses;
+	struct ap_private pd;
 	int temp_down_speed;
 	int temp_up_speed;
 	int down_speed;
@@ -98,12 +98,12 @@ static struct triton_context_t shaper_ctx = {
 	.before_switch = log_switch,
 };
 
-static struct shaper_pd_t *find_pd(struct ppp_t *ppp, int create)
+static struct shaper_pd_t *find_pd(struct ap_session *ses, int create)
 {
-	struct ppp_pd_t *pd;
+	struct ap_private *pd;
 	struct shaper_pd_t *spd;
 
-	list_for_each_entry(pd, &ppp->pd_list, entry) {
+	list_for_each_entry(pd, &ses->pd_list, entry) {
 		if (pd->key == &pd_key) {
 			spd = container_of(pd, typeof(*spd), pd);
 			return spd;
@@ -118,8 +118,8 @@ static struct shaper_pd_t *find_pd(struct ppp_t *ppp, int create)
 		}
 
 		memset(spd, 0, sizeof(*spd));
-		spd->ppp = ppp;
-		list_add_tail(&spd->pd.entry, &ppp->pd_list);
+		spd->ses = ses;
+		list_add_tail(&spd->pd.entry, &ses->pd_list);
 		spd->pd.key = &pd_key;
 		INIT_LIST_HEAD(&spd->tr_list);
 
@@ -279,7 +279,7 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 {
 	int down_speed, down_burst;
 	int up_speed, up_burst;
-	struct shaper_pd_t *pd = find_pd(ev->ppp, 1);
+	struct shaper_pd_t *pd = find_pd(ev->ses, 1);
 
 	if (!pd)
 		return;
@@ -307,7 +307,7 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 	}
 
 	if (down_speed > 0 && up_speed > 0) {
-		if (!install_limiter(ev->ppp, down_speed, down_burst, up_speed, up_burst)) {
+		if (!install_limiter(ev->ses, down_speed, down_burst, up_speed, up_burst)) {
 			if (conf_verbose)
 				log_ppp_info2("shaper: installed shaper %i/%i (Kbit)\n", down_speed, up_speed);
 		}
@@ -316,7 +316,7 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 
 static void ev_radius_coa(struct ev_radius_t *ev)
 {
-	struct shaper_pd_t *pd = find_pd(ev->ppp, 0);
+	struct shaper_pd_t *pd = find_pd(ev->ses, 0);
 
 	if (!pd) {
 		ev->res = -1;
@@ -335,7 +335,7 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 			pd->up_speed = 0;
 			if (conf_verbose)
 				log_ppp_info2("shaper: removed shaper\n");
-			remove_limiter(ev->ppp);
+			remove_limiter(ev->ses);
 		}
 		return;
 	}
@@ -344,13 +344,13 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 		pd->down_speed = pd->cur_tr->down_speed;
 		pd->up_speed = pd->cur_tr->up_speed;
 
-		if (remove_limiter(ev->ppp)) {
+		if (remove_limiter(ev->ses)) {
 			ev->res = -1;
 			return;
 		}
 		
 		if (pd->down_speed > 0 || pd->up_speed > 0) {
-			if (install_limiter(ev->ppp, pd->cur_tr->down_speed, pd->cur_tr->down_burst, pd->cur_tr->up_speed, pd->cur_tr->up_burst)) {
+			if (install_limiter(ev->ses, pd->cur_tr->down_speed, pd->cur_tr->down_burst, pd->cur_tr->up_speed, pd->cur_tr->up_burst)) {
 				ev->res= -1;
 				return;
 			} else {
@@ -367,7 +367,7 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 
 static void ev_shaper(struct ev_shaper_t *ev)
 {
-	struct shaper_pd_t *pd = find_pd(ev->ppp, 1);
+	struct shaper_pd_t *pd = find_pd(ev->ses, 1);
 	int down_speed = 0, down_burst = 0;
 	int up_speed = 0, up_burst = 0;
 	int tr_id = 0;
@@ -402,16 +402,16 @@ static void ev_shaper(struct ev_shaper_t *ev)
 	}
 
 	if (pd->down_speed > 0 && pd->up_speed > 0) {
-		if (!install_limiter(ev->ppp, down_speed, down_burst, up_speed, up_burst)) {
+		if (!install_limiter(ev->ses, down_speed, down_burst, up_speed, up_burst)) {
 			if (conf_verbose)
 				log_ppp_info2("shaper: installed shaper %i/%i (Kbit)\n", down_speed, up_speed);
 		}
 	}
 }
 
-static void ev_ppp_pre_up(struct ppp_t *ppp)
+static void ev_ppp_pre_up(struct ap_session *ses)
 {
-	struct shaper_pd_t *pd = find_pd(ppp, 1);
+	struct shaper_pd_t *pd = find_pd(ses, 1);
 	if (!pd)
 		return;
 	
@@ -420,16 +420,16 @@ static void ev_ppp_pre_up(struct ppp_t *ppp)
 		pd->temp_up_speed = temp_up_speed;
 		pd->down_speed = temp_down_speed;
 		pd->up_speed = temp_up_speed;
-		if (!install_limiter(ppp, temp_down_speed, 0, temp_up_speed, 0)) {
+		if (!install_limiter(ses, temp_down_speed, 0, temp_up_speed, 0)) {
 			if (conf_verbose)
 				log_ppp_info2("shaper: installed shaper %i/%i (Kbit)\n", temp_down_speed, temp_up_speed);
 		}
 	}
 }
 
-static void ev_ppp_finishing(struct ppp_t *ppp)
+static void ev_ppp_finishing(struct ap_session *ses)
 {
-	struct shaper_pd_t *pd = find_pd(ppp, 0);
+	struct shaper_pd_t *pd = find_pd(ses, 0);
 
 	if (pd) {
 		clear_tr_pd(pd);
@@ -439,7 +439,7 @@ static void ev_ppp_finishing(struct ppp_t *ppp)
 		list_del(&pd->pd.entry);
 
 		if (pd->down_speed || pd->up_speed)
-			remove_limiter(ppp);
+			remove_limiter(ses);
 
 		_free(pd);
 	}
@@ -454,16 +454,16 @@ static void shaper_change_help(char * const *f, int f_cnt, void *cli)
 static void shaper_change(struct shaper_pd_t *pd)
 {
 	if (pd->down_speed || pd->up_speed)
-		remove_limiter(pd->ppp);
+		remove_limiter(pd->ses);
 
 	if (pd->temp_down_speed || pd->temp_up_speed) {
 		pd->down_speed = pd->temp_down_speed;
 		pd->up_speed = pd->temp_up_speed;
-		install_limiter(pd->ppp, pd->temp_down_speed, 0, pd->temp_up_speed, 0);
+		install_limiter(pd->ses, pd->temp_down_speed, 0, pd->temp_up_speed, 0);
 	} else if (pd->cur_tr->down_speed || pd->cur_tr->up_speed) {
 		pd->down_speed = pd->cur_tr->down_speed;
 		pd->up_speed = pd->cur_tr->up_speed;
-		install_limiter(pd->ppp, pd->cur_tr->down_speed, pd->cur_tr->down_burst, pd->cur_tr->up_speed, pd->cur_tr->up_burst);
+		install_limiter(pd->ses, pd->cur_tr->down_speed, pd->cur_tr->down_burst, pd->cur_tr->up_speed, pd->cur_tr->up_burst);
 	} else {
 		pd->down_speed = 0;
 		pd->up_speed = 0;
@@ -503,7 +503,7 @@ static int shaper_change_exec(const char *cmd, char * const *f, int f_cnt, void 
 
 	pthread_rwlock_rdlock(&shaper_lock);
 	list_for_each_entry(pd, &shaper_list, entry) {
-		if (all || !strcmp(f[2], pd->ppp->ifname)) {
+		if (all || !strcmp(f[2], pd->ses->ifname)) {
 			if (temp) {
 				pd->temp_down_speed = down_speed;
 				pd->temp_up_speed = up_speed;
@@ -517,7 +517,7 @@ static int shaper_change_exec(const char *cmd, char * const *f, int f_cnt, void 
 				pd->cur_tr->up_speed = up_speed;
 				pd->cur_tr->up_burst = up_burst;
 			}
-			triton_context_call(pd->ppp->ctrl->ctx, (triton_event_func)shaper_change, pd);
+			triton_context_call(pd->ses->ctrl->ctx, (triton_event_func)shaper_change, pd);
 			if (!all) {
 				found = 1;
 				break;
@@ -540,12 +540,12 @@ static void shaper_restore_help(char * const *f, int f_cnt, void *cli)
 
 static void shaper_restore(struct shaper_pd_t *pd)
 {
-	remove_limiter(pd->ppp);
+	remove_limiter(pd->ses);
 
 	if (pd->cur_tr) {
 		pd->down_speed = pd->cur_tr->down_speed;
 		pd->up_speed = pd->cur_tr->up_speed;
-		install_limiter(pd->ppp, pd->cur_tr->down_speed, pd->cur_tr->down_burst, pd->cur_tr->up_speed, pd->cur_tr->up_burst);
+		install_limiter(pd->ses, pd->cur_tr->down_speed, pd->cur_tr->down_burst, pd->cur_tr->up_speed, pd->cur_tr->up_burst);
 	} else {
 		pd->down_speed = 0;
 		pd->up_speed = 0;
@@ -576,10 +576,10 @@ static int shaper_restore_exec(const char *cmd, char * const *f, int f_cnt, void
 	list_for_each_entry(pd, &shaper_list, entry) {
 		if (!pd->temp_down_speed)
 			continue;
-		if (all || !strcmp(f[2], pd->ppp->ifname)) {
+		if (all || !strcmp(f[2], pd->ses->ifname)) {
 			pd->temp_down_speed = 0;
 			pd->temp_up_speed = 0;
-			triton_context_call(pd->ppp->ctrl->ctx, (triton_event_func)shaper_restore, pd);
+			triton_context_call(pd->ses->ctrl->ctx, (triton_event_func)shaper_restore, pd);
 			if (!all) {
 				found = 1;
 				break;
@@ -594,9 +594,9 @@ static int shaper_restore_exec(const char *cmd, char * const *f, int f_cnt, void
 	return CLI_CMD_OK;
 }
 
-static void print_rate(const struct ppp_t *ppp, char *buf)
+static void print_rate(const struct ap_session *ses, char *buf)
 {
-	struct shaper_pd_t *pd = find_pd((struct ppp_t *)ppp, 0);
+	struct shaper_pd_t *pd = find_pd((struct ap_session *)ses, 0);
 
 	if (pd && (pd->down_speed || pd->up_speed))
 		sprintf(buf, "%i/%i", pd->down_speed, pd->up_speed);
@@ -625,7 +625,7 @@ static void update_shaper_tr(struct shaper_pd_t *pd)
 {
 	struct time_range_pd_t *tr;
 
-	if (pd->ppp->terminating)
+	if (pd->ses->terminating)
 		return;
 
 	list_for_each_entry(tr, &pd->tr_list, entry) {
@@ -641,13 +641,13 @@ static void update_shaper_tr(struct shaper_pd_t *pd)
 	if (pd->down_speed || pd->up_speed) {
 		if (pd->cur_tr && pd->down_speed == pd->cur_tr->down_speed && pd->up_speed == pd->cur_tr->up_speed)
 			return;
-		remove_limiter(pd->ppp);
+		remove_limiter(pd->ses);
 	}
 	
 	if (pd->cur_tr && (pd->cur_tr->down_speed || pd->cur_tr->up_speed)) {
 		pd->down_speed = pd->cur_tr->down_speed;
 		pd->up_speed = pd->cur_tr->up_speed;
-		if (!install_limiter(pd->ppp, pd->cur_tr->down_speed, pd->cur_tr->down_burst, pd->cur_tr->up_speed, pd->cur_tr->up_burst)) {
+		if (!install_limiter(pd->ses, pd->cur_tr->down_speed, pd->cur_tr->down_burst, pd->cur_tr->up_speed, pd->cur_tr->up_burst)) {
 			if (conf_verbose)
 				log_ppp_info2("shaper: changed shaper %i/%i (Kbit)\n", pd->cur_tr->down_speed, pd->cur_tr->up_speed);
 		}
@@ -667,7 +667,7 @@ static void time_range_begin_timer(struct triton_timer_t *t)
 
 	pthread_rwlock_rdlock(&shaper_lock);
 	list_for_each_entry(pd, &shaper_list, entry)
-		triton_context_call(pd->ppp->ctrl->ctx, (triton_event_func)update_shaper_tr, pd);
+		triton_context_call(pd->ses->ctrl->ctx, (triton_event_func)update_shaper_tr, pd);
 	pthread_rwlock_unlock(&shaper_lock);
 }
 
@@ -681,7 +681,7 @@ static void time_range_end_timer(struct triton_timer_t *t)
 
 	pthread_rwlock_rdlock(&shaper_lock);
 	list_for_each_entry(pd, &shaper_list, entry)
-		triton_context_call(pd->ppp->ctrl->ctx, (triton_event_func)update_shaper_tr, pd);
+		triton_context_call(pd->ses->ctrl->ctx, (triton_event_func)update_shaper_tr, pd);
 	pthread_rwlock_unlock(&shaper_lock);
 }
 
@@ -935,8 +935,8 @@ static void init(void)
 		triton_event_register_handler(EV_RADIUS_COA, (triton_event_func)ev_radius_coa);
 	}
 #endif
-	triton_event_register_handler(EV_PPP_PRE_UP, (triton_event_func)ev_ppp_pre_up);
-	triton_event_register_handler(EV_PPP_FINISHING, (triton_event_func)ev_ppp_finishing);
+	triton_event_register_handler(EV_SES_PRE_UP, (triton_event_func)ev_ppp_pre_up);
+	triton_event_register_handler(EV_SES_FINISHING, (triton_event_func)ev_ppp_finishing);
 	//triton_event_register_handler(EV_CTRL_FINISHED, (triton_event_func)ev_ctrl_finished);
 	triton_event_register_handler(EV_SHAPER, (triton_event_func)ev_shaper);
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);

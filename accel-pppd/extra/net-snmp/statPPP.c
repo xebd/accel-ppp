@@ -53,7 +53,7 @@ init_statPPP(void)
               statPPPStarting_oid, OID_LENGTH(statPPPStarting_oid),
               HANDLER_CAN_RONLY);
     winfo = netsnmp_create_watcher_info(
-                &ppp_stat.starting, sizeof(ppp_stat.starting),
+                &ap_session_stat.starting, sizeof(ap_session_stat.starting),
                  ASN_INTEGER, WATCHER_FIXED_SIZE);
     if (netsnmp_register_watched_scalar( reg, winfo ) < 0 ) {
         snmp_log( LOG_ERR, "Failed to register watched statPPPStarting" );
@@ -67,7 +67,7 @@ init_statPPP(void)
               statPPPActive_oid, OID_LENGTH(statPPPActive_oid),
               HANDLER_CAN_RONLY);
     winfo = netsnmp_create_watcher_info(
-                &ppp_stat.active, sizeof(ppp_stat.active),
+                &ap_session_stat.active, sizeof(ap_session_stat.active),
                  ASN_INTEGER, WATCHER_FIXED_SIZE);
     if (netsnmp_register_watched_scalar( reg, winfo ) < 0 ) {
         snmp_log( LOG_ERR, "Failed to register watched statPPPActive" );
@@ -81,7 +81,7 @@ init_statPPP(void)
               statPPPFinishing_oid, OID_LENGTH(statPPPFinishing_oid),
               HANDLER_CAN_RONLY);
     winfo = netsnmp_create_watcher_info(
-                &ppp_stat.finishing, sizeof(ppp_stat.finishing),
+                &ap_session_stat.finishing, sizeof(ap_session_stat.finishing),
                  ASN_INTEGER, WATCHER_FIXED_SIZE);
     if (netsnmp_register_watched_scalar( reg, winfo ) < 0 ) {
         snmp_log( LOG_ERR, "Failed to register watched statPPPFinishing" );

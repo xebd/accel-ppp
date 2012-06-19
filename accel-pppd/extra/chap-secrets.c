@@ -23,7 +23,7 @@ static struct ipdb_t ipdb;
 
 struct cs_pd_t
 {
-	struct ppp_pd_t pd;
+	struct ap_private pd;
 	struct ipv4db_item_t ip;
 	char *passwd;
 	char *rate;
@@ -93,7 +93,7 @@ static int split(char *buf, char **ptr)
 }
 
 
-static struct cs_pd_t *create_pd(struct ppp_t *ppp, const char *username)
+static struct cs_pd_t *create_pd(struct ap_session *ses, const char *username)
 {
 	FILE *f;
 	char *buf;
@@ -161,7 +161,7 @@ found:
 	if (n >= 4)
 		pd->rate = _strdup(ptr[3]);
 
-	list_add_tail(&pd->pd.entry, &ppp->pd_list);
+	list_add_tail(&pd->pd.entry, &ses->pd_list);
 
 	fclose(f);
 	_free(buf);
@@ -169,11 +169,11 @@ found:
 	return pd;
 }
 
-static struct cs_pd_t *find_pd(struct ppp_t *ppp)
+static struct cs_pd_t *find_pd(struct ap_session *ses)
 {
-	struct ppp_pd_t *pd;
+	struct ap_private *pd;
 
-	list_for_each_entry(pd, &ppp->pd_list, entry) {
+	list_for_each_entry(pd, &ses->pd_list, entry) {
 		if (pd->key == &pd_key) {
 			return container_of(pd, typeof(struct cs_pd_t), pd);
 		}
@@ -182,9 +182,9 @@ static struct cs_pd_t *find_pd(struct ppp_t *ppp)
 	return NULL;
 }
 
-static void ev_ppp_finished(struct ppp_t *ppp)
+static void ev_ses_finished(struct ap_session *ses)
 {
-	struct cs_pd_t *pd = find_pd(ppp);
+	struct cs_pd_t *pd = find_pd(ses);
 
 	if (!pd)
 		return;
@@ -196,11 +196,11 @@ static void ev_ppp_finished(struct ppp_t *ppp)
 	_free(pd);
 }
 
-static void ev_ppp_pre_up(struct ppp_t *ppp)
+static void ev_ses_pre_up(struct ap_session *ses)
 {
-	struct cs_pd_t *pd = find_pd(ppp);
+	struct cs_pd_t *pd = find_pd(ses);
 	struct ev_shaper_t ev = {
-		.ppp = ppp,
+		.ses = ses,
 	};
 
 	if (!pd)
@@ -212,14 +212,14 @@ static void ev_ppp_pre_up(struct ppp_t *ppp)
 	}
 }
 
-static struct ipv4db_item_t *get_ip(struct ppp_t *ppp)
+static struct ipv4db_item_t *get_ip(struct ap_session *ses)
 {
 	struct cs_pd_t *pd;
 	
 	if (!conf_gw_ip_address)
 		return NULL;
 
-	pd = find_pd(ppp);
+	pd = find_pd(ses);
 
 	if (!pd)
 		return NULL;
@@ -230,12 +230,12 @@ static struct ipv4db_item_t *get_ip(struct ppp_t *ppp)
 	return &pd->ip;
 }
 
-static char* get_passwd(struct pwdb_t *pwdb, struct ppp_t *ppp, const char *username)
+static char* get_passwd(struct pwdb_t *pwdb, struct ap_session *ses, const char *username)
 {
-	struct cs_pd_t *pd = find_pd(ppp);
+	struct cs_pd_t *pd = find_pd(ses);
 
 	if (!pd)
-		pd = create_pd(ppp, username);
+		pd = create_pd(ses, username);
 	
 	if (!pd)
 		return NULL;
@@ -275,8 +275,8 @@ static void init(void)
 	pwdb_register(&pwdb);
 	ipdb_register(&ipdb);
 	
-	triton_event_register_handler(EV_PPP_FINISHED, (triton_event_func)ev_ppp_finished);
-	triton_event_register_handler(EV_PPP_PRE_UP, (triton_event_func)ev_ppp_pre_up);
+	triton_event_register_handler(EV_SES_FINISHED, (triton_event_func)ev_ses_finished);
+	triton_event_register_handler(EV_SES_PRE_UP, (triton_event_func)ev_ses_pre_up);
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 

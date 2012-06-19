@@ -75,7 +75,7 @@ typedef netsnmp_data_list sessionTable_registration;
  */
 struct sessionTable_data_s
 {
-	char ifname[PPP_IFNAME_LEN];
+	char ifname[AP_IFNAME_LEN];
 	char *username;
 	in_addr_t peer_addr;
 	int type;
@@ -96,7 +96,7 @@ typedef struct sessionTable_mib_index_s {
         /*
          * sesSID(1)/OCTETSTR/ASN_OCTET_STR/char(char)//L/A/w/e/R/d/h
          */
-   char   sesSID[PPP_SESSIONID_LEN];
+   char   sesSID[AP_SESSIONID_LEN];
    size_t      sesSID_len;
 
 
@@ -111,7 +111,7 @@ typedef struct sessionTable_mib_index_s {
      * POSSIBLE LENGHT FOR EVERY VARIABLE LENGTH INDEX!
      * Guessing 128 - col/entry(2)  - oid len(10)
 */
-#define MAX_sessionTable_IDX_LEN     PPP_SESSIONID_LEN + 1
+#define MAX_sessionTable_IDX_LEN     AP_SESSIONID_LEN + 1
 
 
 /* *********************************************************************

@@ -72,9 +72,9 @@ static void ipaddr_free(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_option_t *opt
 {
 	struct ipaddr_option_t *ipaddr_opt=container_of(opt,typeof(*ipaddr_opt),opt);
 
-	if (ipv6cp->ppp->ipv6) {
-		ipdb_put_ipv6(ipv6cp->ppp, ipv6cp->ppp->ipv6);
-		ipv6cp->ppp->ipv6 = NULL;
+	if (ipv6cp->ppp->ses.ipv6) {
+		ipdb_put_ipv6(&ipv6cp->ppp->ses, ipv6cp->ppp->ses.ipv6);
+		ipv6cp->ppp->ses.ipv6 = NULL;
 	}
 
 	_free(ipaddr_opt);
@@ -82,24 +82,24 @@ static void ipaddr_free(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_option_t *opt
 
 static int check_exists(struct ppp_t *self_ppp)
 {
-	struct ppp_t *ppp;
+	struct ap_session *ses;
 	struct ipv6db_addr_t *a1, *a2;
 	int r = 0;
 
-	pthread_rwlock_rdlock(&ppp_lock);
-	list_for_each_entry(ppp, &ppp_list, entry) {
-		if (ppp->terminating)
+	pthread_rwlock_rdlock(&ses_lock);
+	list_for_each_entry(ses, &ses_list, entry) {
+		if (ses->terminating)
 			continue;
-		if (!ppp->ipv6)
+		if (!ses->ipv6)
 			continue;
-		if (ppp == self_ppp)
+		if (ses == &self_ppp->ses)
 			continue;
 
-		list_for_each_entry(a1, &ppp->ipv6->addr_list, entry) {
-			list_for_each_entry(a2, &self_ppp->ipv6->addr_list, entry) {
+		list_for_each_entry(a1, &ses->ipv6->addr_list, entry) {
+			list_for_each_entry(a2, &ses->ipv6->addr_list, entry) {
 				if (a1->addr.s6_addr32[0] == a2->addr.s6_addr32[0] &&
 						a1->addr.s6_addr32[1] == a2->addr.s6_addr32[1]) {
-					log_ppp_warn("ppp: requested IPv6 address already assigned to %s\n", ppp->ifname);
+					log_ppp_warn("ppp: requested IPv6 address already assigned to %s\n", ses->ifname);
 					r = 1;
 					goto out;
 				}
@@ -107,7 +107,7 @@ static int check_exists(struct ppp_t *self_ppp)
 		}
 	}
 out:
-	pthread_rwlock_unlock(&ppp_lock);
+	pthread_rwlock_unlock(&ses_lock);
 
 	return r;
 }
@@ -148,9 +148,9 @@ static uint64_t generate_peer_intf_id(struct ppp_t *ppp)
 		case INTF_ID_CSID:
 			break;
 		case INTF_ID_IPV4:
-			if (ppp->ipv4) {
+			if (ppp->ses.ipv4) {
 				for (i = 0; i < 4; i++) {
-					sprintf(str, "%i", (ppp->ipv4->peer_addr >> (i*8)) & 0xff);
+					sprintf(str, "%i", (ppp->ses.ipv4->peer_addr >> (i*8)) & 0xff);
 					sscanf(str, "%x", &n);
 					u.addr16[i] = htons(n);
 				}
@@ -163,14 +163,14 @@ static uint64_t generate_peer_intf_id(struct ppp_t *ppp)
 
 static int alloc_ip(struct ppp_t *ppp)
 {
-	ppp->ipv6 = ipdb_get_ipv6(ppp);
-	if (!ppp->ipv6) {
+	ppp->ses.ipv6 = ipdb_get_ipv6(&ppp->ses);
+	if (!ppp->ses.ipv6) {
 		log_ppp_warn("ppp: no free IPv6 address\n");
 		return IPV6CP_OPT_CLOSE;
 	}
 
-	if (!ppp->ipv6->intf_id)
-		ppp->ipv6->intf_id = generate_intf_id(ppp);
+	if (!ppp->ses.ipv6->intf_id)
+		ppp->ses.ipv6->intf_id = generate_intf_id(ppp);
 	
 	if (conf_check_exists && check_exists(ppp))
 		return IPV6CP_OPT_FAIL;
@@ -184,7 +184,7 @@ static int ipaddr_send_conf_req(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_optio
 	struct ipv6cp_opt64_t *opt64 = (struct ipv6cp_opt64_t *)ptr;
 	int r;
 	
-	if (!ipv6cp->ppp->ipv6) {
+	if (!ipv6cp->ppp->ses.ipv6) {
 		r = alloc_ip(ipv6cp->ppp);
 		if (r)
 			return r;
@@ -192,7 +192,7 @@ static int ipaddr_send_conf_req(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_optio
 	
 	opt64->hdr.id = CI_INTFID;
 	opt64->hdr.len = 10;
-	opt64->val = ipv6cp->ppp->ipv6->intf_id;
+	opt64->val = ipv6cp->ppp->ses.ipv6->intf_id;
 	return 10;
 }
 
@@ -202,7 +202,7 @@ static int ipaddr_send_conf_nak(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_optio
 	struct ipv6cp_opt64_t *opt64 = (struct ipv6cp_opt64_t *)ptr;
 	opt64->hdr.id = CI_INTFID;
 	opt64->hdr.len = 10;
-	opt64->val = ipv6cp->ppp->ipv6->peer_intf_id;
+	opt64->val = ipv6cp->ppp->ses.ipv6->peer_intf_id;
 	return 10;
 }
 
@@ -215,21 +215,21 @@ static int ipaddr_recv_conf_req(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_optio
 	if (opt64->hdr.len != 10)
 		return IPV6CP_OPT_REJ;
 
-	if (!ipv6cp->ppp->ipv6) {
+	if (!ipv6cp->ppp->ses.ipv6) {
 		r = alloc_ip(ipv6cp->ppp);
 		if (r)
 			return r;
 	}
 
 	if (conf_accept_peer_intf_id && opt64->val)
-		ipv6cp->ppp->ipv6->peer_intf_id = opt64->val;
-	else if (!ipv6cp->ppp->ipv6->peer_intf_id) {
-		ipv6cp->ppp->ipv6->peer_intf_id = generate_peer_intf_id(ipv6cp->ppp);
-		if (!ipv6cp->ppp->ipv6->peer_intf_id)
+		ipv6cp->ppp->ses.ipv6->peer_intf_id = opt64->val;
+	else if (!ipv6cp->ppp->ses.ipv6->peer_intf_id) {
+		ipv6cp->ppp->ses.ipv6->peer_intf_id = generate_peer_intf_id(ipv6cp->ppp);
+		if (!ipv6cp->ppp->ses.ipv6->peer_intf_id)
 			return IPV6CP_OPT_TERMACK;
 	}
 
-	if (opt64->val && ipv6cp->ppp->ipv6->peer_intf_id == opt64->val && opt64->val != ipv6cp->ppp->ipv6->intf_id) {
+	if (opt64->val && ipv6cp->ppp->ses.ipv6->peer_intf_id == opt64->val && opt64->val != ipv6cp->ppp->ses.ipv6->intf_id) {
 		ipv6cp->delay_ack = ccp_ipcp_started(ipv6cp->ppp);
 		ipaddr_opt->started = 1;
 		return IPV6CP_OPT_ACK;
@@ -247,7 +247,7 @@ static void ipaddr_print(void (*print)(const char *fmt,...), struct ipv6cp_optio
 	if (ptr)
 		*(uint64_t *)(a.s6_addr + 8) = opt64->val;
 	else
-		*(uint64_t *)(a.s6_addr + 8) = ipaddr_opt->ppp->ipv6->intf_id;
+		*(uint64_t *)(a.s6_addr + 8) = ipaddr_opt->ppp->ses.ipv6->intf_id;
 	
 	print("<addr %x:%x:%x:%x>", ntohs(a.s6_addr16[4]), ntohs(a.s6_addr16[5]), ntohs(a.s6_addr16[6]), ntohs(a.s6_addr16[7]));
 }

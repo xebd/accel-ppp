@@ -140,13 +140,13 @@ static void disconnect_request(struct radius_pd_t *rpd)
 	rpd->dm_coa_req = NULL;
 	pthread_mutex_unlock(&rpd->lock);
 
-	ppp_terminate(rpd->ppp, TERM_ADMIN_RESET, 0);
+	ap_session_terminate(rpd->ses, TERM_ADMIN_RESET, 0);
 }
 
 static void coa_request(struct radius_pd_t *rpd)
 {
 	struct ev_radius_t ev = {
-		.ppp = rpd->ppp,
+		.ses = rpd->ses,
 		.request = rpd->dm_coa_req,
 	};
 
@@ -171,8 +171,8 @@ static void coa_request(struct radius_pd_t *rpd)
 
 void dm_coa_cancel(struct radius_pd_t *rpd)
 {
-	triton_cancel_call(rpd->ppp->ctrl->ctx, (triton_event_func)disconnect_request);
-	triton_cancel_call(rpd->ppp->ctrl->ctx, (triton_event_func)coa_request);
+	triton_cancel_call(rpd->ses->ctrl->ctx, (triton_event_func)disconnect_request);
+	triton_cancel_call(rpd->ses->ctrl->ctx, (triton_event_func)coa_request);
 	rad_packet_free(rpd->dm_coa_req);
 }
 
@@ -227,9 +227,9 @@ static int dm_coa_read(struct triton_md_handler_t *h)
 		memcpy(&rpd->dm_coa_addr, &addr, sizeof(addr));
 
 		if (pack->code == CODE_DISCONNECT_REQUEST)
-			triton_context_call(rpd->ppp->ctrl->ctx, (triton_event_func)disconnect_request, rpd);
+			triton_context_call(rpd->ses->ctrl->ctx, (triton_event_func)disconnect_request, rpd);
 		else
-			triton_context_call(rpd->ppp->ctrl->ctx, (triton_event_func)coa_request, rpd);
+			triton_context_call(rpd->ses->ctrl->ctx, (triton_event_func)coa_request, rpd);
 
 		pthread_mutex_unlock(&rpd->lock);
 

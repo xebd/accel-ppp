@@ -197,23 +197,23 @@ sessionTable_container_load(netsnmp_container *container)
 {
     sessionTable_rowreq_ctx *rowreq_ctx;
     size_t                 count = 0;
-		struct ppp_t *ppp;
+		struct ap_session *ses;
 		time_t t;
 		
 		time(&t);
 
     DEBUGMSGTL(("verbose:sessionTable:sessionTable_container_load","called\n"));
 
-		pthread_rwlock_rdlock(&ppp_lock);
-		list_for_each_entry(ppp, &ppp_list, entry) {
+		pthread_rwlock_rdlock(&ses_lock);
+		list_for_each_entry(ses, &ses_list, entry) {
         rowreq_ctx = sessionTable_allocate_rowreq_ctx(NULL, NULL);
         if (NULL == rowreq_ctx) {
-						pthread_rwlock_unlock(&ppp_lock);
+						pthread_rwlock_unlock(&ses_lock);
             snmp_log(LOG_ERR, "memory allocation failed\n");
             return MFD_RESOURCE_UNAVAILABLE;
         }
         if(MFD_SUCCESS != sessionTable_indexes_set(rowreq_ctx
-                               , ppp->sessionid, PPP_SESSIONID_LEN
+                               , ses->sessionid, AP_SESSIONID_LEN
                )) {
             snmp_log(LOG_ERR,"error setting index while loading "
                      "sessionTable data->\n");
@@ -221,24 +221,24 @@ sessionTable_container_load(netsnmp_container *container)
             continue;
         }
 				
-				strcpy(rowreq_ctx->data->ifname, ppp->ifname);
+				strcpy(rowreq_ctx->data->ifname, ses->ifname);
 
-				if (ppp->username)
-					rowreq_ctx->data->username = strdup(ppp->username);
+				if (ses->username)
+					rowreq_ctx->data->username = strdup(ses->username);
 				else
-					ppp->username = strdup("");
+					ses->username = strdup("");
 
-				rowreq_ctx->data->peer_addr = ppp->ipv4 ? ppp->ipv4->peer_addr : 0;
-				rowreq_ctx->data->type = ppp->ctrl->type;
-				rowreq_ctx->data->state = ppp->state;
-				rowreq_ctx->data->uptime = (ppp->stop_time ? ppp->stop_time : t) - ppp->start_time;
-				rowreq_ctx->data->calling_sid = strdup(ppp->ctrl->calling_station_id);
-				rowreq_ctx->data->called_sid = strdup(ppp->ctrl->called_station_id);
+				rowreq_ctx->data->peer_addr = ses->ipv4 ? ses->ipv4->peer_addr : 0;
+				rowreq_ctx->data->type = ses->ctrl->type;
+				rowreq_ctx->data->state = ses->state;
+				rowreq_ctx->data->uptime = (ses->stop_time ? ses->stop_time : t) - ses->start_time;
+				rowreq_ctx->data->calling_sid = strdup(ses->ctrl->calling_station_id);
+				rowreq_ctx->data->called_sid = strdup(ses->ctrl->called_station_id);
 
         CONTAINER_INSERT(container, rowreq_ctx);
         ++count;
     }
-		pthread_rwlock_unlock(&ppp_lock);
+		pthread_rwlock_unlock(&ses_lock);
 
     DEBUGMSGT(("verbose:sessionTable:sessionTable_container_load",
                "inserted %d records\n", count));

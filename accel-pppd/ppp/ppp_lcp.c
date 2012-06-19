@@ -138,7 +138,7 @@ void lcp_layer_finish(struct ppp_layer_data_t *ld)
 		stop_echo(lcp);
 		ppp_fsm_close(&lcp->fsm);
 	} else
-		triton_context_call(lcp->ppp->ctrl->ctx, (triton_event_func)_lcp_layer_finished, lcp);
+		triton_context_call(lcp->ppp->ses.ctrl->ctx, (triton_event_func)_lcp_layer_finished, lcp);
 }
 
 void lcp_layer_free(struct ppp_layer_data_t *ld)
@@ -151,7 +151,7 @@ void lcp_layer_free(struct ppp_layer_data_t *ld)
 	ppp_unregister_handler(lcp->ppp, &lcp->hnd);
 	lcp_options_free(lcp);
 	ppp_fsm_free(&lcp->fsm);
-	triton_cancel_call(lcp->ppp->ctrl->ctx, (triton_event_func)_lcp_layer_finished);
+	triton_cancel_call(lcp->ppp->ses.ctrl->ctx, (triton_event_func)_lcp_layer_finished);
 	
 	_free(lcp);
 }
@@ -186,12 +186,12 @@ static void lcp_layer_finished(struct ppp_fsm_t *fsm)
 	stop_echo(lcp);
 	if (lcp->started) {
 		lcp->started = 0;
-		if (lcp->ppp->terminating)
+		if (lcp->ppp->ses.terminating)
 			ppp_layer_finished(lcp->ppp, &lcp->ld);
 		else
-			ppp_terminate(lcp->ppp, TERM_NAS_ERROR, 0);
+			ap_session_terminate(&lcp->ppp->ses, TERM_NAS_ERROR, 0);
 	} else
-		ppp_terminate(lcp->ppp, TERM_NAS_ERROR, 0);
+		ap_session_terminate(&lcp->ppp->ses, TERM_NAS_ERROR, 0);
 }
 
 static void print_ropt(struct recv_opt_t *ropt)
@@ -587,7 +587,7 @@ static void lcp_update_echo_timer(struct ppp_lcp_t *lcp)
 			if (lcp->echo_timer.tpd)
 				triton_timer_mod(&lcp->echo_timer, 0);
 			else
-				triton_timer_add(lcp->ppp->ctrl->ctx, &lcp->echo_timer, 0);
+				triton_timer_add(lcp->ppp->ses.ctrl->ctx, &lcp->echo_timer, 0);
 		}
 	}
 }
@@ -607,7 +607,7 @@ static void lcp_recv_echo_repl(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 
 		if (magic == lcp->magic) {
 			log_ppp_error("lcp: echo: loop-back detected\n");
-			ppp_terminate(lcp->ppp, TERM_NAS_ERROR, 0);
+			ap_session_terminate(&lcp->ppp->ses, TERM_NAS_ERROR, 0);
 		}
 	}
 
@@ -656,7 +656,7 @@ static void send_echo_request(struct triton_timer_t *t)
 		if (lcp->echo_sent == 2) {
 			memset(&ifreq, 0, sizeof(ifreq));
 			ifreq.stats_ptr = (void *)&ifreq.stats;
-			strcpy(ifreq.ifr__name, lcp->ppp->ifname);
+			strcpy(ifreq.ifr__name, lcp->ppp->ses.ifname);
 		
 			if (ioctl(sock_fd, SIOCGPPPSTATS, &ifreq) == 0)
 				lcp->last_ipackets = ifreq.stats.p.ppp_ipackets;
@@ -666,7 +666,7 @@ static void send_echo_request(struct triton_timer_t *t)
 			time(&ts);
 			memset(&ifreq, 0, sizeof(ifreq));
 			ifreq.stats_ptr = (void *)&ifreq.stats;
-			strcpy(ifreq.ifr__name, lcp->ppp->ifname);
+			strcpy(ifreq.ifr__name, lcp->ppp->ses.ifname);
 			if (ioctl(sock_fd, SIOCGPPPSTATS, &ifreq) == 0 && lcp->last_ipackets != ifreq.stats.p.ppp_ipackets) {
 				lcp->echo_sent = 1;
 				lcp_update_echo_timer(lcp);
@@ -682,7 +682,7 @@ static void send_echo_request(struct triton_timer_t *t)
 
 	if (f) {
 		log_ppp_warn("lcp: no echo reply\n");
-		ppp_terminate(lcp->ppp, TERM_LOST_CARRIER, 1);
+		ap_session_terminate(&lcp->ppp->ses, TERM_LOST_CARRIER, 1);
 		return;
 	}
 
@@ -697,7 +697,7 @@ static void start_echo(struct ppp_lcp_t *lcp)
 	lcp->echo_timer.period = conf_echo_interval * 1000;
 	lcp->echo_timer.expire = send_echo_request;
 	if (lcp->echo_timer.period && !lcp->echo_timer.tpd)
-		triton_timer_add(lcp->ppp->ctrl->ctx, &lcp->echo_timer, 0);
+		triton_timer_add(lcp->ppp->ses.ctrl->ctx, &lcp->echo_timer, 0);
 }
 static void stop_echo(struct ppp_lcp_t *lcp)
 {
@@ -782,7 +782,7 @@ static void lcp_recv(struct ppp_handler_t*h)
 	if ((hdr->code == CONFACK || hdr->code == CONFNAK || hdr->code == CONFREJ) && lcp->started)
 		return;
 
-	if (lcp->fsm.fsm_state == FSM_Initial || lcp->fsm.fsm_state == FSM_Closed || (lcp->ppp->terminating && (hdr->code != TERMACK && hdr->code != TERMREQ))) {
+	if (lcp->fsm.fsm_state == FSM_Initial || lcp->fsm.fsm_state == FSM_Closed || (lcp->ppp->ses.terminating && (hdr->code != TERMACK && hdr->code != TERMREQ))) {
 		/*if (conf_ppp_verbose)
 			log_ppp_warn("LCP: discaring packet\n");
 		lcp_send_proto_rej(ccp->ppp, htons(PPP_CCP));*/
@@ -813,11 +813,11 @@ static void lcp_recv(struct ppp_handler_t*h)
 			}
 			lcp_free_conf_req(lcp);
 			if (r == LCP_OPT_FAIL)
-				ppp_terminate(lcp->ppp, TERM_USER_ERROR, 0);
+				ap_session_terminate(&lcp->ppp->ses, TERM_USER_ERROR, 0);
 			break;
 		case CONFACK:
 			if (lcp_recv_conf_ack(lcp,(uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN))
-				ppp_terminate(lcp->ppp, TERM_USER_ERROR, 0);
+				ap_session_terminate(&lcp->ppp->ses, TERM_USER_ERROR, 0);
 			else
 				if (lcp->fsm.recv_id != lcp->fsm.id)
 					break;
@@ -831,7 +831,7 @@ static void lcp_recv(struct ppp_handler_t*h)
 			break;
 		case CONFREJ:
 			if (lcp_recv_conf_rej(lcp,(uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN))
-				ppp_terminate(lcp->ppp, TERM_USER_ERROR, 0);
+				ap_session_terminate(&lcp->ppp->ses, TERM_USER_ERROR, 0);
 			else
 				if (lcp->fsm.recv_id != lcp->fsm.id)
 					break;
@@ -841,7 +841,7 @@ static void lcp_recv(struct ppp_handler_t*h)
 			if (conf_ppp_verbose)
 				log_ppp_info2("recv [LCP TermReq id=%x]\n", hdr->id);
 			ppp_fsm_recv_term_req(&lcp->fsm);
-			ppp_terminate(lcp->ppp, TERM_USER_REQUEST, 0);
+			ap_session_terminate(&lcp->ppp->ses, TERM_USER_REQUEST, 0);
 			break;
 		case TERMACK:
 			if (conf_ppp_verbose)

@@ -53,10 +53,10 @@ static struct lcp_option_t *mru_init(struct ppp_lcp_t *lcp)
 {
 	struct mru_option_t *mru_opt=_malloc(sizeof(*mru_opt));
 	memset(mru_opt, 0, sizeof(*mru_opt));
-	mru_opt->mru = (conf_mru && conf_mru <= lcp->ppp->ctrl->max_mtu) ? conf_mru : lcp->ppp->ctrl->max_mtu;
+	mru_opt->mru = (conf_mru && conf_mru <= lcp->ppp->ses.ctrl->max_mtu) ? conf_mru : lcp->ppp->ses.ctrl->max_mtu;
 	if (mru_opt->mru > conf_max_mtu)
 		mru_opt->mru = conf_max_mtu;
-	mru_opt->mtu = (conf_mtu && conf_mtu <= lcp->ppp->ctrl->max_mtu) ? conf_mtu : lcp->ppp->ctrl->max_mtu;
+	mru_opt->mtu = (conf_mtu && conf_mtu <= lcp->ppp->ses.ctrl->max_mtu) ? conf_mtu : lcp->ppp->ses.ctrl->max_mtu;
 	if (mru_opt->mtu > conf_max_mtu)
 		mru_opt->mtu = conf_max_mtu;
 	mru_opt->opt.id = CI_MRU;
@@ -107,7 +107,7 @@ static int mru_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, ui
 	if (opt16->hdr.len != 4)
 		return LCP_OPT_REJ;
 
-	if (ntohs(opt16->val) < conf_min_mtu || ntohs(opt16->val) > lcp->ppp->ctrl->max_mtu || ntohs(opt16->val) > conf_max_mtu)
+	if (ntohs(opt16->val) < conf_min_mtu || ntohs(opt16->val) > lcp->ppp->ses.ctrl->max_mtu || ntohs(opt16->val) > conf_max_mtu)
 		return LCP_OPT_NAK;
 
 	mru_opt->mtu = ntohs(opt16->val);
@@ -121,7 +121,7 @@ static int mru_recv_conf_ack(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, ui
 		.ifr_mtu = mru_opt->mtu,
 	};
 
-	strcpy(ifr.ifr_name, lcp->ppp->ifname);
+	strcpy(ifr.ifr_name, lcp->ppp->ses.ifname);
 
 	if (ioctl(lcp->ppp->unit_fd, PPPIOCSMRU, &mru_opt->mru))
 		log_ppp_error("lcp:mru: failed to set MRU: %s\n", strerror(errno));

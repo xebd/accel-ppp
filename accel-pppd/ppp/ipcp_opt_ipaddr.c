@@ -58,9 +58,9 @@ static void ipaddr_free(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt)
 {
 	struct ipaddr_option_t *ipaddr_opt = container_of(opt, typeof(*ipaddr_opt), opt);
 
-	if (ipcp->ppp->ipv4) {
-		ipdb_put_ipv4(ipcp->ppp, ipcp->ppp->ipv4);
-		ipcp->ppp->ipv4 = NULL;
+	if (ipcp->ppp->ses.ipv4) {
+		ipdb_put_ipv4(&ipcp->ppp->ses, ipcp->ppp->ses.ipv4);
+		ipcp->ppp->ses.ipv4 = NULL;
 	}
 
 	_free(ipaddr_opt);
@@ -68,40 +68,40 @@ static void ipaddr_free(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt)
 
 static int check_exists(struct ppp_t *self_ppp, in_addr_t addr)
 {
-	struct ppp_t *ppp;
+	struct ap_session *ses;
 	int r = 0;
 
-	pthread_rwlock_rdlock(&ppp_lock);
-	list_for_each_entry(ppp, &ppp_list, entry) {
-		if (!ppp->terminating && ppp->ipv4 && ppp->ipv4->peer_addr == addr && ppp != self_ppp) {
-			log_ppp_warn("ppp: requested IPv4 address already assigned to %s\n", ppp->ifname);
+	pthread_rwlock_rdlock(&ses_lock);
+	list_for_each_entry(ses, &ses_list, entry) {
+		if (!ses->terminating && ses->ipv4 && ses->ipv4->peer_addr == addr && ses != &self_ppp->ses) {
+			log_ppp_warn("ppp: requested IPv4 address already assigned to %s\n", ses->ifname);
 			r = 1;
 			break;
 		}
 	}
-	pthread_rwlock_unlock(&ppp_lock);
+	pthread_rwlock_unlock(&ses_lock);
 
 	return r;
 }
 
 static int alloc_ip(struct ppp_t *ppp)
 {
-	ppp->ipv4 = ipdb_get_ipv4(ppp);
-	if (!ppp->ipv4) {
+	ppp->ses.ipv4 = ipdb_get_ipv4(&ppp->ses);
+	if (!ppp->ses.ipv4) {
 		log_ppp_warn("ppp: no free IPv4 address\n");
 		return IPCP_OPT_CLOSE;
 	}
 	
-	if (iprange_tunnel_check(ppp->ipv4->peer_addr)) {
+	if (iprange_tunnel_check(ppp->ses.ipv4->peer_addr)) {
 		log_ppp_warn("ppp:ipcp: to avoid kernel soft lockup requested IP cannot be assigned (%i.%i.%i.%i)\n",
-			ppp->ipv4->peer_addr&0xff, 
-			(ppp->ipv4->peer_addr >> 8)&0xff, 
-			(ppp->ipv4->peer_addr >> 16)&0xff, 
-			(ppp->ipv4->peer_addr >> 24)&0xff);
+			ppp->ses.ipv4->peer_addr&0xff, 
+			(ppp->ses.ipv4->peer_addr >> 8)&0xff, 
+			(ppp->ses.ipv4->peer_addr >> 16)&0xff, 
+			(ppp->ses.ipv4->peer_addr >> 24)&0xff);
 		return IPCP_OPT_FAIL;
 	}
 	
-	if (conf_check_exists && check_exists(ppp, ppp->ipv4->peer_addr))
+	if (conf_check_exists && check_exists(ppp, ppp->ses.ipv4->peer_addr))
 		return IPCP_OPT_FAIL;
 	
 	return 0;
@@ -113,7 +113,7 @@ static int ipaddr_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 	struct ipcp_opt32_t *opt32 = (struct ipcp_opt32_t *)ptr;
 	int r;
 	
-	if (!ipcp->ppp->ipv4) {
+	if (!ipcp->ppp->ses.ipv4) {
 		r = alloc_ip(ipcp->ppp);
 		if (r)
 			return r;
@@ -121,7 +121,7 @@ static int ipaddr_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 	
 	opt32->hdr.id = CI_ADDR;
 	opt32->hdr.len = 6;
-	opt32->val = ipcp->ppp->ipv4->addr;
+	opt32->val = ipcp->ppp->ses.ipv4->addr;
 	return 6;
 }
 
@@ -131,7 +131,7 @@ static int ipaddr_send_conf_nak(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 	struct ipcp_opt32_t *opt32 = (struct ipcp_opt32_t *)ptr;
 	opt32->hdr.id = CI_ADDR;
 	opt32->hdr.len = 6;
-	opt32->val = ipcp->ppp->ipv4->peer_addr;
+	opt32->val = ipcp->ppp->ses.ipv4->peer_addr;
 	return 6;
 }
 
@@ -141,7 +141,7 @@ static int ipaddr_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 	struct ipcp_opt32_t *opt32 = (struct ipcp_opt32_t *)ptr;
 	int r;
 
-	if (!ipcp->ppp->ipv4) {
+	if (!ipcp->ppp->ses.ipv4) {
 		r = alloc_ip(ipcp->ppp);
 		if (r)
 			return r;
@@ -150,7 +150,7 @@ static int ipaddr_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 	if (opt32->hdr.len != 6)
 		return IPCP_OPT_REJ;
 
-	if (ipcp->ppp->ipv4->peer_addr == opt32->val) {
+	if (ipcp->ppp->ses.ipv4->peer_addr == opt32->val) {
 		ipcp->delay_ack = ccp_ipcp_started(ipcp->ppp);
 		return IPCP_OPT_ACK;
 	}
@@ -166,8 +166,8 @@ static void ipaddr_print(void (*print)(const char *fmt,...),struct ipcp_option_t
 
 	if (ptr)
 		in.s_addr = opt32->val;
-	else if (ipaddr_opt->ppp->ipv4)
-		in.s_addr = ipaddr_opt->ppp->ipv4->addr;
+	else if (ipaddr_opt->ppp->ses.ipv4)
+		in.s_addr = ipaddr_opt->ppp->ses.ipv4->addr;
 	
 	print("<addr %s>",inet_ntoa(in));
 }

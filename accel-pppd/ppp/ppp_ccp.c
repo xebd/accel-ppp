@@ -180,7 +180,10 @@ void ccp_layer_free(struct ppp_layer_data_t *ld)
 	struct ppp_ccp_t *ccp = container_of(ld, typeof(*ccp), ld);
 	
 	log_ppp_debug("ccp_layer_free\n");
-		
+	
+	if (ccp->ppp->unit_fd != -1)
+		ccp_set_flags(ccp->ppp->unit_fd, 0, 0);
+
 	ppp_unregister_handler(ccp->ppp, &ccp->hnd);
 	ccp_options_free(ccp);
 	ppp_fsm_free(&ccp->fsm);
@@ -196,7 +199,7 @@ static void ccp_layer_up(struct ppp_fsm_t *fsm)
 		log_ppp_debug("ccp_layer_started\n");
 		ccp->started = 1;
 		if (ccp_set_flags(ccp->ppp->unit_fd, 1, 1)) {
-			ppp_terminate(ccp->ppp, TERM_NAS_ERROR, 0);
+			ap_session_terminate(&ccp->ppp->ses, TERM_NAS_ERROR, 0);
 			return;
 		}
 		ppp_layer_started(ccp->ppp, &ccp->ld);
@@ -211,8 +214,8 @@ static void ccp_layer_finished(struct ppp_fsm_t *fsm)
 
 	if (!ccp->started)
 		ppp_layer_passive(ccp->ppp, &ccp->ld);
-	else if (!ccp->ppp->terminating)
-		ppp_terminate(ccp->ppp, TERM_USER_ERROR, 0);
+	else if (!ccp->ppp->ses.terminating)
+		ap_session_terminate(&ccp->ppp->ses, TERM_USER_ERROR, 0);
 	
 	fsm->fsm_state = FSM_Closed;
 }
@@ -631,10 +634,10 @@ static void ccp_recv(struct ppp_handler_t*h)
 	struct ppp_ccp_t *ccp = container_of(h, typeof(*ccp), hnd);
 	int r;
 
-	if (!ccp->starting || ccp->fsm.fsm_state == FSM_Closed || ccp->ppp->terminating || ccp->ppp->state == PPP_STATE_ACTIVE) {
+	if (!ccp->starting || ccp->fsm.fsm_state == FSM_Closed || ccp->ppp->ses.terminating || ccp->ppp->ses.state == AP_STATE_ACTIVE) {
 		if (conf_ppp_verbose)
 			log_ppp_warn("CCP: discarding packet\n");
-		if (ccp->fsm.fsm_state == FSM_Closed || !conf_ccp || ccp->ppp->state == PPP_STATE_ACTIVE)
+		if (ccp->fsm.fsm_state == FSM_Closed || !conf_ccp || ccp->ppp->ses.state == AP_STATE_ACTIVE)
 			lcp_send_proto_rej(ccp->ppp, PPP_CCP);
 		return;
 	}
@@ -684,11 +687,11 @@ static void ccp_recv(struct ppp_handler_t*h)
 			ccp_free_conf_req(ccp);
 			
 			if (r == CCP_OPT_FAIL)
-				ppp_terminate(ccp->ppp, TERM_USER_ERROR, 0);
+				ap_session_terminate(&ccp->ppp->ses, TERM_USER_ERROR, 0);
 			break;
 		case CONFACK:
 			if (ccp_recv_conf_ack(ccp, (uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN))
-				ppp_terminate(ccp->ppp, TERM_USER_ERROR, 0);
+				ap_session_terminate(&ccp->ppp->ses, TERM_USER_ERROR, 0);
 			else
 				ppp_fsm_recv_conf_ack(&ccp->fsm);
 			break;
@@ -698,7 +701,7 @@ static void ccp_recv(struct ppp_handler_t*h)
 			break;
 		case CONFREJ:
 			if (ccp_recv_conf_rej(ccp, (uint8_t*)(hdr + 1),ntohs(hdr->len) - PPP_HDRLEN))
-				ppp_terminate(ccp->ppp, TERM_USER_ERROR, 0);
+				ap_session_terminate(&ccp->ppp->ses, TERM_USER_ERROR, 0);
 			else
 				ppp_fsm_recv_conf_rej(&ccp->fsm);
 			break;
@@ -729,8 +732,8 @@ static void ccp_recv_proto_rej(struct ppp_handler_t *h)
 {
 	struct ppp_ccp_t *ccp = container_of(h, typeof(*ccp), hnd);
 
-	if (!ccp->ld.passive) {
-		ppp_terminate(ccp->ppp, TERM_USER_ERROR, 0);
+	if (!ccp->ld.optional) {
+		ap_session_terminate(&ccp->ppp->ses, TERM_USER_ERROR, 0);
 		return;
 	}
 

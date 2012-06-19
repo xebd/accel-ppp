@@ -167,7 +167,7 @@ struct dhcpv6_option
 struct ppp_t;
 struct dhcpv6_packet
 {
-	struct ppp_t *ppp;
+	struct ap_session *ses;
 	
 	struct dhcpv6_msg_hdr *hdr;
 	struct dhcpv6_opt_clientid *clientid;

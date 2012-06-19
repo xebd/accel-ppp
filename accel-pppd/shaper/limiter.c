@@ -413,7 +413,7 @@ static int remove_htb_ifb(struct rtnl_handle *rth, int ifindex, int priority)
 	return tc_qdisc_modify(rth, conf_ifb_ifindex, RTM_DELTCLASS, 0, &opt);
 }
 
-int install_limiter(struct ppp_t *ppp, int down_speed, int down_burst, int up_speed, int up_burst)
+int install_limiter(struct ap_session *ses, int down_speed, int down_burst, int up_speed, int up_burst)
 {
 	struct rtnl_handle rth;
 	int r;
@@ -429,19 +429,19 @@ int install_limiter(struct ppp_t *ppp, int down_speed, int down_burst, int up_sp
 	up_burst = up_burst ? up_burst : conf_up_burst_factor * up_speed;
 
 	if (conf_down_limiter == LIM_TBF)
-		r = install_tbf(&rth, ppp->ifindex, down_speed, down_burst);
+		r = install_tbf(&rth, ses->ifindex, down_speed, down_burst);
 	else {
-		r = install_htb(&rth, ppp->ifindex, down_speed, down_burst);
+		r = install_htb(&rth, ses->ifindex, down_speed, down_burst);
 		if (r == 0)
-			r = install_leaf_qdisc(&rth, ppp->ifindex, 0x00010001, 0x00020000);
+			r = install_leaf_qdisc(&rth, ses->ifindex, 0x00010001, 0x00020000);
 	}
 
 	if (conf_up_limiter == LIM_POLICE)
-		r = install_police(&rth, ppp->ifindex, up_speed, up_burst);
+		r = install_police(&rth, ses->ifindex, up_speed, up_burst);
 	else {
-		r = install_htb_ifb(&rth, ppp->ifindex, ppp->unit_idx + 1, up_speed, up_burst);
+		r = install_htb_ifb(&rth, ses->ifindex, ses->unit_idx + 1, up_speed, up_burst);
 		if (r == 0)
-			r = install_leaf_qdisc(&rth, conf_ifb_ifindex, 0x00010001 + ppp->unit_idx + 1, (1 + ppp->unit_idx + 1) << 16);
+			r = install_leaf_qdisc(&rth, conf_ifb_ifindex, 0x00010001 + ses->unit_idx + 1, (1 + ses->unit_idx + 1) << 16);
 	}
 	
 	rtnl_close(&rth);
@@ -449,7 +449,7 @@ int install_limiter(struct ppp_t *ppp, int down_speed, int down_burst, int up_sp
 	return r;
 }
 
-int remove_limiter(struct ppp_t *ppp)
+int remove_limiter(struct ap_session *ses)
 {
 	struct rtnl_handle rth;
 
@@ -458,11 +458,11 @@ int remove_limiter(struct ppp_t *ppp)
 		return -1;
 	}
 
-	remove_root(&rth, ppp->ifindex);
-	remove_ingress(&rth, ppp->ifindex);
+	remove_root(&rth, ses->ifindex);
+	remove_ingress(&rth, ses->ifindex);
 	
 	if (conf_up_limiter == LIM_HTB)
-		remove_htb_ifb(&rth, ppp->ifindex, ppp->unit_idx + 1);
+		remove_htb_ifb(&rth, ses->ifindex, ses->unit_idx + 1);
 
 	return 0;
 }

@@ -130,7 +130,7 @@ static void queue_log(struct tcp_target_t *t, struct log_msg_t *msg)
 	}
 }
 
-static void set_hdr(struct log_msg_t *msg, struct ppp_t *ppp)
+static void set_hdr(struct log_msg_t *msg, struct ap_session *ses)
 {
 	struct tm tm;
 	char timestamp[32];
@@ -138,15 +138,15 @@ static void set_hdr(struct log_msg_t *msg, struct ppp_t *ppp)
 	localtime_r(&msg->timestamp.tv_sec, &tm);
 
 	strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &tm);
-	sprintf(msg->hdr->msg, "[%s]: %s: %s: ", timestamp, level_name[msg->level],	ppp ? ppp->ifname : "");
+	sprintf(msg->hdr->msg, "[%s]: %s: %s: ", timestamp, level_name[msg->level],	ses ? ses->ifname : "");
 	msg->hdr->len = strlen(msg->hdr->msg);
 }
 
-static void general_log(struct log_target_t *lt, struct log_msg_t *msg, struct ppp_t *ppp)
+static void general_log(struct log_target_t *lt, struct log_msg_t *msg, struct ap_session *ses)
 {
 	struct tcp_target_t *t = container_of(lt, typeof(*t), target);
 
-	set_hdr(msg, ppp);
+	set_hdr(msg, ses);
 	queue_log(t, msg);
 }
 

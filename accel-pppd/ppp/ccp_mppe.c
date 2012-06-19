@@ -61,10 +61,10 @@ static struct ccp_option_t *mppe_init(struct ppp_ccp_t *ccp)
 	memset(mppe_opt, 0, sizeof(*mppe_opt));
 	int mppe;
 
-	if (ccp->ppp->ctrl->mppe == MPPE_UNSET)
+	if (ccp->ppp->ses.ctrl->mppe == MPPE_UNSET)
 		mppe = conf_mppe;
 	else
-		mppe = ccp->ppp->ctrl->mppe;
+		mppe = ccp->ppp->ses.ctrl->mppe;
 
 	if (mppe != MPPE_ALLOW)
 		mppe_opt->policy = mppe;
@@ -78,6 +78,9 @@ static struct ccp_option_t *mppe_init(struct ppp_ccp_t *ccp)
 	
 	if (mppe == MPPE_REQUIRE || mppe == MPPE_PREFER)
 		ccp->ld.passive = 0;
+	
+	if (mppe == MPPE_REQUIRE)
+		ccp->ld.optional = 0;
 
 	mppe_opt->opt.id = CI_MPPE;
 	mppe_opt->opt.len = 6;
@@ -121,7 +124,7 @@ static int decrease_mtu(struct ppp_t *ppp)
 {
 	struct ifreq ifr;
 
-	strcpy(ifr.ifr_name, ppp->ifname);
+	strcpy(ifr.ifr_name, ppp->ses.ifname);
 
 	if (ioctl(sock_fd, SIOCGIFMTU, &ifr)) {
 		log_ppp_error("mppe: failed to get MTU: %s\n", strerror(errno));
@@ -173,10 +176,10 @@ static int mppe_recv_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, u
 	struct ccp_opt32_t *opt32 = (struct ccp_opt32_t *)ptr;
 	int mppe;
 
-	if (ccp->ppp->ctrl->mppe == MPPE_UNSET)
+	if (ccp->ppp->ses.ctrl->mppe == MPPE_UNSET)
 		mppe = conf_mppe;
 	else
-		mppe = ccp->ppp->ctrl->mppe;
+		mppe = ccp->ppp->ses.ctrl->mppe;
 
 	if (!ptr) {
 		if (mppe_opt->policy == 2)
@@ -299,12 +302,12 @@ static void ev_mppe_keys(struct ev_mppe_keys_t *ev)
 		return;
 	}
 	
-	if (ccp->ppp->ctrl->mppe == MPPE_UNSET)
+	if (ccp->ppp->ses.ctrl->mppe == MPPE_UNSET)
 		mppe = conf_mppe;
 	else
-		mppe = ev->ppp->ctrl->mppe;
+		mppe = ev->ppp->ses.ctrl->mppe;
 
-	if (ev->ppp->ctrl->mppe == MPPE_UNSET) {
+	if (ev->ppp->ses.ctrl->mppe == MPPE_UNSET) {
 		mppe_opt->policy = ev->policy;
 
 		if (ev->policy == 2) {

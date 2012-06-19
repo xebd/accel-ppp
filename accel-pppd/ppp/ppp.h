@@ -8,13 +8,13 @@
 
 #include "triton.h"
 #include "list.h"
+#include "ap_session.h"
 
 /*
  * Packet header = Code, id, length.
  */
 #define PPP_HEADERLEN	4
 #define PPP_MTU 1500
-
 
 /*
  * Protocol field values.
@@ -39,60 +39,15 @@
 #define PPP_CBCP	0xc029	/* Callback Control Protocol */
 #define PPP_EAP		0xc227	/* Extensible Authentication Protocol */
 
-#define PPP_SESSIONID_LEN 16
-#define PPP_IFNAME_LEN 10
-
-#define PPP_STATE_STARTING  1
-#define PPP_STATE_ACTIVE    2
-#define PPP_STATE_FINISHING 3
-
-#define TERM_USER_REQUEST 1
-#define TERM_SESSION_TIMEOUT 2
-#define TERM_ADMIN_RESET 3
-#define TERM_USER_ERROR 4
-#define TERM_NAS_ERROR 5
-#define TERM_NAS_REQUEST 6
-#define TERM_NAS_REBOOT 7
-#define TERM_AUTH_ERROR 8
-#define TERM_LOST_CARRIER 9
-
-#define CTRL_TYPE_PPTP  1
-#define CTRL_TYPE_L2TP  2
-#define CTRL_TYPE_PPPOE 3
-
-#define MPPE_UNSET   -2
-#define MPPE_ALLOW   -1
-#define MPPE_DENY    0
-#define MPPE_PREFER  1
-#define MPPE_REQUIRE 2
-
 struct ppp_t;
 
 struct ipv4db_item_t;
 struct ipv6db_item_t;
 
-struct ppp_ctrl_t
-{
-	struct triton_context_t *ctx;
-	int type;
-	const char *name;
-	int max_mtu;
-	int mppe;
-	char *calling_station_id;
-	char *called_station_id;
-	void (*started)(struct ppp_t*);
-	void (*finished)(struct ppp_t*);
-};
-
-struct ppp_pd_t
-{
-	struct list_head entry;
-	void *key;
-};
-
 struct ppp_t
 {
-	struct list_head entry;
+	struct ap_session ses;
+
 	struct triton_md_handler_t chan_hnd;
 	struct triton_md_handler_t unit_hnd;
 	int fd;
@@ -100,27 +55,6 @@ struct ppp_t
 	int unit_fd;
 
 	int chan_idx;
-	int unit_idx;
-
-	int state;
-	char *chan_name;
-	char ifname[PPP_IFNAME_LEN];
-	int ifindex;
-	char sessionid[PPP_SESSIONID_LEN+1];
-	time_t start_time;
-	time_t stop_time;
-	char *username;
-	struct ipv4db_item_t *ipv4;
-	struct ipv6db_item_t *ipv6;
-	char *ipv4_pool_name;
-	char *ipv6_pool_name;
-	const char *comp;
-
-	struct ppp_ctrl_t *ctrl;
-
-	int terminating:1;
-	int terminated:1;
-	int terminate_cause;
 
 	void *buf;
 	int buf_size;
@@ -130,9 +64,8 @@ struct ppp_t
 
 	struct list_head layers;
 	
+	const char *comp;
 	struct ppp_lcp_t *lcp;
-
-	struct list_head pd_list;
 };
 
 struct ppp_layer_t;
@@ -166,13 +99,6 @@ struct ppp_handler_t
 	void (*recv_proto_rej)(struct ppp_handler_t *h);
 };
 
-struct ppp_stat_t
-{
-	unsigned int active;
-	unsigned int starting;
-	unsigned int finishing;
-};
-
 struct ppp_t *alloc_ppp(void);
 void ppp_init(struct ppp_t *ppp);
 int establish_ppp(struct ppp_t *ppp);
@@ -189,7 +115,7 @@ void ppp_layer_started(struct ppp_t *ppp,struct ppp_layer_data_t*);
 void ppp_layer_finished(struct ppp_t *ppp,struct ppp_layer_data_t*);
 void ppp_layer_passive(struct ppp_t *ppp,struct ppp_layer_data_t*);
 
-void ppp_terminate(struct ppp_t *ppp, int hard, int cause);
+void ppp_terminate(struct ap_session *ses, int hard);
 
 void ppp_register_chan_handler(struct ppp_t *, struct ppp_handler_t *);
 void ppp_register_unit_handler(struct ppp_t * ,struct ppp_handler_t *);
@@ -199,20 +125,9 @@ int ppp_register_layer(const char *name, struct ppp_layer_t *);
 void ppp_unregister_layer(struct ppp_layer_t *);
 struct ppp_layer_data_t *ppp_find_layer_data(struct ppp_t *, struct ppp_layer_t *);
 
-extern int ppp_shutdown;
-void ppp_shutdown_soft(void);
-
 int ppp_ipv6_nd_start(struct ppp_t *ppp, uint64_t intf_id);
 
 extern int conf_ppp_verbose;
 extern int conf_single_session;
 
-extern pthread_rwlock_t ppp_lock;
-extern struct list_head ppp_list;
-
-extern struct ppp_stat_t ppp_stat;
-
-extern int sock_fd; // internet socket for ioctls
-extern int sock6_fd; // internet socket for ioctls
-extern int urandom_fd;
 #endif

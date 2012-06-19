@@ -16,6 +16,7 @@
 
 #include "triton.h"
 
+#include "ap_session.h"
 #include "events.h"
 #include "ppp.h"
 #include "ppp_fsm.h"
@@ -27,29 +28,12 @@
 #include "memdebug.h"
 
 int __export conf_ppp_verbose;
-int conf_sid_ucase;
 int conf_single_session = -1;
 int conf_unit_cache = 0;
-
-pthread_rwlock_t __export ppp_lock = PTHREAD_RWLOCK_INITIALIZER;
-__export LIST_HEAD(ppp_list);
-
-int __export sock_fd;
-int __export sock6_fd;
-int __export urandom_fd;
-
-int __export ppp_shutdown;
 
 static mempool_t buf_pool;
 
 static LIST_HEAD(layers);
-
-static unsigned long long seq;
-#if __WORDSIZE == 32
-static spinlock_t seq_lock;
-#endif
-
-__export struct ppp_stat_t ppp_stat;
 
 struct layer_node_t
 {
@@ -78,37 +62,19 @@ static void start_first_layer(struct ppp_t *);
 
 void __export ppp_init(struct ppp_t *ppp)
 {
-	memset(ppp,0,sizeof(*ppp));
+	memset(ppp, 0, sizeof(*ppp));
 	INIT_LIST_HEAD(&ppp->layers);
 	INIT_LIST_HEAD(&ppp->chan_handlers);
 	INIT_LIST_HEAD(&ppp->unit_handlers);
-	INIT_LIST_HEAD(&ppp->pd_list);
 	ppp->fd = -1;
 	ppp->chan_fd = -1;
 	ppp->unit_fd = -1;
-}
 
-static void generate_sessionid(struct ppp_t *ppp)
-{
-	unsigned long long sid;
-
-#if __WORDSIZE == 32
-	spin_lock(&seq_lock);
-	sid = ++seq;
-	spin_unlock(&seq_lock);
-#else
-	sid = __sync_add_and_fetch(&seq, 1);
-#endif
-
-	if (conf_sid_ucase)
-		sprintf(ppp->sessionid, "%016llX", sid);
-	else
-		sprintf(ppp->sessionid, "%016llx", sid);
+	ap_session_init(&ppp->ses);
 }
 
 int __export establish_ppp(struct ppp_t *ppp)
 {
-	struct ifreq ifr;
 	struct pppunit_cache *uc = NULL;
 
 	/* Open an instance of /dev/ppp and connect the channel to it */
@@ -142,7 +108,7 @@ int __export establish_ppp(struct ppp_t *ppp)
 
 	if (uc) {
 		ppp->unit_fd = uc->fd;
-		ppp->unit_idx = uc->unit_idx;
+		ppp->ses.unit_idx = uc->unit_idx;
 		mempool_free(uc);
 	} else {
 		ppp->unit_fd = open("/dev/ppp", O_RDWR);
@@ -153,8 +119,8 @@ int __export establish_ppp(struct ppp_t *ppp)
 		
 		fcntl(ppp->unit_fd, F_SETFD, fcntl(ppp->unit_fd, F_GETFD) | FD_CLOEXEC);
 
-		ppp->unit_idx = -1;
-		if (ioctl(ppp->unit_fd, PPPIOCNEWUNIT, &ppp->unit_idx) < 0) {
+		ppp->ses.unit_idx = -1;
+		if (ioctl(ppp->unit_fd, PPPIOCNEWUNIT, &ppp->ses.unit_idx) < 0) {
 			log_ppp_error("ioctl(PPPIOCNEWUNIT): %s\n", strerror(errno));
 			goto exit_close_unit;
 		}
@@ -165,7 +131,7 @@ int __export establish_ppp(struct ppp_t *ppp)
 		}
 	}
 
-  if (ioctl(ppp->chan_fd, PPPIOCCONNECT, &ppp->unit_idx) < 0) {
+  if (ioctl(ppp->chan_fd, PPPIOCCONNECT, &ppp->ses.unit_idx) < 0) {
 		log_ppp_error("ioctl(PPPIOCCONNECT): %s\n", strerror(errno));
 		goto exit_close_unit;
 	}
@@ -175,20 +141,9 @@ int __export establish_ppp(struct ppp_t *ppp)
 		goto exit_close_unit;
 	}
 	
-	ppp->start_time = time(NULL);
-	generate_sessionid(ppp);
-	sprintf(ppp->ifname, "ppp%i", ppp->unit_idx);
-
-	memset(&ifr, 0, sizeof(ifr));
-	strcpy(ifr.ifr_name, ppp->ifname);
-
-	if (ioctl(sock_fd, SIOCGIFINDEX, &ifr)) {
-		log_ppp_error("ppp: ioctl(SIOCGIFINDEX): %s\n", strerror(errno));
-		goto exit_close_unit;
-	}
-	ppp->ifindex = ifr.ifr_ifindex;
-
-	log_ppp_info1("connect: %s <--> %s(%s)\n", ppp->ifname, ppp->ctrl->name, ppp->chan_name);
+	sprintf(ppp->ses.ifname, "ppp%i", ppp->ses.unit_idx);
+	
+	log_ppp_info1("connect: %s <--> %s(%s)\n", ppp->ses.ifname, ppp->ses.ctrl->name, ppp->ses.chan_name);
 
 	init_layers(ppp);
 
@@ -203,22 +158,15 @@ int __export establish_ppp(struct ppp_t *ppp)
 	ppp->chan_hnd.read = ppp_chan_read;
 	ppp->unit_hnd.fd = ppp->unit_fd;
 	ppp->unit_hnd.read = ppp_unit_read;
-	triton_md_register_handler(ppp->ctrl->ctx, &ppp->chan_hnd);
-	triton_md_register_handler(ppp->ctrl->ctx, &ppp->unit_hnd);
+	triton_md_register_handler(ppp->ses.ctrl->ctx, &ppp->chan_hnd);
+	triton_md_register_handler(ppp->ses.ctrl->ctx, &ppp->unit_hnd);
 	
 	triton_md_enable_handler(&ppp->chan_hnd, MD_MODE_READ);
 	triton_md_enable_handler(&ppp->unit_hnd, MD_MODE_READ);
 
-	ppp->state = PPP_STATE_STARTING;
-	__sync_add_and_fetch(&ppp_stat.starting, 1);
-
-	pthread_rwlock_wrlock(&ppp_lock);
-	list_add_tail(&ppp->entry, &ppp_list);
-	pthread_rwlock_unlock(&ppp_lock);
-
 	log_ppp_debug("ppp established\n");
 
-	triton_event_fire(EV_PPP_STARTING, ppp);
+	ap_session_starting(&ppp->ses);
 	
 	start_first_layer(ppp);
 
@@ -239,23 +187,7 @@ static void destablish_ppp(struct ppp_t *ppp)
 {
 	struct pppunit_cache *uc;
 
-	triton_event_fire(EV_PPP_PRE_FINISHED, ppp);
-
-	pthread_rwlock_wrlock(&ppp_lock);
-	list_del(&ppp->entry);
-	pthread_rwlock_unlock(&ppp_lock);
-
-	switch (ppp->state) {
-		case PPP_STATE_ACTIVE:
-			__sync_sub_and_fetch(&ppp_stat.active, 1);
-			break;
-		case PPP_STATE_STARTING:
-			__sync_sub_and_fetch(&ppp_stat.starting, 1);
-			break;
-		case PPP_STATE_FINISHING:
-			__sync_sub_and_fetch(&ppp_stat.finishing, 1);
-			break;
-	}
+	triton_event_fire(EV_SES_PRE_FINISHED, ppp);
 
 	triton_md_unregister_handler(&ppp->chan_hnd);
 	triton_md_unregister_handler(&ppp->unit_hnd);
@@ -263,7 +195,7 @@ static void destablish_ppp(struct ppp_t *ppp)
 	if (uc_size < conf_unit_cache) {
 		uc = mempool_alloc(uc_pool);
 		uc->fd = ppp->unit_fd;
-		uc->unit_idx = ppp->unit_idx;
+		uc->unit_idx = ppp->ses.unit_idx;
 
 		pthread_mutex_lock(&uc_lock);
 		list_add_tail(&uc->entry, &uc_list);
@@ -281,32 +213,11 @@ static void destablish_ppp(struct ppp_t *ppp)
 
 	_free_layers(ppp);
 	
-	ppp->terminated = 1;
-	
 	log_ppp_debug("ppp destablished\n");
-
-	triton_event_fire(EV_PPP_FINISHED, ppp);
-	ppp->ctrl->finished(ppp);
 
 	mempool_free(ppp->buf);
 
-	if (ppp->username) {
-		_free(ppp->username);
-		ppp->username = NULL;
-	}
-
-	if (ppp->ipv4_pool_name) {
-		_free(ppp->ipv4_pool_name);
-		ppp->ipv4_pool_name = NULL;
-	}
-	
-	if (ppp->ipv6_pool_name) {
-		_free(ppp->ipv6_pool_name);
-		ppp->ipv6_pool_name = NULL;
-	}
-	
-	if (ppp_shutdown && !ppp_stat.starting && !ppp_stat.active && !ppp_stat.finishing)
-		kill(getpid(), SIGTERM);
+	ap_session_finished(&ppp->ses);
 }
 
 /*void print_buf(uint8_t *buf, int size)
@@ -362,7 +273,7 @@ cont:
 		//printf("ppp_chan_read: ");
 		//print_buf(ppp->buf,ppp->buf_size);
 		if (ppp->buf_size == 0) {
-			ppp_terminate(ppp, TERM_NAS_ERROR, 1);
+			ap_session_terminate(&ppp->ses, TERM_NAS_ERROR, 1);
 			return 1;
 		}
 
@@ -376,7 +287,7 @@ cont:
 			if (ppp_h->proto == proto) {
 				ppp_h->recv(ppp_h);
 				if (ppp->chan_fd == -1) {
-					//ppp->ctrl->finished(ppp);
+					//ppp->ses.ctrl->finished(ppp);
 					return 1;
 				}
 				goto cont;
@@ -410,7 +321,7 @@ cont:
 		//print_buf(ppp->buf,ppp->buf_size);
 
 		/*if (ppp->buf_size == 0) {
-			ppp_terminate(ppp, TERM_NAS_ERROR, 1);
+			ap_session_terminate(ppp, TERM_NAS_ERROR, 1);
 			return 1;
 		}*/
 
@@ -424,7 +335,7 @@ cont:
 			if (ppp_h->proto == proto) {
 				ppp_h->recv(ppp_h);
 				if (ppp->unit_fd == -1) {
-					//ppp->ctrl->finished(ppp);
+					//ppp->ses.ctrl->finished(ppp);
 					return 1;
 				}
 				goto cont;
@@ -472,18 +383,15 @@ static void __ppp_layer_started(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 	
 
 	if (n->entry.next == &ppp->layers) {
-		if (ppp->state == PPP_STATE_STARTING) {
-			ppp->state = PPP_STATE_ACTIVE;
-			__sync_sub_and_fetch(&ppp_stat.starting, 1);
-			__sync_add_and_fetch(&ppp_stat.active, 1);
-			ppp_ifup(ppp);
+		if (ppp->ses.state == AP_STATE_STARTING) {
+			ap_session_activate(&ppp->ses);
 		}
 	} else {
 		n = list_entry(n->entry.next, typeof(*n), entry);
 		list_for_each_entry(d, &n->items, entry) {
 			d->starting = 1;
 			if (d->layer->start(d)) {
-				ppp_terminate(ppp, TERM_NAS_ERROR, 0);
+				ap_session_terminate(&ppp->ses, TERM_NAS_ERROR, 0);
 				return;
 			}
 		}
@@ -527,40 +435,12 @@ void __export ppp_layer_finished(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 	destablish_ppp(ppp);
 }
 
-void __export ppp_terminate(struct ppp_t *ppp, int cause, int hard)
+void __export ppp_terminate(struct ap_session *ses, int hard)
 {
+	struct ppp_t *ppp = container_of(ses, typeof(*ppp), ses);
 	struct layer_node_t *n;
 	struct ppp_layer_data_t *d;
 	int s = 0;
-
-	if (ppp->terminated)
-		return;
-
-	if (!ppp->stop_time)
-		time(&ppp->stop_time);
-
-	if (!ppp->terminate_cause)
-		ppp->terminate_cause = cause;
-
-	if (ppp->terminating) {
-		if (hard)
-			destablish_ppp(ppp);
-		return;
-	}
-	
-	ppp->terminating = 1;
-	if (ppp->state == PPP_STATE_ACTIVE)
-		__sync_sub_and_fetch(&ppp_stat.active, 1);
-	else
-		__sync_sub_and_fetch(&ppp_stat.starting, 1);
-	__sync_add_and_fetch(&ppp_stat.finishing, 1);
-	ppp->state = PPP_STATE_FINISHING;
-
-	log_ppp_debug("ppp_terminate\n");
-
-	ppp_ifdown(ppp);
-
-	triton_event_fire(EV_PPP_FINISHING, ppp);
 
 	if (hard) {
 		destablish_ppp(ppp);
@@ -577,6 +457,7 @@ void __export ppp_terminate(struct ppp_t *ppp, int cause, int hard)
 	}
 	if (s)
 		return;
+
 	destablish_ppp(ppp);
 }
 
@@ -689,7 +570,7 @@ static void start_first_layer(struct ppp_t *ppp)
 	list_for_each_entry(d, &n->items, entry) {
 		d->starting = 1;
 		if (d->layer->start(d)) {
-			ppp_terminate(ppp, TERM_NAS_ERROR, 0);
+			ap_session_terminate(&ppp->ses, TERM_NAS_ERROR, 0);
 			return;
 		}
 	}
@@ -710,44 +591,14 @@ struct ppp_layer_data_t *ppp_find_layer_data(struct ppp_t *ppp, struct ppp_layer
 	return NULL;
 }
 
-void ppp_shutdown_soft(void)
-{
-	ppp_shutdown = 1;
-
-	if (!ppp_stat.starting && !ppp_stat.active && !ppp_stat.finishing)
-		kill(getpid(), SIGTERM);
-}
-
-static void save_seq(void)
-{
-	FILE *f;
-	char *opt = conf_get_opt("ppp", "seq-file");
-	if (!opt)
-		opt = "/var/run/accel-ppp/seq";
-
-	f = fopen(opt, "w");
-	if (f) {
-		fprintf(f, "%llu", seq);
-		fclose(f);
-	}
-}
-
 static void load_config(void)
 {
-	char *opt;
+	const char *opt;
 
 	opt = conf_get_opt("ppp", "verbose");
 	if (opt && atoi(opt) > 0)
 		conf_ppp_verbose = 1;
 
-	opt = conf_get_opt("ppp", "sid-case");
-	if (opt) {
-		if (!strcmp(opt, "upper"))
-			conf_sid_ucase = 1;
-		else if (strcmp(opt, "lower"))
-			log_emerg("ppp: sid-case: invalid format\n");
-	}
-	
 	opt = conf_get_opt("ppp", "single-session");
 	if (opt) {
 		if (!strcmp(opt, "deny"))
@@ -766,49 +617,11 @@ static void load_config(void)
 
 static void init(void)
 {
-	char *opt;
-	FILE *f;
-
 	buf_pool = mempool_create(PPP_MRU);
 	uc_pool = mempool_create(sizeof(struct pppunit_cache));
 
-	sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
-	if (sock_fd < 0) {
-		perror("socket");
-		_exit(EXIT_FAILURE);
-	}
-	
-	fcntl(sock_fd, F_SETFD, fcntl(sock_fd, F_GETFD) | FD_CLOEXEC);
-
-	sock6_fd = socket(AF_INET6, SOCK_DGRAM, 0);
-	if (sock6_fd < 0)
-		log_warn("ppp: kernel doesn't support ipv6\n");
-	else
-		fcntl(sock6_fd, F_SETFD, fcntl(sock6_fd, F_GETFD) | FD_CLOEXEC);
-
-	urandom_fd = open("/dev/urandom", O_RDONLY);
-	if (urandom_fd < 0) {
-		log_emerg("failed to open /dev/urandom: %s\n", strerror(errno));
-		return;
-	}
-	
-	fcntl(urandom_fd, F_SETFD, fcntl(urandom_fd, F_GETFD) | FD_CLOEXEC);
-
-	opt = conf_get_opt("ppp", "seq-file");
-	if (!opt)
-		opt = "/var/run/accel-ppp/seq";
-	
-	f = fopen(opt, "r");
-	if (f) {
-		fscanf(f, "%llu", &seq);
-		fclose(f);
-	} else
-		seq = (unsigned long long)random() * (unsigned long long)random();
-
 	load_config();
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
-
-	atexit(save_seq);
 }
 
 DEFINE_INIT(2, init);

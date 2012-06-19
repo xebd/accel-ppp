@@ -50,7 +50,7 @@ struct pptp_conn_t
 	int out_size;
 	int out_pos;
 
-	struct ppp_ctrl_t ctrl;
+	struct ap_ctrl ctrl;
 	struct ppp_t ppp;
 };
 
@@ -68,8 +68,8 @@ static unsigned int stat_active;
 static int pptp_read(struct triton_md_handler_t *h);
 static int pptp_write(struct triton_md_handler_t *h);
 static void pptp_timeout(struct triton_timer_t *);
-static void ppp_started(struct ppp_t *);
-static void ppp_finished(struct ppp_t *);
+static void ppp_started(struct ap_session *);
+static void ppp_finished(struct ap_session *);
 
 static void disconnect(struct pptp_conn_t *conn)
 {
@@ -87,7 +87,7 @@ static void disconnect(struct pptp_conn_t *conn)
 	if (conn->state == STATE_PPP) {
 		__sync_sub_and_fetch(&stat_active, 1);
 		conn->state = STATE_CLOSE;
-		ppp_terminate(&conn->ppp, TERM_LOST_CARRIER, 1);
+		ap_session_terminate(&conn->ppp.ses, TERM_LOST_CARRIER, 1);
 	} else if (conn->state != STATE_CLOSE)
 		__sync_sub_and_fetch(&stat_starting, 1);
 
@@ -97,8 +97,8 @@ static void disconnect(struct pptp_conn_t *conn)
 
 	triton_context_unregister(&conn->ctx);
 
-	if (conn->ppp.chan_name)
-		_free(conn->ppp.chan_name);
+	if (conn->ppp.ses.chan_name)
+		_free(conn->ppp.ses.chan_name);
 	
 	_free(conn->in_buf);
 	_free(conn->out_buf);
@@ -325,7 +325,7 @@ static int pptp_out_call_rqst(struct pptp_conn_t *conn)
 	conn->call_id = src_addr.sa_addr.pptp.call_id;
 	conn->peer_call_id = msg->call_id;
 	conn->ppp.fd = pptp_sock;
-	conn->ppp.chan_name = _strdup(inet_ntoa(dst_addr.sa_addr.pptp.sin_addr));
+	conn->ppp.ses.chan_name = _strdup(inet_ntoa(dst_addr.sa_addr.pptp.sin_addr));
 
 	triton_event_fire(EV_CTRL_STARTED, &conn->ppp);
 
@@ -379,7 +379,7 @@ static int pptp_call_clear_rqst(struct pptp_conn_t *conn)
 	if (conn->state == STATE_PPP) {
 		__sync_sub_and_fetch(&stat_active, 1);
 		conn->state = STATE_CLOSE;
-		ppp_terminate(&conn->ppp, TERM_USER_REQUEST, 1);
+		ap_session_terminate(&conn->ppp.ses, TERM_USER_REQUEST, 1);
 	}
 
 	return send_pptp_call_disconnect_notify(conn, 4);
@@ -561,7 +561,7 @@ static void pptp_close(struct triton_context_t *ctx)
 	if (conn->state == STATE_PPP) {
 		__sync_sub_and_fetch(&stat_active, 1);
 		conn->state = STATE_CLOSE;
-		ppp_terminate(&conn->ppp, TERM_ADMIN_RESET, 1);
+		ap_session_terminate(&conn->ppp.ses, TERM_ADMIN_RESET, 1);
 		if (send_pptp_call_disconnect_notify(conn, 3)) {
 			triton_context_call(&conn->ctx, (void (*)(void*))disconnect, conn);
 			return;
@@ -578,12 +578,13 @@ static void pptp_close(struct triton_context_t *ctx)
 	else
 		triton_timer_add(ctx, &conn->timeout_timer, 0);
 }
-static void ppp_started(struct ppp_t *ppp)
+static void ppp_started(struct ap_session *ses)
 {
 	log_ppp_debug("pptp: ppp started\n");
 }
-static void ppp_finished(struct ppp_t *ppp)
+static void ppp_finished(struct ap_session *ses)
 {
+	struct ppp_t *ppp = container_of(ses, typeof(*ppp), ses);
 	struct pptp_conn_t *conn = container_of(ppp, typeof(*conn), ppp);
 
 	if (conn->state != STATE_CLOSE) {
@@ -628,7 +629,7 @@ static int pptp_connect(struct triton_md_handler_t *h)
 			continue;
 		}
 
-		if (ppp_shutdown) {
+		if (ap_shutdown) {
 			close(sock);
 			continue;
 		}
@@ -667,6 +668,7 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		conn->ctrl.ctx = &conn->ctx;
 		conn->ctrl.started = ppp_started;
 		conn->ctrl.finished = ppp_finished;
+		conn->ctrl.terminate = ppp_terminate;
 		conn->ctrl.max_mtu = PPTP_MAX_MTU;
 		conn->ctrl.type = CTRL_TYPE_PPTP;
 		conn->ctrl.name = "pptp";
@@ -679,9 +681,9 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		u_inet_ntoa(addr.sin_addr.s_addr, conn->ctrl.called_station_id);
 	
 		ppp_init(&conn->ppp);
-		conn->ppp.ctrl = &conn->ctrl;
+		conn->ppp.ses.ctrl = &conn->ctrl;
 
-		triton_context_register(&conn->ctx, &conn->ppp);
+		triton_context_register(&conn->ctx, &conn->ppp.ses);
 		triton_md_register_handler(&conn->ctx, &conn->hnd);
 		triton_md_enable_handler(&conn->hnd,MD_MODE_READ);
 		triton_timer_add(&conn->ctx, &conn->timeout_timer, 0);

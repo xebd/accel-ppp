@@ -121,8 +121,8 @@ static void ipcp_start_timeout(struct triton_timer_t *t)
 
 	triton_timer_del(t);
 
-	if (ipcp->ppp->state == PPP_STATE_STARTING)
-		ppp_terminate(ipcp->ppp, TERM_USER_ERROR, 0);
+	if (ipcp->ppp->ses.state == AP_STATE_STARTING)
+		ap_session_terminate(&ipcp->ppp->ses, TERM_USER_ERROR, 0);
 }
 
 int ipcp_layer_start(struct ppp_layer_data_t *ld)
@@ -137,7 +137,7 @@ int ipcp_layer_start(struct ppp_layer_data_t *ld)
 		if (ipcp->ld.passive) {
 			ipcp->timeout.expire = ipcp_start_timeout;
 			ipcp->timeout.expire_tv.tv_sec = START_TIMEOUT;
-			triton_timer_add(ipcp->ppp->ctrl->ctx, &ipcp->timeout, 0);
+			triton_timer_add(ipcp->ppp->ses.ctrl->ctx, &ipcp->timeout, 0);
 		} else {
 			ppp_fsm_lower_up(&ipcp->fsm);
 			if (ppp_fsm_open(&ipcp->fsm))
@@ -202,17 +202,17 @@ static void ipcp_layer_finished(struct ppp_fsm_t *fsm)
 
 	if (!ipcp->started) {
 		if (conf_ipv4 == IPV4_REQUIRE)
-			ppp_terminate(ipcp->ppp, TERM_USER_ERROR, 0);
+			ap_session_terminate(&ipcp->ppp->ses, TERM_USER_ERROR, 0);
 		else
 			ppp_layer_passive(ipcp->ppp, &ipcp->ld);
-	} else if (!ipcp->ppp->terminating)
-		ppp_terminate(ipcp->ppp, TERM_USER_ERROR, 0);
+	} else if (!ipcp->ppp->ses.terminating)
+		ap_session_terminate(&ipcp->ppp->ses, TERM_USER_ERROR, 0);
 	
 	fsm->fsm_state = FSM_Closed;
 	
-	if (ipcp->ppp->ipv4) {
-		ipdb_put_ipv4(ipcp->ppp, ipcp->ppp->ipv4);
-		ipcp->ppp->ipv4 = NULL;
+	if (ipcp->ppp->ses.ipv4) {
+		ipdb_put_ipv4(&ipcp->ppp->ses, ipcp->ppp->ses.ipv4);
+		ipcp->ppp->ses.ipv4 = NULL;
 	}
 }
 
@@ -446,12 +446,12 @@ static int ipcp_recv_conf_req(struct ppp_ipcp_t *ipcp, uint8_t *data, int size)
 				}
 				if (r == IPCP_OPT_CLOSE) {
 					if (conf_ipv4 == IPV4_REQUIRE)
-						ppp_terminate(ipcp->ppp, TERM_NAS_ERROR, 0);
+						ap_session_terminate(&ipcp->ppp->ses, TERM_NAS_ERROR, 0);
 					else
 						lcp_send_proto_rej(ipcp->ppp, PPP_IPCP);
 					return 0;
 				}
-				if (ipcp->ppp->stop_time)
+				if (ipcp->ppp->ses.stop_time)
 					return -1;
 				lopt->state = r;
 				ropt->state = r;
@@ -660,10 +660,10 @@ static void ipcp_recv(struct ppp_handler_t*h)
 	int r;
 	int delay_ack = ipcp->delay_ack;
 
-	if (!ipcp->starting || ipcp->fsm.fsm_state == FSM_Closed || ipcp->ppp->terminating || conf_ipv4 == IPV4_DENY) {
+	if (!ipcp->starting || ipcp->fsm.fsm_state == FSM_Closed || ipcp->ppp->ses.terminating || conf_ipv4 == IPV4_DENY) {
 		if (conf_ppp_verbose)
 			log_ppp_warn("IPCP: discarding packet\n");
-		if (ipcp->ppp->terminating)
+		if (ipcp->ppp->ses.terminating)
 			return;
 		if (ipcp->fsm.fsm_state == FSM_Closed || conf_ipv4 == IPV4_DENY)
 			lcp_send_proto_rej(ipcp->ppp, PPP_IPCP);
@@ -689,7 +689,7 @@ static void ipcp_recv(struct ppp_handler_t*h)
 	switch(hdr->code) {
 		case CONFREQ:
 			r = ipcp_recv_conf_req(ipcp,(uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN);
-			if (ipcp->ppp->stop_time) {
+			if (ipcp->ppp->ses.stop_time) {
 				ipcp_free_conf_req(ipcp);
 				return;
 			}
@@ -721,11 +721,11 @@ static void ipcp_recv(struct ppp_handler_t*h)
 			}
 			ipcp_free_conf_req(ipcp);
 			if (r == IPCP_OPT_FAIL)
-				ppp_terminate(ipcp->ppp, TERM_USER_ERROR, 0);
+				ap_session_terminate(&ipcp->ppp->ses, TERM_USER_ERROR, 0);
 			break;
 		case CONFACK:
 			if (ipcp_recv_conf_ack(ipcp,(uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN))
-				ppp_terminate(ipcp->ppp, TERM_USER_ERROR, 0);
+				ap_session_terminate(&ipcp->ppp->ses, TERM_USER_ERROR, 0);
 			else
 				ppp_fsm_recv_conf_ack(&ipcp->fsm);
 			break;
@@ -735,7 +735,7 @@ static void ipcp_recv(struct ppp_handler_t*h)
 			break;
 		case CONFREJ:
 			if (ipcp_recv_conf_rej(ipcp, (uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN))
-				ppp_terminate(ipcp->ppp, TERM_USER_ERROR, 0);
+				ap_session_terminate(&ipcp->ppp->ses, TERM_USER_ERROR, 0);
 			else
 				ppp_fsm_recv_conf_rej(&ipcp->fsm);
 			break;
@@ -743,13 +743,13 @@ static void ipcp_recv(struct ppp_handler_t*h)
 			if (conf_ppp_verbose)
 				log_ppp_info2("recv [IPCP TermReq id=%x]\n", hdr->id);
 			ppp_fsm_recv_term_req(&ipcp->fsm);
-			ppp_terminate(ipcp->ppp, TERM_USER_REQUEST, 0);
+			ap_session_terminate(&ipcp->ppp->ses, TERM_USER_REQUEST, 0);
 			break;
 		case TERMACK:
 			if (conf_ppp_verbose)
 				log_ppp_info2("recv [IPCP TermAck id=%x]\n", hdr->id);
 			//ppp_fsm_recv_term_ack(&ipcp->fsm);
-			//ppp_terminate(ipcp->ppp, 0);
+			//ap_session_terminate(&ipcp->ppp->ses, 0);
 			break;
 		case CODEREJ:
 			if (conf_ppp_verbose)

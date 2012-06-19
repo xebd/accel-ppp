@@ -164,7 +164,7 @@ static void chap_timeout_timer(struct triton_timer_t *t)
 
 	if (++d->failure == conf_max_failure) {
 		if (d->started)
-			ppp_terminate(d->ppp, TERM_USER_ERROR, 0);
+			ap_session_terminate(&d->ppp->ses, TERM_USER_ERROR, 0);
 		else
 			ppp_auth_failed(d->ppp, NULL);
 	} else {
@@ -251,7 +251,7 @@ static void chap_send_challenge(struct chap_auth_data_t *ad, int new)
 	ppp_chan_send(ad->ppp, &msg, ntohs(msg.hdr.len) + 2);
 
 	if (conf_timeout && !ad->timeout.tpd)
-		triton_timer_add(ad->ppp->ctrl->ctx, &ad->timeout, 0);
+		triton_timer_add(ad->ppp->ses.ctrl->ctx, &ad->timeout, 0);
 }
 
 static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *hdr)
@@ -283,7 +283,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	if (msg->val_size != RESPONSE_VALUE_SIZE)	{
 		log_ppp_error("mschap-v1: incorrect value-size (%i)\n", msg->val_size);
 		if (ad->started)
-			ppp_terminate(ad->ppp, TERM_AUTH_ERROR, 0);
+			ap_session_terminate(&ad->ppp->ses, TERM_AUTH_ERROR, 0);
 		else
 			ppp_auth_failed(ad->ppp, NULL);
 		return;
@@ -293,7 +293,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	if (!name) {
 		log_emerg("mschap-v1: out of memory\n");
 		if (ad->started)
-			ppp_terminate(ad->ppp, TERM_NAS_ERROR, 0);
+			ap_session_terminate(&ad->ppp->ses, TERM_NAS_ERROR, 0);
 		else
 			ppp_auth_failed(ad->ppp, NULL);
 		return;
@@ -302,7 +302,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	if (conf_any_login) {
 		if (ppp_auth_successed(ad->ppp, name)) {
 			chap_send_failure(ad, mschap_error);
-			ppp_terminate(ad->ppp, TERM_AUTH_ERROR, 0);
+			ap_session_terminate(&ad->ppp->ses, TERM_AUTH_ERROR, 0);
 			_free(name);
 			return;
 		}
@@ -311,7 +311,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		return;
 	}
 
-	r = pwdb_check(ad->ppp, name, PPP_CHAP, MSCHAP_V1, ad->id, ad->val, VALUE_SIZE, msg->lm_hash, msg->nt_hash, msg->flags, &mschap_error);
+	r = pwdb_check(&ad->ppp->ses, name, PPP_CHAP, MSCHAP_V1, ad->id, ad->val, VALUE_SIZE, msg->lm_hash, msg->nt_hash, msg->flags, &mschap_error);
 	if (r == PWDB_NO_IMPL)
 		if (chap_check_response(ad, msg, name))
 			r = PWDB_DENIED;
@@ -319,7 +319,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	if (r == PWDB_DENIED) {
 		chap_send_failure(ad, mschap_error);
 		if (ad->started)
-			ppp_terminate(ad->ppp, TERM_AUTH_ERROR, 0);
+			ap_session_terminate(&ad->ppp->ses, TERM_AUTH_ERROR, 0);
 		else
 			ppp_auth_failed(ad->ppp, name);
 		_free(name);
@@ -327,13 +327,13 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		if (!ad->started) {
 			if (ppp_auth_successed(ad->ppp, name)) {
 				chap_send_failure(ad, mschap_error);
-				ppp_terminate(ad->ppp, TERM_AUTH_ERROR, 0);
+				ap_session_terminate(&ad->ppp->ses, TERM_AUTH_ERROR, 0);
 				_free(name);
 			} else {
 				chap_send_success(ad);
 				ad->started = 1;
 				if (conf_interval)
-					triton_timer_add(ad->ppp->ctrl->ctx, &ad->interval, 0);
+					triton_timer_add(ad->ppp->ses.ctrl->ctx, &ad->interval, 0);
 			}
 		} else {
 			chap_send_success(ad);
@@ -380,7 +380,7 @@ static int chap_check_response(struct chap_auth_data_t *ad, struct chap_response
 	char *u_passwd;
 	int i;
 	
-	passwd = pwdb_get_passwd(ad->ppp,name);
+	passwd = pwdb_get_passwd(&ad->ppp->ses, name);
 	if (!passwd) {
 		if (conf_ppp_verbose)
 			log_ppp_warn("mschap-v1: user not found\n");

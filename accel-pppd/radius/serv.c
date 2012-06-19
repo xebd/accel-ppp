@@ -132,7 +132,7 @@ void rad_server_req_exit(struct rad_req_t *req)
 	pthread_mutex_unlock(&req->serv->lock);
 
 	if (r)
-		triton_context_wakeup(r->rpd->ppp->ctrl->ctx);
+		triton_context_wakeup(r->rpd->ses->ctrl->ctx);
 }
 
 int rad_server_realloc(struct rad_req_t *req)
@@ -182,7 +182,7 @@ void rad_server_fail(struct rad_server_t *s)
 		while (!list_empty(&s->req_queue)) {
 			r = list_entry(s->req_queue.next, typeof(*r), entry);
 			list_del(&r->entry);
-			triton_context_wakeup(r->rpd->ppp->ctrl->ctx);
+			triton_context_wakeup(r->rpd->ses->ctrl->ctx);
 		}
 	}
 
@@ -559,7 +559,7 @@ static void load_config(void)
 			while (!list_empty(&s->req_queue)) {
 				r = list_entry(s->req_queue.next, typeof(*r), entry);
 				list_del(&r->entry);
-				triton_context_wakeup(r->rpd->ppp->ctrl->ctx);
+				triton_context_wakeup(r->rpd->ses->ctrl->ctx);
 			}
 
 			if (!s->client_cnt[0] && !s->client_cnt[1])

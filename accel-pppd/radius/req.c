@@ -20,12 +20,16 @@ static void rad_req_timeout(struct triton_timer_t *t);
 struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *username)
 {
 	struct rad_plugin_t *plugin;
+	struct ppp_t *ppp = NULL;
 	struct rad_req_t *req = _malloc(sizeof(*req));
 
 	if (!req) {
 		log_emerg("radius: out of memory\n");
 		return NULL;
 	}
+
+	if (rpd->ses->ctrl->type != CTRL_TYPE_IPOE)
+		ppp = container_of(rpd->ses, typeof(*ppp), ses);
 
 	memset(req, 0, sizeof(*req));
 	req->rpd = rpd;
@@ -63,19 +67,21 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 	if (conf_nas_ip_address)
 		if (rad_packet_add_ipaddr(req->pack, NULL, "NAS-IP-Address", conf_nas_ip_address))
 			goto out_err;
-	if (rad_packet_add_int(req->pack, NULL, "NAS-Port", rpd->ppp->unit_idx))
-		goto out_err;
+	if (ppp) {
+		if (rad_packet_add_int(req->pack, NULL, "NAS-Port", ppp->ses.unit_idx))
+			goto out_err;
+	}
 	if (rad_packet_add_val(req->pack, NULL, "NAS-Port-Type", "Virtual"))
 		goto out_err;
 	if (rad_packet_add_val(req->pack, NULL, "Service-Type", "Framed-User"))
 		goto out_err;
 	if (rad_packet_add_val(req->pack, NULL, "Framed-Protocol", "PPP"))
 		goto out_err;
-	if (rpd->ppp->ctrl->calling_station_id)
-		if (rad_packet_add_str(req->pack, NULL, "Calling-Station-Id", rpd->ppp->ctrl->calling_station_id))
+	if (rpd->ses->ctrl->calling_station_id)
+		if (rad_packet_add_str(req->pack, NULL, "Calling-Station-Id", rpd->ses->ctrl->calling_station_id))
 			goto out_err;
-	if (rpd->ppp->ctrl->called_station_id)
-		if (rad_packet_add_str(req->pack, NULL, "Called-Station-Id", rpd->ppp->ctrl->called_station_id))
+	if (rpd->ses->ctrl->called_station_id)
+		if (rad_packet_add_str(req->pack, NULL, "Called-Station-Id", rpd->ses->ctrl->called_station_id))
 			goto out_err;
 	if (rpd->attr_class)
 		if (rad_packet_add_octets(req->pack, NULL, "Class", rpd->attr_class, rpd->attr_class_len))
@@ -117,7 +123,7 @@ int rad_req_acct_fill(struct rad_req_t *req)
 		return -1;
 	if (rad_packet_add_val(req->pack, NULL, "Acct-Authentic", "RADIUS"))
 		return -1;
-	if (rad_packet_add_str(req->pack, NULL, "Acct-Session-Id", req->rpd->ppp->sessionid))
+	if (rad_packet_add_str(req->pack, NULL, "Acct-Session-Id", req->rpd->ses->sessionid))
 		return -1;
 	if (rad_packet_add_int(req->pack, NULL, "Acct-Session-Time", 0))
 		return -1;
@@ -137,14 +143,14 @@ int rad_req_acct_fill(struct rad_req_t *req)
 		if (rad_packet_add_int(req->pack, NULL, "Acct-Delay-Time", 0))
 			return -1;
 	}
-	if (req->rpd->ppp->ipv4) {
-		if (rad_packet_add_ipaddr(req->pack, NULL, "Framed-IP-Address", req->rpd->ppp->ipv4->peer_addr))
+	if (req->rpd->ses->ipv4) {
+		if (rad_packet_add_ipaddr(req->pack, NULL, "Framed-IP-Address", req->rpd->ses->ipv4->peer_addr))
 			return -1;
 	}
-	if (req->rpd->ppp->ipv6) {
-		if (rad_packet_add_ifid(req->pack, NULL, "Framed-Interface-Id", req->rpd->ppp->ipv6->peer_intf_id))
+	if (req->rpd->ses->ipv6) {
+		if (rad_packet_add_ifid(req->pack, NULL, "Framed-Interface-Id", req->rpd->ses->ipv6->peer_intf_id))
 			return -1;
-		list_for_each_entry(a, &req->rpd->ppp->ipv6->addr_list, entry) {
+		list_for_each_entry(a, &req->rpd->ses->ipv6->addr_list, entry) {
 			if (rad_packet_add_ipv6prefix(req->pack, NULL, "Framed-IPv6-Prefix", &a->addr, a->prefix_len))
 				return -1;
 		}
@@ -235,7 +241,7 @@ out_err:
 
 static void req_wakeup(struct rad_req_t *req)
 {
-	struct triton_context_t *ctx = req->rpd->ppp->ctrl->ctx;
+	struct triton_context_t *ctx = req->rpd->ses->ctrl->ctx;
 	if (req->timeout.tpd)
 		triton_timer_del(&req->timeout);
 	triton_md_unregister_handler(&req->hnd);
@@ -277,7 +283,7 @@ int rad_req_wait(struct rad_req_t *req, int timeout)
 	req->hnd.read = rad_req_read;
 	req->timeout.expire = rad_req_timeout;
 
-	triton_context_register(&req->ctx, req->rpd->ppp);
+	triton_context_register(&req->ctx, req->rpd->ses);
 	triton_context_set_priority(&req->ctx, 1);
 	triton_md_register_handler(&req->ctx, &req->hnd);
 	triton_md_enable_handler(&req->hnd, MD_MODE_READ);

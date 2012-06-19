@@ -94,7 +94,7 @@ struct l2tp_conn_t
 	int state1;
 	int state2;
 
-	struct ppp_ctrl_t ctrl;
+	struct ap_ctrl ctrl;
 	struct ppp_t ppp;
 };
 
@@ -130,7 +130,7 @@ static void l2tp_disconnect(struct l2tp_conn_t *conn)
 	if (conn->state == STATE_PPP) {
 		__sync_sub_and_fetch(&stat_active, 1);
 		conn->state = STATE_FIN;
-		ppp_terminate(&conn->ppp, TERM_USER_REQUEST, 1);
+		ap_session_terminate(&conn->ppp.ses, TERM_USER_REQUEST, 1);
 	} else if (conn->state != STATE_FIN)
 		__sync_sub_and_fetch(&stat_starting, 1);
 
@@ -156,8 +156,8 @@ static void l2tp_disconnect(struct l2tp_conn_t *conn)
 		l2tp_packet_free(pack);
 	}
 
-	if (conn->ppp.chan_name)
-		_free(conn->ppp.chan_name);
+	if (conn->ppp.ses.chan_name)
+		_free(conn->ppp.ses.chan_name);
 	if (conn->challenge_len)
 	    _free(conn->challenge.octets);
 	_free(conn->ctrl.calling_station_id);
@@ -193,8 +193,9 @@ out_err:
 	return -1;
 }
 
-static void l2tp_ppp_started(struct ppp_t *ppp)
+static void l2tp_ppp_started(struct ap_session *ses)
 {
+	struct ppp_t *ppp = container_of(ses, typeof(*ppp), ses);
 	struct l2tp_conn_t *conn = container_of(ppp, typeof(*conn), ppp);
 	
 	log_ppp_debug("l2tp: ppp started\n");
@@ -203,8 +204,9 @@ static void l2tp_ppp_started(struct ppp_t *ppp)
 		triton_timer_add(&conn->ctx, &conn->hello_timer, 0);
 }
 
-static void l2tp_ppp_finished(struct ppp_t *ppp)
+static void l2tp_ppp_finished(struct ap_session *ses)
 {
+	struct ppp_t *ppp = container_of(ses, typeof(*ppp), ses);
 	struct l2tp_conn_t *conn = container_of(ppp, typeof(*conn), ppp);
 
 	log_ppp_debug("l2tp: ppp finished\n");
@@ -223,7 +225,7 @@ static void l2tp_conn_close(struct triton_context_t *ctx)
 	if (conn->state == STATE_PPP) {
 		__sync_sub_and_fetch(&stat_active, 1);
 		conn->state = STATE_FIN;
-		ppp_terminate(&conn->ppp, TERM_ADMIN_RESET, 1);
+		ap_session_terminate(&conn->ppp.ses, TERM_ADMIN_RESET, 1);
 	}
 	
 	if (l2tp_terminate(conn, 0, 0))
@@ -343,11 +345,11 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 	u_inet_ntoa(addr.sin_addr.s_addr, conn->ctrl.called_station_id);
 
 	ppp_init(&conn->ppp);
-	conn->ppp.ctrl = &conn->ctrl;
+	conn->ppp.ses.ctrl = &conn->ctrl;
 	conn->ppp.fd = -1;
 	conn->tunnel_fd = -1;
 
-	triton_context_register(&conn->ctx, &conn->ppp);
+	triton_context_register(&conn->ctx, &conn->ppp.ses);
 	triton_md_register_handler(&conn->ctx, &conn->hnd);
 	triton_md_enable_handler(&conn->hnd, MD_MODE_READ);
 	triton_context_wakeup(&conn->ctx);
@@ -419,7 +421,7 @@ static int l2tp_connect(struct l2tp_conn_t *conn)
 		return -1;
 	}
 
-	conn->ppp.chan_name = _strdup(inet_ntoa(conn->addr.sin_addr));
+	conn->ppp.ses.chan_name = _strdup(inet_ntoa(conn->addr.sin_addr));
 	
 	triton_event_fire(EV_CTRL_STARTED, &conn->ppp);
 
@@ -654,7 +656,7 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 	struct l2tp_attr_t *router_id = NULL;
 	struct l2tp_attr_t *challenge = NULL;
 	
-	if (ppp_shutdown)
+	if (ap_shutdown)
 		return 0;
 	
 	if (triton_module_loaded("connlimit") && connlimit_check(cl_key_from_ipv4(pack->addr.sin_addr.s_addr)))
@@ -863,7 +865,7 @@ static int l2tp_recv_CDN(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 	if (conn->state == STATE_PPP) {
 		__sync_sub_and_fetch(&stat_active, 1);
 		conn->state = STATE_FIN;
-		ppp_terminate(&conn->ppp, TERM_USER_REQUEST, 1);
+		ap_session_terminate(&conn->ppp.ses, TERM_USER_REQUEST, 1);
 	}
 	
 	if (l2tp_terminate(conn, 0, 0))

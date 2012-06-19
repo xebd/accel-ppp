@@ -79,8 +79,8 @@ struct nd_opt_dnssl_info_local
 
 struct ipv6_nd_handler_t
 {
-	struct ppp_t *ppp;
-	struct ppp_pd_t pd;
+	struct ap_session *ses;
+	struct ap_private pd;
 	struct triton_md_handler_t hnd;
 	struct triton_timer_t timer;
 	int ra_sent;
@@ -120,7 +120,7 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ad
 	adv->nd_ra_retransmit = htonl(conf_AdvRetransTimer);
 	
 	pinfo = (struct nd_opt_prefix_info *)(adv + 1);
-	list_for_each_entry(a, &h->ppp->ipv6->addr_list, entry) {
+	list_for_each_entry(a, &h->ses->ipv6->addr_list, entry) {
 		if (a->prefix_len > 64)
 			continue;
 			
@@ -136,7 +136,7 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ad
 	}
 	
 	/*rinfo = (struct nd_opt_route_info_local *)pinfo;
-	list_for_each_entry(a, &h->ppp->ipv6->route_list, entry) {
+	list_for_each_entry(a, &h->ses->ipv6->route_list, entry) {
 		memset(rinfo, 0, sizeof(*rinfo));
 		rinfo->nd_opt_ri_type = ND_OPT_ROUTE_INFORMATION;
 		rinfo->nd_opt_ri_len = 3;
@@ -186,7 +186,7 @@ static void send_ra_timer(struct triton_timer_t *t)
 	addr.sin6_family = AF_INET6;
 	addr.sin6_addr.s6_addr32[0] = htonl(0xff020000);
 	addr.sin6_addr.s6_addr32[3] = htonl(0x1);
-	addr.sin6_scope_id = h->ppp->ifindex; 
+	addr.sin6_scope_id = h->ses->ifindex; 
 
 	if (h->ra_sent++ == conf_init_ra) {
 		h->timer.period = conf_MaxRtrAdvInterval * 1000;
@@ -233,7 +233,7 @@ static int ipv6_nd_read(struct triton_md_handler_t *_h)
 			continue;
 		}
 
-		/*if (*(uint64_t *)(addr.sin6_addr.s6_addr + 8) != *(uint64_t *)(h->ppp->ipv6_addr.s6_addr + 8)) {
+		/*if (*(uint64_t *)(addr.sin6_addr.s6_addr + 8) != *(uint64_t *)(h->ses->ipv6_addr.s6_addr + 8)) {
 			log_ppp_warn("ipv6_nd: received icmp packet from unknown address\n");
 			continue;
 		}*/
@@ -246,7 +246,7 @@ static int ipv6_nd_read(struct triton_md_handler_t *_h)
 	return 0;
 }
 
-static int ipv6_nd_start(struct ppp_t *ppp)
+static int ipv6_nd_start(struct ap_session *ses)
 {
 	int sock;
 	struct icmp6_filter filter;
@@ -267,8 +267,8 @@ static int ipv6_nd_start(struct ppp_t *ppp)
 	memset(&addr, 0, sizeof(addr));
 	addr.sin6_family = AF_INET6;
 	addr.sin6_addr.s6_addr32[0] = htons(0xfe80);
-	*(uint64_t *)(addr.sin6_addr.s6_addr + 8) = ppp->ipv6->intf_id;
-	addr.sin6_scope_id = ppp->ifindex;
+	*(uint64_t *)(addr.sin6_addr.s6_addr + 8) = ses->ipv6->intf_id;
+	addr.sin6_scope_id = ses->ifindex;
 
 	if (bind(sock, (struct sockaddr *)&addr, sizeof(addr))) {
 		log_ppp_error("ipv6_nd: bind: %s %i\n", strerror(errno), errno);
@@ -307,7 +307,7 @@ static int ipv6_nd_start(struct ppp_t *ppp)
 	}
 
 	memset(&mreq, 0, sizeof(mreq));
-	mreq.ipv6mr_interface = ppp->ifindex;
+	mreq.ipv6mr_interface = ses->ifindex;
 	mreq.ipv6mr_multiaddr.s6_addr32[0] = htonl(0xff020000);
 	mreq.ipv6mr_multiaddr.s6_addr32[3] = htonl(0x2);
 
@@ -320,18 +320,18 @@ static int ipv6_nd_start(struct ppp_t *ppp)
 
 	h = _malloc(sizeof(*h));
 	memset(h, 0, sizeof(*h));
-	h->ppp = ppp;
+	h->ses = ses;
 	h->pd.key = &pd_key;
 	h->hnd.fd = sock;
 	h->hnd.read = ipv6_nd_read;
 	h->timer.expire = send_ra_timer;
 	h->timer.period = conf_init_ra_interval * 1000;
-	list_add_tail(&h->pd.entry, &ppp->pd_list);
+	list_add_tail(&h->pd.entry, &ses->pd_list);
 
-	triton_md_register_handler(ppp->ctrl->ctx, &h->hnd);
+	triton_md_register_handler(ses->ctrl->ctx, &h->hnd);
 	triton_md_enable_handler(&h->hnd, MD_MODE_READ);
 
-	triton_timer_add(ppp->ctrl->ctx, &h->timer, 0);
+	triton_timer_add(ses->ctrl->ctx, &h->timer, 0);
 
 	return 0;
 
@@ -340,11 +340,11 @@ out_err:
 	return -1;
 }
 
-static struct ipv6_nd_handler_t *find_pd(struct ppp_t *ppp)
+static struct ipv6_nd_handler_t *find_pd(struct ap_session *ses)
 {
-	struct ppp_pd_t *pd;
+	struct ap_private *pd;
 
-	list_for_each_entry(pd, &ppp->pd_list, entry) {
+	list_for_each_entry(pd, &ses->pd_list, entry) {
 		if (pd->key == &pd_key)
 			return container_of(pd, typeof(struct ipv6_nd_handler_t), pd);
 	}
@@ -352,17 +352,17 @@ static struct ipv6_nd_handler_t *find_pd(struct ppp_t *ppp)
 	return NULL;
 }
 
-static void ev_ppp_started(struct ppp_t *ppp)
+static void ev_ses_started(struct ap_session *ses)
 {
-	if (!ppp->ipv6)
+	if (!ses->ipv6)
 		return;
 
-	ipv6_nd_start(ppp);
+	ipv6_nd_start(ses);
 }
 
-static void ev_ppp_finishing(struct ppp_t *ppp)
+static void ev_ses_finishing(struct ap_session *ses)
 {
-	struct ipv6_nd_handler_t *h = find_pd(ppp);
+	struct ipv6_nd_handler_t *h = find_pd(ses);
 
 	if (!h)
 		return;
@@ -531,8 +531,8 @@ static void init(void)
 	load_config();
 	
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
-	triton_event_register_handler(EV_PPP_STARTED, (triton_event_func)ev_ppp_started);
-	triton_event_register_handler(EV_PPP_FINISHING, (triton_event_func)ev_ppp_finishing);
+	triton_event_register_handler(EV_SES_STARTED, (triton_event_func)ev_ses_started);
+	triton_event_register_handler(EV_SES_FINISHING, (triton_event_func)ev_ses_finishing);
 }
 
 DEFINE_INIT(5, init);

@@ -212,7 +212,7 @@ struct dhcpv6_packet *dhcpv6_packet_alloc_reply(struct dhcpv6_packet *req, int t
 
 	memset(pkt, 0, sizeof(*pkt));
 	INIT_LIST_HEAD(&pkt->opt_list);
-	pkt->ppp = req->ppp;
+	pkt->ses = req->ses;
 
 	pkt->hdr = _malloc(BUF_SIZE);
 	if (!pkt->hdr) {

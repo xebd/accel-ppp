@@ -243,13 +243,13 @@ int rad_auth_pap(struct radius_pd_t *rpd, const char *username, va_list args)
 		_free(epasswd);
 
 	if (conf_sid_in_auth)
-		if (rad_packet_add_str(req->pack, NULL, "Acct-Session-Id", rpd->ppp->sessionid))
+		if (rad_packet_add_str(req->pack, NULL, "Acct-Session-Id", rpd->ses->sessionid))
 			return -1;
 
 	r = rad_auth_send(req);
 	if (r == PWDB_SUCCESS) {
 		struct ev_radius_t ev = {
-			.ppp = rpd->ppp,
+			.ses = rpd->ses,
 			.request = req->pack,
 			.reply = req->reply,
 		};
@@ -311,13 +311,13 @@ int rad_auth_chap_md5(struct radius_pd_t *rpd, const char *username, va_list arg
 	}
 	
 	if (conf_sid_in_auth)
-		if (rad_packet_add_str(rpd->auth_req->pack, NULL, "Acct-Session-Id", rpd->ppp->sessionid))
+		if (rad_packet_add_str(rpd->auth_req->pack, NULL, "Acct-Session-Id", rpd->ses->sessionid))
 			goto out;
 
 	r = rad_auth_send(rpd->auth_req);
 	if (r == PWDB_SUCCESS) {
 		struct ev_radius_t ev = {
-			.ppp = rpd->ppp,
+			.ses = rpd->ses,
 			.request = rpd->auth_req->pack,
 			.reply = rpd->auth_req->reply,
 		};
@@ -339,8 +339,11 @@ static void setup_mppe(struct rad_req_t *req, const uint8_t *challenge)
 	uint8_t mppe_recv_key[16];
 	uint8_t mppe_send_key[16];
 	struct ev_mppe_keys_t ev_mppe = {
-		.ppp = req->rpd->ppp,
+		.ppp = container_of(req->rpd->ses, typeof(struct ppp_t), ses),
 	};
+
+	if (req->rpd->ses->ctrl->type == CTRL_TYPE_IPOE)
+		return;
 
 	list_for_each_entry(attr, &req->reply->attrs, entry) {
 		if (attr->vendor && attr->vendor->id == Vendor_Microsoft) {
@@ -426,14 +429,14 @@ int rad_auth_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list ar
 	}
 
 	if (conf_sid_in_auth)
-		if (rad_packet_add_str(rpd->auth_req->pack, NULL, "Acct-Session-Id", rpd->ppp->sessionid))
+		if (rad_packet_add_str(rpd->auth_req->pack, NULL, "Acct-Session-Id", rpd->ses->sessionid))
 			goto out;
 
 
 	r = rad_auth_send(rpd->auth_req);
 	if (r == PWDB_SUCCESS) {
 		struct ev_radius_t ev = {
-			.ppp = rpd->ppp,
+			.ses = rpd->ses,
 			.request = rpd->auth_req->pack,
 			.reply = rpd->auth_req->reply,
 		};
@@ -508,7 +511,7 @@ int rad_auth_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list ar
 	}
 	
 	if (conf_sid_in_auth)
-		if (rad_packet_add_str(rpd->auth_req->pack, NULL, "Acct-Session-Id", rpd->ppp->sessionid))
+		if (rad_packet_add_str(rpd->auth_req->pack, NULL, "Acct-Session-Id", rpd->ses->sessionid))
 			goto out;
 
 	r = rad_auth_send(rpd->auth_req);
@@ -522,7 +525,7 @@ int rad_auth_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list ar
 	}
 	if (r == PWDB_SUCCESS) {
 		struct ev_radius_t ev = {
-			.ppp = rpd->ppp,
+			.ses = rpd->ses,
 			.request = rpd->auth_req->pack,
 			.reply = rpd->auth_req->reply,
 		};

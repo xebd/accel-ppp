@@ -205,13 +205,13 @@ static void generate_pool(struct ippool_t *p)
 	}
 }
 
-static struct ipv4db_item_t *get_ip(struct ppp_t *ppp)
+static struct ipv4db_item_t *get_ip(struct ap_session *ses)
 {
 	struct ippool_item_t *it;
 	struct ippool_t *p;
 
-	if (ppp->ipv4_pool_name)
-		p = find_pool(ppp->ipv4_pool_name, 0);
+	if (ses->ipv4_pool_name)
+		p = find_pool(ses->ipv4_pool_name, 0);
 	else
 		p = def_pool;
 
@@ -229,7 +229,7 @@ static struct ipv4db_item_t *get_ip(struct ppp_t *ppp)
 	return it ? &it->it : NULL;
 }
 
-static void put_ip(struct ppp_t *ppp, struct ipv4db_item_t *it)
+static void put_ip(struct ap_session *ses, struct ipv4db_item_t *it)
 {
 	struct ippool_item_t *pit = container_of(it, typeof(*pit), it);
 
@@ -244,12 +244,12 @@ static struct ipdb_t ipdb = {
 };
 
 #ifdef RADIUS
-static int parse_attr(struct ppp_t *ppp, struct rad_attr_t *attr)
+static int parse_attr(struct ap_session *ses, struct rad_attr_t *attr)
 {
 	if (attr->len > sizeof("ip:addr-pool=") && memcmp(attr->val.string, "ip:addr-pool=", sizeof("ip:addr-pool=") - 1) == 0)
-		ppp->ipv4_pool_name = _strdup(attr->val.string + sizeof("ip:addr-pool=") - 1);
+		ses->ipv4_pool_name = _strdup(attr->val.string + sizeof("ip:addr-pool=") - 1);
 	else if (!attr->vendor)
-		ppp->ipv4_pool_name = _strdup(attr->val.string);
+		ses->ipv4_pool_name = _strdup(attr->val.string);
 	else
 		return -1;
 	
@@ -269,7 +269,7 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 			continue;
 		if (attr->attr->id != conf_attr)
 			continue;
-		if (parse_attr(ev->ppp, attr))
+		if (parse_attr(ev->ses, attr))
 			continue;
 		break;
 	}

@@ -42,8 +42,10 @@ ADD_SUBDIRECTORY(ipv6)
 ADD_SUBDIRECTORY(shaper)
 
 ADD_EXECUTABLE(accel-pppd
+	session.c
+	ifcfg.c
+
 	ppp/ppp.c
-	ppp/ppp_ifcfg.c
 	ppp/ppp_fsm.c
 	ppp/ppp_lcp.c
 	ppp/lcp_opt_mru.c

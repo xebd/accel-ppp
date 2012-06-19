@@ -143,11 +143,17 @@ static void dns2_print(void (*print)(const char *fmt,...),struct ipcp_option_t *
 static void ev_dns(struct ev_dns_t *ev)
 {
 	struct dns_option_t *dns_opt;
+	struct ppp_t *ppp;
 
-	dns_opt = container_of(ipcp_find_option(ev->ppp, &dns1_opt_hnd), typeof(*dns_opt), opt);
+	if (ev->ses->ctrl->type == CTRL_TYPE_IPOE)
+		return;
+	
+	ppp = container_of(ev->ses, typeof(*ppp), ses);
+
+	dns_opt = container_of(ipcp_find_option(ppp, &dns1_opt_hnd), typeof(*dns_opt), opt);
 	dns_opt->addr = ev->dns1;
 
-	dns_opt = container_of(ipcp_find_option(ev->ppp, &dns2_opt_hnd), typeof(*dns_opt), opt);
+	dns_opt = container_of(ipcp_find_option(ppp, &dns2_opt_hnd), typeof(*dns_opt), opt);
 	dns_opt->addr = ev->dns2;
 }
 

@@ -8,7 +8,7 @@
 #define LOG_MAX_SIZE 4096
 #define LOG_CHUNK_SIZE 128
 
-struct ppp_t;
+struct ap_session;
 struct triton_context_t;
 
 struct log_msg_t
@@ -33,7 +33,7 @@ struct log_target_t
 {
 	struct list_head entry;
 
-	void (*log)(struct log_target_t *, struct log_msg_t *, struct ppp_t *ppp);
+	void (*log)(struct log_target_t *, struct log_msg_t *, struct ap_session *ses);
 	void (*reopen)(void);
 };
 

@@ -42,7 +42,7 @@ static int conf_dnssl_size;
 
 struct dhcpv6_pd
 {
-	struct ppp_pd_t pd;
+	struct ap_private pd;
 	struct dhcpv6_opt_clientid *clientid;
 	uint32_t addr_iaid;
 	uint32_t dp_iaid;
@@ -56,22 +56,22 @@ static struct triton_context_t dhcpv6_ctx;
 static uint8_t *buf;
 static void *pd_key;
 
-static void ev_ppp_started(struct ppp_t *ppp)
+static void ev_ppp_started(struct ap_session *ses)
 {
 	struct ipv6_mreq mreq;
 	struct dhcpv6_pd *pd;
 
-	if (!ppp->ipv6)
+	if (!ses->ipv6)
 		return;
 
 	pd = _malloc(sizeof(*pd));
 	memset(pd, 0, sizeof(*pd));
 	
 	pd->pd.key = &pd_key;
-	list_add_tail(&pd->pd.entry, &ppp->pd_list);
+	list_add_tail(&pd->pd.entry, &ses->pd_list);
 
 	memset(&mreq, 0, sizeof(mreq));
-	mreq.ipv6mr_interface = ppp->ifindex;
+	mreq.ipv6mr_interface = ses->ifindex;
 	mreq.ipv6mr_multiaddr.s6_addr32[0] = htonl(0xff020000);
 	mreq.ipv6mr_multiaddr.s6_addr32[3] = htonl(0x010002);
 
@@ -81,11 +81,11 @@ static void ev_ppp_started(struct ppp_t *ppp)
 	}
 }
 
-static struct dhcpv6_pd *find_pd(struct ppp_t *ppp)
+static struct dhcpv6_pd *find_pd(struct ap_session *ses)
 {
-	struct ppp_pd_t *pd;
+	struct ap_private *pd;
 
-	list_for_each_entry(pd, &ppp->pd_list, entry) {
+	list_for_each_entry(pd, &ses->pd_list, entry) {
 		if (pd->key == &pd_key)
 			return container_of(pd, struct dhcpv6_pd, pd);
 	}
@@ -93,9 +93,9 @@ static struct dhcpv6_pd *find_pd(struct ppp_t *ppp)
 	return NULL;
 }
 
-static void ev_ppp_finished(struct ppp_t *ppp)
+static void ev_ppp_finished(struct ap_session *ses)
 {
-	struct dhcpv6_pd *pd = find_pd(ppp);
+	struct dhcpv6_pd *pd = find_pd(ses);
 
 	if (!pd)
 		return;
@@ -106,7 +106,7 @@ static void ev_ppp_finished(struct ppp_t *ppp)
 		_free(pd->clientid);
 	
 	if (pd->ipv6_dp)
-		ipdb_put_ipv6_prefix(ppp, pd->ipv6_dp);
+		ipdb_put_ipv6_prefix(ses, pd->ipv6_dp);
 
 	_free(pd);
 }
@@ -119,8 +119,8 @@ static void dhcpv6_send(struct dhcpv6_packet *reply)
 	addr.sin6_family = AF_INET6;
 	addr.sin6_port = htons(DHCPV6_CLIENT_PORT);
 	addr.sin6_addr.s6_addr32[0] = htons(0xfe80);
-	*(uint64_t *)(addr.sin6_addr.s6_addr + 8) = reply->ppp->ipv6->peer_intf_id;
-	addr.sin6_scope_id = reply->ppp->ifindex;
+	*(uint64_t *)(addr.sin6_addr.s6_addr + 8) = reply->ses->ipv6->peer_intf_id;
+	addr.sin6_scope_id = reply->ses->ifindex;
 
 	sendto(dhcpv6_hnd.fd, reply->hdr, reply->endptr - (void *)reply->hdr, 0, (struct sockaddr *)&addr, sizeof(addr));
 }
@@ -135,7 +135,7 @@ static void build_addr(struct ipv6db_addr_t *a, uint64_t intf_id, struct in6_add
 		*(uint64_t *)(addr->s6_addr + 8) |= intf_id & ((1 << (128 - a->prefix_len)) - 1);
 }
 
-static void insert_dp_routes(struct ppp_t *ppp, struct dhcpv6_pd *pd)
+static void insert_dp_routes(struct ap_session *ses, struct dhcpv6_pd *pd)
 {
 	struct ipv6db_addr_t *a;
 	struct ipv6db_addr_t *p;
@@ -145,7 +145,7 @@ static void insert_dp_routes(struct ppp_t *ppp, struct dhcpv6_pd *pd)
 	int err;
 
 	memset(&rt6, 0, sizeof(rt6));
-	rt6.rtmsg_ifindex = ppp->ifindex;
+	rt6.rtmsg_ifindex = ses->ifindex;
 	rt6.rtmsg_flags = RTF_UP;
 
 	list_for_each_entry(p, &pd->ipv6_dp->prefix_list, entry) {
@@ -155,8 +155,8 @@ static void insert_dp_routes(struct ppp_t *ppp, struct dhcpv6_pd *pd)
 
 		if (conf_route_via_gw) {
 			rt6.rtmsg_flags |= RTF_GATEWAY;
-			list_for_each_entry(a, &ppp->ipv6->addr_list, entry) {
-				build_addr(a, ppp->ipv6->peer_intf_id, &rt6.rtmsg_gateway);
+			list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
+				build_addr(a, ses->ipv6->peer_intf_id, &rt6.rtmsg_gateway);
 				if (ioctl(sock6_fd, SIOCADDRT, &rt6)) {
 					err = errno;
 					inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
@@ -252,7 +252,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 
 			if (req->hdr->type == D6_RENEW && pd->addr_iaid != ia_na->iaid) {
 				insert_status(reply, opt1, D6_STATUS_NoBinding);
-			} else if (list_empty(&req->ppp->ipv6->addr_list) || f) {
+			} else if (list_empty(&req->ses->ipv6->addr_list) || f) {
 				insert_status(reply, opt1, D6_STATUS_NoAddrsAvail);
 			} else {
 
@@ -261,11 +261,11 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 
 				f = 1;
 
-				list_for_each_entry(a, &req->ppp->ipv6->addr_list, entry) {
+				list_for_each_entry(a, &req->ses->ipv6->addr_list, entry) {
 					opt2 = dhcpv6_nested_option_alloc(reply, opt1, D6_OPTION_IAADDR, sizeof(*ia_addr) - sizeof(struct dhcpv6_opt_hdr));
 					ia_addr = (struct dhcpv6_opt_ia_addr *)opt2->hdr;
 
-					build_addr(a, req->ppp->ipv6->peer_intf_id, &ia_addr->addr);
+					build_addr(a, req->ses->ipv6->peer_intf_id, &ia_addr->addr);
 
 					ia_addr->pref_lifetime = htonl(conf_pref_lifetime);
 					ia_addr->valid_lifetime = htonl(conf_valid_lifetime);	
@@ -279,8 +279,8 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 							continue;
 
 						f1 = 0;
-						list_for_each_entry(a, &req->ppp->ipv6->addr_list, entry) {
-							build_addr(a, req->ppp->ipv6->peer_intf_id, &addr);
+						list_for_each_entry(a, &req->ses->ipv6->addr_list, entry) {
+							build_addr(a, req->ses->ipv6->peer_intf_id, &addr);
 							if (memcmp(&addr, &ia_addr->addr, sizeof(addr)))
 								continue;
 							f1 = 1;
@@ -316,7 +316,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 			ia_na->T2 = conf_pref_lifetime == -1 ? -1 : htonl((conf_pref_lifetime * 4) / 5);
 			
 			if (!pd->ipv6_dp)
-				pd->ipv6_dp = ipdb_get_ipv6_prefix(req->ppp);
+				pd->ipv6_dp = ipdb_get_ipv6_prefix(req->ses);
 
 			if ((req->hdr->type == D6_RENEW) && pd->dp_iaid != ia_na->iaid) {
 				insert_status(reply, opt1, D6_STATUS_NoBinding);
@@ -327,7 +327,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 				if (req->hdr->type == D6_REQUEST || req->rapid_commit) {
 					pd->dp_iaid = ia_na->iaid;
 					if (!pd->dp_active)
-						insert_dp_routes(req->ppp, pd);
+						insert_dp_routes(req->ses, pd);
 				}
 
 				f2 = 1;
@@ -447,8 +447,8 @@ static void dhcpv6_send_reply2(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, 
 					f1 = 0;
 					
 					if (!f) {
-						list_for_each_entry(a, &req->ppp->ipv6->addr_list, entry) {
-							build_addr(a, req->ppp->ipv6->peer_intf_id, &addr);
+						list_for_each_entry(a, &req->ses->ipv6->addr_list, entry) {
+							build_addr(a, req->ses->ipv6->peer_intf_id, &addr);
 							if (memcmp(&addr, &ia_addr->addr, sizeof(addr)))
 								continue;
 							f1 = 1;
@@ -489,7 +489,7 @@ static void dhcpv6_send_reply2(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, 
 			ia_na->T2 = conf_pref_lifetime == -1 ? -1 : htonl((conf_pref_lifetime * 4) / 5);
 			
 			if (!pd->ipv6_dp)
-				pd->ipv6_dp = ipdb_get_ipv6_prefix(req->ppp);
+				pd->ipv6_dp = ipdb_get_ipv6_prefix(req->ses);
 
 			f3 = 0;
 
@@ -558,7 +558,7 @@ static void dhcpv6_send_reply2(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, 
 
 static void dhcpv6_recv_solicit(struct dhcpv6_packet *req)
 {
-	struct dhcpv6_pd *pd = find_pd(req->ppp);
+	struct dhcpv6_pd *pd = find_pd(req->ses);
 
 	if (!pd)
 		return;
@@ -590,7 +590,7 @@ static void dhcpv6_recv_solicit(struct dhcpv6_packet *req)
 
 static void dhcpv6_recv_request(struct dhcpv6_packet *req)
 {
-	struct dhcpv6_pd *pd = find_pd(req->ppp);
+	struct dhcpv6_pd *pd = find_pd(req->ses);
 
 	if (!pd)
 		return;
@@ -618,7 +618,7 @@ static void dhcpv6_recv_request(struct dhcpv6_packet *req)
 
 static void dhcpv6_recv_renew(struct dhcpv6_packet *req)
 {
-	struct dhcpv6_pd *pd = find_pd(req->ppp);
+	struct dhcpv6_pd *pd = find_pd(req->ses);
 
 	if (!pd)
 		return;
@@ -655,7 +655,7 @@ static void dhcpv6_recv_renew(struct dhcpv6_packet *req)
 
 static void dhcpv6_recv_information_request(struct dhcpv6_packet *req)
 {
-	struct dhcpv6_pd *pd = find_pd(req->ppp);
+	struct dhcpv6_pd *pd = find_pd(req->ses);
 	
 	if (req->rapid_commit) {
 		log_ppp_error("dhcpv6: unexpected Rapid-Commit option\n");
@@ -669,7 +669,7 @@ static void dhcpv6_recv_information_request(struct dhcpv6_packet *req)
 
 static void dhcpv6_recv_rebind(struct dhcpv6_packet *req)
 {
-	struct dhcpv6_pd *pd = find_pd(req->ppp);
+	struct dhcpv6_pd *pd = find_pd(req->ses);
 
 	if (!pd)
 		return;
@@ -747,7 +747,7 @@ static int dhcpv6_read(struct triton_md_handler_t *h)
 	struct sockaddr_in6 addr;
 	socklen_t len = sizeof(addr);
 	struct dhcpv6_packet *pkt;
-	struct ppp_t *ppp;
+	struct ap_session *ses;
 
 	while (1) {
 		n = recvfrom(h->fd, buf, BUF_SIZE, 0, &addr, &len);
@@ -768,26 +768,26 @@ static int dhcpv6_read(struct triton_md_handler_t *h)
 			continue;
 		}
 
-		pthread_rwlock_rdlock(&ppp_lock);
-		list_for_each_entry(ppp, &ppp_list, entry) {
-			if (ppp->state != PPP_STATE_ACTIVE)
+		pthread_rwlock_rdlock(&ses_lock);
+		list_for_each_entry(ses, &ses_list, entry) {
+			if (ses->state != AP_STATE_ACTIVE)
 				continue;
 
-			if (!ppp->ipv6)
+			if (!ses->ipv6)
 				continue;
 
-			if (ppp->ifindex != addr.sin6_scope_id)
+			if (ses->ifindex != addr.sin6_scope_id)
 				continue;
 
-			if (ppp->ipv6->peer_intf_id != *(uint64_t *)(addr.sin6_addr.s6_addr + 8))
+			if (ses->ipv6->peer_intf_id != *(uint64_t *)(addr.sin6_addr.s6_addr + 8))
 				continue;
 
-			pkt->ppp = ppp;
+			pkt->ses = ses;
 
-			triton_context_call(ppp->ctrl->ctx, (triton_event_func)dhcpv6_recv_packet, pkt);
+			triton_context_call(ses->ctrl->ctx, (triton_event_func)dhcpv6_recv_packet, pkt);
 			break;
 		}
-		pthread_rwlock_unlock(&ppp_lock);
+		pthread_rwlock_unlock(&ses_lock);
 	}
 
 	return 0;
@@ -991,8 +991,8 @@ static void init(void)
 	triton_context_wakeup(&dhcpv6_ctx);
 
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
-	triton_event_register_handler(EV_PPP_STARTED, (triton_event_func)ev_ppp_started);
-	triton_event_register_handler(EV_PPP_FINISHED, (triton_event_func)ev_ppp_finished);
+	triton_event_register_handler(EV_SES_STARTED, (triton_event_func)ev_ppp_started);
+	triton_event_register_handler(EV_SES_FINISHED, (triton_event_func)ev_ppp_finished);
 }
 
 DEFINE_INIT(10, init);

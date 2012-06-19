@@ -312,60 +312,60 @@ static void auth_layer_free(struct ppp_layer_data_t *ld)
 
 	log_ppp_debug("auth_layer_free\n");
 
-	triton_cancel_call(ad->ppp->ctrl->ctx, (triton_event_func)__ppp_auth_started);
+	triton_cancel_call(ad->ppp->ses.ctrl->ctx, (triton_event_func)__ppp_auth_started);
 
 	_free(ad);
 }
 
-static void ppp_terminate_sec(struct ppp_t *ppp)
+static void __terminate_sec(struct ap_session *ses)
 {
-	ppp_terminate(ppp, TERM_NAS_REQUEST, 0);
+	ap_session_terminate(ses, TERM_NAS_REQUEST, 0);
 }
 
 static void __ppp_auth_started(struct ppp_t *ppp)
 {
 	struct auth_layer_data_t *ad = container_of(ppp_find_layer_data(ppp, &auth_layer), typeof(*ad), ld);
 
-	if (ppp->terminating)
+	if (ppp->ses.terminating)
 		return;
 
 	log_ppp_debug("auth_layer_started\n");
 	ppp_layer_started(ppp, &ad->ld);
 
 
-	log_ppp_info1("%s: authentication successed\n", ppp->username);
-	triton_event_fire(EV_PPP_AUTHORIZED, ppp);
+	log_ppp_info1("%s: authentication successed\n", ppp->ses.username);
+	triton_event_fire(EV_SES_AUTHORIZED, ppp);
 }
 
 int __export ppp_auth_successed(struct ppp_t *ppp, char *username)
 {
-	struct ppp_t *p;
+	struct ap_session *ses;
 	struct auth_layer_data_t *ad = container_of(ppp_find_layer_data(ppp, &auth_layer), typeof(*ad), ld);
 
 	if (conf_single_session >= 0) {
-		pthread_rwlock_rdlock(&ppp_lock);
-		list_for_each_entry(p, &ppp_list, entry) {
-			if (p->username && !strcmp(p->username, username)) {
+		pthread_rwlock_rdlock(&ses_lock);
+		list_for_each_entry(ses, &ses_list, entry) {
+			if (ses->username && !strcmp(ses->username, username)) {
 				if (conf_single_session == 0) {
-					pthread_rwlock_unlock(&ppp_lock);
+					pthread_rwlock_unlock(&ses_lock);
 					log_ppp_info1("%s: second session denied\n", username);
 					return -1;
 				} else {
 					if (conf_single_session == 1) {
-						ppp_ifdown(p);
-						triton_context_call(p->ctrl->ctx, (triton_event_func)ppp_terminate_sec, p);
+						ap_session_ifdown(ses);
+						triton_context_call(ses->ctrl->ctx, (triton_event_func)__terminate_sec, ses);
 					}
 				}
 			}
 		}
-		pthread_rwlock_unlock(&ppp_lock);
+		pthread_rwlock_unlock(&ses_lock);
 	}
 
-	pthread_rwlock_wrlock(&ppp_lock);
-	ppp->username = username;
-	pthread_rwlock_unlock(&ppp_lock);
+	pthread_rwlock_wrlock(&ses_lock);
+	ppp->ses.username = username;
+	pthread_rwlock_unlock(&ses_lock);
 
-	triton_context_call(ppp->ctrl->ctx, (triton_event_func)__ppp_auth_started, ppp);
+	triton_context_call(ppp->ses.ctrl->ctx, (triton_event_func)__ppp_auth_started, ppp);
 
 	return 0;
 }
@@ -373,16 +373,16 @@ int __export ppp_auth_successed(struct ppp_t *ppp, char *username)
 void __export ppp_auth_failed(struct ppp_t *ppp, char *username)
 {
 	if (username) {
-		pthread_rwlock_wrlock(&ppp_lock);
-		if (!ppp->username)
-			ppp->username = _strdup(username);
-		pthread_rwlock_unlock(&ppp_lock);
+		pthread_rwlock_wrlock(&ses_lock);
+		if (!ppp->ses.username)
+			ppp->ses.username = _strdup(username);
+		pthread_rwlock_unlock(&ses_lock);
 		log_ppp_info1("%s: authentication failed\n", username);
 		log_info1("%s: authentication failed\n", username);
-		triton_event_fire(EV_PPP_AUTH_FAILED, ppp);
+		triton_event_fire(EV_SES_AUTH_FAILED, ppp);
 	} else
 		log_ppp_info1("authentication failed\n");
-	ppp_terminate(ppp, TERM_AUTH_ERROR, 0);
+	ap_session_terminate(&ppp->ses, TERM_AUTH_ERROR, 0);
 }
 
 int __export ppp_auth_register_handler(struct ppp_auth_handler_t *h)

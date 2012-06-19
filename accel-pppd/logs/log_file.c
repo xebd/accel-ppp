@@ -42,14 +42,14 @@ struct log_file_t
 
 struct log_file_pd_t
 {
-	struct ppp_pd_t pd;
+	struct ap_private pd;
 	struct log_file_t lf;
 	unsigned long tmp;
 };
 
 struct fail_log_pd_t
 {
-	struct ppp_pd_t pd;
+	struct ap_private pd;
 	struct list_head msgs;
 };
 
@@ -285,7 +285,7 @@ static void queue_log_list(struct log_file_t *lf, struct list_head *l)
 }
 
 
-static void set_hdr(struct log_msg_t *msg, struct ppp_t *ppp)
+static void set_hdr(struct log_msg_t *msg, struct ap_session *ses)
 {
 	struct tm tm;
 	char timestamp[32];
@@ -295,28 +295,28 @@ static void set_hdr(struct log_msg_t *msg, struct ppp_t *ppp)
 	strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &tm);
 	sprintf(msg->hdr->msg, "%s[%s]: %s: %s%s%s", conf_color ? level_color[msg->level] : "", 
 		timestamp, level_name[msg->level],
-		ppp ? ppp->ifname : "",
-		ppp ? ": " : "",
+		ses ? ses->ifname : "",
+		ses ? ": " : "",
 		conf_color ? NORMAL_COLOR : "");
 	msg->hdr->len = strlen(msg->hdr->msg);
 }
 
-static void general_log(struct log_target_t *t, struct log_msg_t *msg, struct ppp_t *ppp)
+static void general_log(struct log_target_t *t, struct log_msg_t *msg, struct ap_session *ses)
 {
-	if (ppp && !conf_copy) {
+	if (ses && !conf_copy) {
 		log_free_msg(msg);
 		return;
 	}
 
-	set_hdr(msg, ppp);
+	set_hdr(msg, ses);
 	queue_log(log_file, msg);
 }
 
-static struct ppp_pd_t *find_pd(struct ppp_t *ppp, void *pd_key)
+static struct ap_private *find_pd(struct ap_session *ses, void *pd_key)
 {
-	struct ppp_pd_t *pd;
+	struct ap_private *pd;
 
-	list_for_each_entry(pd, &ppp->pd_list, entry) {
+	list_for_each_entry(pd, &ses->pd_list, entry) {
 		if (pd->key == pd_key) {
 			return pd;
 		}
@@ -325,9 +325,9 @@ static struct ppp_pd_t *find_pd(struct ppp_t *ppp, void *pd_key)
 	return NULL;
 }
 
-static struct log_file_pd_t *find_lpd(struct ppp_t *ppp, void *pd_key)
+static struct log_file_pd_t *find_lpd(struct ap_session *ses, void *pd_key)
 {
-	struct ppp_pd_t *pd = find_pd(ppp, pd_key);
+	struct ap_private *pd = find_pd(ses, pd_key);
 
 	if (!pd)
 		return NULL;
@@ -335,9 +335,9 @@ static struct log_file_pd_t *find_lpd(struct ppp_t *ppp, void *pd_key)
 	return container_of(pd, struct log_file_pd_t, pd);
 }
 
-static struct fail_log_pd_t *find_fpd(struct ppp_t *ppp, void *pd_key)
+static struct fail_log_pd_t *find_fpd(struct ap_session *ses, void *pd_key)
 {
-	struct ppp_pd_t *pd = find_pd(ppp, pd_key);
+	struct ap_private *pd = find_pd(ses, pd_key);
 
 	if (!pd)
 		return NULL;
@@ -346,63 +346,63 @@ static struct fail_log_pd_t *find_fpd(struct ppp_t *ppp, void *pd_key)
 }
 
 
-static void per_user_log(struct log_target_t *t, struct log_msg_t *msg, struct ppp_t *ppp)
+static void per_user_log(struct log_target_t *t, struct log_msg_t *msg, struct ap_session *ses)
 {
 	struct log_file_pd_t *lpd;
 
-	if (!ppp) {
+	if (!ses) {
 		log_free_msg(msg);
 		return;
 	}
 
-	lpd = find_lpd(ppp, &pd_key1);
+	lpd = find_lpd(ses, &pd_key1);
 
 	if (!lpd) {
 		log_free_msg(msg);
 		return;
 	}
 
-	set_hdr(msg, ppp);
+	set_hdr(msg, ses);
 	queue_log(&lpd->lf, msg);
 }
 
-static void per_session_log(struct log_target_t *t, struct log_msg_t *msg, struct ppp_t *ppp)
+static void per_session_log(struct log_target_t *t, struct log_msg_t *msg, struct ap_session *ses)
 {
 	struct log_file_pd_t *lpd;
 	
-	if (!ppp) {
+	if (!ses) {
 		log_free_msg(msg);
 		return;
 	}
 
-	lpd = find_lpd(ppp, &pd_key2);
+	lpd = find_lpd(ses, &pd_key2);
 
 	if (!lpd) {
 		log_free_msg(msg);
 		return;
 	}
 
-	set_hdr(msg, ppp);
+	set_hdr(msg, ses);
 	queue_log(&lpd->lf, msg);
 }
 
-static void fail_log(struct log_target_t *t, struct log_msg_t *msg, struct ppp_t *ppp)
+static void fail_log(struct log_target_t *t, struct log_msg_t *msg, struct ap_session *ses)
 {
 	struct fail_log_pd_t *fpd;
 	
-	if (!ppp || !conf_fail_log) {
+	if (!ses || !conf_fail_log) {
 		log_free_msg(msg);
 		return;
 	}
 
-	fpd = find_fpd(ppp, &pd_key3);
+	fpd = find_fpd(ses, &pd_key3);
 
 	if (!fpd) {
 		log_free_msg(msg);
 		return;
 	}
 
-	set_hdr(msg, ppp);
+	set_hdr(msg, ses);
 	list_add_tail(&msg->entry, &fpd->msgs);
 }
 
@@ -453,12 +453,12 @@ static void free_lpd(struct log_file_pd_t *lpd)
 	}
 }
 
-static void ev_ppp_authorized2(struct ppp_t *ppp)
+static void ev_ses_authorized2(struct ap_session *ses)
 {
 	struct fail_log_pd_t *fpd;
 	struct log_msg_t *msg;
 
-	fpd = find_fpd(ppp, &pd_key3);
+	fpd = find_fpd(ses, &pd_key3);
 	if (!fpd)
 		return;
 	
@@ -472,12 +472,12 @@ static void ev_ppp_authorized2(struct ppp_t *ppp)
 	mempool_free(fpd);
 }
 
-static void ev_ppp_authorized1(struct ppp_t *ppp)
+static void ev_ses_authorized1(struct ap_session *ses)
 {
 	struct log_file_pd_t *lpd;
 	char *fname;
 
-	lpd = find_lpd(ppp, &pd_key1);
+	lpd = find_lpd(ses, &pd_key1);
 	if (!lpd)
 		return;
 	
@@ -489,14 +489,14 @@ static void ev_ppp_authorized1(struct ppp_t *ppp)
 
 	strcpy(fname, conf_per_user_dir);
 	strcat(fname, "/");
-	strcat(fname, ppp->username);
+	strcat(fname, ses->username);
 	if (conf_per_session) {
 		if (mkdir(fname, S_IRWXU) && errno != EEXIST) {
 			log_emerg("log_file: mkdir '%s': %s'\n", fname, strerror(errno));
 			goto out_err;
 		}
 		strcat(fname, "/");
-		strcat(fname, ppp->sessionid);
+		strcat(fname, ses->sessionid);
 	}
 	strcat(fname, ".log");
 
@@ -518,7 +518,7 @@ out_err:
 	free_lpd(lpd);
 }
 
-static void ev_ctrl_started(struct ppp_t *ppp)
+static void ev_ctrl_started(struct ap_session *ses)
 {
 	struct log_file_pd_t *lpd;
 	struct fail_log_pd_t *fpd;
@@ -534,7 +534,7 @@ static void ev_ctrl_started(struct ppp_t *ppp)
 		lpd->pd.key = &pd_key1;
 		log_file_init(&lpd->lf);
 		lpd->lf.lpd = lpd;
-		list_add_tail(&lpd->pd.entry, &ppp->pd_list);
+		list_add_tail(&lpd->pd.entry, &ses->pd_list);
 	}
 
 	if (conf_per_session_dir) {
@@ -568,7 +568,7 @@ static void ev_ctrl_started(struct ppp_t *ppp)
 
 		_free(fname);
 
-		list_add_tail(&lpd->pd.entry, &ppp->pd_list);
+		list_add_tail(&lpd->pd.entry, &ses->pd_list);
 	}
 
 	if (conf_fail_log) {
@@ -579,29 +579,29 @@ static void ev_ctrl_started(struct ppp_t *ppp)
 		}
 		memset(fpd, 0, sizeof(*fpd));
 		fpd->pd.key = &pd_key3;
-		list_add_tail(&fpd->pd.entry, &ppp->pd_list);
+		list_add_tail(&fpd->pd.entry, &ses->pd_list);
 		INIT_LIST_HEAD(&fpd->msgs);
 	}
 }
 
-static void ev_ctrl_finished(struct ppp_t *ppp)
+static void ev_ctrl_finished(struct ap_session *ses)
 {
 	struct log_file_pd_t *lpd;
 	struct fail_log_pd_t *fpd;
 	char *fname;
 
-	fpd = find_fpd(ppp, &pd_key3);
+	fpd = find_fpd(ses, &pd_key3);
 	if (fpd) {
 		queue_log_list(fail_log_file, &fpd->msgs);
 		list_del(&fpd->pd.entry);
 		mempool_free(fpd);
 	}
 
-	lpd = find_lpd(ppp, &pd_key1);
+	lpd = find_lpd(ses, &pd_key1);
 	if (lpd)
 		free_lpd(lpd);
 
-	lpd = find_lpd(ppp, &pd_key2);
+	lpd = find_lpd(ses, &pd_key2);
 	if (lpd) {
 		if (lpd->tmp) {
 			fname = _malloc(PATH_MAX);
@@ -619,12 +619,12 @@ static void ev_ctrl_finished(struct ppp_t *ppp)
 	}
 }
 
-static void ev_ppp_starting(struct ppp_t *ppp)
+static void ev_ses_starting(struct ap_session *ses)
 {
 	struct log_file_pd_t *lpd;
 	char *fname1, *fname2;
 
-	lpd = find_lpd(ppp, &pd_key2);
+	lpd = find_lpd(ses, &pd_key2);
 	if (!lpd)
 		return;
 	
@@ -647,7 +647,7 @@ static void ev_ppp_starting(struct ppp_t *ppp)
 
 	strcpy(fname2, conf_per_session_dir);
 	strcat(fname2, "/");
-	strcat(fname2, ppp->sessionid);
+	strcat(fname2, ses->sessionid);
 	strcat(fname2, ".log");
 
 	if (rename(fname1, fname2))
@@ -753,17 +753,17 @@ static void init(void)
 	
 	if (conf_per_user_dir) {
 		log_register_target(&per_user_target);
-		triton_event_register_handler(EV_PPP_AUTHORIZED, (triton_event_func)ev_ppp_authorized1);
+		triton_event_register_handler(EV_SES_AUTHORIZED, (triton_event_func)ev_ses_authorized1);
 	}
 	
 	if (conf_per_session_dir) {
 		log_register_target(&per_session_target);
-		triton_event_register_handler(EV_PPP_STARTING, (triton_event_func)ev_ppp_starting);
+		triton_event_register_handler(EV_SES_STARTING, (triton_event_func)ev_ses_starting);
 	}
 	
 	if (conf_fail_log) {
 		log_register_target(&fail_log_target);
-		triton_event_register_handler(EV_PPP_AUTHORIZED, (triton_event_func)ev_ppp_authorized2);
+		triton_event_register_handler(EV_SES_AUTHORIZED, (triton_event_func)ev_ses_authorized2);
 	}
 
 	triton_event_register_handler(EV_CTRL_STARTED, (triton_event_func)ev_ctrl_started);

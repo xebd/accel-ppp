@@ -505,14 +505,14 @@ static void init_req_counter(struct ppp_fsm_t *layer,int timeout)
 	layer->restart_counter = timeout;
 
 	if (!layer->restart_timer.tpd)
-		triton_timer_add(layer->ppp->ctrl->ctx, &layer->restart_timer, 0);
+		triton_timer_add(layer->ppp->ses.ctrl->ctx, &layer->restart_timer, 0);
 }
 static void zero_req_counter(struct ppp_fsm_t *layer)
 {
 	layer->restart_counter=0;
 	
 	if (!layer->restart_timer.tpd)
-		triton_timer_add(layer->ppp->ctrl->ctx, &layer->restart_timer, 0);
+		triton_timer_add(layer->ppp->ses.ctrl->ctx, &layer->restart_timer, 0);
 }
 
 static void restart_timer_func(struct triton_timer_t *t)

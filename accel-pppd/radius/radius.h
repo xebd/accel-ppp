@@ -102,9 +102,9 @@ struct rad_plugin_t
 	int (*send_accounting_request)(struct rad_plugin_t *, struct rad_packet_t *pack);
 };
 
-struct ppp_t;
+struct ap_session;
 
-void rad_register_plugin(struct ppp_t *, struct rad_plugin_t *);
+void rad_register_plugin(struct ap_session *, struct rad_plugin_t *);
 
 struct rad_dict_attr_t *rad_dict_find_attr(const char *name);
 struct rad_dict_attr_t *rad_dict_find_attr_id(struct rad_dict_vendor_t *vendor, int type);

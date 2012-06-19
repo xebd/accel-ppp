@@ -119,8 +119,8 @@ static void ipv6cp_start_timeout(struct triton_timer_t *t)
 
 	triton_timer_del(t);
 		
-	if (ipv6cp->ppp->state == PPP_STATE_STARTING)
-		ppp_terminate(ipv6cp->ppp, TERM_USER_ERROR, 0);
+	if (ipv6cp->ppp->ses.state == AP_STATE_STARTING)
+		ap_session_terminate(&ipv6cp->ppp->ses, TERM_USER_ERROR, 0);
 }
 
 int ipv6cp_layer_start(struct ppp_layer_data_t *ld)
@@ -137,7 +137,7 @@ int ipv6cp_layer_start(struct ppp_layer_data_t *ld)
 		if (ipv6cp->ld.passive) {
 			ipv6cp->timeout.expire = ipv6cp_start_timeout;
 			ipv6cp->timeout.expire_tv.tv_sec = START_TIMEOUT;
-			triton_timer_add(ipv6cp->ppp->ctrl->ctx, &ipv6cp->timeout, 0);
+			triton_timer_add(ipv6cp->ppp->ses.ctrl->ctx, &ipv6cp->timeout, 0);
 		} else {
 			ppp_fsm_lower_up(&ipv6cp->fsm);
 			if (ppp_fsm_open(&ipv6cp->fsm))
@@ -202,17 +202,17 @@ static void ipv6cp_layer_finished(struct ppp_fsm_t *fsm)
 
 	if (!ipv6cp->started) {
 		if (conf_ipv6 == IPV6_REQUIRE)
-			ppp_terminate(ipv6cp->ppp, TERM_USER_ERROR, 0);
+			ap_session_terminate(&ipv6cp->ppp->ses, TERM_USER_ERROR, 0);
 		else
 			ppp_layer_passive(ipv6cp->ppp, &ipv6cp->ld);
-	} else if (!ipv6cp->ppp->terminating)
-		ppp_terminate(ipv6cp->ppp, TERM_USER_ERROR, 0);
+	} else if (!ipv6cp->ppp->ses.terminating)
+		ap_session_terminate(&ipv6cp->ppp->ses, TERM_USER_ERROR, 0);
 	
 	fsm->fsm_state = FSM_Closed;
 
-	if (ipv6cp->ppp->ipv6) {
-		ipdb_put_ipv6(ipv6cp->ppp, ipv6cp->ppp->ipv6);
-		ipv6cp->ppp->ipv6 = NULL;
+	if (ipv6cp->ppp->ses.ipv6) {
+		ipdb_put_ipv6(&ipv6cp->ppp->ses, ipv6cp->ppp->ses.ipv6);
+		ipv6cp->ppp->ses.ipv6 = NULL;
 	}
 }
 
@@ -446,12 +446,12 @@ static int ipv6cp_recv_conf_req(struct ppp_ipv6cp_t *ipv6cp, uint8_t *data, int 
 				}
 				if (r == IPV6CP_OPT_CLOSE) {
 					if (conf_ipv6 == IPV6_REQUIRE)
-						ppp_terminate(ipv6cp->ppp, TERM_NAS_ERROR, 0);
+						ap_session_terminate(&ipv6cp->ppp->ses, TERM_NAS_ERROR, 0);
 					else
 						lcp_send_proto_rej(ipv6cp->ppp, PPP_IPV6CP);
 					return 0;
 				}
-				if (ipv6cp->ppp->stop_time)
+				if (ipv6cp->ppp->ses.stop_time)
 					return -1;
 				lopt->state = r;
 				ropt->state = r;
@@ -660,10 +660,10 @@ static void ipv6cp_recv(struct ppp_handler_t*h)
 	int r;
 	int delay_ack = ipv6cp->delay_ack;
 
-	if (!ipv6cp->starting || ipv6cp->fsm.fsm_state == FSM_Closed || ipv6cp->ppp->terminating || conf_ipv6 == IPV6_DENY) {
+	if (!ipv6cp->starting || ipv6cp->fsm.fsm_state == FSM_Closed || ipv6cp->ppp->ses.terminating || conf_ipv6 == IPV6_DENY) {
 		if (conf_ppp_verbose)
 			log_ppp_warn("IPV6CP: discarding packet\n");
-		if (ipv6cp->ppp->terminating)
+		if (ipv6cp->ppp->ses.terminating)
 			return;
 		if (ipv6cp->fsm.fsm_state == FSM_Closed || conf_ipv6 == IPV6_DENY)
 			lcp_send_proto_rej(ipv6cp->ppp, PPP_IPV6CP);
@@ -689,7 +689,7 @@ static void ipv6cp_recv(struct ppp_handler_t*h)
 	switch(hdr->code) {
 		case CONFREQ:
 			r = ipv6cp_recv_conf_req(ipv6cp,(uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN);
-			if (ipv6cp->ppp->stop_time) {
+			if (ipv6cp->ppp->ses.stop_time) {
 				ipv6cp_free_conf_req(ipv6cp);
 				return;
 			}
@@ -721,11 +721,11 @@ static void ipv6cp_recv(struct ppp_handler_t*h)
 			}
 			ipv6cp_free_conf_req(ipv6cp);
 			if (r == IPV6CP_OPT_FAIL)
-				ppp_terminate(ipv6cp->ppp, TERM_USER_ERROR, 0);
+				ap_session_terminate(&ipv6cp->ppp->ses, TERM_USER_ERROR, 0);
 			break;
 		case CONFACK:
 			if (ipv6cp_recv_conf_ack(ipv6cp,(uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN))
-				ppp_terminate(ipv6cp->ppp, TERM_USER_ERROR, 0);
+				ap_session_terminate(&ipv6cp->ppp->ses, TERM_USER_ERROR, 0);
 			else
 				ppp_fsm_recv_conf_ack(&ipv6cp->fsm);
 			break;
@@ -735,7 +735,7 @@ static void ipv6cp_recv(struct ppp_handler_t*h)
 			break;
 		case CONFREJ:
 			if (ipv6cp_recv_conf_rej(ipv6cp, (uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN))
-				ppp_terminate(ipv6cp->ppp, TERM_USER_ERROR, 0);
+				ap_session_terminate(&ipv6cp->ppp->ses, TERM_USER_ERROR, 0);
 			else
 				ppp_fsm_recv_conf_rej(&ipv6cp->fsm);
 			break;
@@ -743,13 +743,13 @@ static void ipv6cp_recv(struct ppp_handler_t*h)
 			if (conf_ppp_verbose)
 				log_ppp_info2("recv [IPV6CP TermReq id=%x]\n", hdr->id);
 			ppp_fsm_recv_term_req(&ipv6cp->fsm);
-			ppp_terminate(ipv6cp->ppp, TERM_USER_REQUEST, 0);
+			ap_session_terminate(&ipv6cp->ppp->ses, TERM_USER_REQUEST, 0);
 			break;
 		case TERMACK:
 			if (conf_ppp_verbose)
 				log_ppp_info2("recv [IPV6CP TermAck id=%x]\n", hdr->id);
 			//ppp_fsm_recv_term_ack(&ipv6cp->fsm);
-			//ppp_terminate(ipv6cp->ppp, 0);
+			//ap_session_terminate(&ipv6cp->ppp->ses, 0);
 			break;
 		case CODEREJ:
 			if (conf_ppp_verbose)

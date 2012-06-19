@@ -220,7 +220,7 @@ static int send_password_request(struct telnet_client_t *cln)
 
 static int send_prompt(struct telnet_client_t *cln)
 {
-	sprintf((char *)temp_buf, "%s%s# ", conf_cli_prompt, ppp_shutdown ? "(shutdown)" : "");
+	sprintf((char *)temp_buf, "%s%s# ", conf_cli_prompt, ap_shutdown ? "(shutdown)" : "");
 	return telnet_send(cln, temp_buf, strlen((char *)temp_buf));
 }
 
@@ -292,7 +292,7 @@ static int telnet_input_char(struct telnet_client_t *cln, uint8_t c)
 				return -1;
 			}
 			cln->auth = 1;
-			if (ppp_shutdown) {
+			if (ap_shutdown) {
 				if (telnet_send(cln, MSG_SHUTDOWN_IN_PROGRESS, sizeof(MSG_SHUTDOWN_IN_PROGRESS)))
 					return -1;
 			}
@@ -600,7 +600,7 @@ static int serv_read(struct triton_md_handler_t *h)
 			send_password_request(conn);
 		else {
 			conn->auth = 1;
-			if (ppp_shutdown) {
+			if (ap_shutdown) {
 				if (telnet_send(conn, MSG_SHUTDOWN_IN_PROGRESS, sizeof(MSG_SHUTDOWN_IN_PROGRESS)))
 					continue;
 			}

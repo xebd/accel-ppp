@@ -48,7 +48,7 @@ struct pppoe_conn_t
 	struct pppoe_tag *tr101;
 	uint8_t cookie[COOKIE_LENGTH];
 	
-	struct ppp_ctrl_t ctrl;
+	struct ap_ctrl ctrl;
 	struct ppp_t ppp;
 #ifdef RADIUS
 	struct rad_plugin_t radius;
@@ -112,7 +112,7 @@ static void disconnect(struct pppoe_conn_t *conn)
 	if (conn->ppp_started) {
 		dpado_check_prev(__sync_fetch_and_sub(&stat_active, 1));
 		conn->ppp_started = 0;
-		ppp_terminate(&conn->ppp, TERM_USER_REQUEST, 1);
+		ap_session_terminate(&conn->ppp.ses, TERM_USER_REQUEST, 1);
 	}
 
 	pppoe_send_PADT(conn);
@@ -149,13 +149,14 @@ static void disconnect(struct pppoe_conn_t *conn)
 	mempool_free(conn);
 }
 
-static void ppp_started(struct ppp_t *ppp)
+static void ppp_started(struct ap_session *ses)
 {
 	log_ppp_debug("pppoe: ppp started\n");
 }
 
-static void ppp_finished(struct ppp_t *ppp)
+static void ppp_finished(struct ap_session *ses)
 {
+	struct ppp_t *ppp = container_of(ses, typeof(*ppp), ses);
 	struct pppoe_conn_t *conn = container_of(ppp, typeof(*conn), ppp);
 
 	log_ppp_debug("pppoe: ppp finished\n");
@@ -172,7 +173,7 @@ static void pppoe_conn_close(struct triton_context_t *ctx)
 	struct pppoe_conn_t *conn = container_of(ctx, typeof(*conn), ctx);
 
 	if (conn->ppp_started)
-		ppp_terminate(&conn->ppp, TERM_ADMIN_RESET, 0);
+		ap_session_terminate(&conn->ppp.ses, TERM_ADMIN_RESET, 0);
 	else
 		disconnect(conn);
 }
@@ -261,6 +262,7 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 	conn->ctrl.ctx = &conn->ctx;
 	conn->ctrl.started = ppp_started;
 	conn->ctrl.finished = ppp_finished;
+	conn->ctrl.terminate = ppp_terminate;
 	conn->ctrl.max_mtu = MAX_PPPOE_MTU;
 	conn->ctrl.type = CTRL_TYPE_PPPOE;
 	conn->ctrl.name = "pppoe";
@@ -285,10 +287,10 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 	
 	ppp_init(&conn->ppp);
 
-	conn->ppp.ctrl = &conn->ctrl;
-	conn->ppp.chan_name = conn->ctrl.calling_station_id;
+	conn->ppp.ses.ctrl = &conn->ctrl;
+	conn->ppp.ses.chan_name = conn->ctrl.calling_station_id;
 	
-	triton_context_register(&conn->ctx, &conn->ppp);
+	triton_context_register(&conn->ctx, &conn->ppp.ses);
 	triton_context_wakeup(&conn->ctx);
 	
 	triton_event_fire(EV_CTRL_STARTING, &conn->ppp);
@@ -334,7 +336,7 @@ static void connect_channel(struct pppoe_conn_t *conn)
 	if (conn->tr101 && triton_module_loaded("radius")) {
 		conn->radius.send_access_request = pppoe_rad_send_access_request;
 		conn->radius.send_accounting_request = pppoe_rad_send_accounting_request;
-		rad_register_plugin(&conn->ppp, &conn->radius);
+		rad_register_plugin(&conn->ppp.ses, &conn->radius);
 	}
 #endif
 
@@ -704,7 +706,7 @@ static void pado_timer(struct triton_timer_t *t)
 {
 	struct delayed_pado_t *pado = container_of(t, typeof(*pado), timer);
 
-	if (!ppp_shutdown)
+	if (!ap_shutdown)
 		pppoe_send_PADO(pado->serv, pado->addr, pado->host_uniq, pado->relay_sid, pado->service_name);
 
 	free_delayed_pado(pado);
@@ -774,7 +776,7 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 
 	__sync_add_and_fetch(&stat_PADI_recv, 1);
 
-	if (ppp_shutdown || pado_delay == -1)
+	if (ap_shutdown || pado_delay == -1)
 		return;
 
 	if (check_padi_limit(serv, ethhdr->h_source)) {
@@ -886,7 +888,7 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 
 	__sync_add_and_fetch(&stat_PADR_recv, 1);
 
-	if (ppp_shutdown)
+	if (ap_shutdown)
 		return;
 
 	if (!memcmp(ethhdr->h_dest, bc_addr, ETH_ALEN)) {
@@ -972,7 +974,7 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 
 	pthread_mutex_lock(&serv->lock);
 	conn = find_channel(serv, (uint8_t *)ac_cookie_tag->tag_data);
-	if (conn && !conn->ppp.username) {
+	if (conn && !conn->ppp.ses.username) {
 		__sync_add_and_fetch(&stat_PADR_dup_recv, 1);
 		pppoe_send_PADS(conn);
 	}
@@ -1277,7 +1279,7 @@ out_err:
 
 static void _conn_stop(struct pppoe_conn_t *conn)
 {
-	ppp_terminate(&conn->ppp, TERM_ADMIN_RESET, 0);
+	ap_session_terminate(&conn->ppp.ses, TERM_ADMIN_RESET, 0);
 }
 
 static void _server_stop(struct pppoe_serv_t *serv)

@@ -22,7 +22,7 @@ struct column_t
 	struct list_head entry;
 	const char *name;
 	const char *desc;
-	void (*print)(const struct ppp_t *ppp, char *buf);
+	void (*print)(const struct ap_session *ses, char *buf);
 };
 
 struct col_t
@@ -50,7 +50,7 @@ struct cell_t
 
 static LIST_HEAD(col_list);
 
-void __export cli_show_ses_register(const char *name, const char *desc, void (*print)(const struct ppp_t *ppp, char *buf))
+void __export cli_show_ses_register(const char *name, const char *desc, void (*print)(const struct ap_session *ses, char *buf))
 {
 	struct column_t *c = malloc(sizeof(*c));
 	c->name = name;
@@ -131,7 +131,7 @@ static int show_ses_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 	struct cell_t *cell;
 	char *ptr1, *ptr2;
 	int i, n, total_width, def_columns = 0;
-	struct ppp_t *ppp;
+	struct ap_session *ses;
 	char *buf = NULL;
 	int match_key_f = 0, order_key_f = 0;
 	LIST_HEAD(c_list);
@@ -221,8 +221,8 @@ static int show_ses_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 		list_add_tail(&col->entry, &c_list);
 	}
 
-	pthread_rwlock_rdlock(&ppp_lock);
-	list_for_each_entry(ppp, &ppp_list, entry) {
+	pthread_rwlock_rdlock(&ses_lock);
+	list_for_each_entry(ses, &ses_list, entry) {
 		row = _malloc(sizeof(*row));
 		if (!row)
 			goto oom;
@@ -238,7 +238,7 @@ static int show_ses_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 				goto oom;
 			cell->col = col;
 			list_add_tail(&cell->entry, &row->cell_list);
-			col->column->print(ppp, cell->buf);
+			col->column->print(ses, cell->buf);
 			n = strlen(cell->buf);
 			if (n > col->width)
 				col->width = n;
@@ -248,7 +248,7 @@ static int show_ses_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 				row->match_key = cell->buf;
 		}
 	}
-	pthread_rwlock_unlock(&ppp_lock);
+	pthread_rwlock_unlock(&ses_lock);
 
 	if (order_key || match_key) {
 		while(!list_empty(&t_list)) {
@@ -368,40 +368,40 @@ oom:
 	goto out;
 }
 
-static void print_ifname(const struct ppp_t *ppp, char *buf)
+static void print_ifname(const struct ap_session *ses, char *buf)
 {
-	snprintf(buf, CELL_SIZE, "%s", ppp->ifname);
+	snprintf(buf, CELL_SIZE, "%s", ses->ifname);
 }
 
-static void print_username(const struct ppp_t *ppp, char *buf)
+static void print_username(const struct ap_session *ses, char *buf)
 {
-	if (ppp->username)
-		snprintf(buf, CELL_SIZE, "%s", ppp->username);
+	if (ses->username)
+		snprintf(buf, CELL_SIZE, "%s", ses->username);
 	else
 		*buf = 0;
 }
 
-static void print_ip(const struct ppp_t *ppp, char *buf)
+static void print_ip(const struct ap_session *ses, char *buf)
 {
-	u_inet_ntoa(ppp->ipv4 ? ppp->ipv4->peer_addr : 0, buf);
+	u_inet_ntoa(ses->ipv4 ? ses->ipv4->peer_addr : 0, buf);
 }
 
-static void print_type(const struct ppp_t *ppp, char *buf)
+static void print_type(const struct ap_session *ses, char *buf)
 {
-	snprintf(buf, CELL_SIZE, "%s", ppp->ctrl->name);
+	snprintf(buf, CELL_SIZE, "%s", ses->ctrl->name);
 }
 
-static void print_state(const struct ppp_t *ppp, char *buf)
+static void print_state(const struct ap_session *ses, char *buf)
 {
 	char *state;
-	switch (ppp->state) {
-		case PPP_STATE_STARTING:
+	switch (ses->state) {
+		case AP_STATE_STARTING:
 			state = "start";
 			break;
-		case PPP_STATE_ACTIVE:
+		case AP_STATE_ACTIVE:
 			state = "active";
 			break;
-		case PPP_STATE_FINISHING:
+		case AP_STATE_FINISHING:
 			state = "finish";
 			break;
 		default:
@@ -410,17 +410,17 @@ static void print_state(const struct ppp_t *ppp, char *buf)
 	sprintf(buf, "%s", state);
 }
 
-static void print_uptime(const struct ppp_t *ppp, char *buf)
+static void print_uptime(const struct ap_session *ses, char *buf)
 {
 	time_t uptime;
 	int day,hour,min,sec;
 	char time_str[14];
 
-	if (ppp->stop_time)
-		uptime = ppp->stop_time - ppp->start_time;
+	if (ses->stop_time)
+		uptime = ses->stop_time - ses->start_time;
 	else {
 		time(&uptime);
-		uptime -= ppp->start_time;
+		uptime -= ses->start_time;
 	}
 
 	day = uptime/ (24*60*60); uptime %= (24*60*60);
@@ -435,24 +435,32 @@ static void print_uptime(const struct ppp_t *ppp, char *buf)
 	sprintf(buf, "%s", time_str);
 }
 
-static void print_calling_sid(const struct ppp_t *ppp, char *buf)
+static void print_calling_sid(const struct ap_session *ses, char *buf)
 {
-	snprintf(buf, CELL_SIZE, "%s", ppp->ctrl->calling_station_id);
+	snprintf(buf, CELL_SIZE, "%s", ses->ctrl->calling_station_id);
 }
 
-static void print_called_sid(const struct ppp_t *ppp, char *buf)
+static void print_called_sid(const struct ap_session *ses, char *buf)
 {
-	snprintf(buf, CELL_SIZE, "%s", ppp->ctrl->called_station_id);
+	snprintf(buf, CELL_SIZE, "%s", ses->ctrl->called_station_id);
 }
 
-static void print_sid(const struct ppp_t *ppp, char *buf)
+static void print_sid(const struct ap_session *ses, char *buf)
 {
-	snprintf(buf, CELL_SIZE, "%s", ppp->sessionid);
+	snprintf(buf, CELL_SIZE, "%s", ses->sessionid);
 }
 
-static void print_comp(const struct ppp_t *ppp, char *buf)
+static void print_comp(const struct ap_session *ses, char *buf)
 {
-	snprintf(buf, CELL_SIZE, "%s", ppp->comp ? ppp->comp : "");
+	struct ppp_t *ppp;
+
+	*buf = 0;
+
+	if (ses->ctrl->type != CTRL_TYPE_IPOE) {
+		ppp = container_of(ses, typeof(*ppp), ses);
+		if (ppp->comp)
+			snprintf(buf, CELL_SIZE, "%s", ppp->comp);
+	}
 }
 
 static void init(void)

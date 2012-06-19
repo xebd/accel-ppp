@@ -95,7 +95,7 @@ static int pap_start(struct ppp_t *ppp, struct auth_data_t *auth)
 	d->timeout.expire = pap_timeout;
 	d->timeout.period = conf_timeout * 1000;
 
-	triton_timer_add(ppp->ctrl->ctx, &d->timeout, 0);
+	triton_timer_add(ppp->ses.ctrl->ctx, &d->timeout, 0);
 
 	ppp_register_chan_handler(ppp, &d->h);
 
@@ -201,7 +201,7 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
 	if (conf_any_login) {
 		if (ppp_auth_successed(p->ppp, peer_id)) {
 			pap_send_nak(p, hdr->id);
-			ppp_terminate(p->ppp, TERM_AUTH_ERROR, 0);
+			ap_session_terminate(&p->ppp->ses, TERM_AUTH_ERROR, 0);
 			_free(peer_id);
 			return -1;
 		}
@@ -212,9 +212,9 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
 
 	passwd = _strndup((const char*)ptr, passwd_len);
 
-	r = pwdb_check(p->ppp, peer_id, PPP_PAP, passwd);
+	r = pwdb_check(&p->ppp->ses, peer_id, PPP_PAP, passwd);
 	if (r == PWDB_NO_IMPL) {
-		passwd2 = pwdb_get_passwd(p->ppp, peer_id);
+		passwd2 = pwdb_get_passwd(&p->ppp->ses, peer_id);
 		if (!passwd2 || strcmp(passwd2, passwd))
 			r = PWDB_DENIED;
 		else
@@ -226,7 +226,7 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
 			log_ppp_warn("PAP: authentication error\n");
 		pap_send_nak(p, hdr->id);
 		if (p->started)
-			ppp_terminate(p->ppp, TERM_AUTH_ERROR, 0);
+			ap_session_terminate(&p->ppp->ses, TERM_AUTH_ERROR, 0);
 		else
 			ppp_auth_failed(p->ppp, peer_id);
 		ret = -1;
@@ -234,7 +234,7 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
 	} else {
 		if (ppp_auth_successed(p->ppp, peer_id)) {
 			pap_send_nak(p, hdr->id);
-			ppp_terminate(p->ppp, TERM_AUTH_ERROR, 0);
+			ap_session_terminate(&p->ppp->ses, TERM_AUTH_ERROR, 0);
 			_free(peer_id);
 			ret = -1;
 		} else {

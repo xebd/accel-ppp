@@ -50,10 +50,10 @@ static void unpack_msg(struct log_msg_t *msg)
 		log_buf[0] = 0;
 }
 
-static void set_hdr(struct log_msg_t *msg, struct ppp_t *ppp)
+static void set_hdr(struct log_msg_t *msg, struct ap_session *ses)
 {
-	if (ppp) {
-		if (snprintf(msg->hdr->msg, LOG_CHUNK_SIZE, "%s:%s: ", ppp->ifname, ppp->username ? ppp->username : ""))
+	if (ses) {
+		if (snprintf(msg->hdr->msg, LOG_CHUNK_SIZE, "%s:%s: ", ses->ifname, ses->username ? ses->username : ""))
 			strcpy(msg->hdr->msg + LOG_CHUNK_SIZE - 3, ": ");
 	} else 
 		msg->hdr->msg[0] = 0;
@@ -104,9 +104,9 @@ static void queue_log(struct log_msg_t *msg)
 }
 
 
-static void general_log(struct log_target_t *t, struct log_msg_t *msg, struct ppp_t *ppp)
+static void general_log(struct log_target_t *t, struct log_msg_t *msg, struct ap_session *ses)
 {
-	set_hdr(msg, ppp);
+	set_hdr(msg, ses);
 
 	if (syslog_ctx.tpd)
 		queue_log(msg);

@@ -24,15 +24,15 @@ struct in6_ifreq {
         int             ifr6_ifindex; 
 };
 
-static void devconf(struct ppp_t *ppp, const char *attr, const char *val)
+static void devconf(struct ap_session *ses, const char *attr, const char *val)
 {
 	int fd;
 	char fname[PATH_MAX];
 
-	sprintf(fname, "/proc/sys/net/ipv6/conf/%s/%s", ppp->ifname, attr);
+	sprintf(fname, "/proc/sys/net/ipv6/conf/%s/%s", ses->ifname, attr);
 	fd = open(fname, O_WRONLY);
 	if (!fd) {
-		log_ppp_error("ppp: failed to open '%s': %s\n", fname, strerror(errno));
+		log_ppp_error("failed to open '%s': %s\n", fname, strerror(errno));
 		return;
 	}
 
@@ -51,97 +51,101 @@ static void build_addr(struct ipv6db_addr_t *a, uint64_t intf_id, struct in6_add
 		*(uint64_t *)(addr->s6_addr + 8) |= intf_id & ((1 << (128 - a->prefix_len)) - 1);
 }
 
-void ppp_ifup(struct ppp_t *ppp)
+void ap_session_ifup(struct ap_session *ses)
 {
 	struct ipv6db_addr_t *a;
 	struct ifreq ifr;
 	struct in6_ifreq ifr6;
 	struct npioctl np;
 	struct sockaddr_in addr;
+	struct ppp_t *ppp;
 	
-	triton_event_fire(EV_SES_ACCT_START, ppp);
-	if (ppp->stop_time)
+	triton_event_fire(EV_SES_ACCT_START, ses);
+	if (ses->stop_time)
 		return;
 
-	triton_event_fire(EV_SES_PRE_UP, ppp);
-	if (ppp->stop_time)
+	triton_event_fire(EV_SES_PRE_UP, ses);
+	if (ses->stop_time)
 		return;
 
 	memset(&ifr, 0, sizeof(ifr));
-	strcpy(ifr.ifr_name, ppp->ifname);
+	strcpy(ifr.ifr_name, ses->ifname);
 	
-	if (ppp->ses.ipv4) {
+	if (ses->ipv4) {
 		memset(&addr, 0, sizeof(addr));
 		addr.sin_family = AF_INET;
-		addr.sin_addr.s_addr = ppp->ses.ipv4->addr;
+		addr.sin_addr.s_addr = ses->ipv4->addr;
 		memcpy(&ifr.ifr_addr,&addr,sizeof(addr));
 		
 		if (ioctl(sock_fd, SIOCSIFADDR, &ifr))
-			log_ppp_error("ppp: failed to set IPv4 address: %s\n", strerror(errno));
+			log_ppp_error("failed to set IPv4 address: %s\n", strerror(errno));
 		
-		addr.sin_addr.s_addr = ppp->ses.ipv4->peer_addr;
+		addr.sin_addr.s_addr = ses->ipv4->peer_addr;
 		memcpy(&ifr.ifr_dstaddr,&addr,sizeof(addr));
 		
 		if (ioctl(sock_fd, SIOCSIFDSTADDR, &ifr))
-			log_ppp_error("ppp: failed to set peer IPv4 address: %s\n", strerror(errno));
+			log_ppp_error("failed to set peer IPv4 address: %s\n", strerror(errno));
 	}
 
-	if (ppp->ses.ipv6) {
-		devconf(ppp, "accept_ra", "0");
-		devconf(ppp, "autoconf", "0");
-		devconf(ppp, "forwarding", "1");
+	if (ses->ipv6) {
+		devconf(ses, "accept_ra", "0");
+		devconf(ses, "autoconf", "0");
+		devconf(ses, "forwarding", "1");
 
 		memset(&ifr6, 0, sizeof(ifr6));
 		ifr6.ifr6_addr.s6_addr32[0] = htons(0xfe80);
-		*(uint64_t *)(ifr6.ifr6_addr.s6_addr + 8) = ppp->ses.ipv6->intf_id;
+		*(uint64_t *)(ifr6.ifr6_addr.s6_addr + 8) = ses->ipv6->intf_id;
 		ifr6.ifr6_prefixlen = 64;
-		ifr6.ifr6_ifindex = ppp->ifindex;
+		ifr6.ifr6_ifindex = ses->ifindex;
 
 		if (ioctl(sock6_fd, SIOCSIFADDR, &ifr6))
-			log_ppp_error("ppp: faild to set LL IPv6 address: %s\n", strerror(errno));
+			log_ppp_error("faild to set LL IPv6 address: %s\n", strerror(errno));
 		
-		list_for_each_entry(a, &ppp->ses.ipv6->addr_list, entry) {
+		list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
 			if (a->prefix_len == 128)
 				continue;
 
-			build_addr(a, ppp->ses.ipv6->intf_id, &ifr6.ifr6_addr);
+			build_addr(a, ses->ipv6->intf_id, &ifr6.ifr6_addr);
 			ifr6.ifr6_prefixlen = a->prefix_len;
 
 			if (ioctl(sock6_fd, SIOCSIFADDR, &ifr6))
-				log_ppp_error("ppp: failed to add IPv6 address: %s\n", strerror(errno));
+				log_ppp_error("failed to add IPv6 address: %s\n", strerror(errno));
 		}
 	}
 
 	if (ioctl(sock_fd, SIOCGIFFLAGS, &ifr))
-		log_ppp_error("ppp: failed to get interface flags: %s\n", strerror(errno));
+		log_ppp_error("failed to get interface flags: %s\n", strerror(errno));
 
-	ifr.ifr_flags |= IFF_UP | IFF_POINTOPOINT;
+	ifr.ifr_flags |= IFF_UP;
 
 	if (ioctl(sock_fd, SIOCSIFFLAGS, &ifr))
-		log_ppp_error("ppp: failed to set interface flags: %s\n", strerror(errno));
+		log_ppp_error("failed to set interface flags: %s\n", strerror(errno));
 
-	if (ppp->ses.ipv4) {
-		np.protocol = PPP_IP;
-		np.mode = NPMODE_PASS;
+	if (ses->ctrl->type != CTRL_TYPE_IPOE) {
+		ppp = container_of(ses, typeof(*ppp), ses);
+		if (ses->ipv4) {
+			np.protocol = PPP_IP;
+			np.mode = NPMODE_PASS;
 
-		if (ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
-			log_ppp_error("ppp: failed to set NP (IPv4) mode: %s\n", strerror(errno));
+			if (ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
+				log_ppp_error("failed to set NP (IPv4) mode: %s\n", strerror(errno));
+		}
+		
+		if (ses->ipv6) {
+			np.protocol = PPP_IPV6;
+			np.mode = NPMODE_PASS;
+
+			if (ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
+				log_ppp_error("failed to set NP (IPv6) mode: %s\n", strerror(errno));
+		}
 	}
 	
-	if (ppp->ses.ipv6) {
-		np.protocol = PPP_IPV6;
-		np.mode = NPMODE_PASS;
+	ses->ctrl->started(ses);
 
-		if (ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
-			log_ppp_error("ppp: failed to set NP (IPv6) mode: %s\n", strerror(errno));
-	}
-	
-	ppp->ses.ctrl->started(ppp);
-
-	triton_event_fire(EV_SES_STARTED, ppp);
+	triton_event_fire(EV_SES_STARTED, ses);
 }
 
-void __export ppp_ifdown(struct ppp_t *ppp)
+void __export ap_session_ifdown(struct ap_session *ses)
 {
 	struct ifreq ifr;
 	struct sockaddr_in addr;
@@ -149,30 +153,30 @@ void __export ppp_ifdown(struct ppp_t *ppp)
 	struct ipv6db_addr_t *a;
 
 	memset(&ifr, 0, sizeof(ifr));
-	strcpy(ifr.ifr_name, ppp->ifname);
+	strcpy(ifr.ifr_name, ses->ifname);
 	ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
 
-	if (ppp->ses.ipv4) {
+	if (ses->ipv4) {
 		memset(&addr, 0, sizeof(addr));
 		addr.sin_family = AF_INET;
 		memcpy(&ifr.ifr_addr,&addr,sizeof(addr));
 		ioctl(sock_fd, SIOCSIFADDR, &ifr);
 	}
 
-	if (ppp->ses.ipv6) {
+	if (ses->ipv6) {
 		memset(&ifr6, 0, sizeof(ifr6));
 		ifr6.ifr6_addr.s6_addr32[0] = htons(0xfe80);
-		*(uint64_t *)(ifr6.ifr6_addr.s6_addr + 8) = ppp->ses.ipv6->intf_id;
+		*(uint64_t *)(ifr6.ifr6_addr.s6_addr + 8) = ses->ipv6->intf_id;
 		ifr6.ifr6_prefixlen = 64;
-		ifr6.ifr6_ifindex = ppp->ifindex;
+		ifr6.ifr6_ifindex = ses->ifindex;
 
 		ioctl(sock6_fd, SIOCDIFADDR, &ifr6);
 	
-		list_for_each_entry(a, &ppp->ses.ipv6->addr_list, entry) {
+		list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
 			if (a->prefix_len == 128)
 				continue;
 
-			build_addr(a, ppp->ses.ipv6->intf_id, &ifr6.ifr6_addr);
+			build_addr(a, ses->ipv6->intf_id, &ifr6.ifr6_addr);
 			ifr6.ifr6_prefixlen = a->prefix_len;
 
 			ioctl(sock6_fd, SIOCDIFADDR, &ifr6);

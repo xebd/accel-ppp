@@ -60,18 +60,18 @@ int rad_proc_attrs(struct rad_req_t *req)
 	struct ev_dns_t dns;
 	int res = 0;
 
-	dns.ppp = NULL;
+	dns.ses = NULL;
 	req->rpd->acct_interim_interval = conf_acct_interim_interval;
 
 	list_for_each_entry(attr, &req->reply->attrs, entry) {
 		if (attr->vendor && attr->vendor->id == Vendor_Microsoft) {
 			switch (attr->attr->id) {
 				case MS_Primary_DNS_Server:
-					dns.ppp = req->rpd->ppp;
+					dns.ses = req->rpd->ses;
 					dns.dns1 = attr->val.ipaddr;
 					break;
 				case MS_Secondary_DNS_Server:
-					dns.ppp = req->rpd->ppp;
+					dns.ses = req->rpd->ses;
 					dns.dns2 = attr->val.ipaddr;
 					break;
 			}
@@ -132,18 +132,18 @@ int rad_proc_attrs(struct rad_req_t *req)
 		}
 	}
 
-	if (dns.ppp)
+	if (dns.ses)
 		triton_event_fire(EV_DNS, &dns);
 
 	return res;
 }
 
-static int check(struct pwdb_t *pwdb, struct ppp_t *ppp, const char *username, int type, va_list _args)
+static int check(struct pwdb_t *pwdb, struct ap_session *ses, const char *username, int type, va_list _args)
 {
 	int r = PWDB_NO_IMPL;
 	va_list args;
 	int chap_type;
-	struct radius_pd_t *rpd = find_pd(ppp);
+	struct radius_pd_t *rpd = find_pd(ses);
 
 	va_copy(args, _args);
 
@@ -175,18 +175,18 @@ static int check(struct pwdb_t *pwdb, struct ppp_t *ppp, const char *username, i
 	return r;
 }
 
-static struct ipv4db_item_t *get_ipv4(struct ppp_t *ppp)
+static struct ipv4db_item_t *get_ipv4(struct ap_session *ses)
 {
-	struct radius_pd_t *rpd = find_pd(ppp);
+	struct radius_pd_t *rpd = find_pd(ses);
 	
 	if (rpd->ipv4_addr.peer_addr)
 		return &rpd->ipv4_addr;
 	return NULL;
 }
 
-static struct ipv6db_item_t *get_ipv6(struct ppp_t *ppp)
+static struct ipv6db_item_t *get_ipv6(struct ap_session *ses)
 {
-	struct radius_pd_t *rpd = find_pd(ppp);
+	struct radius_pd_t *rpd = find_pd(ses);
 
 	rpd->ipv6_addr.owner = &ipdb;
 	rpd->ipv6_addr.intf_id = 0;
@@ -197,9 +197,9 @@ static struct ipv6db_item_t *get_ipv6(struct ppp_t *ppp)
 	return NULL;
 }
 
-static struct ipv6db_prefix_t *get_ipv6_prefix(struct ppp_t *ppp)
+static struct ipv6db_prefix_t *get_ipv6_prefix(struct ap_session *ses)
 {
-	struct radius_pd_t *rpd = find_pd(ppp);
+	struct radius_pd_t *rpd = find_pd(ses);
 
 	rpd->ipv6_dp.owner = &ipdb;
 
@@ -214,66 +214,67 @@ static struct ipv6db_prefix_t *get_ipv6_prefix(struct ppp_t *ppp)
 static void session_timeout(struct triton_timer_t *t)
 {
 	struct radius_pd_t *rpd = container_of(t, typeof(*rpd), session_timeout);
+
 	log_ppp_msg("radius: session timed out\n");
 
-	if (rpd->ppp->stop_time)
+	if (rpd->ses->stop_time)
 		return;
 
-	if (rpd->termination_action == Termination_Action_RADIUS_Request) {
-		if (ppp_auth_restart(rpd->ppp))
-			ppp_terminate(rpd->ppp, TERM_SESSION_TIMEOUT, 0);
+	if (rpd->termination_action == Termination_Action_RADIUS_Request && rpd->ses->ctrl->type != CTRL_TYPE_IPOE) {
+		if (ppp_auth_restart(container_of(rpd->ses, struct ppp_t, ses)))
+			ap_session_terminate(rpd->ses, TERM_SESSION_TIMEOUT, 0);
 	} else
-		ppp_terminate(rpd->ppp, TERM_SESSION_TIMEOUT, 0);
+		ap_session_terminate(rpd->ses, TERM_SESSION_TIMEOUT, 0);
 }
 
-static void ppp_starting(struct ppp_t *ppp)
+static void ses_starting(struct ap_session *ses)
 {
 	struct radius_pd_t *rpd = mempool_alloc(rpd_pool);
 
 	memset(rpd, 0, sizeof(*rpd));
 	rpd->pd.key = &pd_key;
-	rpd->ppp = ppp;
+	rpd->ses = ses;
 	pthread_mutex_init(&rpd->lock, NULL);
 	INIT_LIST_HEAD(&rpd->plugin_list);
 	INIT_LIST_HEAD(&rpd->ipv6_addr.addr_list);
 	INIT_LIST_HEAD(&rpd->ipv6_dp.prefix_list);
 
-	list_add_tail(&rpd->pd.entry, &ppp->pd_list);
+	list_add_tail(&rpd->pd.entry, &ses->pd_list);
 
 	pthread_rwlock_wrlock(&sessions_lock);
 	list_add_tail(&rpd->entry, &sessions);
 	pthread_rwlock_unlock(&sessions_lock);
 }
 
-static void ppp_acct_start(struct ppp_t *ppp)
+static void ses_acct_start(struct ap_session *ses)
 {
-	struct radius_pd_t *rpd = find_pd(ppp);
+	struct radius_pd_t *rpd = find_pd(ses);
 	
 	if (!rpd->authenticated)
 		return;
 
 	if (rad_acct_start(rpd)) {
-		ppp_terminate(rpd->ppp, TERM_NAS_ERROR, 0);
+		ap_session_terminate(rpd->ses, TERM_NAS_ERROR, 0);
 		return;
 	}
 	
 	if (rpd->session_timeout.expire_tv.tv_sec) {
 		rpd->session_timeout.expire = session_timeout;
-		triton_timer_add(ppp->ctrl->ctx, &rpd->session_timeout, 0);
+		triton_timer_add(ses->ctrl->ctx, &rpd->session_timeout, 0);
 	}
 }
-static void ppp_finishing(struct ppp_t *ppp)
+static void ses_finishing(struct ap_session *ses)
 {
-	struct radius_pd_t *rpd = find_pd(ppp);
+	struct radius_pd_t *rpd = find_pd(ses);
 
 	if (!rpd->authenticated)
 		return;
 
 	rad_acct_stop(rpd);
 }
-static void ppp_finished(struct ppp_t *ppp)
+static void ses_finished(struct ap_session *ses)
 {
-	struct radius_pd_t *rpd = find_pd(ppp);
+	struct radius_pd_t *rpd = find_pd(ses);
 	struct ipv6db_addr_t *a;
 
 	pthread_rwlock_wrlock(&sessions_lock);
@@ -317,12 +318,12 @@ static void ppp_finished(struct ppp_t *ppp)
 	mempool_free(rpd);
 }
 
-struct radius_pd_t *find_pd(struct ppp_t *ppp)
+struct radius_pd_t *find_pd(struct ap_session *ses)
 {
-	struct ppp_pd_t *pd;
+	struct ap_private *pd;
 	struct radius_pd_t *rpd;
 
-	list_for_each_entry(pd, &ppp->pd_list, entry) {
+	list_for_each_entry(pd, &ses->pd_list, entry) {
 		if (pd->key == &pd_key) {
 			rpd = container_of(pd, typeof(*rpd), pd);
 			return rpd;
@@ -339,17 +340,17 @@ struct radius_pd_t *rad_find_session(const char *sessionid, const char *username
 	
 	pthread_rwlock_rdlock(&sessions_lock);
 	list_for_each_entry(rpd, &sessions, entry) {
-		if (!rpd->ppp->username)
+		if (!rpd->ses->username)
 			continue;
-		if (sessionid && strcmp(sessionid, rpd->ppp->sessionid))
+		if (sessionid && strcmp(sessionid, rpd->ses->sessionid))
 			continue;
-		if (username && strcmp(username, rpd->ppp->username))
+		if (username && strcmp(username, rpd->ses->username))
 			continue;
-		if (port_id >= 0 && port_id != rpd->ppp->unit_idx)
+		if (port_id >= 0 && port_id != rpd->ses->unit_idx)
 			continue;
-		if (ipaddr && rpd->ppp->ipv4 && ipaddr != rpd->ppp->ipv4->peer_addr)
+		if (ipaddr && rpd->ses->ipv4 && ipaddr != rpd->ses->ipv4->peer_addr)
 			continue;
-		if (csid && rpd->ppp->ctrl->calling_station_id && strcmp(csid, rpd->ppp->ctrl->calling_station_id))
+		if (csid && rpd->ses->ctrl->calling_station_id && strcmp(csid, rpd->ses->ctrl->calling_station_id))
 			continue;
 		pthread_mutex_lock(&rpd->lock);
 		pthread_rwlock_unlock(&sessions_lock);
@@ -422,9 +423,9 @@ int rad_check_nas_pack(struct rad_packet_t *pack)
 	return 0;
 }
 
-void __export rad_register_plugin(struct ppp_t *ppp, struct rad_plugin_t *plugin)
+void __export rad_register_plugin(struct ap_session *ses, struct rad_plugin_t *plugin)
 {
-	struct radius_pd_t *rpd = find_pd(ppp);
+	struct radius_pd_t *rpd = find_pd(ses);
 
 	if (!rpd)
 		return;
@@ -575,10 +576,10 @@ static void radius_init(void)
 	pwdb_register(&pwdb);
 	ipdb_register(&ipdb);
 
-	triton_event_register_handler(EV_PPP_STARTING, (triton_event_func)ppp_starting);
-	triton_event_register_handler(EV_PPP_ACCT_START, (triton_event_func)ppp_acct_start);
-	triton_event_register_handler(EV_PPP_FINISHING, (triton_event_func)ppp_finishing);
-	triton_event_register_handler(EV_PPP_FINISHED, (triton_event_func)ppp_finished);
+	triton_event_register_handler(EV_SES_STARTING, (triton_event_func)ses_starting);
+	triton_event_register_handler(EV_SES_ACCT_START, (triton_event_func)ses_acct_start);
+	triton_event_register_handler(EV_SES_FINISHING, (triton_event_func)ses_finishing);
+	triton_event_register_handler(EV_SES_FINISHED, (triton_event_func)ses_finished);
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 

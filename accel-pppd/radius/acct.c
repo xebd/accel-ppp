@@ -32,40 +32,42 @@ static int req_set_RA(struct rad_req_t *req, const char *secret)
 	return 0;
 }
 
-static void req_set_stat(struct rad_req_t *req, struct ppp_t *ppp)
+static void req_set_stat(struct rad_req_t *req, struct ap_session *ses)
 {
 	struct ifpppstatsreq ifreq;
 	time_t stop_time;
 	
-	if (ppp->stop_time)
-		stop_time = ppp->stop_time;
+	if (ses->stop_time)
+		stop_time = ses->stop_time;
 	else
 		time(&stop_time);
 
 	memset(&ifreq, 0, sizeof(ifreq));
 	ifreq.stats_ptr = (void *)&ifreq.stats;
-	strcpy(ifreq.ifr__name, ppp->ifname);
+	strcpy(ifreq.ifr__name, ses->ifname);
 
-	if (ioctl(sock_fd, SIOCGPPPSTATS, &ifreq)) {
-		log_ppp_error("radius: failed to get ppp statistics: %s\n", strerror(errno));
-		return;
+	if (ses->ctrl->type != CTRL_TYPE_IPOE) {
+		if (ioctl(sock_fd, SIOCGPPPSTATS, &ifreq)) {
+			log_ppp_error("radius: failed to get ppp statistics: %s\n", strerror(errno));
+			return;
+		}
+
+		if (ifreq.stats.p.ppp_ibytes < req->rpd->acct_input_octets)
+			req->rpd->acct_input_gigawords++;
+		req->rpd->acct_input_octets = ifreq.stats.p.ppp_ibytes;
+
+		if (ifreq.stats.p.ppp_obytes < req->rpd->acct_output_octets)
+			req->rpd->acct_output_gigawords++;
+		req->rpd->acct_output_octets = ifreq.stats.p.ppp_obytes;
+
+		rad_packet_change_int(req->pack, NULL, "Acct-Input-Octets", ifreq.stats.p.ppp_ibytes);
+		rad_packet_change_int(req->pack, NULL, "Acct-Output-Octets", ifreq.stats.p.ppp_obytes);
+		rad_packet_change_int(req->pack, NULL, "Acct-Input-Packets", ifreq.stats.p.ppp_ipackets);
+		rad_packet_change_int(req->pack, NULL, "Acct-Output-Packets", ifreq.stats.p.ppp_opackets);
+		rad_packet_change_int(req->pack, NULL, "Acct-Input-Gigawords", req->rpd->acct_input_gigawords);
+		rad_packet_change_int(req->pack, NULL, "Acct-Output-Gigawords", req->rpd->acct_output_gigawords);
 	}
-
-	if (ifreq.stats.p.ppp_ibytes < req->rpd->acct_input_octets)
-		req->rpd->acct_input_gigawords++;
-	req->rpd->acct_input_octets = ifreq.stats.p.ppp_ibytes;
-
-	if (ifreq.stats.p.ppp_obytes < req->rpd->acct_output_octets)
-		req->rpd->acct_output_gigawords++;
-	req->rpd->acct_output_octets = ifreq.stats.p.ppp_obytes;
-
-	rad_packet_change_int(req->pack, NULL, "Acct-Input-Octets", ifreq.stats.p.ppp_ibytes);
-	rad_packet_change_int(req->pack, NULL, "Acct-Output-Octets", ifreq.stats.p.ppp_obytes);
-	rad_packet_change_int(req->pack, NULL, "Acct-Input-Packets", ifreq.stats.p.ppp_ipackets);
-	rad_packet_change_int(req->pack, NULL, "Acct-Output-Packets", ifreq.stats.p.ppp_opackets);
-	rad_packet_change_int(req->pack, NULL, "Acct-Input-Gigawords", req->rpd->acct_input_gigawords);
-	rad_packet_change_int(req->pack, NULL, "Acct-Output-Gigawords", req->rpd->acct_output_gigawords);
-	rad_packet_change_int(req->pack, NULL, "Acct-Session-Time", stop_time - ppp->start_time);
+	rad_packet_change_int(req->pack, NULL, "Acct-Session-Time", stop_time - ses->start_time);
 }
 
 static int rad_acct_read(struct triton_md_handler_t *h)
@@ -125,7 +127,7 @@ static void __rad_req_send(struct rad_req_t *req)
 			if (rad_server_realloc(req)) {
 				if (conf_acct_timeout) {
 					log_ppp_warn("radius:acct: no servers available, terminating session...\n");
-					ppp_terminate(req->rpd->ppp, TERM_NAS_ERROR, 0);
+					ap_session_terminate(req->rpd->ses, TERM_NAS_ERROR, 0);
 				}
 				break;
 			}
@@ -134,7 +136,7 @@ static void __rad_req_send(struct rad_req_t *req)
 
 		rad_req_send(req, conf_interim_verbose);
 		if (!req->hnd.tpd) {
-			triton_md_register_handler(req->rpd->ppp->ctrl->ctx, &req->hnd);
+			triton_md_register_handler(req->rpd->ses->ctrl->ctx, &req->hnd);
 			triton_md_enable_handler(&req->hnd, MD_MODE_READ);
 		}
 
@@ -167,7 +169,7 @@ static void rad_acct_timeout(struct triton_timer_t *t)
 		rad_server_fail(req->serv);
 		if (rad_server_realloc(req)) {
 			log_ppp_warn("radius:acct: no servers available, terminating session...\n");
-			ppp_terminate(req->rpd->ppp, TERM_NAS_ERROR, 0);
+			ap_session_terminate(req->rpd->ses, TERM_NAS_ERROR, 0);
 			return;
 		}
 		time(&req->rpd->acct_timestamp);
@@ -201,10 +203,10 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 		return;
 
 	if (rpd->session_timeout.expire_tv.tv_sec && 
-			rpd->session_timeout.expire_tv.tv_sec - (time(NULL) - rpd->ppp->start_time) < INTERIM_SAFE_TIME)
+			rpd->session_timeout.expire_tv.tv_sec - (time(NULL) - rpd->ses->start_time) < INTERIM_SAFE_TIME)
 			return;
 
-	req_set_stat(rpd->acct_req, rpd->ppp);
+	req_set_stat(rpd->acct_req, rpd->ses);
 	if (!rpd->acct_interim_interval)
 		return;
 
@@ -221,7 +223,7 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 	__sync_add_and_fetch(&rpd->acct_req->serv->stat_interim_sent, 1);
 
 	rpd->acct_req->timeout.period = conf_timeout * 1000;
-	triton_timer_add(rpd->ppp->ctrl->ctx, &rpd->acct_req->timeout, 0);
+	triton_timer_add(rpd->ses->ctrl->ctx, &rpd->acct_req->timeout, 0);
 }
 
 int rad_acct_start(struct radius_pd_t *rpd)
@@ -233,7 +235,7 @@ int rad_acct_start(struct radius_pd_t *rpd)
 	if (!conf_accounting)
 		return 0;
 
-	rpd->acct_req = rad_req_alloc(rpd, CODE_ACCOUNTING_REQUEST, rpd->ppp->username);
+	rpd->acct_req = rad_req_alloc(rpd, CODE_ACCOUNTING_REQUEST, rpd->ses->username);
 	if (!rpd->acct_req)
 		return -1;
 
@@ -244,7 +246,7 @@ int rad_acct_start(struct radius_pd_t *rpd)
 
 	//if (rad_req_add_val(rpd->acct_req, "Acct-Status-Type", "Start", 4))
 	//	goto out_err;
-	//if (rad_req_add_str(rpd->acct_req, "Acct-Session-Id", rpd->ppp->sessionid, PPP_SESSIONID_LEN, 1))
+	//if (rad_req_add_str(rpd->acct_req, "Acct-Session-Id", rpd->ses->ionid, PPP_SESSIONID_LEN, 1))
 	//	goto out_err;
 
 	if (rpd->acct_req->reply) {
@@ -325,7 +327,7 @@ int rad_acct_start(struct radius_pd_t *rpd)
 
 	rpd->acct_req->hnd.read = rad_acct_read;
 
-	triton_md_register_handler(rpd->ppp->ctrl->ctx, &rpd->acct_req->hnd);
+	triton_md_register_handler(rpd->ses->ctrl->ctx, &rpd->acct_req->hnd);
 	if (triton_md_enable_handler(&rpd->acct_req->hnd, MD_MODE_READ))
 		goto out_err;
 	
@@ -334,7 +336,7 @@ int rad_acct_start(struct radius_pd_t *rpd)
 	
 	rpd->acct_interim_timer.expire = rad_acct_interim_update;
 	rpd->acct_interim_timer.period = rpd->acct_interim_interval ? rpd->acct_interim_interval * 1000 : STAT_UPDATE_INTERVAL;
-	if (rpd->acct_interim_interval && triton_timer_add(rpd->ppp->ctrl->ctx, &rpd->acct_interim_timer, 0)) {
+	if (rpd->acct_interim_interval && triton_timer_add(rpd->ses->ctrl->ctx, &rpd->acct_interim_timer, 0)) {
 		triton_md_unregister_handler(&rpd->acct_req->hnd);
 		triton_timer_del(&rpd->acct_req->timeout);
 		goto out_err;
@@ -364,7 +366,7 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 		if (rpd->acct_req->timeout.tpd)
 			triton_timer_del(&rpd->acct_req->timeout);
 
-		switch (rpd->ppp->terminate_cause) {
+		switch (rpd->ses->terminate_cause) {
 			case TERM_USER_REQUEST:
 				rad_packet_add_val(rpd->acct_req->pack, NULL, "Acct-Terminate-Cause", "User-Request");
 				break;
@@ -392,7 +394,7 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 				break;
 		}
 		rad_packet_change_val(rpd->acct_req->pack, NULL, "Acct-Status-Type", "Stop");
-		req_set_stat(rpd->acct_req, rpd->ppp);
+		req_set_stat(rpd->acct_req, rpd->ses);
 		req_set_RA(rpd->acct_req, rpd->acct_req->serv->secret);
 		/// !!! rad_req_add_val(rpd->acct_req, "Acct-Terminate-Cause", "");
 		

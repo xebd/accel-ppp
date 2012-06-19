@@ -15,8 +15,8 @@ struct rad_server_t;
 struct radius_pd_t
 {
 	struct list_head entry;
-	struct ppp_pd_t pd;
-	struct ppp_t *ppp;
+	struct ap_private pd;
+	struct ap_session *ses;
 	pthread_mutex_t lock;
 	int authenticated:1;
 
@@ -147,7 +147,7 @@ void rad_req_free(struct rad_req_t *);
 int rad_req_send(struct rad_req_t *, int verbose);
 int rad_req_wait(struct rad_req_t *, int);
 
-struct radius_pd_t *find_pd(struct ppp_t *ppp);
+struct radius_pd_t *find_pd(struct ap_session *ses);
 int rad_proc_attrs(struct rad_req_t *req);
 
 int rad_auth_pap(struct radius_pd_t *rpd, const char *username, va_list args);

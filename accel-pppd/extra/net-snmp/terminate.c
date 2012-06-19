@@ -16,81 +16,81 @@
 
 #include "terminate.h"
 
-static void __terminate(struct ppp_t *ppp)
+static void __terminate(struct ap_session *ses)
 {
-	ppp_terminate(ppp, TERM_ADMIN_RESET, 0);
+	ap_session_terminate(ses, TERM_ADMIN_RESET, 0);
 }
 
 static void terminate_by_sid(const char *val)
 {
-	struct ppp_t *ppp;
+	struct ap_session *ses;
 
-	pthread_rwlock_rdlock(&ppp_lock);
-	list_for_each_entry(ppp, &ppp_list, entry) {
-		if (strncmp(ppp->sessionid, val, PPP_SESSIONID_LEN))
+	pthread_rwlock_rdlock(&ses_lock);
+	list_for_each_entry(ses, &ses_list, entry) {
+		if (strncmp(ses->sessionid, val, AP_SESSIONID_LEN))
 			continue;
-		triton_context_call(ppp->ctrl->ctx, (triton_event_func)__terminate, ppp);
+		triton_context_call(ses->ctrl->ctx, (triton_event_func)__terminate, ses);
 		break;
 	}
-	pthread_rwlock_unlock(&ppp_lock);
+	pthread_rwlock_unlock(&ses_lock);
 }
 
 static void terminate_by_ifname(const char *val, size_t len)
 {
-	struct ppp_t *ppp;
+	struct ap_session *ses;
 	size_t n;
 
-	pthread_rwlock_rdlock(&ppp_lock);
-	list_for_each_entry(ppp, &ppp_list, entry) {
-		n = strlen(ppp->ifname);
+	pthread_rwlock_rdlock(&ses_lock);
+	list_for_each_entry(ses, &ses_list, entry) {
+		n = strlen(ses->ifname);
 		if (n != len)
 			continue;
-		if (strncmp(ppp->ifname, val, len))
+		if (strncmp(ses->ifname, val, len))
 			continue;
-		triton_context_call(ppp->ctrl->ctx, (triton_event_func)__terminate, ppp);
+		triton_context_call(ses->ctrl->ctx, (triton_event_func)__terminate, ses);
 		break;
 	}
-	pthread_rwlock_unlock(&ppp_lock);
+	pthread_rwlock_unlock(&ses_lock);
 }
 
 static void terminate_by_ip(const char *val, size_t len)
 {
 	char str[len + 1];
 	in_addr_t addr;
-	struct ppp_t *ppp;
+	struct ap_session *ses;
 
 	strncpy(str, val, len);
 	str[len] = 0;
 
 	addr = inet_addr(str);
 	
-	pthread_rwlock_rdlock(&ppp_lock);
-	list_for_each_entry(ppp, &ppp_list, entry) {
-		if (!ppp->ipv4 || ppp->ipv4->peer_addr != addr)
+	pthread_rwlock_rdlock(&ses_lock);
+	list_for_each_entry(ses, &ses_list, entry) {
+		if (!ses->ipv4 || ses->ipv4->peer_addr != addr)
 			continue;
-		triton_context_call(ppp->ctrl->ctx, (triton_event_func)__terminate, ppp);
+		triton_context_call(ses->ctrl->ctx, (triton_event_func)__terminate, ses);
 		break;
 	}
-	pthread_rwlock_unlock(&ppp_lock);
+	pthread_rwlock_unlock(&ses_lock);
 }
 
 static void terminate_by_username(const char *val, size_t len)
 {
-	struct ppp_t *ppp;
+	struct ap_session *ses;
 	size_t n;
 
-	pthread_rwlock_rdlock(&ppp_lock);
-	list_for_each_entry(ppp, &ppp_list, entry) {
-		if (!ppp->username)
+	pthread_rwlock_rdlock(&ses_lock);
+	list_for_each_entry(ses, &ses_list, entry) {
+		if (!ses->username)
 			continue;
-		n = strlen(ppp->username);
+		n = strlen(ses->username);
 		if (n != len)
 			continue;
-		if (strncmp(ppp->username, val, len))
+		if (strncmp(ses->username, val, len))
 			continue;
-		triton_context_call(ppp->ctrl->ctx, (triton_event_func)__terminate, ppp);
+		triton_context_call(ses->ctrl->ctx, (triton_event_func)__terminate, ses);
 	}
-	pthread_rwlock_unlock(&ppp_lock);
+	pthread_rwlock_unlock(&ses_lock);
 }
 
 
@@ -154,7 +154,7 @@ handle_termBySID(netsnmp_mib_handler *handler,
          */
         case MODE_SET_RESERVE1:
                 /* or you could use netsnmp_check_vb_type_and_size instead */
-            ret = netsnmp_check_vb_type_and_size(requests->requestvb, ASN_OCTET_STR, PPP_SESSIONID_LEN);
+            ret = netsnmp_check_vb_type_and_size(requests->requestvb, ASN_OCTET_STR, AP_SESSIONID_LEN);
             if ( ret != SNMP_ERR_NOERROR ) {
                 netsnmp_set_request_error(reqinfo, requests, ret );
             }
