@@ -579,6 +579,9 @@ static int lcp_recv_conf_ack(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 
 static void lcp_update_echo_timer(struct ppp_lcp_t *lcp)
 {
+	if (!lcp->echo_timer.expire)
+		return;
+
 	if (lcp->echo_timer.period != conf_echo_interval * 1000) {
 		if (!conf_echo_interval)
 			triton_timer_del(&lcp->echo_timer);
