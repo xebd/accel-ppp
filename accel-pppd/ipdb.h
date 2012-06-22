@@ -11,6 +11,7 @@ struct ipv4db_item_t
 	struct ipdb_t *owner;
 	in_addr_t addr;
 	in_addr_t peer_addr;
+	int mask;
 };
 
 struct ipv6db_addr_t

@@ -154,6 +154,7 @@ int rad_auth_pap(struct radius_pd_t *rpd, const char *username, va_list args);
 int rad_auth_chap_md5(struct radius_pd_t *rpd, const char *username, va_list args);
 int rad_auth_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list args);
 int rad_auth_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list args);
+int rad_auth_null(struct radius_pd_t *rpd, const char *username, va_list args);
 
 int rad_acct_start(struct radius_pd_t *rpd);
 void rad_acct_stop(struct radius_pd_t *rpd);

@@ -71,12 +71,21 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 		if (rad_packet_add_int(req->pack, NULL, "NAS-Port", ppp->ses.unit_idx))
 			goto out_err;
 	}
-	if (rad_packet_add_val(req->pack, NULL, "NAS-Port-Type", "Virtual"))
-		goto out_err;
-	if (rad_packet_add_val(req->pack, NULL, "Service-Type", "Framed-User"))
-		goto out_err;
-	if (rad_packet_add_val(req->pack, NULL, "Framed-Protocol", "PPP"))
-		goto out_err;
+	
+	if (req->rpd->ses->ctrl->type == CTRL_TYPE_IPOE) {
+		if (rad_packet_add_val(req->pack, NULL, "NAS-Port-Type", "Ethernet"))
+			goto out_err;
+	} else {
+		if (rad_packet_add_val(req->pack, NULL, "NAS-Port-Type", "Virtual"))
+			goto out_err;
+
+		if (rad_packet_add_val(req->pack, NULL, "Service-Type", "Framed-User"))
+			goto out_err;
+
+		if (rad_packet_add_val(req->pack, NULL, "Framed-Protocol", "PPP"))
+			goto out_err;
+	}
+
 	if (rpd->ses->ctrl->calling_station_id)
 		if (rad_packet_add_str(req->pack, NULL, "Calling-Station-Id", rpd->ses->ctrl->calling_station_id))
 			goto out_err;

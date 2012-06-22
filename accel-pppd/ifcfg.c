@@ -9,6 +9,7 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
+#include <linux/route.h>
 #include "linux_ppp.h"
 
 #include "triton.h"
@@ -55,6 +56,7 @@ void ap_session_ifup(struct ap_session *ses)
 {
 	struct ipv6db_addr_t *a;
 	struct ifreq ifr;
+	struct rtentry rt;
 	struct in6_ifreq ifr6;
 	struct npioctl np;
 	struct sockaddr_in addr;
@@ -75,16 +77,34 @@ void ap_session_ifup(struct ap_session *ses)
 		memset(&addr, 0, sizeof(addr));
 		addr.sin_family = AF_INET;
 		addr.sin_addr.s_addr = ses->ipv4->addr;
-		memcpy(&ifr.ifr_addr,&addr,sizeof(addr));
+		memcpy(&ifr.ifr_addr, &addr, sizeof(addr));
 		
 		if (ioctl(sock_fd, SIOCSIFADDR, &ifr))
 			log_ppp_error("failed to set IPv4 address: %s\n", strerror(errno));
+	
+		if (ses->ctrl->type == CTRL_TYPE_IPOE) {
+			addr.sin_addr.s_addr = 0xffffffff;
+			memcpy(&ifr.ifr_netmask, &addr, sizeof(addr));
+			if (ioctl(sock_fd, SIOCSIFNETMASK, &ifr))
+				log_ppp_error("failed to set IPv4 nask: %s\n", strerror(errno));
+		}
 		
 		addr.sin_addr.s_addr = ses->ipv4->peer_addr;
-		memcpy(&ifr.ifr_dstaddr,&addr,sizeof(addr));
-		
-		if (ioctl(sock_fd, SIOCSIFDSTADDR, &ifr))
-			log_ppp_error("failed to set peer IPv4 address: %s\n", strerror(errno));
+
+		if (ses->ctrl->type == CTRL_TYPE_IPOE) {
+			memset(&rt, 0, sizeof(rt));
+			memcpy(&rt.rt_dst, &addr, sizeof(addr));
+			rt.rt_flags = RTF_HOST | RTF_UP;
+			rt.rt_metric = 1;
+			rt.rt_dev = ifr.ifr_name;
+			if (ioctl(sock_fd, SIOCADDRT, &rt, sizeof(rt)))
+				log_ppp_error("failed to add route: %s\n", strerror(errno));
+		} else {
+			memcpy(&ifr.ifr_dstaddr, &addr, sizeof(addr));
+			
+			if (ioctl(sock_fd, SIOCSIFDSTADDR, &ifr))
+				log_ppp_error("failed to set peer IPv4 address: %s\n", strerror(errno));
+		}
 	}
 
 	if (ses->ipv6) {
@@ -93,13 +113,16 @@ void ap_session_ifup(struct ap_session *ses)
 		devconf(ses, "forwarding", "1");
 
 		memset(&ifr6, 0, sizeof(ifr6));
-		ifr6.ifr6_addr.s6_addr32[0] = htons(0xfe80);
-		*(uint64_t *)(ifr6.ifr6_addr.s6_addr + 8) = ses->ipv6->intf_id;
-		ifr6.ifr6_prefixlen = 64;
-		ifr6.ifr6_ifindex = ses->ifindex;
+		
+		if (ses->ctrl->type != CTRL_TYPE_IPOE) {
+			ifr6.ifr6_addr.s6_addr32[0] = htons(0xfe80);
+			*(uint64_t *)(ifr6.ifr6_addr.s6_addr + 8) = ses->ipv6->intf_id;
+			ifr6.ifr6_prefixlen = 64;
+			ifr6.ifr6_ifindex = ses->ifindex;
 
-		if (ioctl(sock6_fd, SIOCSIFADDR, &ifr6))
-			log_ppp_error("faild to set LL IPv6 address: %s\n", strerror(errno));
+			if (ioctl(sock6_fd, SIOCSIFADDR, &ifr6))
+				log_ppp_error("faild to set LL IPv6 address: %s\n", strerror(errno));
+		}
 		
 		list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
 			if (a->prefix_len == 128)
@@ -154,7 +177,9 @@ void __export ap_session_ifdown(struct ap_session *ses)
 
 	memset(&ifr, 0, sizeof(ifr));
 	strcpy(ifr.ifr_name, ses->ifname);
-	ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
+
+	if (ses->ctrl->type != CTRL_TYPE_IPOE)
+		ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
 
 	if (ses->ipv4) {
 		memset(&addr, 0, sizeof(addr));

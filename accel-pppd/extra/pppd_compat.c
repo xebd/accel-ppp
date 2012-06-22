@@ -107,8 +107,9 @@ static void ip_change_handler(struct sigchld_handler_t *h, int status)
 
 static void ev_ses_starting(struct ap_session *ses)
 {
-	struct pppd_compat_pd_t *pd = _malloc(sizeof(*pd));
-
+	struct pppd_compat_pd_t *pd;
+	
+	pd = _malloc(sizeof(*pd));
 	if (!pd) {
 		log_emerg("pppd_compat: out of memory\n");
 		return;
@@ -232,17 +233,21 @@ static void ev_ses_finishing(struct ap_session *ses)
 	if (!pd)
 		return;
 	
-	memset(&ifreq, 0, sizeof(ifreq));
-	ifreq.stats_ptr = (void *)&ifreq.stats;
-	strcpy(ifreq.ifr__name, ses->ifname);
+	if (ses->ctrl->type == CTRL_TYPE_IPOE) {
 
-	if (ioctl(sock_fd, SIOCGPPPSTATS, &ifreq)) {
-		log_ppp_error("pppd_compat: failed to get ppp statistics: %s\n", strerror(errno));
-		return;
+	} else  {
+		memset(&ifreq, 0, sizeof(ifreq));
+		ifreq.stats_ptr = (void *)&ifreq.stats;
+		strcpy(ifreq.ifr__name, ses->ifname);
+
+		if (ioctl(sock_fd, SIOCGPPPSTATS, &ifreq)) {
+			log_ppp_error("pppd_compat: failed to get ppp statistics: %s\n", strerror(errno));
+			return;
+		}
+
+		pd->bytes_sent = ifreq.stats.p.ppp_obytes;
+		pd->bytes_rcvd = ifreq.stats.p.ppp_ibytes;
 	}
-
-	pd->bytes_sent = ifreq.stats.p.ppp_obytes;
-	pd->bytes_rcvd = ifreq.stats.p.ppp_ibytes;
 }
 
 static void ev_ses_finished(struct ap_session *ses)
@@ -330,6 +335,9 @@ skip:
 static void ev_radius_access_accept(struct ev_radius_t *ev)
 {
 	struct pppd_compat_pd_t *pd = find_pd(ev->ses);
+
+	if (!pd)
+		return;
 
 	write_radattr(ev->ses, ev->reply, 0);
 
@@ -479,7 +487,7 @@ static struct pppd_compat_pd_t *find_pd(struct ap_session *ses)
 		}
 	}
 	
-	log_ppp_warn("pppd_compat: pd not found\n");
+	//log_ppp_warn("pppd_compat: pd not found\n");
 	return NULL;
 }
 

@@ -2,7 +2,7 @@
 #define __AP_SESSION_H__
 
 #define AP_SESSIONID_LEN 16
-#define AP_IFNAME_LEN 10
+#define AP_IFNAME_LEN 16
 
 #define AP_STATE_STARTING  1
 #define AP_STATE_ACTIVE    2

@@ -91,7 +91,7 @@ static void disconnect(struct pptp_conn_t *conn)
 	} else if (conn->state != STATE_CLOSE)
 		__sync_sub_and_fetch(&stat_starting, 1);
 
-	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp);
+	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp.ses);
 	
 	log_ppp_info1("disconnected\n");
 
@@ -327,7 +327,7 @@ static int pptp_out_call_rqst(struct pptp_conn_t *conn)
 	conn->ppp.fd = pptp_sock;
 	conn->ppp.ses.chan_name = _strdup(inet_ntoa(dst_addr.sa_addr.pptp.sin_addr));
 
-	triton_event_fire(EV_CTRL_STARTED, &conn->ppp);
+	triton_event_fire(EV_CTRL_STARTED, &conn->ppp.ses);
 
 	if (establish_ppp(&conn->ppp)) {
 		close(pptp_sock);
@@ -689,7 +689,7 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		triton_timer_add(&conn->ctx, &conn->timeout_timer, 0);
 		triton_context_wakeup(&conn->ctx);
 
-		triton_event_fire(EV_CTRL_STARTING, &conn->ppp);
+		triton_event_fire(EV_CTRL_STARTING, &conn->ppp.ses);
 
 		__sync_add_and_fetch(&stat_starting, 1);
 	}

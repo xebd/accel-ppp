@@ -66,6 +66,9 @@ ADD_EXECUTABLE(accel-pppd
 	cli/telnet.c
 	cli/tcp.c
 	cli/cli.c
+	
+	libnetlink/libnetlink.c
+	libnetlink/iplink.c
 
 	pwdb.c
 	ipdb.c

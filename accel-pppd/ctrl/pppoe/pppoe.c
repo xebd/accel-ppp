@@ -120,7 +120,7 @@ static void disconnect(struct pppoe_conn_t *conn)
 	close(conn->disc_sock);
 
 
-	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp);
+	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp.ses);
 
 	log_ppp_info1("disconnected\n");
 
@@ -293,8 +293,8 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 	triton_context_register(&conn->ctx, &conn->ppp.ses);
 	triton_context_wakeup(&conn->ctx);
 	
-	triton_event_fire(EV_CTRL_STARTING, &conn->ppp);
-	triton_event_fire(EV_CTRL_STARTED, &conn->ppp);
+	triton_event_fire(EV_CTRL_STARTING, &conn->ppp.ses);
+	triton_event_fire(EV_CTRL_STARTED, &conn->ppp.ses);
 
 	conn->disc_sock = dup(serv->hnd.fd);
 

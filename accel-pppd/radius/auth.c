@@ -552,3 +552,31 @@ out:
 }
 
 
+int rad_auth_null(struct radius_pd_t *rpd, const char *username, va_list args)
+{
+	struct rad_req_t *req;
+	int r = PWDB_DENIED;
+
+	req = rad_req_alloc(rpd, CODE_ACCESS_REQUEST, username);
+	if (!req)
+		return PWDB_DENIED;
+	
+	if (conf_sid_in_auth)
+		if (rad_packet_add_str(req->pack, NULL, "Acct-Session-Id", rpd->ses->sessionid))
+			return -1;
+
+	r = rad_auth_send(req);
+	if (r == PWDB_SUCCESS) {
+		struct ev_radius_t ev = {
+			.ses = rpd->ses,
+			.request = req->pack,
+			.reply = req->reply,
+		};
+		triton_event_fire(EV_RADIUS_ACCESS_ACCEPT, &ev);
+	}
+
+	rad_req_free(req);
+
+	return r;
+}
+

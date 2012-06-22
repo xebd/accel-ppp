@@ -144,7 +144,7 @@ static void l2tp_disconnect(struct l2tp_conn_t *conn)
 	if (conn->tunnel_fd != -1)
 		close(conn->tunnel_fd);
 
-	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp);
+	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp.ses);
 	
 	log_ppp_info1("disconnected\n");
 
@@ -423,7 +423,7 @@ static int l2tp_connect(struct l2tp_conn_t *conn)
 
 	conn->ppp.ses.chan_name = _strdup(inet_ntoa(conn->addr.sin_addr));
 	
-	triton_event_fire(EV_CTRL_STARTED, &conn->ppp);
+	triton_event_fire(EV_CTRL_STARTED, &conn->ppp.ses);
 
 	if (establish_ppp(&conn->ppp))
 		return -1;
