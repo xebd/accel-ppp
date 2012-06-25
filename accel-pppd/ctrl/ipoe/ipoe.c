@@ -64,15 +64,14 @@ struct iplink_arg
 };
 
 static void ipoe_session_finished(struct ap_session *s);
+static void ipoe_drop_sessions(struct ipoe_serv *serv, struct ipoe_session *skip);
 
 static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct dhcpv4_packet *pack)
 {
 	struct ipoe_session *ses;
+	struct ipoe_session *ses1 = NULL;
 
 	list_for_each_entry(ses, &serv->sessions, entry) {
-		if (pack->hdr->xid != ses->xid)
-			continue;
-
 		if (pack->hdr->giaddr != ses->giaddr)
 			continue;
 
@@ -118,10 +117,15 @@ static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct d
 		if (memcmp(pack->hdr->chaddr, ses->hwaddr, 6))
 			continue;
 
+		ses1 = ses;
+
+		if (pack->hdr->xid != ses->xid)
+			continue;
+
 		return ses;
 	}
 
-	return NULL;
+	return ses1;
 }
 
 static void ipoe_session_timeout(struct triton_timer_t *t)
@@ -205,7 +209,7 @@ static void ipoe_session_start(struct ipoe_session *ses)
 	}
 
 	ses->timer.expire = ipoe_session_timeout;
-	ses->timer.period = conf_offer_timeout * 1000;
+	ses->timer.expire_tv.tv_sec = conf_offer_timeout;
 	triton_timer_add(&ses->ctx, &ses->timer, 0);
 }
 
@@ -222,17 +226,32 @@ static void ipoe_session_activate(struct ipoe_session *ses)
 	ses->dhcpv4_request = NULL;
 }
 
+static void ipoe_session_keepalive(struct ipoe_session *ses)
+{
+	if (ses->timer.tpd)
+		triton_timer_mod(&ses->timer, 0);
+
+	ses->xid = ses->dhcpv4_request->hdr->xid;
+
+	if (ses->ses.state == AP_STATE_ACTIVE)
+		dhcpv4_send_reply(DHCPACK, ses->serv->dhcpv4, ses->dhcpv4_request, &ses->ses, conf_lease_time);
+	else
+		dhcpv4_send_nak(ses->serv->dhcpv4, ses->dhcpv4_request);
+
+	dhcpv4_packet_free(ses->dhcpv4_request);
+	ses->dhcpv4_request = NULL;
+}
+
 static void ipoe_session_started(struct ap_session *s)
 {
 	struct ipoe_session *ses = container_of(s, typeof(*ses), ses);
 	
 	log_ppp_debug("ipoe: session started\n");
 
-	triton_timer_del(&ses->timer);
-
 	ses->timer.expire = ipoe_session_timeout;
-	ses->timer.period = conf_lease_timeout * 1000;
-	triton_timer_add(&ses->ctx, &ses->timer, 0);
+	ses->timer.expire_tv.tv_sec = conf_lease_timeout;
+	if (ses->timer.tpd)
+		triton_timer_mod(&ses->timer, 0);
 }
 
 static void ipoe_session_free(struct ipoe_session *ses)
@@ -240,6 +259,9 @@ static void ipoe_session_free(struct ipoe_session *ses)
 	if (ses->timer.tpd)
 		triton_timer_del(&ses->timer);
 
+	if (ses->dhcpv4_request)
+		dhcpv4_packet_free(ses->dhcpv4_request);
+	
 	triton_context_unregister(&ses->ctx);
 	
 	if (ses->data)
@@ -397,13 +419,13 @@ static void ipoe_dhcpv4_recv(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 				dhcpv4_print_packet(pack, log_ppp_info2);
 			}
 
-			if (ses->ses.state == AP_STATE_ACTIVE)
+			if (ses->ses.ipv4 && ses->ses.state == AP_STATE_ACTIVE && pack->request_ip == ses->ses.ipv4->peer_addr)
 				dhcpv4_send_reply(DHCPOFFER, dhcpv4, pack, &ses->ses, conf_lease_time);
 
 			dhcpv4_packet_free(pack);
 		}
 	} else if (pack->msg_type == DHCPREQUEST) {
-		ses = ipoe_session_lookup(serv, pack);	
+		ses = ipoe_session_lookup(serv, pack);
 
 		if (!ses) {
 			if (conf_verbose) {
@@ -413,14 +435,18 @@ static void ipoe_dhcpv4_recv(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 
 			dhcpv4_send_nak(dhcpv4, pack);
 		} else {
-			if (!ses->ses.ipv4 || pack->server_id != ses->ses.ipv4->addr || pack->request_ip != ses->ses.ipv4->peer_addr) {
+			if (!ses->ses.ipv4 || 
+				(pack->server_id && (pack->server_id != ses->ses.ipv4->addr || pack->request_ip != ses->ses.ipv4->peer_addr)) ||
+				(pack->hdr->ciaddr && (pack->hdr->xid != ses->xid || pack->hdr->ciaddr != ses->ses.ipv4->peer_addr))) {
+
 				if (conf_verbose) {
 					log_info2("recv ");
 					dhcpv4_print_packet(pack, log_info2);
 				}
 
-				if (ses->ses.ipv4 && pack->request_ip != ses->ses.ipv4->peer_addr)
+				if (ses->ses.ipv4 && pack->server_id == ses->ses.ipv4->addr && pack->request_ip && pack->request_ip != ses->ses.ipv4->peer_addr)
 					dhcpv4_send_nak(dhcpv4, pack);
+
 				ap_session_terminate(&ses->ses, TERM_USER_REQUEST, 0);
 			} else {
 				if (conf_verbose) {
@@ -429,10 +455,17 @@ static void ipoe_dhcpv4_recv(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 					dhcpv4_print_packet(pack, log_ppp_info2);
 				}
 
+				if (serv->opt_single)
+					ipoe_drop_sessions(serv, ses);
+
 				if (ses->ses.state == AP_STATE_STARTING && !ses->dhcpv4_request) {
 					ses->dhcpv4_request = pack;
 					pack = NULL;
 					triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_activate, ses);
+				} else if (ses->ses.state == AP_STATE_ACTIVE && !ses->dhcpv4_request) {
+					ses->dhcpv4_request = pack;
+					pack = NULL;
+					triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_keepalive, ses);
 				}
 			}
 		}
@@ -482,9 +515,24 @@ void __export ipoe_get_stat(unsigned int **starting, unsigned int **active)
 	*active = &stat_active;
 }
 
-static void ipoe_drop_sessions(struct ipoe_serv *serv)
+static void __terminate(struct ap_session *ses)
 {
+	ap_session_terminate(ses, TERM_NAS_REQUEST, 0);
+}
 
+static void ipoe_drop_sessions(struct ipoe_serv *serv, struct ipoe_session *skip)
+{
+	struct ipoe_session *ses;
+
+	list_for_each_entry(ses, &serv->sessions, entry) {
+		if (ses == skip)
+			continue;
+
+		if (ses->ses.state == AP_STATE_ACTIVE)
+			ap_session_ifdown(&ses->ses);
+
+		triton_context_call(&ses->ctx, (triton_event_func)__terminate, &ses->ses);
+	}
 }
 
 static void add_interface(const char *ifname, int ifindex, const char *opt)
@@ -507,7 +555,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 			serv->active = 1;
 			serv->ifindex = ifindex;
 			if (opt_single && !serv->opt_single)
-				ipoe_drop_sessions(serv);
+				ipoe_drop_sessions(serv, NULL);
 			serv->opt_single = opt_single;
 			return;
 		}
@@ -672,6 +720,14 @@ static void load_config(void)
 	opt = conf_get_opt("ipoe", "verbose");
 	if (opt)
 		conf_verbose = atoi(opt);
+
+	opt = conf_get_opt("ipoe", "lease-time");
+	if (opt)
+		conf_lease_time = atoi(opt);
+	
+	opt = conf_get_opt("ipoe", "lease-timeout");
+	if (opt)
+		conf_lease_timeout = atoi(opt);
 }
 
 static void ipoe_init(void)

@@ -34,6 +34,8 @@
 
 
 static int conf_verbose;
+static in_addr_t conf_dns1;
+static in_addr_t conf_dns2;
 
 static mempool_t pack_pool;
 static mempool_t opt_pool;
@@ -161,7 +163,7 @@ void dhcpv4_print_packet(struct dhcpv4_packet *pack, void (*print)(const char *f
 			(pack->hdr->yiaddr >> 24) & 0xff);
 	
 	if (pack->hdr->siaddr)
-		print("ciaddr=%i.%i.%i.%i ",
+		print("siaddr=%i.%i.%i.%i ",
 			pack->hdr->siaddr & 0xff,
 			(pack->hdr->siaddr >> 8) & 0xff,
 			(pack->hdr->siaddr >> 16) & 0xff,
@@ -461,6 +463,10 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 {
 	struct dhcpv4_packet *pack;
 	int val, r;
+	struct dns {
+		in_addr_t dns1;
+		in_addr_t dns2;
+	} dns;
 	
 	pack = dhcpv4_packet_alloc();
 	if (!pack) {
@@ -471,8 +477,12 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 	memcpy(pack->hdr, req->hdr, sizeof(*req->hdr));
 
 	pack->hdr->op = DHCP_OP_REPLY;
+	pack->hdr->ciaddr = 0;
 	pack->hdr->yiaddr = ses->ipv4->peer_addr;
-	pack->hdr->siaddr = ses->ipv4->addr;
+	if (msg_type == DHCPOFFER)
+		pack->hdr->siaddr = ses->ipv4->addr;
+	else
+		pack->hdr->siaddr = 0;
 
 	if (dhcpv4_packet_add_opt(pack, 53, &msg_type, 1))
 		goto out_err;
@@ -491,6 +501,16 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 	if (dhcpv4_packet_add_opt(pack, 1, &val, 4))
 		goto out_err;
 	
+	if (conf_dns1 && conf_dns2) {
+		dns.dns1 = conf_dns1;
+		dns.dns2 = conf_dns2;
+		if (dhcpv4_packet_add_opt(pack, 6, &dns, 8))
+			goto out_err;
+	} else if (conf_dns1) {
+		if (dhcpv4_packet_add_opt(pack, 6, &conf_dns1, 4))
+			goto out_err;
+	}
+
 	*pack->ptr++ = 255;
 
 	if (conf_verbose) {
@@ -512,6 +532,43 @@ out_err:
 
 int dhcpv4_send_nak(struct dhcpv4_serv *serv, struct dhcpv4_packet *req)
 {
+	struct dhcpv4_packet *pack;
+	int val, r;
+	
+	pack = dhcpv4_packet_alloc();
+	if (!pack) {
+		log_emerg("out of memory\n");
+		return -1;
+	}
+
+	memcpy(pack->hdr, req->hdr, sizeof(*req->hdr));
+
+	pack->hdr->op = DHCP_OP_REPLY;
+	pack->hdr->ciaddr = 0;
+	pack->hdr->yiaddr = 0;
+	pack->hdr->siaddr = 0;
+
+	val = DHCPNAK;
+	if (dhcpv4_packet_add_opt(pack, 53, &val, 1))
+		goto out_err;
+		
+	*pack->ptr++ = 255;
+
+	if (conf_verbose) {
+		pack->msg_type = DHCPNAK;
+		log_info2("send ");
+		dhcpv4_print_packet(pack, log_info2);
+	}
+
+	r = dhcpv4_send(serv, pack, 0, 0xffffffff);
+
+	dhcpv4_packet_free(pack);
+
+	return r;
+
+out_err:
+	dhcpv4_packet_free(pack);
+	return -1;
 
 	return 0;
 }
@@ -523,6 +580,14 @@ static void load_config()
 	opt = conf_get_opt("ipoe", "verbose");
 	if (opt)
 		conf_verbose = atoi(opt);
+
+	opt = conf_get_opt("dns", "dns1");
+	if (opt)
+		conf_dns1 = inet_addr(opt);
+	
+	opt = conf_get_opt("dns", "dns2");
+	if (opt)
+		conf_dns2 = inet_addr(opt);
 }
 
 static void init()
