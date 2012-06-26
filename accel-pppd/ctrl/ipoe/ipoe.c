@@ -696,8 +696,9 @@ static void load_config(void)
 		else if (strlen(opt) > 4 && memcmp(opt, "lua:", 4) == 0) {
 			conf_username = USERNAME_LUA;
 			conf_lua_username_func = opt + 4;
+		}
 #endif
-		} else
+		else
 			log_emerg("ipoe: unknown username value '%s'\n", opt);
 	}
 

@@ -108,8 +108,6 @@ struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifna
 		goto out_err;
 	}
 	
-	memcpy(serv->hwaddr, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
-	
 	fcntl(raw_sock, F_SETFL, O_NONBLOCK);
 	fcntl(raw_sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
 
@@ -118,6 +116,8 @@ struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifna
 	
 	serv = _malloc(sizeof(*serv));
 	memset(serv, 0, sizeof(*serv));
+
+	memcpy(serv->hwaddr, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
 
 	serv->ctx = ctx;
 	serv->hnd.fd = sock;

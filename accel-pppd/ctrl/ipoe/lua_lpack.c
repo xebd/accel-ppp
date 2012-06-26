@@ -75,7 +75,7 @@ static void doswap(int swap, void *p, size_t n)
     memcpy(&a,s+i,m);			\
     i+=m;				\
     doswap(swap,&a,m);			\
-    lua_pushnumber(L,(lua_Number)a);	\
+    lua_pushinteger(L,(lua_Integer)a);	\
     ++n;				\
     break;				\
    }

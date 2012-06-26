@@ -185,6 +185,12 @@ static void init_lua()
 	if (lua_pcall(L, 0, 0, 0))
 		goto out_err;
 
+	lua_pushlightuserdata(L, L);
+	luaL_getmetatable(L, IPOE_PACKET4);
+	lua_setmetatable(L, -2);
+
+	lua_settop(L, 0);
+
 	file_error = 0;
 
 	pthread_setspecific(__key, L);
@@ -197,6 +203,29 @@ out_err:
 	lua_close(L);
 	L = NULL;
 }
+
+/*static void stackDump (lua_State *L) {
+          int i=lua_gettop(L);
+          printf(" ----------------  Stack Dump ----------------" );
+          while(  i   ) {
+            int t = lua_type(L, i);
+            switch (t) {
+              case LUA_TSTRING:
+                printf("%d:`%s'\n", i, lua_tostring(L, i));
+              break;
+              case LUA_TBOOLEAN:
+                printf("%d: %s\n",i,lua_toboolean(L, i) ? "true" : "false");
+              break;
+              case LUA_TNUMBER:
+                printf("%d: %g\n",  i, lua_tonumber(L, i));
+             break;
+             default: printf("%d: %s\n", i, lua_typename(L, t)); break;
+            }
+           i--;
+          }
+         printf("--------------- Stack Dump Finished ---------------" );
+    }*/
+
 
 int ipoe_lua_set_username(struct ipoe_session *ses, const char *func)
 {
@@ -211,27 +240,31 @@ int ipoe_lua_set_username(struct ipoe_session *ses, const char *func)
 
 	if (!L)
 		return -1;
-	
+
 	lua_getglobal(L, func);
 	lua_pushlightuserdata(L, ses);
-	luaL_getmetatable(L, IPOE_PACKET4);
-	lua_setmetatable(L, -2);
 
 	if (lua_pcall(L, 1, 1, 0)) {
 		log_ppp_error("ipoe: lua: %s\n", lua_tostring(L, -1));
-		return -1;
+		goto out_err;
 	}
 
 	if (!lua_isstring(L, -1)) {
 		log_ppp_error("ipoe: lua: function '%s' must return a string\n", func);
-		return -1;
+		goto out_err;
 	}
 
 	ses->ses.username = _strdup(lua_tostring(L, -1));
 
-	lua_pop(L, 1);
+	lua_settop(L, 0);
 
 	return 0;
+	
+out_err:
+	file_error = 1;
+	lua_close(L);
+	L = NULL;
+	return -1;
 }
 
 static void load_config()
