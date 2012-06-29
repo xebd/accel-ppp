@@ -14,7 +14,6 @@
 #include <linux/init.h>
 #include <linux/if_ether.h>
 #include <linux/semaphore.h>
-#include <linux/rbtree.h>
 #include <linux/version.h>
 
 #include <net/genetlink.h>
@@ -32,22 +31,31 @@
 #define UPDATE 2
 #define END_UPDATE 3
 
+#define HASH_BITS 0xff
+
 #define IPOE_MAGIC 0x55aa
+
+#define IPOE_QUEUE_LEN 100
+#define IPOE_RATE_U 3000 //3s
+#define IPOE_TIMEOUT_U 30 //5s
+
+#define IPOE_NLMSG_SIZE (NLMSG_DEFAULT_SIZE - GENL_HDRLEN - 128)
 
 #ifndef DEFINE_SEMAPHORE
 #define DEFINE_SEMAPHORE(name) struct semaphore name = __SEMAPHORE_INITIALIZER(name, 1)
 #endif
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
-struct ipoe_stats {
+struct ipoe_stats 
+{
 	struct u64_stats_sync sync;
 	u64 packets;
 	u64 bytes;
 };
 #endif
 
-struct ipoe_session {
-	struct rb_node node;
+struct ipoe_session 
+{
 	struct list_head entry;
 
 	__be32 addr;
@@ -57,31 +65,64 @@ struct ipoe_session {
 	struct net_device *dev;
 	struct net_device *link_dev;
 
+	atomic_t refs;
+
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
 	struct ipoe_stats __percpu *rx_stats;
 	struct ipoe_stats __percpu *tx_stats;
 #endif
-
-	int l3:1;
-	int drop:1;
 };
 
-static struct rb_root ipoe_rbt = RB_ROOT;
-static LIST_HEAD(ipoe_list);
-static int ipoe_rcv_active;
-static int ipoe_update;
-static DEFINE_SEMAPHORE(ipoe_wlock);
-static DEFINE_SPINLOCK(ipoe_lock);
+struct ipoe_network
+{
+	struct rcu_head rcu_head;
+	struct list_head entry;
+	
+	__be32 addr;
+	__be32 mask;
+};
 
-static struct ipoe_session *ipoe_lookup(__be32 addr, struct rb_node **r_parent, struct rb_node ***r_p);
-static struct ipoe_session *ipoe_lookup_list(__be32 addr);
+struct ipoe_entry_u
+{
+	struct rcu_head rcu_head;
+	struct list_head entry1;
+	struct list_head entry2;
+
+	__be32 addr;
+	unsigned long tstamp;
+};
+
+static struct list_head ipoe_list[HASH_BITS + 1];
+static struct list_head ipoe_list1_u[HASH_BITS + 1];
+static LIST_HEAD(ipoe_list2_u);
+static DEFINE_SEMAPHORE(ipoe_wlock);
+static LIST_HEAD(ipoe_networks);
+static struct work_struct ipoe_queue_work;
+static struct sk_buff_head ipoe_queue;
+
+static void ipoe_start_queue_work(unsigned long);
+static DEFINE_TIMER(ipoe_timer_u, ipoe_start_queue_work, 0, 0);
+
+static struct ipoe_session *ipoe_lookup(__be32 addr);
 static int ipoe_do_nat(struct sk_buff *skb, __be32 new_addr, int to_peer);
+static void ipoe_queue_u(struct sk_buff *skb, __be32 addr);
+static int ipoe_lookup1_u(__be32 addr, unsigned long *ts);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35)
 static const struct net_device_ops ipoe_netdev_ops;
 #endif
 
 static struct genl_family ipoe_nl_family;
+static struct genl_multicast_group ipoe_nl_mcg;
+
+static inline int hash_addr(__be32 addr)
+{
+#ifdef __LITTLE_ENDIAN
+	return ((addr >> 24) ^ (addr >> 16)) & HASH_BITS;
+#else
+	return (addr  ^ (addr >> 8)) & HASH_BITS;
+#endif	
+}
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
 static void ipoe_update_stats(struct sk_buff *skb, struct ipoe_stats *st)
@@ -92,6 +133,32 @@ static void ipoe_update_stats(struct sk_buff *skb, struct ipoe_stats *st)
 	u64_stats_update_end(&st->sync);
 }
 #endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,0,0)
+static void __kfree_rcu(struct rcu_head *head)
+{
+	kfree(head);
+}
+#endif
+
+static int ipoe_check_network(__be32 addr)
+{
+	struct ipoe_network *n;
+	int r = 0;
+
+	rcu_read_lock();
+
+	list_for_each_entry_rcu(n, &ipoe_networks, entry) {
+		if ((addr & n->mask) == n->addr) {
+			r = 1;
+			break;
+		}
+	}
+
+	rcu_read_unlock();
+
+	return r;
+}
 
 static int ipoe_do_nat(struct sk_buff *skb, __be32 new_addr, int to_peer)
 {
@@ -292,7 +359,7 @@ static netdev_tx_t ipoe_xmit(struct sk_buff *skb, struct net_device *dev)
 			if (ipoe_do_nat(skb, ses->peer_addr, 1))
 				goto drop;
 
-			if (ses->l3) {
+			if (!ses->link_dev) {
 				iph = ip_hdr(skb);
 				
 				ip_send_check(iph);
@@ -346,25 +413,6 @@ drop:
 	return NETDEV_TX_OK;
 }
 
-static inline void ipoe_rcv_lock(void)
-{
-	spin_lock(&ipoe_lock);
-	++ipoe_rcv_active;
-	spin_unlock(&ipoe_lock);
-}
-
-static inline void ipoe_rcv_unlock(void)
-{
-	spin_lock(&ipoe_lock);
-	if (--ipoe_rcv_active == 0) {
-		if (ipoe_update == BEGIN_UPDATE)
-			ipoe_update = UPDATE;
-		else if (ipoe_update == END_UPDATE)
-			ipoe_update = 0;
-	}
-	spin_unlock(&ipoe_lock);
-}
-
 static int ipoe_rcv_arp(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
 {
 	struct ipoe_session *ses = NULL;
@@ -401,24 +449,19 @@ static int ipoe_rcv_arp(struct sk_buff *skb, struct net_device *dev, struct pack
 
 	//pr_info("ipoe: recv arp %08x\n", sip);
 
-	ipoe_rcv_lock();
-
-	if (ipoe_update == UPDATE)
-		ses = ipoe_lookup_list(sip);
-	else
-		ses = ipoe_lookup(sip, NULL, NULL);
+	ses = ipoe_lookup(sip);
 
 	if (!ses)
+		goto drop;
+	
+	if (!ses->dev)
 		goto drop_unlock;
 	
 	stats = &ses->dev->stats;
-
-	if (ses->drop)
-		goto drop_unlock;
 	
 	if (ses->addr || skb->dev == ses->dev) {
-		ses = NULL;
-		goto drop_unlock;
+		atomic_dec(&ses->refs);
+		goto drop;
 	}
 	
 	skb1 = skb_clone(skb, GFP_ATOMIC);
@@ -443,11 +486,9 @@ static int ipoe_rcv_arp(struct sk_buff *skb, struct net_device *dev, struct pack
 #endif
 
 drop_unlock:
-	ipoe_rcv_unlock();
+	atomic_dec(&ses->refs);
+	skb->pkt_type = PACKET_OTHERHOST;
 
-	if (ses)
-		skb->pkt_type = PACKET_OTHERHOST;
-	
 drop:
 	kfree_skb(skb);
 	return NET_RX_DROP;
@@ -478,30 +519,30 @@ static int ipoe_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_t
 	iph = ip_hdr(skb);
 
 	//pr_info("ipoe: recv %08x %08x\n", iph->saddr, iph->daddr);
+	if (!ipoe_check_network(iph->saddr))
+		goto drop;
 	
-	ipoe_rcv_lock();
-
-	if (ipoe_update == UPDATE)
-		ses = ipoe_lookup_list(iph->saddr);
-	else
-		ses = ipoe_lookup(iph->saddr, NULL, NULL);
+	ses = ipoe_lookup(iph->saddr);
 	
-	if (!ses)
-		goto drop_unlock;
+	if (!ses) {
+		ipoe_queue_u(skb, iph->saddr);
+		goto drop;
+	}
 	
 	//pr_info("ipoe: recv cb=%x\n", *(__u16 *)cb_ptr);
-	stats = &ses->dev->stats;
 	
-	if (ses->drop)
+	if (ses->dev)
 		goto drop_unlock;
+	
+	stats = &ses->dev->stats;
 	
 	if (skb->dev == ses->dev) {
 		//pr_info("ipoe: dup\n");
-		ses = NULL;
-		goto drop_unlock;
+		atomic_dec(&ses->refs);
+		goto drop;
 	}
 	
-	if (ses->addr && ipoe_do_nat(skb, ses->addr, 0))
+	if (ses->addr && !ipoe_check_network(iph->daddr) && ipoe_do_nat(skb, ses->addr, 0))
 		goto drop_unlock;
 	
 	skb1 = skb_clone(skb, GFP_ATOMIC);
@@ -526,53 +567,195 @@ static int ipoe_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_t
 #endif
 
 drop_unlock:
-	ipoe_rcv_unlock();
-	
-	if (ses)
-		skb->pkt_type = PACKET_OTHERHOST;
+	atomic_dec(&ses->refs);
+	skb->pkt_type = PACKET_OTHERHOST;
 	
 drop:
 	kfree_skb(skb);
 	return NET_RX_DROP;
 }
 
-static struct ipoe_session *ipoe_lookup(__be32 addr, struct rb_node **r_parent, struct rb_node ***r_p)
+static int ipoe_lookup1_u(__be32 addr, unsigned long *ts)
 {
-	struct ipoe_session *ses;
-	struct rb_node **p = &ipoe_rbt.rb_node;
-	struct rb_node *parent = NULL;
+	struct ipoe_entry_u *e;
+	struct list_head *head = &ipoe_list1_u[hash_addr(addr)];
+	int r = 0;
+	
+	rcu_read_lock();
 
-	while (*p) {
-		parent = *p;
-		ses = rb_entry(parent, typeof(*ses), node);
-		if (addr < ses->peer_addr)
-			p = &(*p)->rb_left;
-		else if (addr > ses->peer_addr)
-			p = &(*p)->rb_right;
-		else
-			return ses;
+	list_for_each_entry_rcu(e, head, entry1) {
+		if (e->addr == addr) {
+			*ts = e->tstamp;
+			r = 1;
+			break;
+		}
 	}
 
-	if (r_parent) {
-		*r_parent = parent;
-		*r_p = p;
+	rcu_read_unlock();
+
+	return r;
+}
+
+static struct ipoe_entry_u *ipoe_lookup2_u(__be32 addr)
+{
+	struct ipoe_entry_u *e;
+	struct list_head *head = &ipoe_list1_u[hash_addr(addr)];
+
+	list_for_each_entry_rcu(e, head, entry1) {
+		if (e->addr == addr)
+			return e;
 	}
 
 	return NULL;
 }
 
-static struct ipoe_session *ipoe_lookup_list(__be32 addr)
+
+static void ipoe_queue_u(struct sk_buff *skb, __u32 addr)
+{
+	unsigned long ts;
+
+	if (ipoe_lookup1_u(addr, &ts) && jiffies_to_msecs(jiffies - ts) < IPOE_RATE_U) {
+		pr_info("not queue %08x\n", addr);
+		return;
+	}
+	
+	if (skb_queue_len(&ipoe_queue) > IPOE_QUEUE_LEN)
+		return;
+
+	skb = skb_clone(skb, GFP_ATOMIC);
+	if (!skb)
+		return;
+	
+	pr_info("queue %08x\n", addr);
+
+	skb_queue_tail(&ipoe_queue, skb);
+	schedule_work(&ipoe_queue_work);
+}
+
+static void ipoe_start_queue_work(unsigned long dummy)
+{
+	schedule_work(&ipoe_queue_work);
+}
+
+static void ipoe_process_queue(struct work_struct *w)
+{
+	struct sk_buff *skb;
+	struct ipoe_entry_u *e;
+	struct ethhdr *eth;
+	struct iphdr *iph;
+	struct sk_buff *report_skb = NULL;
+	void *header = NULL;
+	struct nlattr *ns;
+
+	do {
+		while ((skb = skb_dequeue(&ipoe_queue))) {
+			eth = eth_hdr(skb);
+			iph = ip_hdr(skb);
+		
+			e = ipoe_lookup2_u(iph->saddr);
+			
+			if (!e) {
+				e = kmalloc(sizeof(*e), GFP_KERNEL);
+				e->addr = iph->saddr;
+				e->tstamp = jiffies;
+
+				list_add_tail_rcu(&e->entry1, &ipoe_list1_u[hash_addr(iph->saddr)]);
+				list_add_tail(&e->entry2, &ipoe_list2_u);
+		
+				pr_info("create %08x\n", e->addr);
+			} else if (jiffies_to_msecs(jiffies - e->tstamp) < IPOE_RATE_U) {
+				pr_info("skip %08x\n", e->addr);
+				kfree_skb(skb);
+				continue;
+			} else {
+				e->tstamp = jiffies;
+				list_move_tail(&e->entry2, &ipoe_list2_u);
+				pr_info("update %08x\n", e->addr);
+			}
+
+			if (!report_skb) {
+				report_skb = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
+				if (report_skb)
+					header = genlmsg_put(report_skb, 0, ipoe_nl_mcg.id, &ipoe_nl_family, 0, IPOE_REP_PKT);
+			}
+
+			if (report_skb) {
+				ns = nla_nest_start(report_skb, IPOE_ATTR_PKT);
+				if (!ns)
+					goto nl_err;
+
+				if (nla_put(report_skb, IPOE_ATTR_ETH_HDR, sizeof(*eth), eth))
+					goto nl_err;
+
+				if (nla_put(report_skb, IPOE_ATTR_IP_HDR, sizeof(*iph), iph))
+					goto nl_err;
+
+				if (nla_nest_end(report_skb, ns) >= IPOE_NLMSG_SIZE) {
+					genlmsg_end(report_skb, header);
+					genlmsg_multicast(report_skb, 0, ipoe_nl_mcg.id, GFP_KERNEL);
+					report_skb = NULL;
+				}
+
+				kfree_skb(skb);
+				continue;
+
+nl_err:
+				nlmsg_free(report_skb);
+				report_skb = NULL;
+			}
+				
+			kfree_skb(skb);
+		}
+		
+		while (!list_empty(&ipoe_list2_u)) {
+			e = list_entry(ipoe_list2_u.next, typeof(*e), entry2);
+			if (jiffies_to_msecs(jiffies - e->tstamp) < IPOE_TIMEOUT_U * 1000)
+				break;
+
+			pr_info("free %08x\n", e->addr);
+			list_del(&e->entry2);
+			list_del_rcu(&e->entry1);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
+			kfree_rcu(e, rcu_head);
+#else
+			call_rcu(&e->rcu_head, __kfree_rcu);
+#endif
+		}
+
+		synchronize_rcu();
+	} while (skb_queue_len(&ipoe_queue));
+
+	if (report_skb) {
+		genlmsg_end(report_skb, header);
+		genlmsg_multicast(report_skb, 0, ipoe_nl_mcg.id, GFP_KERNEL);
+	}
+
+	if (!list_empty(&ipoe_list2_u))
+		mod_timer(&ipoe_timer_u, jiffies + IPOE_TIMEOUT_U * HZ);
+	else
+		del_timer(&ipoe_timer_u);
+}
+
+static struct ipoe_session *ipoe_lookup(__be32 addr)
 {
 	struct ipoe_session *ses;
+	struct list_head *head;
 
-	list_for_each_entry(ses, &ipoe_list, entry) {
-		if (ses->peer_addr == addr)
+	head = &ipoe_list[hash_addr(addr)];
+	
+	rcu_read_lock();
+
+	list_for_each_entry_rcu(ses, head, entry) {
+		if (ses->addr == addr) {
+			atomic_inc(&ses->refs);
 			return ses;
+		}
 	}
+
+	rcu_read_unlock();
 
 	return NULL;
 }
-
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
 static struct rtnl_link_stats64 *ipoe_stats64(struct net_device *dev,
@@ -623,9 +806,9 @@ static struct rtnl_link_stats64 *ipoe_stats64(struct net_device *dev,
 
 static void ipoe_free_netdev(struct net_device *dev)
 {
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
 	struct ipoe_session *ses = netdev_priv(dev);
 
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
 	if (ses->rx_stats)
 		free_percpu(ses->rx_stats);
 	if (ses->tx_stats)
@@ -641,8 +824,11 @@ static int ipoe_hard_header(struct sk_buff *skb, struct net_device *dev,
 {
 	const struct ipoe_session *ses = netdev_priv(dev);
 
-	return dev_hard_header(skb, ses->link_dev, type, daddr,
+	if (ses->link_dev)
+		return dev_hard_header(skb, ses->link_dev, type, daddr,
 			       saddr, len);
+	else
+		return eth_header(skb, dev, type, daddr, saddr, len);
 }
 
 static const struct header_ops ipoe_hard_header_ops = {
@@ -678,17 +864,24 @@ static void ipoe_netdev_setup(struct net_device *dev)
 static int ipoe_create(__be32 peer_addr, __be32 addr, const char *link_ifname, const __u8 *hwaddr)
 {
 	struct ipoe_session *ses;
-	struct net_device *dev, *link_dev;
+	struct net_device *dev, *link_dev = NULL;
 	char name[IFNAMSIZ];
 	int r = 0;
-	struct rb_node **p;
-	struct rb_node *parent;
-		
-	link_dev = dev_get_by_name(&init_net, link_ifname);
-	if (!link_dev)
-		return -EINVAL;
+	int h;
 
-	sprintf(name, "%s.ipoe%%d", link_ifname);
+#ifdef __LITTLE_ENDIAN
+	h = ((peer_addr >> 24) ^ (peer_addr >> 16)) & HASH_BITS;
+#else
+	h = (peer_addr  ^ (peer_addr >> 8)) & HASH_BITS;
+#endif
+
+	if (link_ifname) {
+		link_dev = dev_get_by_name(&init_net, link_ifname);
+		if (!link_dev)
+			return -EINVAL;
+		sprintf(name, "%s.ipoe%%d", link_ifname);
+	} else
+		sprintf(name, "ipoe%%d");
 
 	dev = alloc_netdev(sizeof(*ses), name, ipoe_netdev_setup);
 	if (dev == NULL)
@@ -703,11 +896,11 @@ static int ipoe_create(__be32 peer_addr, __be32 addr, const char *link_ifname, c
 	}
 	
 	ses = netdev_priv(dev);
+	atomic_set(&ses->refs, 0);
 	ses->dev = dev;
 	ses->addr = addr;
 	ses->peer_addr = peer_addr;
 	ses->link_dev = link_dev;
-	ses->l3 = 1;
 	memcpy(ses->hwaddr, hwaddr, ETH_ALEN);
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
 	ses->rx_stats = alloc_percpu(struct ipoe_stats);
@@ -718,9 +911,12 @@ static int ipoe_create(__be32 peer_addr, __be32 addr, const char *link_ifname, c
 	}
 #endif
 	
-	dev->features = link_dev->features;
-	memcpy(dev->dev_addr, link_dev->dev_addr, ETH_ALEN);
-	memcpy(dev->broadcast, link_dev->broadcast, ETH_ALEN);
+	if (link_dev) {
+		dev->features = link_dev->features;
+		memcpy(dev->dev_addr, link_dev->dev_addr, ETH_ALEN);
+		memcpy(dev->broadcast, link_dev->broadcast, ETH_ALEN);
+	}
+
 	if (addr)
 		dev->flags = IFF_NOARP;
 	else
@@ -733,36 +929,7 @@ static int ipoe_create(__be32 peer_addr, __be32 addr, const char *link_ifname, c
 		goto failed_free;
 
 	down(&ipoe_wlock);
-
-	spin_lock_bh(&ipoe_lock);
-	if (ipoe_rcv_active == 0)
-		ipoe_update = UPDATE;
-	else
-		ipoe_update = BEGIN_UPDATE;
-	spin_unlock_bh(&ipoe_lock);
-
-	while (ipoe_update != UPDATE)
-		schedule_timeout_uninterruptible(1);
-
-	if (ipoe_lookup(peer_addr, &parent, &p))
-		r = -EEXIST;
-	else {
-		rb_link_node(&ses->node, parent, p);
-		rb_insert_color(&ses->node, &ipoe_rbt);
-	}
-
-	spin_lock_bh(&ipoe_lock);
-	if (ipoe_rcv_active == 0)
-		ipoe_update = 0;
-	else
-		ipoe_update = END_UPDATE;
-	spin_unlock_bh(&ipoe_lock);
-
-	while (ipoe_update != 0)
-		schedule_timeout_uninterruptible(1);
-
-	list_add_tail(&ses->entry, &ipoe_list);
-
+	list_add_tail_rcu(&ses->entry, &ipoe_list[h]);
 	up(&ipoe_wlock);
 
 	return r;
@@ -770,7 +937,8 @@ static int ipoe_create(__be32 peer_addr, __be32 addr, const char *link_ifname, c
 failed_free:
 	free_netdev(dev);
 failed:
-	dev_put(link_dev);
+	if (link_dev)
+		dev_put(link_dev);
 	return r;
 }
 
@@ -780,39 +948,24 @@ static int ipoe_delete(__be32 addr)
 
 	down(&ipoe_wlock);
 
-	spin_lock_bh(&ipoe_lock);
-	if (ipoe_rcv_active == 0)
-		ipoe_update = UPDATE;
-	else
-		ipoe_update = BEGIN_UPDATE;
-	spin_unlock_bh(&ipoe_lock);
-	
-	while (ipoe_update != UPDATE)
-		schedule_timeout_uninterruptible(1);
+	ses = ipoe_lookup(addr);
+	if (!ses) {
+		up(&ipoe_wlock);
+		return -EINVAL;
+	}
 
-	ses = ipoe_lookup(addr, NULL, NULL);
-	if (ses)
-		rb_erase(&ses->node, &ipoe_rbt);
-
-	spin_lock_bh(&ipoe_lock);
-	if (ipoe_rcv_active == 0)
-		ipoe_update = 0;
-	else
-		ipoe_update = END_UPDATE;
-	spin_unlock_bh(&ipoe_lock);
-
-	while (ipoe_update != 0)
-		schedule_timeout_uninterruptible(1);
-
-	if (ses)
-		list_del(&ses->entry);
+	list_del_rcu(&ses->entry);
 
 	up(&ipoe_wlock);
 
-	if (!ses)
-		return -EINVAL;
+	atomic_dec(&ses->refs);
 
-	dev_put(ses->link_dev);
+	while (atomic_read(&ses->refs))
+		schedule_timeout_uninterruptible(1);
+
+	if (ses->link_dev)
+		dev_put(ses->link_dev);
+
 	unregister_netdev(ses->dev);
 	
 	return 0;
@@ -898,12 +1051,66 @@ static int ipoe_nl_cmd_delete(struct sk_buff *skb, struct genl_info *info)
 	return ipoe_delete(addr);
 }
 
+static int ipoe_nl_cmd_add_net(struct sk_buff *skb, struct genl_info *info)
+{
+	struct ipoe_network *n;
+
+	if (!info->attrs[IPOE_ATTR_ADDR] || !info->attrs[IPOE_ATTR_MASK])
+		return -EINVAL;
+	
+	n = kmalloc(sizeof(*n), GFP_KERNEL);
+	if (!n)
+		return -ENOMEM;
+
+	n->addr = nla_get_u32(info->attrs[IPOE_ATTR_ADDR]);
+	n->mask = nla_get_u32(info->attrs[IPOE_ATTR_MASK]);
+	pr_info("add net %08x/%08x\n", n->addr, n->mask);
+
+	down(&ipoe_wlock);
+	list_add_tail_rcu(&n->entry, &ipoe_networks);
+	up(&ipoe_wlock);
+
+	return 0;
+}
+
+static int ipoe_nl_cmd_del_net(struct sk_buff *skb, struct genl_info *info)
+{
+	struct ipoe_network *n;
+	__be32 addr;
+
+	if (!info->attrs[IPOE_ATTR_ADDR])
+		return -EINVAL;
+
+	addr = nla_get_u32(info->attrs[IPOE_ATTR_ADDR]);
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(n, &ipoe_networks, entry) {
+		if (!addr || addr == n->addr) {
+			pr_info("del net %08x/%08x\n", n->addr, n->mask);
+			list_del_rcu(&n->entry);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
+			kfree_rcu(n, rcu_head);
+#else
+			call_rcu(&n->rcu_head, __kfree_rcu);
+#endif
+		}
+	}
+	rcu_read_unlock();
+
+	synchronize_rcu();
+
+	return 0;
+}
+
+
 static struct nla_policy ipoe_nl_policy[IPOE_ATTR_MAX + 1] = {
 	[IPOE_ATTR_NONE]		    = { .type = NLA_UNSPEC,                     },
 	[IPOE_ATTR_ADDR]	      = { .type = NLA_U32,                        },
 	[IPOE_ATTR_PEER_ADDR]	= { .type = NLA_U32,                          },
 	[IPOE_ATTR_IFNAME]	    = { .type = NLA_STRING, .len = IFNAMSIZ - 1 },
 	[IPOE_ATTR_HWADDR]	    = { .type = NLA_U64                         },
+	[IPOE_ATTR_IFNAME]	    = { .type = NLA_STRING, .len = IFNAMSIZ - 1 },
+	[IPOE_ATTR_MASK]	      = { .type = NLA_U32,                        },
 };
 
 static struct genl_ops ipoe_nl_ops[] = {
@@ -925,6 +1132,18 @@ static struct genl_ops ipoe_nl_ops[] = {
 		.policy = ipoe_nl_policy,
 		.flags = GENL_ADMIN_PERM,
 	},
+	{
+		.cmd = IPOE_CMD_ADD_NET,
+		.doit = ipoe_nl_cmd_add_net,
+		.policy = ipoe_nl_policy,
+		.flags = GENL_ADMIN_PERM,
+	},
+	{
+		.cmd = IPOE_CMD_DEL_NET,
+		.doit = ipoe_nl_cmd_del_net,
+		.policy = ipoe_nl_policy,
+		.flags = GENL_ADMIN_PERM,
+	},
 };
 
 static struct genl_family ipoe_nl_family = {
@@ -933,6 +1152,10 @@ static struct genl_family ipoe_nl_family = {
 	.version	= IPOE_GENL_VERSION,
 	.hdrsize	= 0,
 	.maxattr	= IPOE_ATTR_MAX,
+};
+
+static struct genl_multicast_group ipoe_nl_mcg = {
+	.name = IPOE_GENL_MCG_PKT,
 };
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35)
@@ -963,13 +1186,17 @@ static struct packet_type arp_packet_type = {
 
 static int __init ipoe_init(void)
 {
-	int err;
+	int err, i;
 
 	printk("IPoE session driver v0.1\n");
 
 	/*err = register_pernet_device(&ipoe_net_ops);
 	if (err < 0)
 		return err;*/
+	for (i = 0; i < HASH_BITS + 1; i++) {
+		INIT_LIST_HEAD(&ipoe_list[i]);
+		INIT_LIST_HEAD(&ipoe_list1_u[i]);
+	}
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35)
 	err = genl_register_family(&ipoe_nl_family);
@@ -991,20 +1218,27 @@ static int __init ipoe_init(void)
 #else
 	err = genl_register_family_with_ops(&ipoe_nl_family, ipoe_nl_ops,
 					    ARRAY_SIZE(ipoe_nl_ops));
-#endif
 	if (err < 0) {
 		printk(KERN_INFO "ipoe: can't register netlink interface\n");
 		goto out;
 	}
+#endif
+
+	err = genl_register_mc_group(&ipoe_nl_family, &ipoe_nl_mcg);
+	if (err < 0) {
+		printk(KERN_INFO "ipoe: can't register netlink multicast group\n");
+		goto out_unreg;
+	}
+
+	skb_queue_head_init(&ipoe_queue);
+	INIT_WORK(&ipoe_queue_work, ipoe_process_queue);
 
 	dev_add_pack(&ip_packet_type);
 	dev_add_pack(&arp_packet_type);
 
 	return 0;
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35)
 out_unreg:
-#endif
 	genl_unregister_family(&ipoe_nl_family);
 out:
 	return err;
@@ -1012,9 +1246,33 @@ out:
 
 static void __exit ipoe_fini(void)
 {
+	struct ipoe_network *n;
+	struct ipoe_entry_u *e;
+	
+	genl_unregister_mc_group(&ipoe_nl_family, &ipoe_nl_mcg);
+	genl_unregister_family(&ipoe_nl_family);
+
 	dev_remove_pack(&ip_packet_type);
 	dev_remove_pack(&arp_packet_type);
-	genl_unregister_family(&ipoe_nl_family);
+
+	flush_work(&ipoe_queue_work);
+	skb_queue_purge(&ipoe_queue);
+
+	del_timer(&ipoe_timer_u);
+	
+	rcu_barrier();
+
+	while (!list_empty(&ipoe_networks)) {
+		n = list_entry(ipoe_networks.next, typeof(*n), entry);
+		list_del(&n->entry);
+		kfree(n);
+	}
+
+	while (!list_empty(&ipoe_list2_u)) {
+		e = list_entry(ipoe_list2_u.next, typeof(*e), entry2);
+		list_del(&e->entry2);
+		kfree(e);
+	}
 }
 
 module_init(ipoe_init);
