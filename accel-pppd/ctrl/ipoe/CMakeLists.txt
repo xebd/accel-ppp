@@ -4,6 +4,7 @@ SET(sources
 	ipoe.c
 	dhcpv4.c
 	dhcpv4_options.c
+	ipoe_netlink.c
 )
 
 IF (LUA)

@@ -1,5 +1,5 @@
-#ifndef __LINUX_ISG_H
-#define __LINUX_ISG_H
+#ifndef __LINUX_IPOE_H
+#define __LINUX_IPOE_H
 
 #include <linux/types.h>
 
@@ -7,6 +7,7 @@ enum {
 	IPOE_CMD_NOOP,
 	IPOE_CMD_CREATE,
 	IPOE_CMD_DELETE,
+	IPOE_CMD_MODIFY,
 	IPOE_CMD_ADD_NET,
 	IPOE_CMD_DEL_NET,
 	IPOE_REP_PKT,
@@ -22,7 +23,7 @@ enum {
 	IPOE_ATTR_IFNAME,	   /* u32 */
 	IPOE_ATTR_HWADDR,	   /* u32 */
 	IPOE_ATTR_MASK,	   /* u32 */
-	IPOE_ATTR_PKT,	   /* u32 */
+	IPOE_ATTR_IFINDEX,	   /* u32 */
 	IPOE_ATTR_ETH_HDR,	   /* u32 */
 	IPOE_ATTR_IP_HDR,	   /* u32 */
 	__IPOE_ATTR_MAX,

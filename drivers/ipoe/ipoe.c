@@ -57,6 +57,7 @@ struct ipoe_stats
 struct ipoe_session 
 {
 	struct list_head entry;
+	struct list_head entry2;
 
 	__be32 addr;
 	__be32 peer_addr;
@@ -94,6 +95,7 @@ struct ipoe_entry_u
 
 static struct list_head ipoe_list[HASH_BITS + 1];
 static struct list_head ipoe_list1_u[HASH_BITS + 1];
+static LIST_HEAD(ipoe_list2);
 static LIST_HEAD(ipoe_list2_u);
 static DEFINE_SEMAPHORE(ipoe_wlock);
 static LIST_HEAD(ipoe_networks);
@@ -338,6 +340,9 @@ static netdev_tx_t ipoe_xmit(struct sk_buff *skb, struct net_device *dev)
 	__be32 tip;*/
 	int noff;
 
+	if (!ses->peer_addr)
+		goto drop;
+
 	noff = skb_network_offset(skb);
 
 	if (skb->protocol == htons(ETH_P_IP)) {
@@ -447,15 +452,14 @@ static int ipoe_rcv_arp(struct sk_buff *skb, struct net_device *dev, struct pack
 	
 	memcpy(&sip, arp_ptr + ETH_ALEN, 4);
 
+	if (!sip)
+		goto drop;
 	//pr_info("ipoe: recv arp %08x\n", sip);
 
 	ses = ipoe_lookup(sip);
 
 	if (!ses)
 		goto drop;
-	
-	if (!ses->dev)
-		goto drop_unlock;
 	
 	stats = &ses->dev->stats;
 	
@@ -518,6 +522,9 @@ static int ipoe_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_t
 	
 	iph = ip_hdr(skb);
 
+	if (!iph->saddr)
+		goto drop;
+
 	//pr_info("ipoe: recv %08x %08x\n", iph->saddr, iph->daddr);
 	if (!ipoe_check_network(iph->saddr))
 		goto drop;
@@ -530,9 +537,6 @@ static int ipoe_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_t
 	}
 	
 	//pr_info("ipoe: recv cb=%x\n", *(__u16 *)cb_ptr);
-	
-	if (ses->dev)
-		goto drop_unlock;
 	
 	stats = &ses->dev->stats;
 	
@@ -646,6 +650,7 @@ static void ipoe_process_queue(struct work_struct *w)
 	struct sk_buff *report_skb = NULL;
 	void *header = NULL;
 	struct nlattr *ns;
+	int id = 1;
 
 	do {
 		while ((skb = skb_dequeue(&ipoe_queue))) {
@@ -680,8 +685,11 @@ static void ipoe_process_queue(struct work_struct *w)
 			}
 
 			if (report_skb) {
-				ns = nla_nest_start(report_skb, IPOE_ATTR_PKT);
+				ns = nla_nest_start(report_skb, id++);
 				if (!ns)
+					goto nl_err;
+			
+				if (nla_put_u32(report_skb, IPOE_ATTR_IFINDEX, skb->dev ? skb->dev->ifindex : skb->skb_iif))
 					goto nl_err;
 
 				if (nla_put(report_skb, IPOE_ATTR_ETH_HDR, sizeof(*eth), eth))
@@ -866,14 +874,8 @@ static int ipoe_create(__be32 peer_addr, __be32 addr, const char *link_ifname, c
 	struct ipoe_session *ses;
 	struct net_device *dev, *link_dev = NULL;
 	char name[IFNAMSIZ];
-	int r = 0;
-	int h;
-
-#ifdef __LITTLE_ENDIAN
-	h = ((peer_addr >> 24) ^ (peer_addr >> 16)) & HASH_BITS;
-#else
-	h = (peer_addr  ^ (peer_addr >> 8)) & HASH_BITS;
-#endif
+	int r = -EINVAL;
+	int h = hash_addr(peer_addr);
 
 	if (link_ifname) {
 		link_dev = dev_get_by_name(&init_net, link_ifname);
@@ -884,8 +886,10 @@ static int ipoe_create(__be32 peer_addr, __be32 addr, const char *link_ifname, c
 		sprintf(name, "ipoe%%d");
 
 	dev = alloc_netdev(sizeof(*ses), name, ipoe_netdev_setup);
-	if (dev == NULL)
+	if (dev == NULL) {
+		r = -ENOMEM;
 		goto failed;
+	}
 
 	dev_net_set(dev, &init_net);
 
@@ -929,7 +933,10 @@ static int ipoe_create(__be32 peer_addr, __be32 addr, const char *link_ifname, c
 		goto failed_free;
 
 	down(&ipoe_wlock);
-	list_add_tail_rcu(&ses->entry, &ipoe_list[h]);
+	if (peer_addr)
+		list_add_tail_rcu(&ses->entry, &ipoe_list[h]);
+	list_add_tail(&ses->entry2, &ipoe_list2);
+	r = dev->ifindex;
 	up(&ipoe_wlock);
 
 	return r;
@@ -940,35 +947,6 @@ failed:
 	if (link_dev)
 		dev_put(link_dev);
 	return r;
-}
-
-static int ipoe_delete(__be32 addr)
-{
-	struct ipoe_session *ses;
-
-	down(&ipoe_wlock);
-
-	ses = ipoe_lookup(addr);
-	if (!ses) {
-		up(&ipoe_wlock);
-		return -EINVAL;
-	}
-
-	list_del_rcu(&ses->entry);
-
-	up(&ipoe_wlock);
-
-	atomic_dec(&ses->refs);
-
-	while (atomic_read(&ses->refs))
-		schedule_timeout_uninterruptible(1);
-
-	if (ses->link_dev)
-		dev_put(ses->link_dev);
-
-	unregister_netdev(ses->dev);
-	
-	return 0;
 }
 
 static int ipoe_nl_cmd_noop(struct sk_buff *skb, struct genl_info *info)
@@ -1007,29 +985,61 @@ out:
 
 static int ipoe_nl_cmd_create(struct sk_buff *skb, struct genl_info *info)
 {
-	__be32 peer_addr, addr  = 0;
+	struct sk_buff *msg;
+	void *hdr;
+	__be32 peer_addr = 0, addr  = 0;
 	int ret = 0;
 	char ifname[IFNAMSIZ];
 	__u8 hwaddr[ETH_ALEN];
 	//struct net *net = genl_info_net(info);
 
-	if (!info->attrs[IPOE_ATTR_PEER_ADDR] || !info->attrs[IPOE_ATTR_IFNAME]) {
-		ret = -EINVAL;
+	msg = nlmsg_new(NLMSG_GOODSIZE, GFP_KERNEL);
+	if (!msg) {
+		ret = -ENOMEM;
 		goto out;
 	}
 
-	peer_addr = nla_get_be32(info->attrs[IPOE_ATTR_PEER_ADDR]);
+	hdr = genlmsg_put(msg, info->snd_pid, info->snd_seq,
+			  &ipoe_nl_family, 0, IPOE_CMD_CREATE);
+	if (IS_ERR(hdr)) {
+		ret = PTR_ERR(hdr);
+		goto err_out;
+	}
+
+	if (info->attrs[IPOE_ATTR_PEER_ADDR])
+		peer_addr = nla_get_be32(info->attrs[IPOE_ATTR_PEER_ADDR]);
+
 	if (info->attrs[IPOE_ATTR_ADDR])
 		addr = nla_get_be32(info->attrs[IPOE_ATTR_ADDR]);
-	nla_strlcpy(ifname, info->attrs[IPOE_ATTR_IFNAME], IFNAMSIZ - 1);
+
+	if (info->attrs[IPOE_ATTR_IFNAME])
+		nla_strlcpy(ifname, info->attrs[IPOE_ATTR_IFNAME], IFNAMSIZ - 1);
+
 	if (info->attrs[IPOE_ATTR_HWADDR])
 		nla_memcpy(hwaddr, info->attrs[IPOE_ATTR_HWADDR], ETH_ALEN);
 	else
 		memset(hwaddr, 0, sizeof(hwaddr));
 
-	pr_info("ipoe: create %08x %08x %s\n", peer_addr, addr, ifname);
+	pr_info("ipoe: create %08x %08x %s\n", peer_addr, addr, info->attrs[IPOE_ATTR_IFNAME] ? ifname : "-");
 	
-	ret = ipoe_create(peer_addr, addr, ifname, hwaddr);
+	ret = ipoe_create(peer_addr, addr, info->attrs[IPOE_ATTR_IFNAME] ? ifname : NULL, hwaddr);
+
+	if (ret < 0) {
+		nlmsg_free(msg);
+		return ret;
+	}
+
+	nla_put_u32(msg, IPOE_ATTR_IFINDEX, ret);
+
+	genlmsg_end(msg, hdr);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35)
+	return genlmsg_unicast(msg, info->snd_pid);
+#else
+	return genlmsg_unicast(genl_info_net(info), msg, info->snd_pid);
+#endif
+
+err_out:
+	nlmsg_free(msg);
 
 out:
 	return ret;
@@ -1037,18 +1047,131 @@ out:
 
 static int ipoe_nl_cmd_delete(struct sk_buff *skb, struct genl_info *info)
 {
-	__be32 addr;
-	//struct net *net = genl_info_net(info);
+	struct net_device *dev;
+	int ifindex;
+	int r = 0;
+	int ret = -EINVAL;
 
-
-	if (!info->attrs[IPOE_ATTR_PEER_ADDR])
+	if (!info->attrs[IPOE_ATTR_IFINDEX])
 		return -EINVAL;
 	
-	addr = nla_get_u32(info->attrs[IPOE_ATTR_PEER_ADDR]);
+	ifindex = nla_get_u32(info->attrs[IPOE_ATTR_IFINDEX]);
 
-	pr_info("ipoe: delete %08x\n", addr);
+	down(&ipoe_wlock);
+
+	rcu_read_lock();
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35)
+	dev = dev_get_by_index_rcu(ifindex);
+#else
+	dev = dev_get_by_index_rcu(&init_net, ifindex);
+#endif
+	if (!dev || dev->header_ops != &ipoe_hard_header_ops)
+		r = 1;
+	rcu_read_unlock();
+
+	if (r)
+		goto out_unlock;
 	
-	return ipoe_delete(addr);
+	ses = netdev_priv(dev);
+
+	pr_info("ipoe: delete %08x\n", ses->peer_addr);
+	
+	if (ses->peer_addr)
+		list_del_rcu(&ses->entry);
+	list_del(&ses->entry2);
+
+	up(&ipoe_wlock);
+
+	synchronize_rcu();
+
+	atomic_dec(&ses->refs);
+
+	while (atomic_read(&ses->refs))
+		schedule_timeout_uninterruptible(1);
+
+	if (ses->link_dev)
+		dev_put(ses->link_dev);
+
+	unregister_netdev(ses->dev);
+
+	ret = 0;
+
+out_unlock:
+	up(&ipoe_wlock);
+out:
+	return ret;
+}
+
+static int ipoe_nl_cmd_modify(struct sk_buff *skb, struct genl_info *info)
+{
+	int ret = -EINVAL, r = 0;
+	char ifname[IFNAMSIZ];
+	struct net_device *dev, *link_dev, *old_dev;
+	struct ipoe_session *ses;
+	int ifindex;
+
+	if (!info->attrs[IPOE_ATTR_IFINDEX])
+		goto out;
+
+	down(&ipoe_wlock);
+
+	ifindex = nla_get_be32(info->attrs[IPOE_ATTR_IFINDEX]);
+
+	rcu_read_lock();
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35)
+	dev = dev_get_by_index_rcu(ifindex);
+#else
+	dev = dev_get_by_index_rcu(&init_net, ifindex);
+#endif
+	if (!dev || dev->header_ops != &ipoe_hard_header_ops)
+		r = 1;
+	rcu_read_unlock();
+
+	if (r)
+		goto out_unlock;
+	
+	ses = netdev_priv(dev);
+
+	if (info->attrs[IPOE_ATTR_IFNAME]) {
+		nla_strlcpy(ifname, info->attrs[IPOE_ATTR_IFNAME], IFNAMSIZ - 1);
+		
+		link_dev = dev_get_by_name(&init_net, ifname);
+
+		if (!link_dev)
+			goto out_unlock;
+		
+		old_dev = ses->link_dev;
+		ses->link_dev = link_dev;
+		if (old_dev)
+			dev_put(old_dev);
+	}
+
+	if (info->attrs[IPOE_ATTR_PEER_ADDR]) {
+		if (ses->peer_addr) {
+			list_del_rcu(&ses->entry);
+			synchronize_rcu();
+		}
+		
+		ses->peer_addr = nla_get_be32(info->attrs[IPOE_ATTR_PEER_ADDR]);
+
+		if (ses->peer_addr)
+			list_add_tail_rcu(&ses->entry, &ipoe_list[hash_addr(ses->peer_addr)])
+	}
+
+	if (info->attrs[IPOE_ATTR_ADDR])
+		ses->addr = nla_get_be32(info->attrs[IPOE_ATTR_ADDR]);
+
+	if (info->attrs[IPOE_ATTR_HWADDR])
+		nla_memcpy(ses->hwaddr, info->attrs[IPOE_ATTR_HWADDR], ETH_ALEN);
+
+	pr_info("ipoe: modify %08x %08x\n", ses->peer_addr, ses->addr);
+
+	ret = 0;
+
+out_unlock:
+	up(&ipoe_wlock);
+out:
+	return ret;
 }
 
 static int ipoe_nl_cmd_add_net(struct sk_buff *skb, struct genl_info *info)
@@ -1064,7 +1187,7 @@ static int ipoe_nl_cmd_add_net(struct sk_buff *skb, struct genl_info *info)
 
 	n->addr = nla_get_u32(info->attrs[IPOE_ATTR_ADDR]);
 	n->mask = nla_get_u32(info->attrs[IPOE_ATTR_MASK]);
-	pr_info("add net %08x/%08x\n", n->addr, n->mask);
+	//pr_info("add net %08x/%08x\n", n->addr, n->mask);
 
 	down(&ipoe_wlock);
 	list_add_tail_rcu(&n->entry, &ipoe_networks);
@@ -1086,7 +1209,7 @@ static int ipoe_nl_cmd_del_net(struct sk_buff *skb, struct genl_info *info)
 	rcu_read_lock();
 	list_for_each_entry_rcu(n, &ipoe_networks, entry) {
 		if (!addr || addr == n->addr) {
-			pr_info("del net %08x/%08x\n", n->addr, n->mask);
+			//pr_info("del net %08x/%08x\n", n->addr, n->mask);
 			list_del_rcu(&n->entry);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
 			kfree_rcu(n, rcu_head);
@@ -1129,6 +1252,12 @@ static struct genl_ops ipoe_nl_ops[] = {
 	{
 		.cmd = IPOE_CMD_DELETE,
 		.doit = ipoe_nl_cmd_delete,
+		.policy = ipoe_nl_policy,
+		.flags = GENL_ADMIN_PERM,
+	},
+	{
+		.cmd = IPOE_CMD_MODIFY,
+		.doit = ipoe_nl_cmd_modify,
 		.policy = ipoe_nl_policy,
 		.flags = GENL_ADMIN_PERM,
 	},
@@ -1248,6 +1377,8 @@ static void __exit ipoe_fini(void)
 {
 	struct ipoe_network *n;
 	struct ipoe_entry_u *e;
+	struct ipoe_session *ses;
+	int i;
 	
 	genl_unregister_mc_group(&ipoe_nl_family, &ipoe_nl_mcg);
 	genl_unregister_family(&ipoe_nl_family);
@@ -1259,8 +1390,24 @@ static void __exit ipoe_fini(void)
 	skb_queue_purge(&ipoe_queue);
 
 	del_timer(&ipoe_timer_u);
+
+	down(&ipoe_wlock);
+	up(&ipoe_wlock);
+
+	for (i = 0; i < HASH_BITS; i++)
+		rcu_assign_pointer(ipoe_list[i].next, &ipoe_list[i]);
 	
 	rcu_barrier();
+
+	while (!list_empty(&ipoe_list2)) {
+		ses = list_entry(ipoe_list2.next, typeof(*ses), entry);
+		list_del(&ses->entry2);
+	
+		if (ses->link_dev)
+			dev_put(ses->link_dev);
+	
+		unregister_netdev(ses->dev);
+	}
 
 	while (!list_empty(&ipoe_networks)) {
 		n = list_entry(ipoe_networks.next, typeof(*n), entry);

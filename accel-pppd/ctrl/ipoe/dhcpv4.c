@@ -109,7 +109,7 @@ struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifna
 	}
 	
 	fcntl(raw_sock, F_SETFL, O_NONBLOCK);
-	fcntl(raw_sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
+	fcntl(raw_sock, F_SETFD, fcntl(raw_sock, F_GETFD) | FD_CLOEXEC);
 
 	fcntl(sock, F_SETFL, O_NONBLOCK);
 	fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);

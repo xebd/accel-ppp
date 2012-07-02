@@ -44,11 +44,22 @@ struct ipoe_session
 	uint32_t giaddr;
 	uint8_t *data;
 	struct dhcpv4_packet *dhcpv4_request;
+	int ifindex;
 };
 
 #ifdef USE_LUA
 int ipoe_lua_set_username(struct ipoe_session *, const char *func);
 #endif
+
+struct iphdr;
+struct ethhdr;
+
+void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph);
+
+void ipoe_nl_add_net(uint32_t addr, int mask);
+void ipoe_nl_delete_nets(void);
+int ipoe_nl_create(uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_t *hwaddr);
+void ipoe_nl_delete(int ifindex);
 
 #endif
 

@@ -652,7 +652,7 @@ int __export rta_addattr_l(struct rtattr *rta, int maxlen, int type,
 	return 0;
 }
 
-int parse_rtattr(struct rtattr *tb[], int max, struct rtattr *rta, int len)
+int __export parse_rtattr(struct rtattr *tb[], int max, struct rtattr *rta, int len)
 {
 	memset(tb, 0, sizeof(struct rtattr *) * (max + 1));
 	while (RTA_OK(rta, len)) {
