@@ -15,11 +15,13 @@ struct ipoe_serv
 	char *ifname;
 	int ifindex;
 	int active;
-	int opt_single;
-	int opt_dhcpv4;
 	struct list_head sessions;
 	struct dhcpv4_serv *dhcpv4;
 	pthread_mutex_t lock;
+	int opt_mode;
+	int opt_shared:1;
+	int opt_dhcpv4:1;
+	int opt_up:1;
 };
 
 struct dhcp_opt
@@ -60,6 +62,7 @@ void ipoe_nl_add_net(uint32_t addr, int mask);
 void ipoe_nl_delete_nets(void);
 int ipoe_nl_create(uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_t *hwaddr);
 void ipoe_nl_delete(int ifindex);
+int ipoe_nl_modify(int ifindex, uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_t *hwaddr);
 
 #endif
 

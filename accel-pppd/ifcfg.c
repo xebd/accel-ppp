@@ -82,16 +82,16 @@ void ap_session_ifup(struct ap_session *ses)
 		if (ioctl(sock_fd, SIOCSIFADDR, &ifr))
 			log_ppp_error("failed to set IPv4 address: %s\n", strerror(errno));
 	
-		if (ses->ctrl->type == CTRL_TYPE_IPOE) {
+		/*if (ses->ctrl->type == CTRL_TYPE_IPOE) {
 			addr.sin_addr.s_addr = 0xffffffff;
 			memcpy(&ifr.ifr_netmask, &addr, sizeof(addr));
 			if (ioctl(sock_fd, SIOCSIFNETMASK, &ifr))
 				log_ppp_error("failed to set IPv4 nask: %s\n", strerror(errno));
-		}
+		}*/
 		
 		addr.sin_addr.s_addr = ses->ipv4->peer_addr;
 
-		if (ses->ctrl->type == CTRL_TYPE_IPOE) {
+		/*if (ses->ctrl->type == CTRL_TYPE_IPOE) {
 			memset(&rt, 0, sizeof(rt));
 			memcpy(&rt.rt_dst, &addr, sizeof(addr));
 			rt.rt_flags = RTF_HOST | RTF_UP;
@@ -99,7 +99,7 @@ void ap_session_ifup(struct ap_session *ses)
 			rt.rt_dev = ifr.ifr_name;
 			if (ioctl(sock_fd, SIOCADDRT, &rt, sizeof(rt)))
 				log_ppp_error("failed to add route: %s\n", strerror(errno));
-		} else {
+		} else*/ {
 			memcpy(&ifr.ifr_dstaddr, &addr, sizeof(addr));
 			
 			if (ioctl(sock_fd, SIOCSIFDSTADDR, &ifr))

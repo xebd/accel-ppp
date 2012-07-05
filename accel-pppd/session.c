@@ -17,12 +17,17 @@
 #include "log.h"
 #include "events.h"
 #include "ap_session.h"
+#include "spinlock.h"
 #include "mempool.h"
 #include "memdebug.h"
 
 int conf_sid_ucase;
 pthread_rwlock_t __export ses_lock = PTHREAD_RWLOCK_INITIALIZER;
 __export LIST_HEAD(ses_list);
+
+#if __WORDSIZE == 32
+static spinlock_t seq_lock;
+#endif
 
 int __export sock_fd;
 int __export sock6_fd;
@@ -39,6 +44,7 @@ void __export ap_session_init(struct ap_session *ses)
 {
 	memset(ses, 0, sizeof(*ses));
 	INIT_LIST_HEAD(&ses->pd_list);
+	ses->ifindex = -1;
 }
 
 int __export ap_session_starting(struct ap_session *ses)
@@ -47,14 +53,16 @@ int __export ap_session_starting(struct ap_session *ses)
 
 	ses->start_time = time(NULL);
 	
-	memset(&ifr, 0, sizeof(ifr));
-	strcpy(ifr.ifr_name, ses->ifname);
+	if (ses->ifindex == -1) {
+		memset(&ifr, 0, sizeof(ifr));
+		strcpy(ifr.ifr_name, ses->ifname);
 
-	if (ioctl(sock_fd, SIOCGIFINDEX, &ifr)) {
-		log_ppp_error("ioctl(SIOCGIFINDEX): %s\n", strerror(errno));
-		return -1;
+		if (ioctl(sock_fd, SIOCGIFINDEX, &ifr)) {
+			log_ppp_error("ioctl(SIOCGIFINDEX): %s\n", strerror(errno));
+			return -1;
+		}
+		ses->ifindex = ifr.ifr_ifindex;
 	}
-	ses->ifindex = ifr.ifr_ifindex;
 	
 	generate_sessionid(ses);
 

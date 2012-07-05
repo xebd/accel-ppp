@@ -37,7 +37,13 @@
 #define USERNAME_IFNAME 0
 #define USERNAME_LUA 1
 
+#define MODE_L2 0
+#define MODE_L3 1
+
 static int conf_dhcpv4 = 1;
+static int conf_up = 0;
+static int conf_mode = 0;
+static int conf_shared = 1;
 //static int conf_dhcpv6;
 static int conf_username;
 
@@ -51,7 +57,6 @@ static int conf_netmask = 24;
 static int conf_lease_time = 600;
 static int conf_lease_timeout = 660;
 static int conf_verbose;
-static int conf_opt_single = 0;
 
 static unsigned int stat_starting;
 static unsigned int stat_active;
@@ -158,10 +163,10 @@ static void ipoe_session_start(struct ipoe_session *ses)
 	char *passwd;
 	struct ifreq ifr;
 
-	if (ses->serv->opt_single)
+	if (ses->serv->opt_shared == 0)
 		strncpy(ses->ses.ifname, ses->serv->ifname, AP_IFNAME_LEN);
 	else {
-		ses->ifindex = ipoe_nl_create(0, 0, ses->serv->ifname, ses->hwaddr);
+		ses->ifindex = ipoe_nl_create(0, 0, ses->dhcpv4_request ? ses->serv->ifname : NULL, ses->hwaddr);
 		if (ses->ifindex == -1) {
 			log_ppp_error("ipoe: failed to create interface\n");
 			ipoe_session_finished(&ses->ses);
@@ -178,6 +183,7 @@ static void ipoe_session_start(struct ipoe_session *ses)
 		}
 
 		strncpy(ses->ses.ifname, ifr.ifr_name, AP_IFNAME_LEN);
+		ses->ses.ifindex = ses->ifindex;
 	}
 	
 	if (!ses->ses.username) {
@@ -236,6 +242,11 @@ static void ipoe_session_start(struct ipoe_session *ses)
 		ses->timer.expire = ipoe_session_timeout;
 		ses->timer.expire_tv.tv_sec = conf_offer_timeout;
 		triton_timer_add(&ses->ctx, &ses->timer, 0);
+	} else {
+		if (ipoe_nl_modify(ses->ifindex, ses->giaddr, ses->ses.ipv4->peer_addr, NULL, NULL))
+			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 0);
+		else
+			ap_session_activate(&ses->ses);
 	}
 }
 
@@ -493,7 +504,7 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 					dhcpv4_print_packet(pack, log_ppp_info2);
 				}
 
-				if (serv->opt_single)
+				if (serv->opt_shared == 0)
 					ipoe_drop_sessions(serv, ses);
 
 				if (ses->ses.state == AP_STATE_STARTING && !ses->dhcpv4_request) {
@@ -552,7 +563,9 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 	ses->ctrl.terminate = ipoe_session_terminate;
 	ses->ctrl.type = CTRL_TYPE_IPOE;
 	ses->ctrl.name = "ipoe";
-	
+
+	ses->giaddr = iph->saddr;
+
 	ses->ctrl.calling_station_id = _malloc(17);
 	ses->ctrl.called_station_id = _malloc(17);
 
@@ -585,10 +598,13 @@ void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph)
 	list_for_each_entry(serv, &serv_list, entry) {
 		if (serv->ifindex != ifindex)
 			continue;
+
+		if (!serv->opt_up)
+			return;
 		
 		pthread_mutex_lock(&serv->lock);
 		list_for_each_entry(ses, &serv->sessions, entry) {
-			if (memcmp(ses->hwaddr, eth->h_source, 6) == 0) {
+			if (ses->giaddr == iph->saddr) {
 				pthread_mutex_unlock(&serv->lock);
 				return;
 			}
@@ -649,42 +665,105 @@ static void ipoe_drop_sessions(struct ipoe_serv *serv, struct ipoe_session *skip
 
 static void add_interface(const char *ifname, int ifindex, const char *opt)
 {
-	int opt_single;
-	const char *ptr;
+	char *str0, *str, *ptr1, *ptr2;
+	int end;
 	struct ipoe_serv *serv;
+	int opt_shared = conf_shared;
+	int opt_dhcpv4 = 0;
+	int opt_up = 0;
+	int opt_mode = conf_mode;
 
-	ptr = strstr(opt, ",single");
-	if (ptr) {
-		if (ptr[7] && ptr[7] != ',')
-			goto out_err_parse;
-		opt_single = 1;
-	} else {
-		ptr = strstr(opt, ",shared");
-		if (ptr) {
-			if (ptr[7] && ptr[7] != ',')
-				goto out_err_parse;
-			opt_single = 0;
-		} else 
-			opt_single = conf_opt_single;
-	}
+	str0 = strchr(opt, ',');
+	if (str0) {
+		str0 = _strdup(str0 + 1);
+		str = str0;
 	
-	list_for_each_entry(serv, &serv_list, entry) {
-		if (strcmp(ifname, serv->ifname) == 0) {
-			serv->active = 1;
-			serv->ifindex = ifindex;
-			if (opt_single && !serv->opt_single)
-				ipoe_drop_sessions(serv, NULL);
-			serv->opt_single = opt_single;
-			return;
+		while (1) {
+			for (ptr1 = str + 1; *ptr1 && *ptr1 != '='; ptr1++);
+
+			if (!*ptr1)
+				goto parse_err;
+		
+			*ptr1 = 0;
+
+			for (ptr2 = ++ptr1; *ptr2 && *ptr2 != ','; ptr2++);
+
+			end = *ptr2 == 0;
+
+			if (!end)
+				*ptr2 = 0;
+
+			if (ptr2 == ptr1)
+				goto parse_err;
+
+			if (strcmp(str, "start") == 0) {
+				if (!strcmp(ptr1, "up"))
+					opt_up = 1;
+				else if (!strcmp(ptr1, "dhcpv4"))
+					opt_dhcpv4 = 1;
+				else
+					goto parse_err;
+			} else if (strcmp(str, "shared") == 0) {
+				opt_shared = atoi(ptr1);
+			} else if (strcmp(str, "mode") == 0) {
+				if (!strcmp(ptr1, "L2"))
+					opt_mode = MODE_L2;
+				else if (!strcmp(ptr1, "L3"))
+					opt_mode = MODE_L3;
+				else
+					goto parse_err;
+			} else
+				goto parse_err;
+
+			if (end)
+				break;
+
+			str = ptr2 + 1;
 		}
+		
+		_free(str0);
+	}
+
+	if (!opt_up && !opt_dhcpv4) {
+		opt_up = conf_up;
+		opt_dhcpv4 = conf_dhcpv4;
+	}
+
+	list_for_each_entry(serv, &serv_list, entry) {
+		if (!strcmp(ifname, serv->ifname))
+			continue;
+
+		serv->active = 1;
+		serv->ifindex = ifindex;
+		
+		if ((opt_shared && !serv->opt_shared) || (!opt_shared && serv->opt_shared)) {
+			ipoe_drop_sessions(serv, NULL);
+			serv->opt_shared = opt_shared;
+		}
+
+		if (opt_dhcpv4 && !serv->dhcpv4) {
+			serv->dhcpv4 = dhcpv4_create(&serv->ctx, serv->ifname);
+			if (serv->dhcpv4)
+				serv->dhcpv4->recv = ipoe_recv_dhcpv4;
+		} else if (!opt_dhcpv4 && serv->dhcpv4) {
+			dhcpv4_free(serv->dhcpv4);
+			serv->dhcpv4 = NULL;
+		}
+
+		serv->opt_up = opt_up;
+		serv->opt_mode = conf_mode;
+
+		return;
 	}
 
 	serv = _malloc(sizeof(*serv));
 	memset(serv, 0, sizeof(*serv));
 	serv->ifname = _strdup(ifname);
 	serv->ifindex = ifindex;
-	serv->opt_single = opt_single;
-	serv->opt_dhcpv4 = conf_dhcpv4;
+	serv->opt_shared = opt_shared;
+	serv->opt_dhcpv4 = opt_dhcpv4;
+	serv->opt_up = opt_up;
+	serv->opt_mode = opt_mode;
 	serv->active = 1;
 	INIT_LIST_HEAD(&serv->sessions);
 	pthread_mutex_init(&serv->lock, NULL);
@@ -703,8 +782,9 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 
 	return;
 
-out_err_parse:
+parse_err:
 	log_error("ipoe: failed to parse '%s'\n", opt);
+	_free(str0);
 }
 
 static void load_interface(const char *opt)
@@ -853,12 +933,10 @@ static void load_config(void)
 {
 	const char *opt;
 	struct conf_sect_t *s = conf_get_section("ipoe");
+	struct conf_option_t *opt1;
 
 	if (!s)
 		return;
-
-	load_interfaces(s);
-	load_local_nets(s);
 
 	opt = conf_get_opt("ipoe", "username");
 	if (opt) {
@@ -901,6 +979,41 @@ static void load_config(void)
 	opt = conf_get_opt("ipoe", "lease-timeout");
 	if (opt)
 		conf_lease_timeout = atoi(opt);
+	
+	opt = conf_get_opt("ipoe", "shared");
+	if (opt)
+		conf_shared = atoi(opt);
+	else
+		conf_shared = 1;
+	
+	opt = conf_get_opt("ipoe", "mode");
+	if (opt) {
+		if (!strcmp(opt, "L2"))
+			conf_mode = MODE_L2;
+		else if (!strcmp(opt, "L3"))
+			conf_mode = MODE_L3;
+		else
+			log_emerg("ipoe: failed to parse 'mode=%s'\n", opt);
+	} else
+		conf_mode = MODE_L2;
+
+	conf_dhcpv4 = 0;
+	conf_up = 0;
+
+	list_for_each_entry(opt1, &s->items, entry) {
+		if (strcmp(opt1->name, "start"))
+			continue;
+		if (!strcmp(opt1->val, "dhcpv4"))
+			conf_dhcpv4 = 1;
+		else if (!strcmp(opt1->val, "up"))
+			conf_up = 1;
+	}
+
+	if (!conf_dhcpv4 && !conf_up)
+		conf_dhcpv4 = 1;
+	
+	load_interfaces(s);
+	load_local_nets(s);
 }
 
 static void ipoe_init(void)

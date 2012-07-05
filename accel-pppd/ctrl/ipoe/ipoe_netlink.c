@@ -109,7 +109,7 @@ int ipoe_nl_create(uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_
 	nlh->nlmsg_type = ipoe_genl_id;
 
 	ghdr = NLMSG_DATA(&req.n);
-	ghdr->cmd = IPOE_CMD_DELETE;
+	ghdr->cmd = IPOE_CMD_CREATE;
 
 	if (peer_addr)
 		addattr32(nlh, 1024, IPOE_ATTR_PEER_ADDR, peer_addr);
@@ -162,6 +162,61 @@ out:
 
 	return ret;
 }
+
+int ipoe_nl_modify(int ifindex, uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_t *hwaddr)
+{
+	struct rtnl_handle rth;
+	struct nlmsghdr *nlh;
+	struct genlmsghdr *ghdr;
+	int ret = 0;
+	struct {
+		struct nlmsghdr n;
+		char buf[1024];
+	} req;
+	union {
+		uint8_t hwaddr[6];
+		uint64_t u64;
+	} u;
+
+	if (rtnl_open_byproto(&rth, 0, NETLINK_GENERIC)) {
+		log_ppp_error("ipoe: cannot open generic netlink socket\n");
+		return -1;
+	}
+
+	nlh = &req.n;
+	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
+	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+	nlh->nlmsg_type = ipoe_genl_id;
+
+	ghdr = NLMSG_DATA(&req.n);
+	ghdr->cmd = IPOE_CMD_MODIFY;
+
+	addattr32(nlh, 1024, IPOE_ATTR_IFINDEX, ifindex);
+
+	if (peer_addr)
+		addattr32(nlh, 1024, IPOE_ATTR_PEER_ADDR, peer_addr);
+	
+	if (addr)
+		addattr32(nlh, 1024, IPOE_ATTR_ADDR, addr);
+	
+	if (hwaddr) {
+		memcpy(u.hwaddr, hwaddr, 6);
+		addattr_l(nlh, 1024, IPOE_ATTR_HWADDR, &u.u64, 8);
+	}
+
+	if (ifname)
+		addattr_l(nlh, 1024, IPOE_ATTR_IFNAME, ifname, strlen(ifname) + 1);
+
+	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 ) {
+		log_ppp_error("ipoe: nl_create: error talking to kernel\n");
+		ret = -1;
+	}
+	
+	rtnl_close(&rth);
+
+	return ret;
+}
+
 
 void ipoe_nl_delete(int ifindex)
 {
