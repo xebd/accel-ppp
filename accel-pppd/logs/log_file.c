@@ -514,7 +514,6 @@ static void ev_ppp_authorized1(struct ppp_t *ppp)
 
 out_err:
 	_free(fname);
-	list_del(&lpd->pd.entry);
 	free_lpd(lpd);
 }
 
