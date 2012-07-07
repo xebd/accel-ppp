@@ -771,6 +771,7 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	int n, service_match = 0;
 	struct delayed_pado_t *pado;
 	struct timespec ts;
+	int len;
 
 	__sync_add_and_fetch(&stat_PADI_recv, 1);
 
@@ -789,18 +790,14 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 		return;
 	}
 
-	if (hdr->sid) {
-		log_warn("pppoe: discarding PADI packet (sid is not zero)\n");
+	if (hdr->sid)
 		return;
-	}
 
-	if (conf_verbose) {
-		log_info2("recv ");
-		print_packet(pack);
-	}
-	
-	for (n = 0; n < ntohs(hdr->length); n += sizeof(*tag) + ntohs(tag->tag_len)) {
+	len = ntohs(hdr->length);
+	for (n = 0; n < len; n += sizeof(*tag) + ntohs(tag->tag_len)) {
 		tag = (struct pppoe_tag *)(pack + ETH_HLEN + sizeof(*hdr) + n);
+		if (n + sizeof(*tag) + ntohs(tag->tag_len) > len)
+			return;
 		switch (ntohs(tag->tag_type)) {
 			case TAG_END_OF_LIST:
 				break;
@@ -823,6 +820,11 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 				relay_sid_tag = tag;
 				break;
 		}
+	}
+
+	if (conf_verbose) {
+		log_info2("recv ");
+		print_packet(pack);
 	}
 
 	if (!service_match) {
