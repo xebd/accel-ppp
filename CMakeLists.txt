@@ -38,6 +38,4 @@ endif (BUILD_DRIVER OR BUILD_DRIVER_ONLY)
 
 if (BUILD_IPOE_DRIVER)
 	add_subdirectory(drivers/ipoe)
-	add_subdirectory(ipoe-util)
-
 endif (BUILD_IPOE_DRIVER)

@@ -84,7 +84,6 @@ int rad_proc_attrs(struct rad_req_t *req)
 				if (!conf_gw_ip_address)
 					log_ppp_warn("radius: gw-ip-address not specified, cann't assign IP address...\n");
 				else {
-					req->rpd->ipv4_addr.owner = &ipdb;
 					req->rpd->ipv4_addr.peer_addr = attr->val.ipaddr;
 					req->rpd->ipv4_addr.addr = conf_gw_ip_address;
 				}
@@ -190,7 +189,6 @@ static struct ipv6db_item_t *get_ipv6(struct ap_session *ses)
 {
 	struct radius_pd_t *rpd = find_pd(ses);
 
-	rpd->ipv6_addr.owner = &ipdb;
 	rpd->ipv6_addr.intf_id = 0;
 
 	if (!list_empty(&rpd->ipv6_addr.addr_list))
@@ -203,10 +201,10 @@ static struct ipv6db_prefix_t *get_ipv6_prefix(struct ap_session *ses)
 {
 	struct radius_pd_t *rpd = find_pd(ses);
 
-	rpd->ipv6_dp.owner = &ipdb;
-
-	if (!list_empty(&rpd->ipv6_dp.prefix_list))
+	if (!list_empty(&rpd->ipv6_dp.prefix_list)) {
+		rpd->ipv6_dp_assigned = 1;
 		return &rpd->ipv6_dp;
+	}
 
 	return NULL;
 }
@@ -240,12 +238,21 @@ static void ses_starting(struct ap_session *ses)
 	INIT_LIST_HEAD(&rpd->plugin_list);
 	INIT_LIST_HEAD(&rpd->ipv6_addr.addr_list);
 	INIT_LIST_HEAD(&rpd->ipv6_dp.prefix_list);
+	
+	rpd->ipv4_addr.owner = &ipdb;
+	rpd->ipv6_addr.owner = &ipdb;
+	rpd->ipv6_dp.owner = &ipdb;
 
 	list_add_tail(&rpd->pd.entry, &ses->pd_list);
 
 	pthread_rwlock_wrlock(&sessions_lock);
 	list_add_tail(&rpd->entry, &sessions);
 	pthread_rwlock_unlock(&sessions_lock);
+
+#ifdef USE_BACKUP
+	if (ses->state == AP_STATE_RESTORE && ses->backup)
+		radius_restore_session(ses, rpd);
+#endif
 }
 
 static void ses_acct_start(struct ap_session *ses)

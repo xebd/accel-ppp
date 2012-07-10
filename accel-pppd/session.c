@@ -17,6 +17,7 @@
 #include "log.h"
 #include "events.h"
 #include "ap_session.h"
+#include "backup.h"
 #include "spinlock.h"
 #include "mempool.h"
 #include "memdebug.h"
@@ -51,8 +52,6 @@ int __export ap_session_starting(struct ap_session *ses)
 {
 	struct ifreq ifr;
 
-	ses->start_time = time(NULL);
-	
 	if (ses->ifindex == -1) {
 		memset(&ifr, 0, sizeof(ifr));
 		strcpy(ifr.ifr_name, ses->ifname);
@@ -63,10 +62,14 @@ int __export ap_session_starting(struct ap_session *ses)
 		}
 		ses->ifindex = ifr.ifr_ifindex;
 	}
-	
-	generate_sessionid(ses);
 
-	ses->state = AP_STATE_STARTING;
+	if (ses->state != AP_STATE_RESTORE) {
+		ses->start_time = time(NULL);
+		generate_sessionid(ses);
+
+		ses->state = AP_STATE_STARTING;
+	}
+	
 	__sync_add_and_fetch(&ap_session_stat.starting, 1);
 
 	pthread_rwlock_wrlock(&ses_lock);
@@ -80,10 +83,16 @@ int __export ap_session_starting(struct ap_session *ses)
 
 void __export ap_session_activate(struct ap_session *ses)
 {
+	ap_session_ifup(ses);
+
 	ses->state = AP_STATE_ACTIVE;
 	__sync_sub_and_fetch(&ap_session_stat.starting, 1);
 	__sync_add_and_fetch(&ap_session_stat.active, 1);
-	ap_session_ifup(ses);
+
+#ifdef USE_BACKUP
+	if (!ses->backup)
+		backup_save_session(ses);
+#endif
 }
 
 void __export ap_session_finished(struct ap_session *ses)
@@ -98,6 +107,7 @@ void __export ap_session_finished(struct ap_session *ses)
 		case AP_STATE_ACTIVE:
 			__sync_sub_and_fetch(&ap_session_stat.active, 1);
 			break;
+		case AP_STATE_RESTORE:
 		case AP_STATE_STARTING:
 			__sync_sub_and_fetch(&ap_session_stat.starting, 1);
 			break;
@@ -123,6 +133,11 @@ void __export ap_session_finished(struct ap_session *ses)
 		_free(ses->ipv6_pool_name);
 		ses->ipv6_pool_name = NULL;
 	}
+
+#ifdef USE_BACKUP
+	if (ses->backup)
+		ses->backup->storage->free(ses->backup);
+#endif
 	
 	if (ap_shutdown && !ap_session_stat.starting && !ap_session_stat.active && !ap_session_stat.finishing)
 		kill(getpid(), SIGTERM);
@@ -145,14 +160,14 @@ void __export ap_session_terminate(struct ap_session *ses, int cause, int hard)
 		return;
 	}
 	
-	ses->terminating = 1;
-	ses->state = AP_STATE_FINISHING;
-
 	if (ses->state == AP_STATE_ACTIVE)
 		__sync_sub_and_fetch(&ap_session_stat.active, 1);
 	else
 		__sync_sub_and_fetch(&ap_session_stat.starting, 1);
+
 	__sync_add_and_fetch(&ap_session_stat.finishing, 1);
+	ses->terminating = 1;
+	ses->state = AP_STATE_FINISHING;
 
 	log_ppp_debug("terminate\n");
 

@@ -9,6 +9,8 @@
 #include "ipdb.h"
 #include "list.h"
 #include "spinlock.h"
+#include "backup.h"
+#include "ap_session_backup.h"
 
 #ifdef RADIUS
 #include "radius.h"
@@ -23,6 +25,8 @@ struct ippool_t
 	struct list_head gw_list;
 	struct list_head tunnel_list;
 	struct list_head items;
+	uint32_t startip;
+	uint32_t endip;
 	spinlock_t lock;
 };
 
@@ -143,7 +147,7 @@ static int parse2(const char *str, uint32_t *begin, uint32_t *end)
 	return 0;
 }
 
-static void add_range(struct list_head *list, const char *name)
+static void add_range(struct ippool_t *p, struct list_head *list, const char *name)
 {
 	uint32_t i,startip, endip;
 	struct ipaddr_t *ip;
@@ -161,6 +165,9 @@ static void add_range(struct list_head *list, const char *name)
 		list_add_tail(&ip->entry, list);
 		cnt++;
 	}
+
+	p->startip = startip;
+	p->endip = endip;
 }
 
 static void generate_pool(struct ippool_t *p)
@@ -242,6 +249,89 @@ static struct ipdb_t ipdb = {
 	.get_ipv4 = get_ip,
 	.put_ipv4 = put_ip,
 };
+
+#ifdef USE_BACKUP
+static void put_ip_b(struct ap_session *ses, struct ipv4db_item_t *it)
+{
+	_free(it);
+}
+
+static struct ipdb_t ipdb_b = {
+	.put_ipv4 = put_ip_b,
+};
+
+static int session_save(struct ap_session *ses, struct backup_mod *m)
+{
+	if (!ses->ipv4 || ses->ipv4->owner != &ipdb)
+		return -2;
+
+	return 0;
+}
+
+static int session_restore(struct ap_session *ses, struct backup_mod *m)
+{
+	struct backup_tag *tag;
+	in_addr_t addr = 0, peer_addr;
+	struct ippool_t *p;
+	struct ippool_item_t *it, *it0 = NULL;
+
+	m = backup_find_mod(m->data, MODID_COMMON);
+
+	list_for_each_entry(tag, &m->tag_list, entry) {
+		switch (tag->id) {
+			case SES_TAG_IPV4_ADDR:
+				addr = *(in_addr_t *)tag->data;
+				break;
+			case SES_TAG_IPV4_PEER_ADDR:
+				peer_addr = *(in_addr_t *)tag->data;
+				break;
+		}
+	}
+
+	spin_lock(&def_pool->lock);
+	list_for_each_entry(it, &def_pool->items, entry) {
+		if (peer_addr == it->it.peer_addr && addr == it->it.addr) {
+			list_del(&it->entry);
+			it0 = it;
+			break;
+		}
+	}
+	spin_unlock(&def_pool->lock);
+
+	if (!it0) {
+		list_for_each_entry(p, &pool_list, entry) {
+			spin_lock(&p->lock);
+			list_for_each_entry(it, &p->items, entry) {
+				if (peer_addr == it->it.peer_addr && addr == it->it.addr) {
+					list_del(&it->entry);
+					it0 = it;
+					break;
+				}
+			}
+			spin_unlock(&p->lock);
+			if (it0)
+				break;
+		}
+	}
+
+	if (it0)
+		ses->ipv4 = &it0->it;
+	else {
+		ses->ipv4 = _malloc(sizeof(*ses->ipv4));
+		ses->ipv4->addr = addr;
+		ses->ipv4->peer_addr = peer_addr;
+		ses->ipv4->owner = &ipdb_b;
+	}
+
+	return 0;
+}
+
+static struct backup_module backup_mod = {
+	.id = MODID_IPPOOL,
+	.save = session_save,
+	.restore = session_restore,
+};
+#endif
 
 #ifdef RADIUS
 static int parse_attr(struct ap_session *ses, struct rad_attr_t *attr)
@@ -348,11 +438,11 @@ static void ippool_init(void)
 			p = pool_name ? find_pool(pool_name + 1, 1) : def_pool;
 
 			if (!strcmp(opt->name, "gw"))
-				add_range(&p->gw_list, opt->val);
+				add_range(p, &p->gw_list, opt->val);
 			else if (!strcmp(opt->name, "tunnel"))
-				add_range(&p->tunnel_list, opt->val);
+				add_range(p, &p->tunnel_list, opt->val);
 			else if (!opt->val)
-				add_range(&p->tunnel_list, opt->name);
+				add_range(p, &p->tunnel_list, opt->name);
 		}
 	}
 
@@ -362,6 +452,10 @@ static void ippool_init(void)
 		generate_pool(p);
 
 	ipdb_register(&ipdb);
+
+#ifdef USE_BACKUP
+	backup_register_module(&backup_mod);
+#endif
 
 #ifdef RADIUS
 	if (triton_module_loaded("radius"))

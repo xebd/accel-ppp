@@ -16,8 +16,9 @@
 
 static int rad_req_read(struct triton_md_handler_t *h);
 static void rad_req_timeout(struct triton_timer_t *t);
+static int make_socket(struct rad_req_t *req);
 
-struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *username)
+static struct rad_req_t *__rad_req_alloc(struct radius_pd_t *rpd, int code, const char *username, in_addr_t addr, int port)
 {
 	struct rad_plugin_t *plugin;
 	struct ppp_t *ppp = NULL;
@@ -38,7 +39,11 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 
 	req->type = code == CODE_ACCESS_REQUEST ? RAD_SERV_AUTH : RAD_SERV_ACCT;
 
-	req->serv = rad_server_get(req->type);
+	if (addr)
+		req->serv = rad_server_get2(req->type, addr, port);
+	else
+		req->serv = rad_server_get(req->type);
+
 	if (!req->serv)
 		goto out_err;
 	
@@ -118,6 +123,26 @@ out_err:
 		log_emerg("radius: out of memory\n");
 	rad_req_free(req);
 	return NULL;
+}
+
+struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *username)
+{
+	return __rad_req_alloc(rpd, code, username, 0, 0);
+}
+
+struct rad_req_t *rad_req_alloc2(struct radius_pd_t *rpd, int code, const char *username, in_addr_t addr, int port)
+{
+	struct rad_req_t *req = __rad_req_alloc(rpd, code, username, addr, port);
+
+	if (!req)
+		return NULL;
+
+	if (code == CODE_ACCOUNTING_REQUEST)
+		req->server_port = req->serv->acct_port;
+
+	make_socket(req);
+
+	return req;
 }
 
 int rad_req_acct_fill(struct rad_req_t *req)

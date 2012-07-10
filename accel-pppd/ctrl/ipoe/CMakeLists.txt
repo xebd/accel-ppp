@@ -17,6 +17,10 @@ IF (LUA)
 	SET(sources ${sources} lua.c lua_lpack.c)
 ENDIF (LUA)
 
+IF (BACKUP)
+	SET(sources ${sources} backup.c)
+ENDIF (BACKUP)
+
 ADD_LIBRARY(ipoe SHARED ${sources})
 IF (LUA)
 	TARGET_LINK_LIBRARIES(ipoe ${LUA_LIBRARIES})

@@ -7,6 +7,7 @@
 #define AP_STATE_STARTING  1
 #define AP_STATE_ACTIVE    2
 #define AP_STATE_FINISHING 3
+#define AP_STATE_RESTORE   4
 
 #define TERM_USER_REQUEST 1
 #define TERM_SESSION_TIMEOUT 2
@@ -30,6 +31,7 @@
 #define MPPE_REQUIRE 2
 
 struct ap_session;
+struct backup_data;
 
 struct ap_ctrl
 {
@@ -70,6 +72,10 @@ struct ap_session
 	char *ipv6_pool_name;
 
 	struct ap_ctrl *ctrl;
+
+#ifdef USE_BACKUP
+	struct backup_data *backup;
+#endif
 
 	int terminating:1;
 	int terminated:1;

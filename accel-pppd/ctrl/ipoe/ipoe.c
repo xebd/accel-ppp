@@ -73,6 +73,7 @@ struct iplink_arg
 
 static void ipoe_session_finished(struct ap_session *s);
 static void ipoe_drop_sessions(struct ipoe_serv *serv, struct ipoe_session *skip);
+static void ipoe_serv_close(struct triton_context_t *ctx);
 
 static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct dhcpv4_packet *pack)
 {
@@ -321,12 +322,17 @@ static void ipoe_session_free(struct ipoe_session *ses)
 static void ipoe_session_finished(struct ap_session *s)
 {
 	struct ipoe_session *ses = container_of(s, typeof(*ses), ses);
+	int serv_close;
 
 	log_ppp_debug("ipoe: session finished\n");
 
 	pthread_mutex_lock(&ses->serv->lock);
 	list_del(&ses->entry);
+	serv_close = ses->serv->need_close && list_empty(&ses->serv->sessions);
 	pthread_mutex_unlock(&ses->serv->lock);
+
+	if (serv_close)
+		ipoe_serv_close(&ses->serv->ctx);
 
 	triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_free, ses);
 }
@@ -590,6 +596,37 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 	return ses;
 }
 
+struct ipoe_session *ipoe_session_alloc(void)
+{
+	struct ipoe_session *ses;
+
+	ses = mempool_alloc(ses_pool);
+	if (!ses) {
+		log_emerg("out of memery\n");
+		return NULL;
+	}
+
+	memset(ses, 0, sizeof(*ses));
+
+	ap_session_init(&ses->ses);
+
+	ses->ifindex = -1;
+	
+	ses->ctx.before_switch = log_switch;
+	ses->ctx.close = ipoe_session_close;
+	ses->ctrl.ctx = &ses->ctx;
+	ses->ctrl.started = ipoe_session_started;
+	ses->ctrl.finished = ipoe_session_finished;
+	ses->ctrl.terminate = ipoe_session_terminate;
+	ses->ctrl.type = CTRL_TYPE_IPOE;
+	ses->ctrl.name = "ipoe";
+
+	ses->ses.ctrl = &ses->ctrl;
+	ses->ses.chan_name = ses->ctrl.calling_station_id;
+
+	return ses;
+}
+
 void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph)
 {
 	struct ipoe_serv *serv;
@@ -618,6 +655,14 @@ void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph)
 static void ipoe_serv_close(struct triton_context_t *ctx)
 {
 	struct ipoe_serv *serv = container_of(ctx, typeof(*serv), ctx);
+
+	pthread_mutex_lock(&serv->lock);
+	if (!list_empty(&serv->sessions)) {
+		serv->need_close = 1;
+		pthread_mutex_unlock(&serv->lock);
+		return;
+	}
+	pthread_mutex_unlock(&serv->lock);
 
 	if (serv->dhcpv4)
 		dhcpv4_free(serv->dhcpv4);
@@ -661,6 +706,18 @@ static void ipoe_drop_sessions(struct ipoe_serv *serv, struct ipoe_session *skip
 
 		triton_context_call(&ses->ctx, (triton_event_func)__terminate, &ses->ses);
 	}
+}
+
+struct ipoe_serv *ipoe_find_serv(const char *ifname)
+{
+	struct ipoe_serv *serv;
+
+	list_for_each_entry(serv, &serv_list, entry) {
+		if (strcmp(serv->ifname, ifname) == 0)
+			return serv;
+	}
+
+	return NULL;
 }
 
 static void add_interface(const char *ifname, int ifindex, const char *opt)
@@ -758,6 +815,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 
 	serv = _malloc(sizeof(*serv));
 	memset(serv, 0, sizeof(*serv));
+	serv->ctx.close = ipoe_serv_close;
 	serv->ifname = _strdup(ifname);
 	serv->ifindex = ifindex;
 	serv->opt_shared = opt_shared;
@@ -873,6 +931,7 @@ static void load_interfaces(struct conf_sect_t *sect)
 	list_for_each_safe(pos, n, &serv_list) {
 		serv = list_entry(pos, typeof(*serv), entry);
 		if (!serv->active) {
+			ipoe_drop_sessions(serv, NULL);
 			list_del(&serv->entry);
 			triton_context_call(&serv->ctx, (triton_event_func)ipoe_serv_close, &serv->ctx);
 		}

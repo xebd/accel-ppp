@@ -22,6 +22,7 @@ struct ipoe_serv
 	int opt_shared:1;
 	int opt_dhcpv4:1;
 	int opt_up:1;
+	int need_close:1;
 };
 
 struct dhcp_opt
@@ -57,6 +58,9 @@ struct iphdr;
 struct ethhdr;
 
 void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph);
+struct ipoe_session *ipoe_session_alloc(void);
+
+struct ipoe_serv *ipoe_find_serv(const char *ifname);
 
 void ipoe_nl_add_net(uint32_t addr, int mask);
 void ipoe_nl_delete_nets(void);

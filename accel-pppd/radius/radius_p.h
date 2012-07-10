@@ -19,6 +19,7 @@ struct radius_pd_t
 	struct ap_session *ses;
 	pthread_mutex_t lock;
 	int authenticated:1;
+	int ipv6_dp_assigned:1;
 
 	struct rad_req_t *auth_req;
 	struct rad_req_t *acct_req;
@@ -142,6 +143,7 @@ int rad_dict_load(const char *fname);
 void rad_dict_free(struct rad_dict_t *dict);
 
 struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *username);
+struct rad_req_t *rad_req_alloc2(struct radius_pd_t *rpd, int code, const char *username, in_addr_t addr, int port);
 int rad_req_acct_fill(struct rad_req_t *);
 void rad_req_free(struct rad_req_t *);
 int rad_req_send(struct rad_req_t *, int verbose);
@@ -169,6 +171,7 @@ int rad_packet_send(struct rad_packet_t *pck, int fd, struct sockaddr_in *addr);
 void dm_coa_cancel(struct radius_pd_t *pd);
 
 struct rad_server_t *rad_server_get(int);
+struct rad_server_t *rad_server_get2(int, in_addr_t, int);
 void rad_server_put(struct rad_server_t *, int);
 int rad_server_req_enter(struct rad_req_t *);
 void rad_server_req_exit(struct rad_req_t *);
@@ -176,6 +179,8 @@ int rad_server_realloc(struct rad_req_t *);
 void rad_server_fail(struct rad_server_t *);
 void rad_server_timeout(struct rad_server_t *);
 void rad_server_reply(struct rad_server_t *);
+			
+void radius_restore_session(struct ap_session *ses, struct radius_pd_t *rpd);
 
 struct stat_accm_t;
 struct stat_accm_t *stat_accm_create(unsigned int time);

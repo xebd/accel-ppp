@@ -24,9 +24,9 @@ static LIST_HEAD(serv_list);
 
 static void __free_server(struct rad_server_t *);
 
-static struct rad_server_t *__rad_server_get(int type, struct rad_server_t *exclude)
+static struct rad_server_t *__rad_server_get(int type, struct rad_server_t *exclude, in_addr_t addr, int port)
 {
-	struct rad_server_t *s, *s0 = NULL;
+	struct rad_server_t *s, *s0 = NULL, *s1 = NULL;
 	struct timespec ts;
 	
 	clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -43,6 +43,15 @@ static struct rad_server_t *__rad_server_get(int type, struct rad_server_t *excl
 		else if (type == RAD_SERV_ACCT && !s->acct_port)
 			continue;
 
+		if (s->addr == addr) {
+			if (type == RAD_SERV_AUTH && port == s->auth_port)
+				s1 = s;
+			else if (type == RAD_SERV_ACCT && port == s->acct_port)
+				s1 = s;
+			else if (!s1)
+				s1 = s;
+		}
+		
 		if (!s0) {
 			s0 = s;
 			continue;
@@ -52,7 +61,9 @@ static struct rad_server_t *__rad_server_get(int type, struct rad_server_t *excl
 			s0 = s;
 	}
 
-	if (!s0)
+	if (s1)
+		s0 = s1;
+	else if (!s0)
 		return NULL;
 
 	__sync_add_and_fetch(&s0->client_cnt[type], 1);
@@ -62,7 +73,12 @@ static struct rad_server_t *__rad_server_get(int type, struct rad_server_t *excl
 
 struct rad_server_t *rad_server_get(int type)
 {
-	return __rad_server_get(type, NULL);
+	return __rad_server_get(type, NULL, 0, 0);
+}
+
+struct rad_server_t *rad_server_get2(int type, in_addr_t addr, int port)
+{
+	return __rad_server_get(type, NULL, addr, port);
 }
 
 void rad_server_put(struct rad_server_t *s, int type)
@@ -137,7 +153,7 @@ void rad_server_req_exit(struct rad_req_t *req)
 
 int rad_server_realloc(struct rad_req_t *req)
 {
-	struct rad_server_t *s = __rad_server_get(req->type, req->serv);
+	struct rad_server_t *s = __rad_server_get(req->type, req->serv, 0, 0);
 
 	if (!s)
 		return -1;

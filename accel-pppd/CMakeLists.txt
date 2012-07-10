@@ -24,6 +24,11 @@ IF (MEMDEBUG)
 	ENDIF (VALGRIND)
 ENDIF (MEMDEBUG)
 
+IF (BACKUP)
+	ADD_DEFINITIONS(-DUSE_BACKUP)
+	ADD_SUBDIRECTORY(backup)
+ENDIF (BACKUP)
+
 IF (NOT DEFINED RADIUS)
 	SET(RADIUS TRUE)
 ENDIF (NOT DEFINED RADIUS)
@@ -43,7 +48,10 @@ ADD_SUBDIRECTORY(shaper)
 
 ADD_EXECUTABLE(accel-pppd
 	session.c
+	session_backup.c
 	ifcfg.c
+
+	backup/backup.c
 
 	ppp/ppp.c
 	ppp/ppp_fsm.c

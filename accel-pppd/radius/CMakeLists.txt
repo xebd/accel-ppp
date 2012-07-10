@@ -10,6 +10,10 @@ SET(sources
 	radius.c
 )
 
+IF (BACKUP)
+	SET(sources ${sources} backup.c)
+ENDIF (BACKUP)
+
 ADD_DEFINITIONS(-DDICTIONARY="${CMAKE_INSTALL_PREFIX}/share/accel-ppp/radius/dictionary")
 
 ADD_LIBRARY(radius SHARED ${sources})
