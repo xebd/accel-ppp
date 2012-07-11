@@ -555,6 +555,8 @@ static int serv_read(struct triton_md_handler_t *h)
 			continue;
 		}
 
+		fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
+
 		conn = _malloc(sizeof(*conn));
 		memset(conn, 0, sizeof(*conn));
 		conn->hnd.fd = sock;

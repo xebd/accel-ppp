@@ -21,6 +21,8 @@
 #include "ipoe.h"
 #include "if_ipoe.h"
 
+#include "memdebug.h"
+
 #define PKT_ATTR_MAX 256
 
 static struct rtnl_handle rth;
@@ -217,6 +219,84 @@ int ipoe_nl_modify(int ifindex, uint32_t peer_addr, uint32_t addr, const char *i
 	return ret;
 }
 
+static int dump_session(const struct sockaddr_nl *addr, struct nlmsghdr *n, void *arg)
+{
+	struct list_head *list = arg;
+	struct ipoe_session_info *info;
+	struct rtattr *tb[IPOE_ATTR_MAX + 1];
+	struct genlmsghdr *ghdr = NLMSG_DATA(n);
+	int len = n->nlmsg_len;
+	struct rtattr *attrs;
+
+	if (ghdr->cmd != IPOE_CMD_GET) {
+		log_error("ipoe: dump_session: got unexpected command %d\n", ghdr->cmd);
+		return 0;
+	}
+
+	len -= NLMSG_LENGTH(GENL_HDRLEN);
+	if (len < 0 ) {
+		log_error("ipoe: dump_session: wrong message length %i\n", len);
+		return -1;
+	}
+
+	attrs = (struct rtattr *)((char *)ghdr + GENL_HDRLEN);
+	parse_rtattr(tb, IPOE_ATTR_MAX, attrs, len);
+
+	info = _malloc(sizeof(*info));
+	if (!info) {
+		log_emerg("out of memory\n");
+		return -1;
+	}
+
+	memset(info, 0, sizeof(*info));
+
+	if (tb[IPOE_ATTR_IFINDEX])
+		info->ifindex = *(uint32_t *)(RTA_DATA(tb[IPOE_ATTR_IFINDEX]));
+	else {
+		log_error("ipoe: dump_session: IPOE_ATTR_IFINDEX is absent\n");
+		_free(info);
+		return 0;
+	}
+
+	if (tb[IPOE_ATTR_ADDR])
+		info->addr = *(uint32_t *)(RTA_DATA(tb[IPOE_ATTR_ADDR]));
+
+	if (tb[IPOE_ATTR_PEER_ADDR])
+		info->peer_addr = *(uint32_t *)(RTA_DATA(tb[IPOE_ATTR_PEER_ADDR]));
+
+	list_add_tail(&info->entry, list);
+
+	return 0;
+}
+
+void ipoe_nl_get_sessions(struct list_head *list)
+{
+	struct nlmsghdr *nlh;
+	struct genlmsghdr *ghdr;
+	struct {
+		struct nlmsghdr n;
+		char buf[1024];
+	} req;
+
+	if (rth.fd == -1)
+		return;
+	
+	nlh = &req.n;
+	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
+	nlh->nlmsg_flags = NLM_F_ROOT | NLM_F_MATCH | NLM_F_REQUEST;
+	nlh->nlmsg_type = ipoe_genl_id;
+	nlh->nlmsg_seq = rth.dump = ++rth.seq;
+
+	ghdr = NLMSG_DATA(&req.n);
+	ghdr->cmd = IPOE_CMD_GET;
+
+	if (rtnl_send(&rth, (char *)nlh, nlh->nlmsg_len) < 0) {
+		log_emerg("ipoe: failed to send dump request: %s\n", strerror(errno));
+		return;
+	}
+
+	rtnl_dump_filter(&rth, dump_session, list, NULL, NULL);
+}
 
 void ipoe_nl_delete(int ifindex)
 {
@@ -378,7 +458,6 @@ static struct triton_md_handler_t up_hnd = {
 
 static void init(void)
 {
-
 	int mcg_id = genl_resolve_mcg(IPOE_GENL_NAME, IPOE_GENL_MCG_PKT, &ipoe_genl_id);
 	if (mcg_id == -1) {
 		log_warn("ipoe: unclassified packet handling is disabled\n");

@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "triton.h"
+#include "log.h"
 #include "events.h"
 #include "ap_session.h"
 #include "backup.h"
@@ -184,6 +185,8 @@ static void __restore_session(struct ap_session *ses)
 		}
 	}
 
+	log_ppp_info1("session restored\n");
+
 	if (ctrl)
 		ctrl->ctrl_start(ses);
 	else {
@@ -235,10 +238,16 @@ void backup_restore_fd()
 void backup_restore(int internal)
 {
 	struct backup_storage *storage;
+	struct backup_module *module;
 	
 	list_for_each_entry(storage, &storage_list, entry) {
 		if (storage->restore)
 			storage->restore(internal);
+	}
+		
+	list_for_each_entry(module, &module_list, entry) {
+		if (module->restore_complete)
+			module->restore_complete();
 	}
 }
 

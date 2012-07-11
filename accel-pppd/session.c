@@ -39,6 +39,8 @@ static long long unsigned seq;
 
 struct ap_session_stat __export ap_session_stat;
 
+static void (*shutdown_cb)(void);
+
 static void generate_sessionid(struct ap_session *ses);
 
 void __export ap_session_init(struct ap_session *ses)
@@ -139,8 +141,12 @@ void __export ap_session_finished(struct ap_session *ses)
 		ses->backup->storage->free(ses->backup);
 #endif
 	
-	if (ap_shutdown && !ap_session_stat.starting && !ap_session_stat.active && !ap_session_stat.finishing)
-		kill(getpid(), SIGTERM);
+	if (ap_shutdown && !ap_session_stat.starting && !ap_session_stat.active && !ap_session_stat.finishing) {
+		if (shutdown_cb)
+			shutdown_cb();
+		else
+			kill(getpid(), SIGTERM);
+	}
 }
 
 void __export ap_session_terminate(struct ap_session *ses, int cause, int hard)
@@ -178,12 +184,17 @@ void __export ap_session_terminate(struct ap_session *ses, int cause, int hard)
 	ses->ctrl->terminate(ses, hard);
 }
 
-void ap_shutdown_soft(void)
+void ap_shutdown_soft(void (*cb)(void))
 {
 	ap_shutdown = 1;
+	shutdown_cb = cb;
 
-	if (!ap_session_stat.starting && !ap_session_stat.active && !ap_session_stat.finishing)
-		kill(getpid(), SIGTERM);
+	if (!ap_session_stat.starting && !ap_session_stat.active && !ap_session_stat.finishing) {
+		if (shutdown_cb)
+			shutdown_cb();
+		else
+			kill(getpid(), SIGTERM);
+	}
 }
 
 static void generate_sessionid(struct ap_session *ses)

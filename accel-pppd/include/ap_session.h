@@ -109,6 +109,6 @@ void ap_session_activate(struct ap_session *ses);
 void ap_session_ifup(struct ap_session *ses);
 void ap_session_ifdown(struct ap_session *ses);
 
-void ap_shutdown_soft(void);
+void ap_shutdown_soft(void (*cb)(void));
 
 #endif

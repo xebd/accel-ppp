@@ -166,7 +166,7 @@ static void ipoe_session_start(struct ipoe_session *ses)
 
 	if (ses->serv->opt_shared == 0)
 		strncpy(ses->ses.ifname, ses->serv->ifname, AP_IFNAME_LEN);
-	else {
+	else if (ses->ifindex == -1) {
 		ses->ifindex = ipoe_nl_create(0, 0, ses->dhcpv4_request ? ses->serv->ifname : NULL, ses->hwaddr);
 		if (ses->ifindex == -1) {
 			log_ppp_error("ipoe: failed to create interface\n");
@@ -455,6 +455,9 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 	struct ipoe_session *ses;
 	//struct dhcpv4_packet *reply;
 
+	if (ap_shutdown)
+		return;
+
 	pthread_mutex_lock(&serv->lock);
 	if (pack->msg_type == DHCPDISCOVER) {
 		ses = ipoe_session_lookup(serv, pack);
@@ -545,6 +548,9 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struct ethhdr *eth, struct iphdr *iph)
 {
 	struct ipoe_session *ses;
+
+	if (ap_shutdown)
+		return NULL;
 
 	ses = mempool_alloc(ses_pool);
 	if (!ses) {

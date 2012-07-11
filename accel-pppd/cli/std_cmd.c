@@ -15,6 +15,8 @@
 #include "log.h"
 #include "memdebug.h"
 
+void core_restart(int);
+
 static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
 {
 	struct timespec ts;
@@ -68,7 +70,7 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	cli_sendv(client, "  timer_pending: %u\r\n", triton_stat.timer_pending);
 
 //===========
-	cli_send(client, "ppp:\r\n");
+	cli_send(client, "sessions:\r\n");
 	cli_sendv(client, "  starting: %u\r\n", ap_session_stat.starting);
 	cli_sendv(client, "  active: %u\r\n", ap_session_stat.active);
 	cli_sendv(client, "  finishing: %u\r\n", ap_session_stat.finishing);
@@ -268,14 +270,27 @@ static void __terminate_hard2(struct ap_session *ses)
 	ap_session_terminate(ses, TERM_NAS_REBOOT, 1);
 }
 
+static void terminate_all_sessions(int hard)
+{
+	struct ap_session *ses;
+
+	pthread_rwlock_rdlock(&ses_lock);
+	list_for_each_entry(ses, &ses_list, entry) {
+		if (hard)
+			triton_context_call(ses->ctrl->ctx, (triton_event_func)__terminate_hard2, ses);
+		else
+			triton_context_call(ses->ctrl->ctx, (triton_event_func)__terminate_soft2, ses);
+	}
+	pthread_rwlock_unlock(&ses_lock);
+}
+
 static int shutdown_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 {
 	int hard = 0;
-	struct ap_session *ses;
 
 	if (f_cnt == 2) {
 		if (!strcmp(f[1], "soft")) {
-			ap_shutdown_soft();
+			ap_shutdown_soft(NULL);
 			return CLI_CMD_OK;
 		} else if (!strcmp(f[1], "hard"))
 			hard = 1;
@@ -286,16 +301,9 @@ static int shutdown_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 			return CLI_CMD_SYNTAX;
 	}
 
-	ap_shutdown_soft();
+	ap_shutdown_soft(NULL);
 
-	pthread_rwlock_rdlock(&ses_lock);
-	list_for_each_entry(ses, &ses_list, entry) {
-		if (hard)
-			triton_context_call(ses->ctrl->ctx, (triton_event_func)__terminate_hard2, ses);
-		else
-			triton_context_call(ses->ctrl->ctx, (triton_event_func)__terminate_soft2, ses);
-	}
-	pthread_rwlock_unlock(&ses_lock);
+	terminate_all_sessions(hard);
 
 	return CLI_CMD_OK;
 }
@@ -328,11 +336,63 @@ static void reload_help(char * const *fields, int fields_cnt, void *client)
 	cli_send(client, "reload - reload config file\r\n");
 }
 
+
+//==========================
+
+static void __do_restart(void)
+{
+	core_restart(0);
+	_exit(0);
+}
+
+static int restart_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
+{
+	int hard;
+
+	if (f_cnt == 2) {
+		if (strcmp(f[1], "soft") == 0)
+			hard = 0;
+		else if (strcmp(f[1], "gracefully") == 0)
+			hard = 1;
+		else if (strcmp(f[1], "hard") == 0)
+			__do_restart();
+		else
+			return CLI_CMD_SYNTAX;
+	} else if (f_cnt == 1)
+		hard = 0;
+	else
+		return CLI_CMD_SYNTAX;
+
+#ifndef USE_BACKUP
+	hard = 1;
+#endif
+
+	if (hard) {
+		ap_shutdown_soft(__do_restart);
+		terminate_all_sessions(0);
+	} else {
+		core_restart(1);
+		_exit(0);
+	}
+
+	return CLI_CMD_OK;
+}
+
+static void restart_help(char * const *fields, int fields_cnt, void *client)
+{
+	cli_send(client, "restart [soft|gracefully|hard] - restart daemon\r\n");
+	cli_send(client, "\t\tsoft - restart daemon softly, e.g. keep existing connections if session backup is enabled (default)\r\n");
+	cli_send(client, "\t\tgracefully - terminate all connections then restart\r\n");
+	cli_send(client, "\t\thard - restart immediatly\r\n");
+}
+
+
 static void init(void)
 {
 	cli_register_simple_cmd2(show_stat_exec, show_stat_help, 2, "show", "stat");
 	cli_register_simple_cmd2(terminate_exec, terminate_help, 1, "terminate");
 	cli_register_simple_cmd2(reload_exec, reload_help, 1, "reload");
+	cli_register_simple_cmd2(restart_exec, restart_help, 1, "restart");
 	cli_register_simple_cmd2(shutdown_exec, shutdown_help, 1, "shutdown");
 	cli_register_simple_cmd2(exit_exec, exit_help, 1, "exit");
 }

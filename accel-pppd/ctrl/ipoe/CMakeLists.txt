@@ -5,6 +5,7 @@ SET(sources
 	dhcpv4.c
 	dhcpv4_options.c
 	ipoe_netlink.c
+	backup.c
 )
 
 IF (LUA)
@@ -16,10 +17,6 @@ IF (LUA)
 	ADD_DEFINITIONS(-DUSE_LUA)
 	SET(sources ${sources} lua.c lua_lpack.c)
 ENDIF (LUA)
-
-IF (BACKUP)
-	SET(sources ${sources} backup.c)
-ENDIF (BACKUP)
 
 ADD_LIBRARY(ipoe SHARED ${sources})
 IF (LUA)

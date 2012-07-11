@@ -27,7 +27,7 @@
 static char *pid_file;
 static char *conf_file;
 static char *conf_dump;
-static char *exec_file;
+static sigset_t orig_set;
 
 static void change_limits(void)
 {
@@ -68,11 +68,12 @@ static void config_reload(int num)
 	triton_conf_reload(config_reload_notify);
 }
 
-static void close_all_fd(void)
+/*static void close_all_fd(void)
 {
 	DIR *dirp;
 	struct dirent ent, *res;
 	char path[128];
+	int fd;
 
 	sprintf(path, "/proc/%u/fd", getpid());
 	
@@ -85,28 +86,30 @@ static void close_all_fd(void)
 			return;
 		if (!res)
 			break;
-		close((unsigned long)atol(ent.d_name));
+
+		fd = atol(ent.d_name);
+		if (fd > 2)
+			close(fd);
 	}
 
 	closedir(dirp);
-}
+}*/
 
 void core_restart(int soft)
 {
 	char fname[128];
-	int fd, n;
+	int fd, n, f = 0;
 	char cmdline[ARG_MAX];
-	char *args[16];
+	char exe[PATH_MAX];
+	char *argv[16];
 	char *ptr = cmdline, *endptr;
-	sigset_t set;
 
 	if (fork()) {
-		close_all_fd();
+		//close_all_fd();
 		return;
 	}
 
-	sigfillset(&set);
-	pthread_sigmask(SIG_SETMASK, &set, NULL);
+	pthread_sigmask(SIG_SETMASK, &orig_set, NULL);
 
 	sprintf(fname, "/proc/%i/cmdline", getpid());
 
@@ -116,36 +119,69 @@ void core_restart(int soft)
 	endptr = ptr + n;
 
 	n = 0;
-	while (ptr < endptr) {
-		args[n++] = ptr;
+	while (ptr < endptr && n < 14) {
+		if (strcmp(ptr, "--internal"))
+			argv[n++] = ptr;
+		else if (soft) {
+			f = 1;
+			argv[n++] = ptr;
+		}
+
 		while (ptr < endptr && *ptr++);
 	}
-
-	args[n++] = NULL;
 	
 #ifdef USE_BACKUP
 	if (soft)
 		backup_restore_fd();
-	else
 #endif
-	if (fork()) {
-		close_all_fd();
-		_exit(0);
-	}
 
+	sprintf(exe, "/proc/%u/exe", getpid());
+	readlink(exe, exe, PATH_MAX);
+
+	if (!f)
+		argv[n++] = "--internal";
+
+	argv[n++] = NULL;
 
 	while (1) {
+		execv(exe, argv);
 		sleep(3);
-		execv(args[0], args);
 	}
 }
 
 static void sigsegv(int num)
 {
 	char cmd[PATH_MAX];
-	char fname[PATH_MAX];
+	char fname[128];
+	char exec_file[PATH_MAX];
 	struct rlimit lim;
 
+	pthread_sigmask(SIG_SETMASK, &orig_set, NULL);
+	
+	if (conf_dump) {
+		FILE *f;
+		unsigned int t = time(NULL);
+
+		chdir(conf_dump);
+
+		sprintf(fname, "cmd-%u", t);
+		f = fopen(fname, "w");
+		if (!f)
+			goto out;
+		fprintf(f, "thread apply all bt full\ndetach\nquit\n");
+		fclose(f);
+
+		sprintf(exec_file, "/proc/%u/exe", getpid());
+		readlink(exec_file, exec_file, PATH_MAX);
+
+		sprintf(cmd, "gdb -x %s %s %d > dump-%u", fname, exec_file, getpid(), t);
+
+		system(cmd);
+		
+		unlink(fname);	
+	}
+
+out:
 #ifdef USE_BACKUP
 	core_restart(1);
 #else
@@ -153,28 +189,12 @@ static void sigsegv(int num)
 #endif
 
 	if (conf_dump) {
-		FILE *f;
-		unsigned int t = time(NULL);
-		sprintf(fname, "%s/cmd-%u", conf_dump, t);
-		f = fopen(fname, "w");
-		if (!f)
-			goto out;
-		fprintf(f, "thread apply all bt full\ndetach\nquit\n");
-		fclose(f);
-
-		sprintf(cmd, "gdb -x %s %s %d > %s/dump-%u", fname, exec_file, getpid(), conf_dump, t);
-		system(cmd);
-		unlink(fname);
-	
 		lim.rlim_cur = RLIM_INFINITY;
 		lim.rlim_max = RLIM_INFINITY;
 
 		setrlimit(RLIMIT_CORE, &lim);
-	
-		chdir(conf_dump);
 	}
 
-out:
 	abort();
 }
 
@@ -185,14 +205,10 @@ int main(int argc, char **argv)
 	pid_t pid = 0;
 	struct sigaction sa;
 	int pagesize = sysconf(_SC_PAGE_SIZE);
-#ifdef USE_BACKUP
 	int internal = 0;
-#endif
 
 	if (argc < 2)
 		goto usage;
-
-	exec_file = argv[0];
 
 	for(i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "-d"))
@@ -212,27 +228,18 @@ int main(int argc, char **argv)
 			conf_dump = memalign(pagesize, len);
 			strcpy(conf_dump, argv[++i]);
 			mprotect(conf_dump, len, PROT_READ);
-		}
+		} else if (!strcmp(argv[i], "--internal"))
+			internal = 1;
 	}
 
 	if (!conf_file)
 		goto usage;
 	
-	if (pid_file) {
-		FILE *f = fopen(pid_file, "r");
-		if (f) {
-			fscanf(f, "%u", &pid);
-			fclose(f);
-		}
-#ifdef USE_BACKUP
-		internal = pid == getppid();
-#endif
-		/*if (pid) {
-			printf("%i %i %i\n", pid, getppid(), getpid());
-			return 0;
-		}*/
+	if (internal) {
+		while (getppid() != 1)
+			sleep(1);
 	}
-
+	
 	if (triton_init(conf_file))
 		_exit(EXIT_FAILURE);
 
@@ -299,7 +306,7 @@ int main(int argc, char **argv)
 	sigdelset(&set, SIGUSR1);
 	sigdelset(&set, 35);
 	sigdelset(&set, 36);
-	pthread_sigmask(SIG_SETMASK, &set, NULL);
+	pthread_sigmask(SIG_SETMASK, &set, &orig_set);
 
 	sigemptyset(&set);
 	//sigaddset(&set, SIGINT);

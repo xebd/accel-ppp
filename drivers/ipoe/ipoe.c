@@ -1226,6 +1226,50 @@ out_unlock:
 	return ret;
 }
 
+static int fill_info(struct sk_buff *skb, struct ipoe_session *ses, u32 pid, u32 seq)
+{
+	void *hdr;
+
+	hdr = genlmsg_put(skb, pid, seq, &ipoe_nl_family, NLM_F_MULTI, IPOE_CMD_GET);
+	if (!hdr)
+		return -EMSGSIZE;
+	
+	NLA_PUT_U32(skb, IPOE_ATTR_IFINDEX, ses->dev->ifindex);
+	NLA_PUT_U32(skb, IPOE_ATTR_PEER_ADDR, ses->peer_addr);
+	NLA_PUT_U32(skb, IPOE_ATTR_ADDR, ses->addr);
+
+	return genlmsg_end(skb, hdr);
+
+nla_put_failure:
+	genlmsg_cancel(skb, hdr);
+	return -EMSGSIZE;
+}
+
+static int ipoe_nl_cmd_dump_sessions(struct sk_buff *skb, struct netlink_callback *cb)
+{
+	struct ipoe_session *ses;
+	int idx = 0, start_idx = cb->args[0];
+
+	down(&ipoe_wlock);
+
+	list_for_each_entry(ses, &ipoe_list2, entry2) {
+		if (idx > start_idx)
+			start_idx = 0;
+
+		if (idx++ < start_idx)
+			continue;
+
+		if (fill_info(skb, ses, NETLINK_CB(cb->skb).pid, cb->nlh->nlmsg_seq) < 0)
+			break;
+	}
+
+	up(&ipoe_wlock);
+
+	cb->args[0] = idx;
+
+	return skb->len;
+}
+
 static int ipoe_nl_cmd_add_net(struct sk_buff *skb, struct genl_info *info)
 {
 	struct ipoe_network *n;
@@ -1312,6 +1356,11 @@ static struct genl_ops ipoe_nl_ops[] = {
 		.doit = ipoe_nl_cmd_modify,
 		.policy = ipoe_nl_policy,
 		.flags = GENL_ADMIN_PERM,
+	},
+	{
+		.cmd = IPOE_CMD_GET,
+		.dumpit = ipoe_nl_cmd_dump_sessions,
+		.policy = ipoe_nl_policy,
 	},
 	{
 		.cmd = IPOE_CMD_ADD_NET,

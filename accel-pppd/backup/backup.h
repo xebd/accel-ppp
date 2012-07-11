@@ -52,6 +52,7 @@ struct backup_module
 	
 	struct ap_session *(*ctrl_restore)(struct backup_mod *);
 	void (*ctrl_start)(struct ap_session *ses);
+	void (*restore_complete)(void);
 };
 
 struct backup_storage

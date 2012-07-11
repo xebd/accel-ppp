@@ -50,6 +50,14 @@ struct ipoe_session
 	int ifindex;
 };
 
+struct ipoe_session_info
+{
+	struct list_head entry;
+	int ifindex;
+	uint32_t addr;
+	uint32_t peer_addr;
+};
+
 #ifdef USE_LUA
 int ipoe_lua_set_username(struct ipoe_session *, const char *func);
 #endif
@@ -67,6 +75,7 @@ void ipoe_nl_delete_nets(void);
 int ipoe_nl_create(uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_t *hwaddr);
 void ipoe_nl_delete(int ifindex);
 int ipoe_nl_modify(int ifindex, uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_t *hwaddr);
+void ipoe_nl_get_sessions(struct list_head *list);
 
 #endif
 

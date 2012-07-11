@@ -4,6 +4,8 @@
 #include <netinet/in.h>
 #include <net/ethernet.h>
 
+#include "triton.h"
+#include "events.h"
 #include "log.h"
 #include "memdebug.h"
 
@@ -25,8 +27,13 @@
 
 
 #define add_tag(id, data, size) if (!backup_add_tag(m, id, 0, data, size)) return -1;
-#define add_tag_int(id, data, size) if (!backup_add_tag(m, id, 1, data, size)) return -1;
+#define add_tag_i(id, data, size) if (!backup_add_tag(m, id, 1, data, size)) return -1;
 
+static LIST_HEAD(ds_list);
+
+static void restore_complete(void);
+
+#ifdef USE_BACKUP
 static int session_save(struct ap_session *ses, struct backup_mod *m)
 {
 	struct ipoe_session *conn = container_of(ses, typeof(*conn), ses);
@@ -44,8 +51,9 @@ static int session_save(struct ap_session *ses, struct backup_mod *m)
 	if (conn->agent_circuit_id)
 		add_tag(IPOE_TAG_AGENT_REMOTE_ID, conn->agent_remote_id->data, conn->agent_remote_id->len);
 	
-	//add_tag_int(IPOE_TAG_IFNAME, conn->serv->ifname, strlen(conn->serv->ifname) + 1);
 	add_tag(IPOE_TAG_IFNAME, conn->serv->ifname, strlen(conn->serv->ifname) + 1);
+
+	add_tag_i(IPOE_TAG_IFINDEX, &conn->ifindex, 4);
 
 	return 0;
 }
@@ -74,6 +82,7 @@ static struct ap_session *ctrl_restore(struct backup_mod *m)
 	struct backup_tag *ifname = NULL;
 	int dlen = 0;
 	uint8_t *ptr;
+	struct ipoe_session_info *info;
 
 	//if (!m->data->internal)
 	//	return NULL;
@@ -137,6 +146,9 @@ static struct ap_session *ctrl_restore(struct backup_mod *m)
 			case IPOE_TAG_AGENT_REMOTE_ID:
 				set_dhcpv4_opt(&ses->agent_remote_id, t, &ptr);
 				break;
+			case IPOE_TAG_IFINDEX:
+				ses->ifindex = *(uint32_t *)t->data;
+				break;
 		}
 	}
 
@@ -149,6 +161,16 @@ static struct ap_session *ctrl_restore(struct backup_mod *m)
 	list_add_tail(&ses->entry, &serv->sessions);
 	pthread_mutex_unlock(&serv->lock);
 
+	if (ses->ifindex != -1) {
+		list_for_each_entry(info, &ds_list, entry) {
+			if (info->ifindex == ses->ifindex) {
+				list_del(&info->entry);
+				_free(info);
+				break;
+			}
+		}
+	}
+
 	return &ses->ses;
 }
 
@@ -157,11 +179,38 @@ static struct backup_module mod = {
 	.save = session_save,
 	.restore = session_restore,
 	.ctrl_restore = ctrl_restore,
+	.restore_complete = restore_complete,
 };
+#endif
+
+static void dump_sessions(void)
+{
+	ipoe_nl_get_sessions(&ds_list);
+
+#ifndef USE_BACKUP
+	restore_complete();
+#endif
+}
+
+static void restore_complete(void)
+{
+	struct ipoe_session_info *info;
+
+	while (!list_empty(&ds_list)) {
+		info = list_entry(ds_list.next, typeof(*info), entry);
+		ipoe_nl_delete(info->ifindex);
+		list_del(&info->entry);
+		_free(info);
+	}
+}
 
 static void init(void)
 {
+	dump_sessions();
+
+#ifdef USE_BACKUP
 	backup_register_module(&mod);
+#endif
 }
 
 DEFINE_INIT(100, init);
