@@ -655,6 +655,8 @@ void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph)
 		pthread_mutex_unlock(&serv->lock);
 		
 		ipoe_session_create_up(serv, eth, iph);
+
+		break;
 	}
 }
 
@@ -793,7 +795,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 	}
 
 	list_for_each_entry(serv, &serv_list, entry) {
-		if (!strcmp(ifname, serv->ifname))
+		if (strcmp(ifname, serv->ifname))
 			continue;
 
 		serv->active = 1;
@@ -876,7 +878,7 @@ static int __load_interface_re(int index, int flags, const char *name, struct ip
 {
 	if (pcre_exec(arg->re, NULL, name, strlen(name), 0, 0, NULL, 0) < 0)
 		return 0;
-	
+
 	add_interface(name, index, arg->opt);
 
 	return 0;
