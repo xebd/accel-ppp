@@ -374,8 +374,10 @@ void __export triton_context_unregister(struct triton_context_t *ud)
 	spin_unlock(&ctx_list_lock);
 	
 	if (terminate) {
+		spin_lock(&threads_lock);
 		list_for_each_entry(t, &threads, entry)
 			triton_thread_wakeup(t);
+		spin_unlock(&threads_lock);
 	}
 }
 
