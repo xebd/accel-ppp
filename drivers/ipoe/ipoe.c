@@ -127,11 +127,11 @@ static inline int hash_addr(__be32 addr)
 }
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
-static void ipoe_update_stats(struct sk_buff *skb, struct ipoe_stats *st)
+static void ipoe_update_stats(struct sk_buff *skb, struct ipoe_stats *st, int corr)
 {
 	u64_stats_update_begin(&st->sync);
 	st->packets++;
-	st->bytes += skb->len;
+	st->bytes += skb->len - corr;
 	u64_stats_update_end(&st->sync);
 }
 #endif
@@ -355,10 +355,10 @@ static netdev_tx_t ipoe_xmit(struct sk_buff *skb, struct net_device *dev)
 		//pr_info("ipoe: xmit %08x %08x\n", iph->saddr, iph->daddr);
 		
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
-		ipoe_update_stats(skb, this_cpu_ptr(ses->tx_stats));
+		ipoe_update_stats(skb, this_cpu_ptr(ses->tx_stats), ETH_HLEN);
 #else
 		stats->tx_packets++;
-		stats->tx_bytes += skb->len;
+		stats->tx_bytes += skb->len - ETH_HLEN;
 #endif
 
 		if (iph->daddr == ses->addr) {
@@ -493,7 +493,7 @@ static int ipoe_rcv_arp(struct sk_buff *skb, struct net_device *dev, struct pack
 	netif_rx(skb1);
 	
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
-	ipoe_update_stats(skb, this_cpu_ptr(ses->rx_stats));
+	ipoe_update_stats(skb, this_cpu_ptr(ses->rx_stats), 0);
 #else
 	stats->rx_packets++;
 	stats->rx_bytes += skb->len;
@@ -588,7 +588,7 @@ static int ipoe_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_t
 	netif_rx(skb1);
 	
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
-	ipoe_update_stats(skb, this_cpu_ptr(ses->rx_stats));
+	ipoe_update_stats(skb, this_cpu_ptr(ses->rx_stats), 0);
 #else
 	stats->rx_packets++;
 	stats->rx_bytes += skb->len;
