@@ -12,6 +12,8 @@
 #include "log.h"
 #include "backup.h"
 #include "ap_session_backup.h"
+#include "iplink.h"
+
 #include "radius_p.h"
 
 #include "memdebug.h"
@@ -36,7 +38,9 @@ static int req_set_RA(struct rad_req_t *req, const char *secret)
 
 static void req_set_stat(struct rad_req_t *req, struct ap_session *ses)
 {
-	struct ifpppstatsreq ifreq;
+	struct rtnl_link_stats stats;
+	struct radius_pd_t *rpd = req->rpd;
+
 	time_t stop_time;
 	
 	if (ses->stop_time)
@@ -44,31 +48,31 @@ static void req_set_stat(struct rad_req_t *req, struct ap_session *ses)
 	else
 		time(&stop_time);
 
-	memset(&ifreq, 0, sizeof(ifreq));
-	ifreq.stats_ptr = (void *)&ifreq.stats;
-	strcpy(ifreq.ifr__name, ses->ifname);
-
-	if (ses->ctrl->type != CTRL_TYPE_IPOE) {
-		if (ioctl(sock_fd, SIOCGPPPSTATS, &ifreq)) {
-			log_ppp_error("radius: failed to get ppp statistics: %s\n", strerror(errno));
-			return;
-		}
-
-		if (ifreq.stats.p.ppp_ibytes < req->rpd->acct_input_octets)
-			req->rpd->acct_input_gigawords++;
-		req->rpd->acct_input_octets = ifreq.stats.p.ppp_ibytes;
-
-		if (ifreq.stats.p.ppp_obytes < req->rpd->acct_output_octets)
-			req->rpd->acct_output_gigawords++;
-		req->rpd->acct_output_octets = ifreq.stats.p.ppp_obytes;
-
-		rad_packet_change_int(req->pack, NULL, "Acct-Input-Octets", ifreq.stats.p.ppp_ibytes);
-		rad_packet_change_int(req->pack, NULL, "Acct-Output-Octets", ifreq.stats.p.ppp_obytes);
-		rad_packet_change_int(req->pack, NULL, "Acct-Input-Packets", ifreq.stats.p.ppp_ipackets);
-		rad_packet_change_int(req->pack, NULL, "Acct-Output-Packets", ifreq.stats.p.ppp_opackets);
-		rad_packet_change_int(req->pack, NULL, "Acct-Input-Gigawords", req->rpd->acct_input_gigawords);
-		rad_packet_change_int(req->pack, NULL, "Acct-Output-Gigawords", req->rpd->acct_output_gigawords);
+	if (iplink_get_stats(ses->ifindex, &stats)) {
+		log_ppp_warn("radius: failed to get interface statistics\n");
+		return;
 	}
+
+	stats.rx_packets -= rpd->acct_rx_packets_i;
+	stats.tx_packets -= rpd->acct_tx_packets_i;
+	stats.rx_bytes -= rpd->acct_rx_bytes_i;
+	stats.tx_bytes -= rpd->acct_tx_bytes_i;
+
+	if (stats.rx_bytes < rpd->acct_rx_bytes)
+		req->rpd->acct_input_gigawords++;
+	req->rpd->acct_rx_bytes = stats.rx_packets;
+
+	if (stats.tx_bytes < rpd->acct_tx_bytes)
+		req->rpd->acct_output_gigawords++;
+	req->rpd->acct_tx_bytes = stats.tx_bytes;
+
+	rad_packet_change_int(req->pack, NULL, "Acct-Input-Octets", stats.rx_bytes);
+	rad_packet_change_int(req->pack, NULL, "Acct-Output-Octets", stats.tx_bytes);
+	rad_packet_change_int(req->pack, NULL, "Acct-Input-Packets", stats.rx_packets);
+	rad_packet_change_int(req->pack, NULL, "Acct-Output-Packets", stats.tx_packets);
+	rad_packet_change_int(req->pack, NULL, "Acct-Input-Gigawords", rpd->acct_input_gigawords);
+	rad_packet_change_int(req->pack, NULL, "Acct-Output-Gigawords", rpd->acct_output_gigawords);
+
 	rad_packet_change_int(req->pack, NULL, "Acct-Session-Time", stop_time - ses->start_time);
 }
 
@@ -233,9 +237,19 @@ int rad_acct_start(struct radius_pd_t *rpd)
 	int i;
 	time_t ts;
 	unsigned int dt;
+	struct rtnl_link_stats stats;
 	
 	if (!conf_accounting)
 		return 0;
+	
+	if (iplink_get_stats(rpd->ses->ifindex, &stats))
+		log_ppp_warn("radius: failed to get interface statistics\n");
+	else {
+		rpd->acct_rx_packets_i = stats.rx_packets;
+		rpd->acct_tx_packets_i = stats.tx_packets;
+		rpd->acct_rx_bytes_i = stats.rx_bytes;
+		rpd->acct_tx_bytes_i = stats.tx_bytes;
+	}
 
 	if (!rpd->acct_req)
 		rpd->acct_req = rad_req_alloc(rpd, CODE_ACCOUNTING_REQUEST, rpd->ses->username);
