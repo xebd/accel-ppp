@@ -185,8 +185,7 @@ void __export ap_session_ifdown(struct ap_session *ses)
 	memset(&ifr, 0, sizeof(ifr));
 	strcpy(ifr.ifr_name, ses->ifname);
 
-	if (ses->ctrl->type != CTRL_TYPE_IPOE)
-		ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
+	ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
 
 	if (ses->ipv4) {
 		memset(&addr, 0, sizeof(addr));

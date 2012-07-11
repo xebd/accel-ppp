@@ -1202,6 +1202,13 @@ static int ipoe_nl_cmd_modify(struct sk_buff *skb, struct genl_info *info)
 		
 		old_dev = ses->link_dev;
 		ses->link_dev = link_dev;
+
+		if (link_dev) {
+			ses->dev->features = link_dev->features;
+			memcpy(dev->dev_addr, link_dev->dev_addr, ETH_ALEN);
+			memcpy(dev->broadcast, link_dev->broadcast, ETH_ALEN);
+		}
+
 		if (old_dev)
 			dev_put(old_dev);
 	}

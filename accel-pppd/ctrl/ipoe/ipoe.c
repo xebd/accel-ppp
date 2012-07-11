@@ -46,6 +46,7 @@ static int conf_mode = 0;
 static int conf_shared = 1;
 //static int conf_dhcpv6;
 static int conf_username;
+static int conf_unit_cache;
 
 #ifdef USE_LUA
 static const char *conf_lua_username_func;
@@ -70,6 +71,17 @@ struct iplink_arg
 	pcre *re;
 	const char *opt;
 };
+
+struct unit_cache
+{
+	struct list_head entry;
+	int ifindex;
+};
+
+static pthread_mutex_t uc_lock = PTHREAD_MUTEX_INITIALIZER;
+static LIST_HEAD(uc_list);
+static int uc_size;
+static mempool_t uc_pool;
 
 static void ipoe_session_finished(struct ap_session *s);
 static void ipoe_drop_sessions(struct ipoe_serv *serv, struct ipoe_session *skip);
@@ -163,15 +175,27 @@ static void ipoe_session_start(struct ipoe_session *ses)
 	int r;
 	char *passwd;
 	struct ifreq ifr;
+	struct unit_cache *uc;
 
 	if (ses->serv->opt_shared == 0)
 		strncpy(ses->ses.ifname, ses->serv->ifname, AP_IFNAME_LEN);
 	else if (ses->ifindex == -1) {
-		ses->ifindex = ipoe_nl_create(0, 0, ses->dhcpv4_request ? ses->serv->ifname : NULL, ses->hwaddr);
-		if (ses->ifindex == -1) {
-			log_ppp_error("ipoe: failed to create interface\n");
-			ipoe_session_finished(&ses->ses);
-			return;
+		pthread_mutex_lock(&uc_lock);
+		if (!list_empty(&uc_list)) {
+			uc = list_entry(uc_list.next, typeof(*uc), entry);
+			ses->ifindex = uc->ifindex;
+			list_del(&uc->entry);
+			--uc_size;
+			pthread_mutex_unlock(&uc_lock);
+			mempool_free(uc);
+		} else {
+			pthread_mutex_unlock(&uc_lock);
+			ses->ifindex = ipoe_nl_create(0, 0, ses->serv->opt_mode == MODE_L2 ? ses->serv->ifname : NULL, ses->hwaddr);
+			if (ses->ifindex == -1) {
+				log_ppp_error("ipoe: failed to create interface\n");
+				ipoe_session_finished(&ses->ses);
+				return;
+			}
 		}
 
 		memset(&ifr, 0, sizeof(ifr));
@@ -296,6 +320,8 @@ static void ipoe_session_started(struct ap_session *s)
 
 static void ipoe_session_free(struct ipoe_session *ses)
 {
+	struct unit_cache *uc;
+
 	if (ses->timer.tpd)
 		triton_timer_del(&ses->timer);
 
@@ -313,8 +339,17 @@ static void ipoe_session_free(struct ipoe_session *ses)
 	if (ses->data)
 		_free(ses->data);
 	
-	if (ses->ifindex != -1)
-		ipoe_nl_delete(ses->ifindex);
+	if (ses->ifindex != -1) {
+		if (uc_size < conf_unit_cache && ipoe_nl_modify(ses->ifindex, 0, 0, "", NULL)) {
+			uc = mempool_alloc(uc_pool);
+			uc->ifindex = ses->ifindex;
+			pthread_mutex_lock(&uc_lock);
+			list_add_tail(&uc->entry, &uc_list);
+			++uc_size;
+			pthread_mutex_unlock(&uc_lock);
+		} else
+			ipoe_nl_delete(ses->ifindex);
+	}
 
 	mempool_free(ses);
 }
@@ -1047,6 +1082,10 @@ static void load_config(void)
 	if (opt)
 		conf_lease_timeout = atoi(opt);
 	
+	opt = conf_get_opt("ipoe", "unit-cache");
+	if (opt)
+		conf_unit_cache = atoi(opt);
+	
 	opt = conf_get_opt("ipoe", "shared");
 	if (opt)
 		conf_shared = atoi(opt);
@@ -1086,6 +1125,7 @@ static void load_config(void)
 static void ipoe_init(void)
 {
 	ses_pool = mempool_create(sizeof(struct ipoe_session));
+	uc_pool = mempool_create(sizeof(struct unit_cache));
 
 	load_config();
 

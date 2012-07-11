@@ -194,12 +194,8 @@ int ipoe_nl_modify(int ifindex, uint32_t peer_addr, uint32_t addr, const char *i
 	ghdr->cmd = IPOE_CMD_MODIFY;
 
 	addattr32(nlh, 1024, IPOE_ATTR_IFINDEX, ifindex);
-
-	if (peer_addr)
-		addattr32(nlh, 1024, IPOE_ATTR_PEER_ADDR, peer_addr);
-	
-	if (addr)
-		addattr32(nlh, 1024, IPOE_ATTR_ADDR, addr);
+	addattr32(nlh, 1024, IPOE_ATTR_PEER_ADDR, peer_addr);
+	addattr32(nlh, 1024, IPOE_ATTR_ADDR, addr);
 	
 	if (hwaddr) {
 		memcpy(u.hwaddr, hwaddr, 6);
