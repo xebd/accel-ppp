@@ -139,6 +139,8 @@ int ccp_layer_start(struct ppp_layer_data_t *ld)
 	
 	log_ppp_debug("ccp_layer_start\n");
 
+	ccp_set_flags(ccp->ppp->unit_fd, 0, 0);
+
 	if (list_empty(&ccp->options) || !conf_ccp) {
 		ccp->started = 1;
 		ppp_layer_started(ccp->ppp, &ccp->ld);
@@ -180,9 +182,6 @@ void ccp_layer_free(struct ppp_layer_data_t *ld)
 	struct ppp_ccp_t *ccp = container_of(ld, typeof(*ccp), ld);
 	
 	log_ppp_debug("ccp_layer_free\n");
-	
-	if (ccp->ppp->unit_fd != -1)
-		ccp_set_flags(ccp->ppp->unit_fd, 0, 0);
 
 	ppp_unregister_handler(ccp->ppp, &ccp->hnd);
 	ccp_options_free(ccp);

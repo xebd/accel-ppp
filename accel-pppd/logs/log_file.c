@@ -514,7 +514,6 @@ static void ev_ses_authorized1(struct ap_session *ses)
 
 out_err:
 	_free(fname);
-	list_del(&lpd->pd.entry);
 	free_lpd(lpd);
 }
 
