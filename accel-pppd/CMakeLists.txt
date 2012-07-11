@@ -2,7 +2,7 @@ SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fvisibility=hidden -fno-strict-aliasi
 
 IF (EXISTS ${CMAKE_HOME_DIRECTORY}/.git AND NOT DEFINED IGNORE_GIT)
 	EXECUTE_PROCESS(
-		COMMAND git log
+		COMMAND git log --no-color
 		COMMAND head -n1
 		COMMAND awk "{print $2}"
 		WORKING_DIRECTORY ${CMAKE_HOME_DIRECTORY}
