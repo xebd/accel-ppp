@@ -374,6 +374,7 @@ static int l2tp_connect(struct l2tp_conn_t *conn)
 {
 	struct sockaddr_pppol2tp pppox_addr;
 	int arg = 1;
+	int flg;
 
 	memset(&pppox_addr, 0, sizeof(pppox_addr));
 	pppox_addr.sa_family = AF_PPPOX;
@@ -388,8 +389,17 @@ static int l2tp_connect(struct l2tp_conn_t *conn)
 		log_ppp_error("l2tp: socket(AF_PPPOX): %s\n", strerror(errno));
 		goto out_err;
 	}
-	
-	fcntl(conn->tunnel_fd, F_SETFD, fcntl(conn->tunnel_fd, F_GETFD) | FD_CLOEXEC);
+
+	flg = fcntl(conn->tunnel_fd, F_GETFD);
+	if (flg < 0) {
+		log_ppp_error("l2tp: fcntl(F_GETFD): %s\n", strerror(errno));
+		goto out_err;
+	}
+	flg = fcntl(conn->tunnel_fd, F_SETFD, flg | FD_CLOEXEC);
+	if (flg < 0) {
+		log_ppp_error("l2tp: fcntl(F_SETFD): %s\n", strerror(errno));
+		goto out_err;
+	}
 
 	conn->ppp.fd = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
 	if (conn->ppp.fd < 0) {
@@ -397,7 +407,16 @@ static int l2tp_connect(struct l2tp_conn_t *conn)
 		goto out_err;
 	}
 
-	fcntl(conn->ppp.fd, F_SETFD, fcntl(conn->ppp.fd, F_GETFD) | FD_CLOEXEC);
+	flg = fcntl(conn->ppp.fd, F_GETFD);
+	if (flg < 0) {
+		log_ppp_error("l2tp: fcntl(F_GETFD): %s\n", strerror(errno));
+		goto out_err;
+	}
+	flg = fcntl(conn->ppp.fd, F_SETFD, flg | FD_CLOEXEC);
+	if (flg < 0) {
+		log_ppp_error("l2tp: fcntl(F_SETFD): %s\n", strerror(errno));
+		goto out_err;
+	}
 
 	if (connect(conn->tunnel_fd, (struct sockaddr *)&pppox_addr, sizeof(pppox_addr)) < 0) {
 		log_ppp_error("l2tp: connect(tunnel): %s\n", strerror(errno));
@@ -418,7 +437,7 @@ static int l2tp_connect(struct l2tp_conn_t *conn)
 	}
 
 	conn->ppp.chan_name = _strdup(inet_ntoa(conn->addr.sin_addr));
-	
+
 	triton_event_fire(EV_CTRL_STARTED, &conn->ppp);
 
 	if (establish_ppp(&conn->ppp))
