@@ -2,6 +2,7 @@
 #define __DHCPV4_H
 
 #include <stdint.h>
+#include <pthread.h>
 #include "list.h"
 
 #include "triton.h"
@@ -61,6 +62,18 @@ struct dhcpv4_packet
 	uint8_t data[0];
 };
 
+struct dhcpv4_iprange
+{
+	struct list_head entry;
+	uint32_t routerip;
+	uint32_t startip;
+	int mask;
+	int pos;
+	int len;
+	pthread_mutex_t lock;
+	unsigned long free[0];
+}; 
+
 struct dhcpv4_serv
 {
 	struct triton_context_t *ctx;
@@ -68,15 +81,16 @@ struct dhcpv4_serv
 	int raw_sock;
 	uint8_t hwaddr[6];
 	void (*recv)(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack);
+	struct dhcpv4_iprange *range;
 };
 
 struct ap_session;
 
-struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifname);
+struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifname, const char *opt);
 void dhcpv4_free(struct dhcpv4_serv *);
 
 
-int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_packet *req, struct ap_session *ses, int lease_time);
+int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_packet *req, uint32_t yiaddr, uint32_t siaddr, uint32_t mask, int lease_time);
 int dhcpv4_send_nak(struct dhcpv4_serv *serv, struct dhcpv4_packet *req);
 
 void dhcpv4_packet_free(struct dhcpv4_packet *pack);
@@ -85,5 +99,8 @@ int dhcpv4_check_options(struct dhcpv4_packet *);
 void dhcpv4_print_options(struct dhcpv4_packet *, void (*)(const char *, ...));
 
 void dhcpv4_print_packet(struct dhcpv4_packet *pack, void (*print)(const char *fmt, ...));
+
+int dhcpv4_get_ip(struct dhcpv4_serv *serv, uint32_t *yiaddr, uint32_t *siaddr, int *mask);
+void dhcpv4_put_ip(struct dhcpv4_serv *serv, uint32_t ip);
 
 #endif

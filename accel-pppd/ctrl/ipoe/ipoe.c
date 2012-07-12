@@ -102,18 +102,12 @@ static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct d
 		if (pack->agent_remote_id && !ses->agent_remote_id)
 			continue;
 		
-		if (pack->client_id && !ses->client_id)
-			continue;
-		
 		if (!pack->agent_circuit_id && ses->agent_circuit_id)
 			continue;
 		
 		if (!pack->agent_remote_id && ses->agent_remote_id)
 			continue;
 		
-		if (!pack->client_id && ses->client_id)
-			continue;
-
 		if (pack->agent_circuit_id) {
 			if (pack->agent_circuit_id->len != ses->agent_circuit_id->len)
 				continue;
@@ -126,7 +120,16 @@ static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct d
 				continue;
 			if (memcmp(pack->agent_remote_id->data, ses->agent_remote_id->data, pack->agent_remote_id->len))
 				continue;
+
+			return ses;
 		}
+		
+		if (pack->client_id && !ses->client_id)
+			continue;
+		
+		if (!pack->client_id && ses->client_id)
+			continue;
+
 		
 		if (pack->client_id) {
 			if (pack->client_id->len != ses->client_id->len)
@@ -258,8 +261,17 @@ static void ipoe_session_start(struct ipoe_session *ses)
 	else if (!ses->ses.ipv4->mask)
 		ses->ses.ipv4->mask = 24;
 
+	if (!ses->yiaddr)
+		ses->yiaddr = ses->ses.ipv4->peer_addr;
+	
+	if (!ses->siaddr)
+		ses->siaddr = ses->ses.ipv4->addr;
+	
+	if (!ses->mask)
+		ses->mask = 24;
+
 	if (ses->dhcpv4_request) {
-		dhcpv4_send_reply(DHCPOFFER, ses->serv->dhcpv4, ses->dhcpv4_request, &ses->ses, conf_lease_time);
+		dhcpv4_send_reply(DHCPOFFER, ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->mask, conf_lease_time);
 
 		dhcpv4_packet_free(ses->dhcpv4_request);
 		ses->dhcpv4_request = NULL;
@@ -268,7 +280,7 @@ static void ipoe_session_start(struct ipoe_session *ses)
 		ses->timer.expire_tv.tv_sec = conf_offer_timeout;
 		triton_timer_add(&ses->ctx, &ses->timer, 0);
 	} else {
-		if (ipoe_nl_modify(ses->ifindex, ses->giaddr, ses->ses.ipv4->peer_addr, NULL, NULL))
+		if (ipoe_nl_modify(ses->ifindex, ses->yiaddr, ses->ses.ipv4->peer_addr, NULL, NULL))
 			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 0);
 		else
 			ap_session_activate(&ses->ses);
@@ -277,11 +289,18 @@ static void ipoe_session_start(struct ipoe_session *ses)
 
 static void ipoe_session_activate(struct ipoe_session *ses)
 {
+	if (ses->ifindex != -1) {
+		if (ipoe_nl_modify(ses->ifindex, ses->yiaddr, ses->ses.ipv4->peer_addr, NULL, NULL)) {
+			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 0);
+			return;
+		}
+	}
+
 	ap_session_activate(&ses->ses);
 
 	if (ses->dhcpv4_request) {
 		if (ses->ses.state == AP_STATE_ACTIVE)
-			dhcpv4_send_reply(DHCPACK, ses->serv->dhcpv4, ses->dhcpv4_request, &ses->ses, conf_lease_time);
+			dhcpv4_send_reply(DHCPACK, ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->mask, conf_lease_time);
 		else
 			dhcpv4_send_nak(ses->serv->dhcpv4, ses->dhcpv4_request);
 
@@ -298,7 +317,7 @@ static void ipoe_session_keepalive(struct ipoe_session *ses)
 	ses->xid = ses->dhcpv4_request->hdr->xid;
 
 	if (ses->ses.state == AP_STATE_ACTIVE)
-		dhcpv4_send_reply(DHCPACK, ses->serv->dhcpv4, ses->dhcpv4_request, &ses->ses, conf_lease_time);
+		dhcpv4_send_reply(DHCPACK, ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->mask, conf_lease_time);
 	else
 		dhcpv4_send_nak(ses->serv->dhcpv4, ses->dhcpv4_request);
 
@@ -366,6 +385,9 @@ static void ipoe_session_finished(struct ap_session *s)
 	serv_close = ses->serv->need_close && list_empty(&ses->serv->sessions);
 	pthread_mutex_unlock(&ses->serv->lock);
 
+	if (ses->yiaddr && ses->serv->dhcpv4 && ses->serv->dhcpv4->range)
+		dhcpv4_put_ip(ses->serv->dhcpv4, ses->yiaddr);
+
 	if (serv_close)
 		ipoe_serv_close(&ses->serv->ctx);
 
@@ -411,6 +433,8 @@ static struct ipoe_session *ipoe_session_create_dhcpv4(struct ipoe_serv *serv, s
 	ses->xid = pack->hdr->xid;
 	memcpy(ses->hwaddr, pack->hdr->chaddr, 6);
 	ses->giaddr = pack->hdr->giaddr;
+
+	dhcpv4_get_ip(serv->dhcpv4, &ses->yiaddr, &ses->siaddr, &ses->mask);
 
 	if (pack->agent_circuit_id)
 		dlen += sizeof(struct dhcp_opt) + pack->agent_circuit_id->len;
@@ -513,7 +537,7 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 			}
 
 			if (ses->ses.ipv4 && ses->ses.state == AP_STATE_ACTIVE && pack->request_ip == ses->ses.ipv4->peer_addr)
-				dhcpv4_send_reply(DHCPOFFER, dhcpv4, pack, &ses->ses, conf_lease_time);
+				dhcpv4_send_reply(DHCPOFFER, dhcpv4, pack, ses->yiaddr, ses->siaddr, ses->mask, conf_lease_time);
 
 			dhcpv4_packet_free(pack);
 		}
@@ -528,16 +552,15 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 
 			dhcpv4_send_nak(dhcpv4, pack);
 		} else {
-			if (!ses->ses.ipv4 || 
-				(pack->server_id && (pack->server_id != ses->ses.ipv4->addr || pack->request_ip != ses->ses.ipv4->peer_addr)) ||
-				(pack->hdr->ciaddr && (pack->hdr->xid != ses->xid || pack->hdr->ciaddr != ses->ses.ipv4->peer_addr))) {
+			if ((pack->server_id && (pack->server_id != ses->siaddr || pack->request_ip != ses->yiaddr)) ||
+				(pack->hdr->ciaddr && (pack->hdr->xid != ses->xid || pack->hdr->ciaddr != ses->yiaddr))) {
 
 				if (conf_verbose) {
 					log_info2("recv ");
 					dhcpv4_print_packet(pack, log_info2);
 				}
 
-				if (ses->ses.ipv4 && pack->server_id == ses->ses.ipv4->addr && pack->request_ip && pack->request_ip != ses->ses.ipv4->peer_addr)
+				if (pack->server_id == ses->siaddr && pack->request_ip && pack->request_ip != ses->yiaddr)
 					dhcpv4_send_nak(dhcpv4, pack);
 
 				ap_session_terminate(&ses->ses, TERM_USER_REQUEST, 0);
@@ -611,7 +634,7 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 	ses->ctrl.type = CTRL_TYPE_IPOE;
 	ses->ctrl.name = "ipoe";
 
-	ses->giaddr = iph->saddr;
+	ses->yiaddr = iph->saddr;
 
 	ses->ctrl.calling_station_id = _malloc(17);
 	ses->ctrl.called_station_id = _malloc(17);
@@ -682,7 +705,7 @@ void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph)
 		
 		pthread_mutex_lock(&serv->lock);
 		list_for_each_entry(ses, &serv->sessions, entry) {
-			if (ses->giaddr == iph->saddr) {
+			if (ses->yiaddr == iph->saddr) {
 				pthread_mutex_unlock(&serv->lock);
 				return;
 			}
@@ -812,8 +835,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 					opt_mode = MODE_L3;
 				else
 					goto parse_err;
-			} else
-				goto parse_err;
+			}
 
 			if (end)
 				break;
@@ -842,7 +864,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 		}
 
 		if (opt_dhcpv4 && !serv->dhcpv4) {
-			serv->dhcpv4 = dhcpv4_create(&serv->ctx, serv->ifname);
+			serv->dhcpv4 = dhcpv4_create(&serv->ctx, serv->ifname, opt);
 			if (serv->dhcpv4)
 				serv->dhcpv4->recv = ipoe_recv_dhcpv4;
 		} else if (!opt_dhcpv4 && serv->dhcpv4) {
@@ -872,7 +894,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 	triton_context_register(&serv->ctx, NULL);
 
 	if (serv->opt_dhcpv4) {
-		serv->dhcpv4 = dhcpv4_create(&serv->ctx, serv->ifname);
+		serv->dhcpv4 = dhcpv4_create(&serv->ctx, serv->ifname, opt);
 		if (serv->dhcpv4)
 			serv->dhcpv4->recv = ipoe_recv_dhcpv4;
 	}

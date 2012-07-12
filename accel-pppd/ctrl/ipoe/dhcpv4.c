@@ -42,7 +42,54 @@ static mempool_t opt_pool;
 
 static int dhcpv4_read(struct triton_md_handler_t *h);
 
-struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifname)
+static struct dhcpv4_iprange *parse_range(const char *str)
+{
+	unsigned int f1,f2,f3,f4,m,n, mask, start, end, len;
+	struct dhcpv4_iprange *r;
+
+	n = sscanf(str, "%u.%u.%u.%u/%u", &f1, &f2, &f3, &f4, &m);
+	
+	if (n != 5)
+		goto parse_err;
+	if (f1 > 255)
+		goto parse_err;
+	if (f2 > 255)
+		goto parse_err;
+	if (f3 > 255)
+		goto parse_err;
+	if (f4 > 255)
+		goto parse_err;
+	if (m == 0 || m > 30)
+		goto parse_err;
+	
+	start = (f1 << 24) | (f2 << 16) | (f3 << 8) | f4;
+	mask = ~((1 << (32 - m)) - 1);
+	start = start & mask;
+	end = start | ~mask;
+
+	len = (end - start - 1) / (8 * sizeof(long)) + 1;
+
+	r = _malloc(sizeof(*r) + len * sizeof(long));
+	memset(r, 0, sizeof(*r));
+	memset(r->free, 0xff, len * sizeof(long));
+	r->routerip = start + 1;
+	r->startip = start;
+	r->mask = m;
+	r->len = len;
+	pthread_mutex_init(&r->lock, NULL);
+
+	end -= start;
+	r->free[(end - 1) / ( 8 * sizeof(long))] &= (1 << ((end - 1) % (8 * sizeof(long)) + 1)) - 1;
+	r->free[0] &= ~3;
+
+	return r;
+
+parse_err:
+	log_emerg("dhcpv4: failed to parse range=%s\n", str);
+	return NULL;
+}
+
+struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifname, const char *opt)
 {
 	struct dhcpv4_serv *serv;
 	int sock, raw_sock;
@@ -50,6 +97,8 @@ struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifna
 	struct sockaddr_ll ll_addr;
 	struct ifreq ifr;
 	int f = 1;
+	char *str0, *str, *ptr1, *ptr2;
+	int end;
 
 	memset(&ifr, 0, sizeof(ifr));
 
@@ -124,6 +173,41 @@ struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifna
 	serv->hnd.read = dhcpv4_read;
 	serv->raw_sock = raw_sock;
 
+	str0 = strchr(opt, ',');
+	if (str0) {
+		str0 = _strdup(str0 + 1);
+		str = str0;
+	
+		while (1) {
+			for (ptr1 = str + 1; *ptr1 && *ptr1 != '='; ptr1++);
+
+			if (!*ptr1)
+				break;
+		
+			*ptr1 = 0;
+
+			for (ptr2 = ++ptr1; *ptr2 && *ptr2 != ','; ptr2++);
+
+			end = *ptr2 == 0;
+
+			if (!end)
+				*ptr2 = 0;
+
+			if (ptr2 == ptr1)
+				break;
+
+			if (strcmp(str, "range") == 0)
+				serv->range = parse_range(ptr1);
+
+			if (end)
+				break;
+
+			str = ptr2 + 1;
+		}
+		
+		_free(str0);
+	}
+
 	triton_md_register_handler(ctx, &serv->hnd);
 	triton_md_enable_handler(&serv->hnd, MD_MODE_READ);
 
@@ -139,6 +223,8 @@ void dhcpv4_free(struct dhcpv4_serv *serv)
 {
 	triton_md_unregister_handler(&serv->hnd);
 	close(serv->hnd.fd);
+	if (serv->range)
+		_free(serv->range);
 	_free(serv);
 }
 
@@ -372,7 +458,7 @@ uint16_t ip_csum(uint16_t *buf, int len)
 }
 
 
-static int dhcpv4_send(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack, in_addr_t saddr, in_addr_t daddr)
+static int dhcpv4_send_raw(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack, in_addr_t saddr, in_addr_t daddr)
 {
 	uint8_t hdr[sizeof(struct ether_header) + sizeof(struct iphdr) + sizeof(struct udphdr)];
 	struct ether_header *eth = (struct ether_header *)hdr;
@@ -414,6 +500,32 @@ static int dhcpv4_send(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack, in_
 		return -1;
 	
 	return 0;
+}
+
+static int dhcpv4_send_udp(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack)
+{
+	struct sockaddr_in addr;
+	int n;
+	int len = pack->ptr - pack->data;
+
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons(DHCP_CLIENT_PORT);
+	addr.sin_addr.s_addr = pack->hdr->giaddr;
+
+	n = sendto(serv->hnd.fd, pack->data, len, 0, (struct sockaddr *)&addr, sizeof(addr));
+	if (n != len)
+		return -1;
+	
+	return 0;
+}
+
+static int dhcpv4_send(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack, in_addr_t saddr, in_addr_t daddr)
+{
+	if (pack->hdr->giaddr)
+		return dhcpv4_send_udp(serv, pack);
+	
+	return dhcpv4_send_raw(serv, pack, saddr, daddr);
 }
 
 void dhcpv4_packet_free(struct dhcpv4_packet *pack)
@@ -459,7 +571,7 @@ int dhcpv4_packet_add_opt(struct dhcpv4_packet *pack, int type, const void *data
 	return 0;
 }
 
-int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_packet *req, struct ap_session *ses, int lease_time)
+int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_packet *req, uint32_t yiaddr, uint32_t siaddr, uint32_t mask, int lease_time)
 {
 	struct dhcpv4_packet *pack;
 	int val, r;
@@ -478,26 +590,26 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 
 	pack->hdr->op = DHCP_OP_REPLY;
 	pack->hdr->ciaddr = 0;
-	pack->hdr->yiaddr = ses->ipv4->peer_addr;
+	pack->hdr->yiaddr = yiaddr;
 	if (msg_type == DHCPOFFER)
-		pack->hdr->siaddr = ses->ipv4->addr;
+		pack->hdr->siaddr = siaddr;
 	else
 		pack->hdr->siaddr = 0;
 
 	if (dhcpv4_packet_add_opt(pack, 53, &msg_type, 1))
 		goto out_err;
 	
-	if (dhcpv4_packet_add_opt(pack, 54, &ses->ipv4->addr, 4))
+	if (dhcpv4_packet_add_opt(pack, 54, &siaddr, 4))
 		goto out_err;
 	
 	val = ntohl(lease_time);
 	if (dhcpv4_packet_add_opt(pack, 51, &val, 4))
 		goto out_err;
 
-	if (dhcpv4_packet_add_opt(pack, 3, &ses->ipv4->addr, 4))
+	if (dhcpv4_packet_add_opt(pack, 3, &siaddr, 4))
 		goto out_err;
 	
-	val = htonl(~((1 << (32 - ses->ipv4->mask)) - 1));
+	val = htonl(~((1 << (32 - mask)) - 1));
 	if (dhcpv4_packet_add_opt(pack, 1, &val, 4))
 		goto out_err;
 	
@@ -519,7 +631,7 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 		dhcpv4_print_packet(pack, log_ppp_info2);
 	}
 
-	r = dhcpv4_send(serv, pack, ses->ipv4->addr, ses->ipv4->peer_addr);
+	r = dhcpv4_send(serv, pack, siaddr, yiaddr);
 
 	dhcpv4_packet_free(pack);
 
@@ -571,6 +683,47 @@ out_err:
 	return -1;
 
 	return 0;
+}
+
+int dhcpv4_get_ip(struct dhcpv4_serv *serv, uint32_t *yiaddr, uint32_t *siaddr, int *mask)
+{
+	int i, k;
+
+	if (!serv->range)
+		return 0;
+	
+	pthread_mutex_lock(&serv->range->lock);
+
+	while (1) {
+		for (i = serv->range->pos; i < serv->range->len; i++) {
+			k = ffsl(serv->range->free[i]);
+			if (k) {
+				serv->range->free[i] &= ~(1 << (k - 1));
+				serv->range->pos = i;
+				pthread_mutex_unlock(&serv->range->lock);
+				*yiaddr = htonl(serv->range->startip + i * 8 * sizeof(long) + k - 1);
+				*siaddr = htonl(serv->range->routerip);
+				*mask = serv->range->mask;
+				return 1;
+			}
+		}
+
+		if (serv->range->pos == 0)
+			break;
+	
+		serv->range->pos = 0;
+	}
+
+	pthread_mutex_unlock(&serv->range->lock);
+	return 0;
+}
+
+void dhcpv4_put_ip(struct dhcpv4_serv *serv, uint32_t ip)
+{
+	int n = ntohl(ip) - serv->range->startip;
+	pthread_mutex_lock(&serv->range->lock);
+	serv->range->free[n / (8 * sizeof(long))] |= 1 << (n % (8 * sizeof(long)));
+	pthread_mutex_unlock(&serv->range->lock);
 }
 
 static void load_config()

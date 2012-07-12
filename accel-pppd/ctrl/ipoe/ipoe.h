@@ -45,6 +45,9 @@ struct ipoe_session
 	struct dhcp_opt *agent_remote_id;
 	uint32_t xid;
 	uint32_t giaddr;
+	uint32_t yiaddr;
+	uint32_t siaddr;
+	int mask;
 	uint8_t *data;
 	struct dhcpv4_packet *dhcpv4_request;
 	int ifindex;
