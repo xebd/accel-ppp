@@ -384,7 +384,7 @@ static int l2tp_connect(struct l2tp_conn_t *conn)
 	pppox_addr.pppol2tp.d_tunnel = conn->peer_tid;
 
 	conn->tunnel_fd = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
-	if (!conn->ppp.fd) {
+	if (conn->tunnel_fd < 0) {
 		log_ppp_error("l2tp: socket(AF_PPPOX): %s\n", strerror(errno));
 		return -1;
 	}
@@ -392,13 +392,13 @@ static int l2tp_connect(struct l2tp_conn_t *conn)
 	fcntl(conn->tunnel_fd, F_SETFD, fcntl(conn->tunnel_fd, F_GETFD) | FD_CLOEXEC);
 
 	conn->ppp.fd = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
-	if (!conn->ppp.fd) {
+	if (conn->ppp.fd < 0) {
 		close(conn->tunnel_fd);
 		conn->tunnel_fd = -1;
 		log_ppp_error("l2tp: socket(AF_PPPOX): %s\n", strerror(errno));
 		return -1;
 	}
-	
+
 	fcntl(conn->ppp.fd, F_SETFD, fcntl(conn->ppp.fd, F_GETFD) | FD_CLOEXEC);
 
 	if (connect(conn->tunnel_fd, (struct sockaddr *)&pppox_addr, sizeof(pppox_addr)) < 0) {
