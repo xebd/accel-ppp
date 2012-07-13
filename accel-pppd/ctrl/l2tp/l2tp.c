@@ -388,24 +388,22 @@ static int l2tp_connect(struct l2tp_conn_t *conn)
 	conn->tunnel_fd = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
 	if (conn->tunnel_fd < 0) {
 		log_ppp_error("l2tp: socket(AF_PPPOX): %s\n", strerror(errno));
-		return -1;
+		goto out_err;
 	}
 	
 	fcntl(conn->tunnel_fd, F_SETFD, fcntl(conn->tunnel_fd, F_GETFD) | FD_CLOEXEC);
 
 	conn->ppp.fd = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
 	if (conn->ppp.fd < 0) {
-		close(conn->tunnel_fd);
-		conn->tunnel_fd = -1;
 		log_ppp_error("l2tp: socket(AF_PPPOX): %s\n", strerror(errno));
-		return -1;
+		goto out_err;
 	}
 
 	fcntl(conn->ppp.fd, F_SETFD, fcntl(conn->ppp.fd, F_GETFD) | FD_CLOEXEC);
 
 	if (connect(conn->tunnel_fd, (struct sockaddr *)&pppox_addr, sizeof(pppox_addr)) < 0) {
 		log_ppp_error("l2tp: connect(tunnel): %s\n", strerror(errno));
-		return -1;
+		goto out_err;
 	}
 
 	pppox_addr.pppol2tp.s_session = conn->sid;
@@ -413,12 +411,12 @@ static int l2tp_connect(struct l2tp_conn_t *conn)
 
 	if (connect(conn->ppp.fd, (struct sockaddr *)&pppox_addr, sizeof(pppox_addr)) < 0) {
 		log_ppp_error("l2tp: connect(session): %s\n", strerror(errno));
-		return -1;
+		goto out_err;
 	}
 
 	if (setsockopt(conn->ppp.fd, SOL_PPPOL2TP, PPPOL2TP_SO_LNSMODE, &arg, sizeof(arg))) {
 		log_ppp_error("l2tp: setsockopt: %s\n", strerror(errno));
-		return -1;
+		goto out_err;
 	}
 
 	conn->ppp.ses.chan_name = _strdup(inet_ntoa(conn->addr.sin_addr));
@@ -426,14 +424,25 @@ static int l2tp_connect(struct l2tp_conn_t *conn)
 	triton_event_fire(EV_CTRL_STARTED, &conn->ppp.ses);
 
 	if (establish_ppp(&conn->ppp))
-		return -1;
+		goto out_err;
 
 	__sync_sub_and_fetch(&stat_starting, 1);
 	__sync_add_and_fetch(&stat_active, 1);
 
 	conn->state = STATE_PPP;
-	
+
 	return 0;
+
+out_err:
+	if (conn->tunnel_fd >= 0) {
+		close(conn->tunnel_fd);
+		conn->tunnel_fd = -1;
+	}
+	if (conn->ppp.fd >= 0) {
+		close(conn->ppp.fd);
+		conn->ppp.fd = -1;
+	}
+	return -1;
 }
 
 static void l2tp_rtimeout(struct triton_timer_t *t)
