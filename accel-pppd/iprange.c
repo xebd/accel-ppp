@@ -42,7 +42,7 @@ static struct iprange_t *parse1(const char *str)
 		return NULL;
 	if (f4 > 255)
 		return NULL;
-	if (m == 0 || m > 32)
+	if (m > 32)
 		return NULL;
 	
 	r = _malloc(sizeof(*r));
@@ -94,11 +94,8 @@ static void load_ranges(struct list_head *list, const char *conf_sect)
 	}
 
 	list_for_each_entry(opt, &s->items, entry) {
-		if (!strcmp(opt->name, "disable")) {
-			conf_disable = 1;
-			log_emerg("iprange: iprange module disabled so improper ip address assigning may cause kernel soft lockup!\n");
-			continue;
-		}
+		if (!strcmp(opt->name, "disable"))
+			goto disable;
 		r = parse1(opt->name);
 		if (!r)
 			r = parse2(opt->name);
@@ -106,8 +103,15 @@ static void load_ranges(struct list_head *list, const char *conf_sect)
 			log_emerg("iprange: cann't parse '%s' in '%s'\n", opt->name, conf_sect);
 			_exit(EXIT_FAILURE);
 		}
+		if (r->begin == r->end)
+			goto disable;
 		list_add_tail(&r->entry, list);
 	}
+
+	return;
+disable:
+	conf_disable = 1;
+	log_emerg("iprange: iprange module disabled so improper ip address assigning may cause kernel soft lockup!\n");
 }
 
 static int check_range(struct list_head *list, in_addr_t ipaddr)
