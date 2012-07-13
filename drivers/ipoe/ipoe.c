@@ -6,6 +6,7 @@
 #include <linux/skbuff.h>
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
+#include <linux/inetdevice.h>
 #include <linux/in.h>
 #include <linux/tcp.h>
 #include <linux/udp.h>
@@ -14,6 +15,7 @@
 #include <linux/init.h>
 #include <linux/if_ether.h>
 #include <linux/semaphore.h>
+#include <linux/netfilter_ipv4.h>
 #include <linux/version.h>
 
 #include <net/genetlink.h>
@@ -61,6 +63,7 @@ struct ipoe_session
 
 	__be32 addr;
 	__be32 peer_addr;
+	__be32 l4_redirect;
 	__u8 hwaddr[ETH_ALEN];
 
 	struct net_device *dev;
@@ -336,6 +339,7 @@ static netdev_tx_t ipoe_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct iphdr  *iph;
 	struct ethhdr *eth;
 	struct sk_buff *skb1;
+	struct dst_entry *dst;
 	/*struct arphdr *arp;
 	unsigned char *arp_ptr;
 	__be32 tip;*/
@@ -360,6 +364,18 @@ static netdev_tx_t ipoe_xmit(struct sk_buff *skb, struct net_device *dev)
 		stats->tx_packets++;
 		stats->tx_bytes += skb->len - ETH_HLEN;
 #endif
+
+		
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
+		dst = skb_dst(skb);
+#else
+		dst = skb->dst;
+#endif
+		if (dst && dst->dev != skb->dev) {
+			skb->dev = dst->dev;
+			dev_queue_xmit(skb);
+			return NETDEV_TX_OK;
+		}
 
 		if (iph->daddr == ses->addr) {
 			if (skb_shared(skb)) {
@@ -485,7 +501,7 @@ static int ipoe_rcv_arp(struct sk_buff *skb, struct net_device *dev, struct pack
 	}
 
 	skb1->dev = ses->dev;
-	skb1->skb_iif = ses->dev->ifindex;
+	//skb1->skb_iif = ses->dev->ifindex;
 
 	cb_ptr = skb1->cb + sizeof(skb1->cb) - 2;
 	*(__u16 *)cb_ptr = IPOE_MAGIC;
@@ -544,6 +560,7 @@ static int ipoe_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_t
 	
 	if (!ses) {
 		ipoe_queue_u(skb, iph->saddr);
+		skb->pkt_type = PACKET_OTHERHOST;
 		goto drop;
 	}
 	
@@ -574,7 +591,7 @@ static int ipoe_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_t
 		goto drop_unlock;
 	}
 
-	if (ses->addr && ipoe_do_nat(skb1, ses->addr, 0)) {
+	if (ses->addr > 1 && ipoe_do_nat(skb1, ses->addr, 0)) {
 		kfree_skb(skb1);
 		goto drop_unlock;
 	}
@@ -790,6 +807,38 @@ static struct ipoe_session *ipoe_lookup(__be32 addr)
 	return NULL;
 }
 
+static unsigned int ipt_hook(unsigned int hook, struct sk_buff *skb, const struct net_device *in, const struct net_device *out, int (*okfn)(struct sk_buff *skb))
+{
+	int noff;
+	struct iphdr *iph;
+	struct ipoe_session *ses;
+
+	if (skb->protocol != htons(ETH_P_IP))
+		return NF_ACCEPT;
+
+	noff = skb_network_offset(skb);
+
+	if (!pskb_may_pull(skb, sizeof(*iph) + noff))
+		return NF_ACCEPT;
+	
+	iph = ip_hdr(skb);
+	
+	if (!ipoe_check_network(iph->daddr))
+		return NF_ACCEPT;
+	
+	if (ipoe_check_network(iph->saddr))
+		return NF_ACCEPT;
+
+	ses = ipoe_lookup(iph->daddr);
+	if (!ses)
+		return NF_ACCEPT;
+	
+	skb->dev = ses->dev;		
+	atomic_dec(&ses->refs);
+	
+	return NF_ACCEPT;
+}
+
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
 static struct rtnl_link_stats64 *ipoe_stats64(struct net_device *dev,
 					     struct rtnl_link_stats64 *stats)
@@ -901,6 +950,7 @@ static int ipoe_create(__be32 peer_addr, __be32 addr, const char *link_ifname, c
 	char name[IFNAMSIZ];
 	int r = -EINVAL;
 	int h = hash_addr(peer_addr);
+	struct in_device *in_dev;
 
 	if (link_ifname) {
 		link_dev = dev_get_by_name(&init_net, link_ifname);
@@ -950,6 +1000,14 @@ static int ipoe_create(__be32 peer_addr, __be32 addr, const char *link_ifname, c
 		dev->flags |= IFF_NOARP;
 	else
 		dev->flags &= ~IFF_NOARP;
+	
+	in_dev = __in_dev_get_rtnl(dev);
+	if (in_dev) {
+		if (addr == 1)
+			IPV4_DEVCONF(in_dev->cnf, RP_FILTER) = 0;
+		else
+			IPV4_DEVCONF(in_dev->cnf, RP_FILTER) = 1;
+	}
 
 	rtnl_lock();
 	r = register_netdevice(dev);
@@ -1139,6 +1197,7 @@ static int ipoe_nl_cmd_modify(struct sk_buff *skb, struct genl_info *info)
 	int ret = -EINVAL, r = 0;
 	char ifname[IFNAMSIZ];
 	struct net_device *dev, *link_dev, *old_dev;
+	struct in_device *in_dev;
 	struct ipoe_session *ses, *ses1;
 	int ifindex;
 	__be32 peer_addr;
@@ -1219,6 +1278,14 @@ static int ipoe_nl_cmd_modify(struct sk_buff *skb, struct genl_info *info)
 			dev->flags |= IFF_NOARP;
 		else
 			dev->flags &= ~IFF_NOARP;
+
+		in_dev = __in_dev_get_rtnl(dev);
+		if (in_dev) {
+			if (ses->addr == 1)
+				IPV4_DEVCONF(in_dev->cnf, RP_FILTER) = 0;
+			else
+				IPV4_DEVCONF(in_dev->cnf, RP_FILTER) = 1;
+		}
 	}
 
 	if (info->attrs[IPOE_ATTR_HWADDR])
@@ -1414,6 +1481,23 @@ static struct packet_type arp_packet_type = {
 	.func = ipoe_rcv_arp,
 };
 
+static struct nf_hook_ops ipt_ops[] __read_mostly = {
+	{
+		.hook = ipt_hook,
+		.pf = PF_INET,
+		.hooknum = NF_INET_POST_ROUTING,
+		.priority = NF_IP_PRI_LAST,
+		.owner = THIS_MODULE,
+	},
+	{
+		.hook = ipt_hook,
+		.pf = PF_INET,
+		.hooknum = NF_INET_LOCAL_OUT,
+		.priority = NF_IP_PRI_LAST,
+		.owner = THIS_MODULE,
+	},
+};
+
 /*static struct pernet_operations ipoe_net_ops = {
 	.init = ipoe_init_net,
 	.exit = ipoe_exit_net,
@@ -1434,6 +1518,9 @@ static int __init ipoe_init(void)
 		INIT_LIST_HEAD(&ipoe_list[i]);
 		INIT_LIST_HEAD(&ipoe_list1_u[i]);
 	}
+	
+	skb_queue_head_init(&ipoe_queue);
+	INIT_WORK(&ipoe_queue_work, ipoe_process_queue);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35)
 	err = genl_register_family(&ipoe_nl_family);
@@ -1467,8 +1554,11 @@ static int __init ipoe_init(void)
 		goto out_unreg;
 	}
 
-	skb_queue_head_init(&ipoe_queue);
-	INIT_WORK(&ipoe_queue_work, ipoe_process_queue);
+	err = nf_register_hooks(ipt_ops, ARRAY_SIZE(ipt_ops));
+	if (err < 0) {
+		printk(KERN_INFO "ipoe: can't register nf hooks\n");
+		goto out_unreg;
+	}
 
 	dev_add_pack(&ip_packet_type);
 	dev_add_pack(&arp_packet_type);
@@ -1490,6 +1580,8 @@ static void __exit ipoe_fini(void)
 	
 	genl_unregister_mc_group(&ipoe_nl_family, &ipoe_nl_mcg);
 	genl_unregister_family(&ipoe_nl_family);
+
+	nf_unregister_hooks(ipt_ops, ARRAY_SIZE(ipt_ops));
 
 	dev_remove_pack(&ip_packet_type);
 	dev_remove_pack(&arp_packet_type);

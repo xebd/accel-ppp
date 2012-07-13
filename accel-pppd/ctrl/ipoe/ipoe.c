@@ -247,25 +247,27 @@ static void ipoe_session_start(struct ipoe_session *ses)
 	}
 
 	ses->ses.ipv4 = ipdb_get_ipv4(&ses->ses);
-	if (!ses->ses.ipv4) {
+	/*if (!ses->ses.ipv4) {
 		log_ppp_warn("no free IPv4 address\n");
 		ap_session_terminate(&ses->ses, TERM_AUTH_ERROR, 0);
 		return;
+	}*/
+
+	if (ses->ses.ipv4) {
+		if (conf_gw_address)
+			ses->ses.ipv4->addr = conf_gw_address;
+		
+		if (conf_netmask)
+			ses->ses.ipv4->mask = conf_netmask;
+		else if (!ses->ses.ipv4->mask)
+			ses->ses.ipv4->mask = 24;
+
+		if (!ses->yiaddr)
+			ses->yiaddr = ses->ses.ipv4->peer_addr;
+		
+		if (!ses->siaddr)
+			ses->siaddr = ses->ses.ipv4->addr;
 	}
-
-	if (conf_gw_address)
-		ses->ses.ipv4->addr = conf_gw_address;
-	
-	if (conf_netmask)
-		ses->ses.ipv4->mask = conf_netmask;
-	else if (!ses->ses.ipv4->mask)
-		ses->ses.ipv4->mask = 24;
-
-	if (!ses->yiaddr)
-		ses->yiaddr = ses->ses.ipv4->peer_addr;
-	
-	if (!ses->siaddr)
-		ses->siaddr = ses->ses.ipv4->addr;
 	
 	if (!ses->mask)
 		ses->mask = 24;
@@ -280,7 +282,7 @@ static void ipoe_session_start(struct ipoe_session *ses)
 		ses->timer.expire_tv.tv_sec = conf_offer_timeout;
 		triton_timer_add(&ses->ctx, &ses->timer, 0);
 	} else {
-		if (ipoe_nl_modify(ses->ifindex, ses->yiaddr, ses->ses.ipv4->peer_addr, NULL, NULL))
+		if (ipoe_nl_modify(ses->ifindex, ses->yiaddr, ses->ses.ipv4 ? ses->ses.ipv4->peer_addr : 1, NULL, NULL))
 			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 0);
 		else
 			ap_session_activate(&ses->ses);
