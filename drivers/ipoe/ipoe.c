@@ -366,7 +366,7 @@ static netdev_tx_t ipoe_xmit(struct sk_buff *skb, struct net_device *dev)
 #endif
 
 		
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,30)
 		dst = skb_dst(skb);
 #else
 		dst = skb->dst;
@@ -442,182 +442,6 @@ drop:
 	stats->tx_dropped++;
 	dev_kfree_skb(skb);
 	return NETDEV_TX_OK;
-}
-
-static int ipoe_rcv_arp(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
-{
-	struct ipoe_session *ses = NULL;
-	struct arphdr *arp;
-	unsigned char *arp_ptr;
-	int noff;
-	__be32 sip;
-	struct sk_buff *skb1;
-	unsigned char *cb_ptr;
-	struct net_device_stats *stats;
-
-	//pr_info("ipoe: recv arp\n");
-	
-	if (skb->pkt_type == PACKET_OTHERHOST)
-		goto drop;
-	
-	cb_ptr = skb->cb + sizeof(skb->cb) - 2;
-	
-	if (*(__u16 *)cb_ptr == IPOE_MAGIC)
-		goto drop;
-
-	noff = skb_network_offset(skb);
-
-	if (!pskb_may_pull(skb, arp_hdr_len(dev) + noff))
-		goto drop;
-	
-	arp = arp_hdr(skb);
-	arp_ptr = (unsigned char *)(arp + 1);
-
-	if (arp->ar_pro != htons(ETH_P_IP))
-		goto drop;
-	
-	memcpy(&sip, arp_ptr + ETH_ALEN, 4);
-
-	if (!sip)
-		goto drop;
-	//pr_info("ipoe: recv arp %08x\n", sip);
-
-	ses = ipoe_lookup(sip);
-
-	if (!ses)
-		goto drop;
-	
-	stats = &ses->dev->stats;
-	
-	if (ses->addr || skb->dev == ses->dev) {
-		atomic_dec(&ses->refs);
-		goto drop;
-	}
-	
-	skb1 = skb_clone(skb, GFP_ATOMIC);
-	if (!skb1) {
-		stats->rx_dropped++;
-		goto drop_unlock;
-	}
-
-	skb1->dev = ses->dev;
-	//skb1->skb_iif = ses->dev->ifindex;
-
-	cb_ptr = skb1->cb + sizeof(skb1->cb) - 2;
-	*(__u16 *)cb_ptr = IPOE_MAGIC;
-
-	netif_rx(skb1);
-	
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
-	ipoe_update_stats(skb, this_cpu_ptr(ses->rx_stats), 0);
-#else
-	stats->rx_packets++;
-	stats->rx_bytes += skb->len;
-#endif
-
-drop_unlock:
-	atomic_dec(&ses->refs);
-	skb->pkt_type = PACKET_OTHERHOST;
-
-drop:
-	kfree_skb(skb);
-	return NET_RX_DROP;
-}
-
-static int ipoe_rcv(struct sk_buff *skb, struct net_device *dev, struct packet_type *pt, struct net_device *orig_dev)
-{
-	struct ipoe_session *ses = NULL;
-	struct iphdr *iph;
-	struct ethhdr *eth;
-	int noff;
-	struct sk_buff *skb1;
-	unsigned char *cb_ptr;
-	struct net_device_stats *stats;
-
-	if (skb->pkt_type == PACKET_OTHERHOST)
-		goto drop;
-	
-	cb_ptr = skb->cb + sizeof(skb->cb) - 2;
-
-	if (*(__u16 *)cb_ptr == IPOE_MAGIC)
-		goto drop;
-	
-	noff = skb_network_offset(skb);
-
-	if (!pskb_may_pull(skb, sizeof(*iph) + noff))
-		goto drop;
-	
-	iph = ip_hdr(skb);
-
-	if (!iph->saddr)
-		goto drop;
-
-	//pr_info("ipoe: recv %08x %08x\n", iph->saddr, iph->daddr);
-	if (!ipoe_check_network(iph->saddr))
-		goto drop;
-	
-	ses = ipoe_lookup(iph->saddr);
-	
-	if (!ses) {
-		ipoe_queue_u(skb, iph->saddr);
-		skb->pkt_type = PACKET_OTHERHOST;
-		goto drop;
-	}
-	
-	//pr_info("ipoe: recv cb=%x\n", *(__u16 *)cb_ptr);
-	
-	if (ses->link_dev) {
-		eth = eth_hdr(skb);
-		if (memcmp(eth->h_source, ses->hwaddr, ETH_ALEN))
-			goto drop_unlock;
-	}
-
-	stats = &ses->dev->stats;
-	
-	if (skb->dev == ses->dev) {
-		//pr_info("ipoe: dup\n");
-		atomic_dec(&ses->refs);
-		goto drop;
-	}
-
-	if (ses->addr && ipoe_check_network(iph->daddr)) {
-		atomic_dec(&ses->refs);
-		goto drop;
-	}
-	
-	skb1 = skb_clone(skb, GFP_ATOMIC);
-	if (!skb1) {
-		stats->rx_dropped++;
-		goto drop_unlock;
-	}
-
-	if (ses->addr > 1 && ipoe_do_nat(skb1, ses->addr, 0)) {
-		kfree_skb(skb1);
-		goto drop_unlock;
-	}
-
-	skb1->dev = ses->dev;
-	//skb1->skb_iif = ses->dev->ifindex;
-	
-	cb_ptr = skb1->cb + sizeof(skb1->cb) - 2;
-	*(__u16 *)cb_ptr = IPOE_MAGIC;
-
-	netif_rx(skb1);
-	
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
-	ipoe_update_stats(skb, this_cpu_ptr(ses->rx_stats), 0);
-#else
-	stats->rx_packets++;
-	stats->rx_bytes += skb->len;
-#endif
-
-drop_unlock:
-	atomic_dec(&ses->refs);
-	skb->pkt_type = PACKET_OTHERHOST;
-	
-drop:
-	kfree_skb(skb);
-	return NET_RX_DROP;
 }
 
 static int ipoe_lookup1_u(__be32 addr, unsigned long *ts)
@@ -807,13 +631,109 @@ static struct ipoe_session *ipoe_lookup(__be32 addr)
 	return NULL;
 }
 
-static unsigned int ipt_hook(unsigned int hook, struct sk_buff *skb, const struct net_device *in, const struct net_device *out, int (*okfn)(struct sk_buff *skb))
+static unsigned int ipt_in_hook(unsigned int hook, struct sk_buff *skb, const struct net_device *in, const struct net_device *out, int (*okfn)(struct sk_buff *skb))
+{
+	struct ipoe_session *ses = NULL;
+	struct iphdr *iph;
+	struct ethhdr *eth;
+	int noff;
+	struct sk_buff *skb1;
+	unsigned char *cb_ptr;
+	struct net_device_stats *stats;
+	int ret = NF_ACCEPT;
+
+	if (skb->protocol != htons(ETH_P_IP))
+		return NF_ACCEPT;
+
+	cb_ptr = skb->cb + sizeof(skb->cb) - 2;
+
+	if (*(__u16 *)cb_ptr == IPOE_MAGIC)
+		return NF_ACCEPT;
+	
+	noff = skb_network_offset(skb);
+
+	if (!pskb_may_pull(skb, sizeof(*iph) + noff))
+		return NF_ACCEPT;
+	
+	iph = ip_hdr(skb);
+
+	if (!iph->saddr)
+		return NF_ACCEPT;
+
+	//pr_info("ipoe: recv %08x %08x\n", iph->saddr, iph->daddr);
+	if (!ipoe_check_network(iph->saddr))
+		return NF_ACCEPT;
+	
+	ses = ipoe_lookup(iph->saddr);
+	
+	if (!ses) {
+		ipoe_queue_u(skb, iph->saddr);
+		return NF_DROP;
+	}
+
+	//pr_info("ipoe: recv cb=%x\n", *(__u16 *)cb_ptr);
+	stats = &ses->dev->stats;
+	
+	if (ses->link_dev) {
+		eth = eth_hdr(skb);
+		if (memcmp(eth->h_source, ses->hwaddr, ETH_ALEN)) {
+			stats->rx_dropped++;
+			ret = NF_DROP;
+			goto out;
+		}
+	}
+	
+	if (skb->dev == ses->dev)
+		goto out;
+
+	if (ses->addr && ipoe_check_network(iph->daddr))
+		goto out;
+	
+	skb1 = skb_clone(skb, GFP_ATOMIC);
+	if (!skb1) {
+		stats->rx_dropped++;
+		ret = NF_DROP;
+		goto out;
+	}
+
+	if (ses->addr > 1 && ipoe_do_nat(skb1, ses->addr, 0)) {
+		kfree_skb(skb1);
+		ret = NF_DROP;
+		goto out;
+	}
+
+	skb1->dev = ses->dev;
+	skb1->skb_iif = skb->dev->ifindex;
+	
+	cb_ptr = skb1->cb + sizeof(skb1->cb) - 2;
+	*(__u16 *)cb_ptr = IPOE_MAGIC;
+
+	netif_rx(skb1);
+	
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
+	ipoe_update_stats(skb, this_cpu_ptr(ses->rx_stats), 0);
+#else
+	stats->rx_packets++;
+	stats->rx_bytes += skb->len;
+#endif
+
+out:
+	atomic_dec(&ses->refs);
+	return ret;
+}
+
+static unsigned int ipt_out_hook(unsigned int hook, struct sk_buff *skb, const struct net_device *in, const struct net_device *out, int (*okfn)(struct sk_buff *skb))
 {
 	int noff;
 	struct iphdr *iph;
 	struct ipoe_session *ses;
+	unsigned char *cb_ptr;
 
 	if (skb->protocol != htons(ETH_P_IP))
+		return NF_ACCEPT;
+	
+	cb_ptr = skb->cb + sizeof(skb->cb) - 2;
+	if (*(__u16 *)cb_ptr == IPOE_MAGIC)
 		return NF_ACCEPT;
 
 	noff = skb_network_offset(skb);
@@ -1471,29 +1391,26 @@ static const struct net_device_ops ipoe_netdev_ops = {
 };
 #endif
 
-static struct packet_type ip_packet_type = {
-	.type = __constant_htons(ETH_P_IP),
-	.func = ipoe_rcv,
-};
-
-static struct packet_type arp_packet_type = {
-	.type = __constant_htons(ETH_P_ARP),
-	.func = ipoe_rcv_arp,
-};
-
 static struct nf_hook_ops ipt_ops[] __read_mostly = {
 	{
-		.hook = ipt_hook,
+		.hook = ipt_out_hook,
 		.pf = PF_INET,
 		.hooknum = NF_INET_POST_ROUTING,
 		.priority = NF_IP_PRI_LAST,
 		.owner = THIS_MODULE,
 	},
 	{
-		.hook = ipt_hook,
+		.hook = ipt_out_hook,
 		.pf = PF_INET,
 		.hooknum = NF_INET_LOCAL_OUT,
 		.priority = NF_IP_PRI_LAST,
+		.owner = THIS_MODULE,
+	},
+	{
+		.hook = ipt_in_hook,
+		.pf = PF_INET,
+		.hooknum = NF_INET_PRE_ROUTING,
+		.priority = NF_IP_PRI_FIRST,
 		.owner = THIS_MODULE,
 	},
 };
@@ -1560,9 +1477,6 @@ static int __init ipoe_init(void)
 		goto out_unreg;
 	}
 
-	dev_add_pack(&ip_packet_type);
-	dev_add_pack(&arp_packet_type);
-
 	return 0;
 
 out_unreg:
@@ -1582,9 +1496,6 @@ static void __exit ipoe_fini(void)
 	genl_unregister_family(&ipoe_nl_family);
 
 	nf_unregister_hooks(ipt_ops, ARRAY_SIZE(ipt_ops));
-
-	dev_remove_pack(&ip_packet_type);
-	dev_remove_pack(&arp_packet_type);
 
 	flush_work(&ipoe_queue_work);
 	skb_queue_purge(&ipoe_queue);
