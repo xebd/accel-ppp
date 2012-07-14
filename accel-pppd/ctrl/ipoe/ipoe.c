@@ -13,6 +13,7 @@
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 #include <linux/if.h>
+#include <linux/route.h>
 
 #include <pcre.h>
 
@@ -44,6 +45,7 @@ static int conf_dhcpv4 = 1;
 static int conf_up = 0;
 static int conf_mode = 0;
 static int conf_shared = 1;
+static int conf_ifcfg = 1;
 //static int conf_dhcpv6;
 static int conf_username;
 static int conf_unit_cache;
@@ -65,6 +67,13 @@ static unsigned int stat_active;
 static mempool_t ses_pool;
 
 static LIST_HEAD(serv_list);
+
+struct ifaddr
+{
+	struct list_head entry;
+	in_addr_t addr;
+	int refs;
+};
 
 struct iplink_arg
 {
@@ -180,9 +189,10 @@ static void ipoe_session_start(struct ipoe_session *ses)
 	struct ifreq ifr;
 	struct unit_cache *uc;
 
-	if (ses->serv->opt_shared == 0)
+	if (ses->serv->opt_shared == 0 && (!ses->ses.ipv4 || ses->ses.ipv4->peer_addr == ses->yiaddr)) {
 		strncpy(ses->ses.ifname, ses->serv->ifname, AP_IFNAME_LEN);
-	else if (ses->ifindex == -1) {
+		ses->ses.ifindex = ses->serv->ifindex;
+	} else if (ses->ifindex == -1) {
 		pthread_mutex_lock(&uc_lock);
 		if (!list_empty(&uc_list)) {
 			uc = list_entry(uc_list.next, typeof(*uc), entry);
@@ -246,6 +256,10 @@ static void ipoe_session_start(struct ipoe_session *ses)
 		return;
 	}
 
+	dhcpv4_get_ip(ses->serv->dhcpv4, &ses->yiaddr, &ses->siaddr, &ses->mask);
+	if (ses->yiaddr)
+		ses->dhcp_addr = 1;
+
 	ses->ses.ipv4 = ipdb_get_ipv4(&ses->ses);
 	/*if (!ses->ses.ipv4) {
 		log_ppp_warn("no free IPv4 address\n");
@@ -289,14 +303,93 @@ static void ipoe_session_start(struct ipoe_session *ses)
 	}
 }
 
+static void ipoe_ifcfg_add(struct ipoe_session *ses)
+{
+	struct ifaddr *a;
+	struct ipoe_serv *serv = ses->serv;
+	int f = 0;
+
+	pthread_mutex_lock(&serv->lock);
+	
+	if (ses->serv->opt_shared) {
+		list_for_each_entry(a, &serv->addr_list, entry) {
+			if (a->addr == ses->siaddr) {
+				f = 1;
+				break;
+			}
+		}
+		if (!f) {
+			a = _malloc(sizeof(*a));
+			a->addr = ses->siaddr;
+			a->refs = 1;
+			list_add_tail(&a->entry, &serv->addr_list);
+
+			if (ipaddr_add(serv->ifindex, a->addr, 32))
+				log_ppp_warn("ipoe: failed to add addess to interface '%s'\n", serv->ifname);
+		} else
+			a->refs++;
+	} else {
+		if (ipaddr_add(serv->ifindex, ses->siaddr, 32))
+			log_ppp_warn("ipoe: failed to add addess to interface '%s'\n", serv->ifname);
+	}
+
+	pthread_mutex_unlock(&serv->lock);
+
+	if (iproute_add(serv->ifindex, ses->siaddr, ses->yiaddr))
+		log_ppp_warn("ipoe: failed to add route to interface '%s'\n", serv->ifname);
+
+	ses->ifcfg = 1;
+}
+
+static void ipoe_ifcfg_del(struct ipoe_session *ses)
+{
+	struct ifaddr *a;
+	struct ipoe_serv *serv = ses->serv;
+
+	if (iproute_del(serv->ifindex, ses->yiaddr))
+		log_ppp_warn("ipoe: failed to delete route from interface '%s'\n", serv->ifname);
+		
+	pthread_mutex_lock(&serv->lock);
+
+	if (ses->serv->opt_shared) {
+		list_for_each_entry(a, &serv->addr_list, entry) {
+			if (a->addr == ses->siaddr)
+				break;
+		}
+		if (--a->refs == 0) {
+			if (ipaddr_del(serv->ifindex, a->addr))
+				log_ppp_warn("ipoe: failed to delete addess from interface '%s'\n", serv->ifname);
+			list_del(&a->entry);
+			_free(a);
+		}
+	} else {
+		if (ipaddr_del(serv->ifindex, ses->siaddr))
+			log_ppp_warn("ipoe: failed to add addess to interface '%s'\n", serv->ifname);
+	}
+	
+	pthread_mutex_unlock(&serv->lock);
+}
+
 static void ipoe_session_activate(struct ipoe_session *ses)
 {
+	uint32_t addr;
+
 	if (ses->ifindex != -1) {
-		if (ipoe_nl_modify(ses->ifindex, ses->yiaddr, ses->ses.ipv4->peer_addr, NULL, NULL)) {
+		if (!ses->ses.ipv4)
+			addr = 1;
+		else if (ses->ses.ipv4->peer_addr != ses->yiaddr)
+			addr = ses->ses.ipv4->peer_addr;
+		else
+			addr = 0;
+		if (ipoe_nl_modify(ses->ifindex, ses->yiaddr, addr, NULL, NULL)) {
 			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 0);
 			return;
 		}
-	}
+	} else
+		ses->ctrl.dont_ifcfg = 1;
+	
+	if (ses->serv->opt_ifcfg)
+		ipoe_ifcfg_add(ses);
 
 	ap_session_activate(&ses->ses);
 
@@ -387,8 +480,11 @@ static void ipoe_session_finished(struct ap_session *s)
 	serv_close = ses->serv->need_close && list_empty(&ses->serv->sessions);
 	pthread_mutex_unlock(&ses->serv->lock);
 
-	if (ses->yiaddr && ses->serv->dhcpv4 && ses->serv->dhcpv4->range)
+	if (ses->dhcp_addr)
 		dhcpv4_put_ip(ses->serv->dhcpv4, ses->yiaddr);
+
+	if (ses->ifcfg)
+		ipoe_ifcfg_del(ses);
 
 	if (serv_close)
 		ipoe_serv_close(&ses->serv->ctx);
@@ -435,8 +531,6 @@ static struct ipoe_session *ipoe_session_create_dhcpv4(struct ipoe_serv *serv, s
 	ses->xid = pack->hdr->xid;
 	memcpy(ses->hwaddr, pack->hdr->chaddr, 6);
 	ses->giaddr = pack->hdr->giaddr;
-
-	dhcpv4_get_ip(serv->dhcpv4, &ses->yiaddr, &ses->siaddr, &ses->mask);
 
 	if (pack->agent_circuit_id)
 		dlen += sizeof(struct dhcp_opt) + pack->agent_circuit_id->len;
@@ -797,6 +891,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 	int opt_dhcpv4 = 0;
 	int opt_up = 0;
 	int opt_mode = conf_mode;
+	int opt_ifcfg = conf_ifcfg;
 
 	str0 = strchr(opt, ',');
 	if (str0) {
@@ -837,6 +932,8 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 					opt_mode = MODE_L3;
 				else
 					goto parse_err;
+			} else if (strcmp(str, "ifcfg") == 0) {
+				opt_ifcfg = atoi(ptr1);
 			}
 
 			if (end)
@@ -875,7 +972,8 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 		}
 
 		serv->opt_up = opt_up;
-		serv->opt_mode = conf_mode;
+		serv->opt_mode = opt_mode;
+		serv->opt_ifcfg = opt_ifcfg;
 
 		return;
 	}
@@ -889,8 +987,10 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 	serv->opt_dhcpv4 = opt_dhcpv4;
 	serv->opt_up = opt_up;
 	serv->opt_mode = opt_mode;
+	serv->opt_ifcfg = opt_ifcfg;
 	serv->active = 1;
 	INIT_LIST_HEAD(&serv->sessions);
+	INIT_LIST_HEAD(&serv->addr_list);
 	pthread_mutex_init(&serv->lock, NULL);
 
 	triton_context_register(&serv->ctx, NULL);
@@ -1115,6 +1215,12 @@ static void load_config(void)
 		conf_shared = atoi(opt);
 	else
 		conf_shared = 1;
+	
+	opt = conf_get_opt("ipoe", "ifcfg");
+	if (opt)
+		conf_ifcfg = atoi(opt);
+	else
+		conf_ifcfg = 1;
 	
 	opt = conf_get_opt("ipoe", "mode");
 	if (opt) {

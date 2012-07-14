@@ -16,12 +16,14 @@ struct ipoe_serv
 	int ifindex;
 	int active;
 	struct list_head sessions;
+	struct list_head addr_list;
 	struct dhcpv4_serv *dhcpv4;
 	pthread_mutex_t lock;
 	int opt_mode;
 	int opt_shared:1;
 	int opt_dhcpv4:1;
 	int opt_up:1;
+	int opt_ifcfg:1;
 	int need_close:1;
 };
 
@@ -51,6 +53,8 @@ struct ipoe_session
 	uint8_t *data;
 	struct dhcpv4_packet *dhcpv4_request;
 	int ifindex;
+	int ifcfg:1;
+	int dhcp_addr:1;
 };
 
 struct ipoe_session_info

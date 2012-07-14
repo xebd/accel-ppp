@@ -11,6 +11,9 @@
 #include <errno.h>
 #include <time.h>
 #include <sys/uio.h>
+//#include <linux/if_link.h>
+//#include <linux/if_addr.h>
+//#include <linux/rtnetlink.h>
 
 #include "triton.h"
 #include "log.h"
@@ -157,6 +160,141 @@ int __export iplink_get_stats(int ifindex, struct rtnl_link_stats *stats)
 	
 	return 0;
 }
+
+int __export ipaddr_add(int ifindex, in_addr_t addr, int mask)
+{
+	struct ipaddr_req {
+		struct nlmsghdr n;
+		struct ifaddrmsg i;
+		char buf[1024];
+	} req;
+
+	if (!rth)
+		open_rth();
+	
+	if (!rth)
+		return -1;
+
+	memset(&req, 0, sizeof(req) - 1024);
+	
+	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
+	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE;
+	req.n.nlmsg_type = RTM_NEWADDR;
+	req.i.ifa_family = AF_INET;
+	req.i.ifa_index = ifindex;
+	req.i.ifa_prefixlen = mask;
+
+	addattr32(&req.n, sizeof(req), IFA_LOCAL, addr);
+
+	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
+		return -1;
+	
+	return 0;
+}
+
+int __export ipaddr_del(int ifindex, in_addr_t addr)
+{
+	struct ipaddr_req {
+		struct nlmsghdr n;
+		struct ifaddrmsg i;
+		char buf[1024];
+	} req;
+
+	if (!rth)
+		open_rth();
+	
+	if (!rth)
+		return -1;
+
+	memset(&req, 0, sizeof(req) - 1024);
+	
+	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
+	req.n.nlmsg_flags = NLM_F_REQUEST;
+	req.n.nlmsg_type = RTM_DELADDR;
+	req.i.ifa_family = AF_INET;
+	req.i.ifa_index = ifindex;
+	req.i.ifa_prefixlen = 32;
+
+	addattr32(&req.n, sizeof(req), IFA_LOCAL, addr);
+
+	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
+		return -1;
+	
+	return 0;
+}
+
+int __export iproute_add(int ifindex, in_addr_t src, in_addr_t dst)
+{
+	struct ipaddr_req {
+		struct nlmsghdr n;
+		struct rtmsg i;
+		char buf[1024];
+	} req;
+
+	if (!rth)
+		open_rth();
+	
+	if (!rth)
+		return -1;
+
+	memset(&req, 0, sizeof(req) - 1024);
+	
+	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
+	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE;
+	req.n.nlmsg_type = RTM_NEWROUTE;
+	req.i.rtm_family = AF_INET;
+	req.i.rtm_table = RT_TABLE_MAIN;
+	req.i.rtm_scope = RT_SCOPE_LINK;
+	req.i.rtm_protocol = RTPROT_BOOT;
+	req.i.rtm_type = RTN_UNICAST;
+	req.i.rtm_dst_len = 32;
+
+	addattr32(&req.n, sizeof(req), RTA_PREFSRC, src);
+	addattr32(&req.n, sizeof(req), RTA_DST, dst);
+	addattr32(&req.n, sizeof(req), RTA_OIF, ifindex);
+
+	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
+		return -1;
+	
+	return 0;
+}
+
+int __export iproute_del(int ifindex, in_addr_t dst)
+{
+	struct ipaddr_req {
+		struct nlmsghdr n;
+		struct rtmsg i;
+		char buf[1024];
+	} req;
+
+	if (!rth)
+		open_rth();
+	
+	if (!rth)
+		return -1;
+
+	memset(&req, 0, sizeof(req) - 1024);
+	
+	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
+	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+	req.n.nlmsg_type = RTM_DELROUTE;
+	req.i.rtm_family = AF_INET;
+	req.i.rtm_table = RT_TABLE_MAIN;
+	req.i.rtm_scope = RT_SCOPE_LINK;
+	req.i.rtm_protocol = RTPROT_BOOT;
+	req.i.rtm_type = RTN_UNICAST;
+	req.i.rtm_dst_len = 32;
+
+	addattr32(&req.n, sizeof(req), RTA_DST, dst);
+	addattr32(&req.n, sizeof(req), RTA_OIF, ifindex);
+
+	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
+		return -1;
+	
+	return 0;
+}
+
+
 
 static void init(void)
 {

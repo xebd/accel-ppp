@@ -42,6 +42,7 @@ struct ap_ctrl
 	int mppe;
 	char *calling_station_id;
 	char *called_station_id;
+	int dont_ifcfg:1;
 	void (*started)(struct ap_session*);
 	void (*finished)(struct ap_session *);
 	void (*terminate)(struct ap_session *, int hard);
