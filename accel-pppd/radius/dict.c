@@ -206,7 +206,7 @@ static int dict_load(const char *fname)
 	return 0;
 
 out_err_syntax:
-	log_emerg("radius:%s:%i: syntaxis error\n", fname, n);
+	log_emerg("radius:%s:%i: syntax error\n", fname, n);
 out_err:
 	fclose(f);
 	return -1;
@@ -216,13 +216,16 @@ int rad_dict_load(const char *fname)
 {
 	int r = -1;
 
-	dict = malloc(sizeof(*dict));
 	if (!dict) {
-		log_emerg("radius: out of memory\n");
-		return -1;
+		dict = malloc(sizeof(*dict));
+
+		if (!dict) {
+			log_emerg("radius: out of memory\n");
+			return -1;
+		}
+		INIT_LIST_HEAD(&dict->items);
+		INIT_LIST_HEAD(&dict->vendors);
 	}
-	INIT_LIST_HEAD(&dict->items);
-	INIT_LIST_HEAD(&dict->vendors);
 
 	path = _malloc(PATH_MAX);
 	if (!path) {

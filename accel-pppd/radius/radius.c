@@ -567,20 +567,26 @@ static int load_config(void)
 
 static void radius_init(void)
 {
-	char *opt;
-	char *dict = DICTIONARY;
+	const char *dict = NULL;
+	struct conf_sect_t *s = conf_get_section("radius");
+	struct conf_option_t *opt1;
 
 	rpd_pool = mempool_create(sizeof(struct radius_pd_t));
 
 	if (load_config())
 		_exit(EXIT_FAILURE);
 
-	opt = conf_get_opt("radius", "dictionary");
-	if (opt)
-		dict = opt;
+	
+	list_for_each_entry(opt1, &s->items, entry) {
+		if (strcmp(opt1->name, "dictionary") || !opt1->val)
+			continue;
+		dict = opt1->val;
+		if (rad_dict_load(dict))
+			_exit(0);
+	}
 
-	if (rad_dict_load(dict))
-		_exit(EXIT_FAILURE);
+	if (!dict && rad_dict_load(DICTIONARY))
+		_exit(0);
 
 	pwdb_register(&pwdb);
 	ipdb_register(&ipdb);
