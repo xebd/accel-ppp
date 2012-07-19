@@ -27,6 +27,8 @@ struct radius_pd_t
 
 	uint32_t acct_rx_bytes;
 	uint32_t acct_tx_bytes;
+	uint32_t acct_rx_packets;
+	uint32_t acct_tx_packets;
 	uint32_t acct_input_gigawords;
 	uint32_t acct_output_gigawords;
 	uint32_t acct_rx_packets_i;
@@ -35,6 +37,7 @@ struct radius_pd_t
 	uint32_t acct_tx_bytes_i;
 
 	struct triton_timer_t session_timeout;
+	struct triton_timer_t idle_timeout;
 
 	struct rad_packet_t *dm_coa_req;
 	struct sockaddr_in dm_coa_addr;
@@ -186,6 +189,9 @@ void rad_server_timeout(struct rad_server_t *);
 void rad_server_reply(struct rad_server_t *);
 			
 void radius_restore_session(struct ap_session *ses, struct radius_pd_t *rpd);
+
+struct rtnl_link_stats;
+int rad_read_stats(struct radius_pd_t *rpd, struct rtnl_link_stats *stats);
 
 struct stat_accm_t;
 struct stat_accm_t *stat_accm_create(unsigned int time);

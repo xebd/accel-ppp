@@ -21,6 +21,7 @@
 #define RAD_TAG_TERMINATION_ACTION          8
 #define RAD_TAG_ACCT_SERVER_ADDR            9
 #define RAD_TAG_ACCT_SERVER_PORT           10
+#define RAD_TAG_IDLE_TIMEOUT               11
 
 
 #define add_tag(id, data, size) if (!backup_add_tag(m, id, 0, data, size)) return -1;
@@ -30,6 +31,7 @@ static int session_save(struct ap_session *ses, struct backup_mod *m)
 {
 	struct radius_pd_t *rpd = find_pd(ses);
 	uint64_t session_timeout = ses->start_time + rpd->session_timeout.expire_tv.tv_sec;
+	uint32_t idle_timeout = rpd->idle_timeout.period / 1000;
 
 	if (!rpd)
 		return 0;
@@ -41,6 +43,9 @@ static int session_save(struct ap_session *ses, struct backup_mod *m)
 	
 	if (rpd->session_timeout.tpd)
 		add_tag(RAD_TAG_SESSION_TIMEOUT, &session_timeout, 8);
+	
+	if (rpd->idle_timeout.tpd)
+		add_tag(RAD_TAG_IDLE_TIMEOUT, &idle_timeout, 4);
 	
 	if (ses->ipv4 == &rpd->ipv4_addr)
 		add_tag(RAD_TAG_IPV4_ADDR, NULL, 0);
@@ -112,6 +117,9 @@ void radius_restore_session(struct ap_session *ses, struct radius_pd_t *rpd)
 				break;
 			case RAD_TAG_SESSION_TIMEOUT:
 				rpd->session_timeout.expire_tv.tv_sec = *(uint64_t *)tag->data - ses->start_time;
+				break;
+			case RAD_TAG_IDLE_TIMEOUT:
+				rpd->idle_timeout.period = (*(uint32_t *)tag->data) * 1000;
 				break;
 			case RAD_TAG_IPV4_ADDR:
 				ses->ipv4 = &rpd->ipv4_addr;

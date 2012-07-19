@@ -18,6 +18,7 @@
 #define TERM_NAS_REBOOT 7
 #define TERM_AUTH_ERROR 8
 #define TERM_LOST_CARRIER 9
+#define TERM_IDLE_TIMEOUT 10
 
 #define CTRL_TYPE_PPTP  1
 #define CTRL_TYPE_L2TP  2

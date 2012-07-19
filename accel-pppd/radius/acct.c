@@ -21,6 +21,33 @@
 #define STAT_UPDATE_INTERVAL (10 * 60 * 1000)
 #define INTERIM_SAFE_TIME 10
 
+int rad_read_stats(struct radius_pd_t *rpd, struct rtnl_link_stats *stats)
+{
+	int r;
+
+	if (iplink_get_stats(rpd->ses->ifindex, stats)) {
+		log_ppp_warn("radius: failed to get interface statistics\n");
+		return -1;
+	}
+	
+	stats->rx_packets -= rpd->acct_rx_packets_i;
+	stats->tx_packets -= rpd->acct_tx_packets_i;
+	stats->rx_bytes -= rpd->acct_rx_bytes_i;
+	stats->tx_bytes -= rpd->acct_tx_bytes_i;
+
+	r = stats->rx_bytes != rpd->acct_rx_bytes || stats->tx_bytes < rpd->acct_tx_bytes;
+
+	if (stats->rx_bytes < rpd->acct_rx_bytes)
+		rpd->acct_input_gigawords++;
+	rpd->acct_rx_bytes = stats->rx_packets;
+
+	if (stats->tx_bytes < rpd->acct_tx_bytes)
+		rpd->acct_output_gigawords++;
+	rpd->acct_tx_bytes = stats->tx_bytes;
+
+	return r;
+}
+
 static int req_set_RA(struct rad_req_t *req, const char *secret)
 {
 	MD5_CTX ctx;
@@ -48,30 +75,14 @@ static void req_set_stat(struct rad_req_t *req, struct ap_session *ses)
 	else
 		time(&stop_time);
 
-	if (iplink_get_stats(ses->ifindex, &stats)) {
-		log_ppp_warn("radius: failed to get interface statistics\n");
-		return;
+	if (rad_read_stats(rpd, &stats) > 0) {
+		rad_packet_change_int(req->pack, NULL, "Acct-Input-Octets", stats.rx_bytes);
+		rad_packet_change_int(req->pack, NULL, "Acct-Output-Octets", stats.tx_bytes);
+		rad_packet_change_int(req->pack, NULL, "Acct-Input-Packets", stats.rx_packets);
+		rad_packet_change_int(req->pack, NULL, "Acct-Output-Packets", stats.tx_packets);
+		rad_packet_change_int(req->pack, NULL, "Acct-Input-Gigawords", rpd->acct_input_gigawords);
+		rad_packet_change_int(req->pack, NULL, "Acct-Output-Gigawords", rpd->acct_output_gigawords);
 	}
-
-	stats.rx_packets -= rpd->acct_rx_packets_i;
-	stats.tx_packets -= rpd->acct_tx_packets_i;
-	stats.rx_bytes -= rpd->acct_rx_bytes_i;
-	stats.tx_bytes -= rpd->acct_tx_bytes_i;
-
-	if (stats.rx_bytes < rpd->acct_rx_bytes)
-		req->rpd->acct_input_gigawords++;
-	req->rpd->acct_rx_bytes = stats.rx_packets;
-
-	if (stats.tx_bytes < rpd->acct_tx_bytes)
-		req->rpd->acct_output_gigawords++;
-	req->rpd->acct_tx_bytes = stats.tx_bytes;
-
-	rad_packet_change_int(req->pack, NULL, "Acct-Input-Octets", stats.rx_bytes);
-	rad_packet_change_int(req->pack, NULL, "Acct-Output-Octets", stats.tx_bytes);
-	rad_packet_change_int(req->pack, NULL, "Acct-Input-Packets", stats.rx_packets);
-	rad_packet_change_int(req->pack, NULL, "Acct-Output-Packets", stats.tx_packets);
-	rad_packet_change_int(req->pack, NULL, "Acct-Input-Gigawords", rpd->acct_input_gigawords);
-	rad_packet_change_int(req->pack, NULL, "Acct-Output-Gigawords", rpd->acct_output_gigawords);
 
 	rad_packet_change_int(req->pack, NULL, "Acct-Session-Time", stop_time - ses->start_time);
 }
@@ -415,6 +426,9 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 				break;
 			case TERM_LOST_CARRIER:
 				rad_packet_add_val(rpd->acct_req->pack, NULL, "Acct-Terminate-Cause", "Lost-Carrier");
+				break;
+			case TERM_IDLE_TIMEOUT:
+				rad_packet_add_val(rpd->acct_req->pack, NULL, "Acct-Terminate-Cause", "Idle-Timeout");
 				break;
 		}
 		rad_packet_change_val(rpd->acct_req->pack, NULL, "Acct-Status-Type", "Stop");

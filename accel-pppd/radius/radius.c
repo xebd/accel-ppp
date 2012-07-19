@@ -4,6 +4,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <linux/if_link.h>
 
 #include "mempool.h"
 #include "events.h"
@@ -93,6 +94,9 @@ int rad_proc_attrs(struct rad_req_t *req)
 				break;
 			case Session_Timeout:
 				req->rpd->session_timeout.expire_tv.tv_sec = attr->val.integer;
+				break;
+			case Idle_Timeout:
+				req->rpd->idle_timeout.period = attr->val.integer * 1000;
 				break;
 			case Class:
 				if (!req->rpd->attr_class)
@@ -227,6 +231,25 @@ static void session_timeout(struct triton_timer_t *t)
 		ap_session_terminate(rpd->ses, TERM_SESSION_TIMEOUT, 0);
 }
 
+static void idle_timeout(struct triton_timer_t *t)
+{
+	struct radius_pd_t *rpd = container_of(t, typeof(*rpd), idle_timeout);
+	struct rtnl_link_stats stats;
+	
+	if (rpd->ses->stop_time)
+		return;
+
+	rad_read_stats(rpd, &stats);
+
+	if (stats.rx_packets == rpd->acct_rx_packets && stats.tx_packets == rpd->acct_tx_packets) {
+		log_ppp_msg("radius: session timed out\n");
+		ap_session_terminate(rpd->ses, TERM_IDLE_TIMEOUT, 0);
+	} else {
+		rpd->acct_rx_packets = stats.rx_packets;
+		rpd->acct_tx_packets = stats.tx_packets;
+	}
+}
+
 static void ses_starting(struct ap_session *ses)
 {
 	struct radius_pd_t *rpd = mempool_alloc(rpd_pool);
@@ -271,6 +294,11 @@ static void ses_acct_start(struct ap_session *ses)
 		rpd->session_timeout.expire = session_timeout;
 		triton_timer_add(ses->ctrl->ctx, &rpd->session_timeout, 0);
 	}
+	
+	if (rpd->idle_timeout.period) {
+		rpd->idle_timeout.expire = idle_timeout;
+		triton_timer_add(ses->ctrl->ctx, &rpd->idle_timeout, 0);
+	}
 }
 static void ses_finishing(struct ap_session *ses)
 {
@@ -303,6 +331,9 @@ static void ses_finished(struct ap_session *ses)
 
 	if (rpd->session_timeout.tpd)
 		triton_timer_del(&rpd->session_timeout);
+	
+	if (rpd->idle_timeout.tpd)
+		triton_timer_del(&rpd->idle_timeout);
 
 	if (rpd->attr_class)
 		_free(rpd->attr_class);
