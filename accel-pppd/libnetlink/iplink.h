@@ -13,4 +13,7 @@ int ipaddr_del(int ifindex, in_addr_t addr);
 
 int iproute_add(int ifindex, in_addr_t src, in_addr_t dst);
 int iproute_del(int ifindex, in_addr_t dst);
+
+int iprule_add(uint32_t addr, int table);
+int iprule_del(uint32_t addr, int table);
 #endif

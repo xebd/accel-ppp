@@ -55,6 +55,7 @@ struct ipoe_session
 	int ifindex;
 	int ifcfg:1;
 	int dhcp_addr:1;
+	int l4_redirect:1;
 };
 
 struct ipoe_session_info

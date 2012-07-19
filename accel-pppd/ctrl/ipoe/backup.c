@@ -14,7 +14,7 @@
 #include "ap_session_backup.h"
 
 #define IPOE_TAG_HWADDR              1
-#define IPOE_TAG_CLIENT_ID            2
+#define IPOE_TAG_CLIENT_ID           2
 #define IPOE_TAG_AGENT_CIRCUIT_ID    3
 #define IPOE_TAG_AGENT_REMOTE_ID     4
 #define IPOE_TAG_XID                 5
@@ -22,9 +22,16 @@
 #define IPOE_TAG_CALLING_SID         7
 #define IPOE_TAG_CALLED_SID          8
 #define IPOE_TAG_IFNAME              9
+#define IPOE_TAG_FLAGS              10
+#define IPOE_TAG_YIADDR             11
+#define IPOE_TAG_SIADDR             12
+#define IPOE_TAG_MASK               13
 
 #define IPOE_TAG_IFINDEX           100
 
+#define IPOE_FLAG_IFCFG      0x01
+#define IPOE_FLAG_DHCP_ADDR  0x02
+#define IPOE_FLAG_L4_REDIR   0x04
 
 #define add_tag(id, data, size) if (!backup_add_tag(m, id, 0, data, size)) return -1;
 #define add_tag_i(id, data, size) if (!backup_add_tag(m, id, 1, data, size)) return -1;
@@ -37,12 +44,26 @@ static void restore_complete(void);
 static int session_save(struct ap_session *ses, struct backup_mod *m)
 {
 	struct ipoe_session *conn = container_of(ses, typeof(*conn), ses);
+	int flags = 0;
+
+	if (conn->ifcfg)
+		flags |= IPOE_FLAG_IFCFG;
+	
+	if (conn->dhcp_addr)
+		flags |= IPOE_FLAG_DHCP_ADDR;
+	
+	if (conn->l4_redirect)
+		flags |= IPOE_FLAG_L4_REDIR;
 
 	add_tag(IPOE_TAG_HWADDR, conn->hwaddr, 6);
 	add_tag(IPOE_TAG_CALLING_SID, ses->ctrl->calling_station_id, strlen(ses->ctrl->calling_station_id));
 	add_tag(IPOE_TAG_CALLED_SID, ses->ctrl->called_station_id, strlen(ses->ctrl->called_station_id));
 	add_tag(IPOE_TAG_XID, &conn->xid, 4);
 	add_tag(IPOE_TAG_GIADDR, &conn->giaddr, 4);
+	add_tag(IPOE_TAG_YIADDR, &conn->yiaddr, 4);
+	add_tag(IPOE_TAG_SIADDR, &conn->siaddr, 4);
+	add_tag(IPOE_TAG_MASK, &conn->mask, 1);
+	add_tag(IPOE_TAG_FLAGS, &flags, 4);
 
 	if (conn->client_id)
 		add_tag(IPOE_TAG_CLIENT_ID, conn->client_id->data, conn->client_id->len);
@@ -83,6 +104,7 @@ static struct ap_session *ctrl_restore(struct backup_mod *m)
 	int dlen = 0;
 	uint8_t *ptr;
 	struct ipoe_session_info *info;
+	int flags = 0;
 
 	//if (!m->data->internal)
 	//	return NULL;
@@ -149,8 +171,31 @@ static struct ap_session *ctrl_restore(struct backup_mod *m)
 			case IPOE_TAG_IFINDEX:
 				ses->ifindex = *(uint32_t *)t->data;
 				break;
+			case IPOE_TAG_YIADDR:
+				ses->yiaddr = *(uint32_t *)t->data;
+				break;
+			case IPOE_TAG_SIADDR:
+				ses->siaddr = *(uint32_t *)t->data;
+				break;
+			case IPOE_TAG_MASK:
+				ses->mask = *(uint8_t *)t->data;
+				break;
+			case IPOE_TAG_FLAGS:
+				flags = *(uint32_t *)t->data;
+				break;
 		}
 	}
+
+	if (flags & IPOE_FLAG_IFCFG)
+		ses->ifcfg = 1;
+	
+	if (flags & IPOE_FLAG_DHCP_ADDR) {
+		dhcpv4_reserve_ip(ses->serv->dhcpv4, ses->yiaddr);
+		ses->dhcp_addr = 1;
+	}
+	
+	if (flags & IPOE_FLAG_L4_REDIR)
+		ses->l4_redirect = 1;
 
 	ses->serv = serv;
 	

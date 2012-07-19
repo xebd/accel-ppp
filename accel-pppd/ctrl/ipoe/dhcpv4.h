@@ -102,5 +102,6 @@ void dhcpv4_print_packet(struct dhcpv4_packet *pack, void (*print)(const char *f
 
 int dhcpv4_get_ip(struct dhcpv4_serv *serv, uint32_t *yiaddr, uint32_t *siaddr, int *mask);
 void dhcpv4_put_ip(struct dhcpv4_serv *serv, uint32_t ip);
+void dhcpv4_reserve_ip(struct dhcpv4_serv *serv, uint32_t ip);
 
 #endif

@@ -14,6 +14,7 @@
 //#include <linux/if_link.h>
 //#include <linux/if_addr.h>
 //#include <linux/rtnetlink.h>
+#include <linux/fib_rules.h>
 
 #include "triton.h"
 #include "log.h"
@@ -294,6 +295,77 @@ int __export iproute_del(int ifindex, in_addr_t dst)
 	return 0;
 }
 
+int __export iprule_add(uint32_t addr, int table)
+{
+	struct ipaddr_req {
+		struct nlmsghdr n;
+		struct rtmsg i;
+		char buf[1024];
+	} req;
+
+	if (!rth)
+		open_rth();
+	
+	if (!rth)
+		return -1;
+
+	memset(&req, 0, sizeof(req) - 1024);
+	
+	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
+	req.n.nlmsg_flags = NLM_F_REQUEST;
+	req.n.nlmsg_type = RTM_NEWRULE;
+	req.i.rtm_family = AF_INET;
+	req.i.rtm_table = table < 256 ? table : RT_TABLE_UNSPEC;
+	req.i.rtm_scope = RT_SCOPE_UNIVERSE;
+	req.i.rtm_protocol = RTPROT_BOOT;
+	req.i.rtm_type = RTN_UNICAST;
+	req.i.rtm_src_len = 32;
+
+	addattr32(&req.n, sizeof(req), FRA_SRC, addr);
+	if (table >= 256)
+		addattr32(&req.n, sizeof(req), FRA_TABLE, table);
+
+	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
+		return -1;
+	
+	return 0;
+}
+
+int __export iprule_del(uint32_t addr, int table)
+{
+	struct ipaddr_req {
+		struct nlmsghdr n;
+		struct rtmsg i;
+		char buf[1024];
+	} req;
+
+	if (!rth)
+		open_rth();
+	
+	if (!rth)
+		return -1;
+
+	memset(&req, 0, sizeof(req) - 1024);
+	
+	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
+	req.n.nlmsg_flags = NLM_F_REQUEST;
+	req.n.nlmsg_type = RTM_DELRULE;
+	req.i.rtm_family = AF_INET;
+	req.i.rtm_table = table < 256 ? table : RT_TABLE_UNSPEC;
+	req.i.rtm_scope = RT_SCOPE_UNIVERSE;
+	req.i.rtm_protocol = RTPROT_BOOT;
+	req.i.rtm_type = RTN_UNICAST;
+	req.i.rtm_src_len = 32;
+
+	addattr32(&req.n, sizeof(req), FRA_SRC, addr);
+	if (table >= 256)
+		addattr32(&req.n, sizeof(req), FRA_TABLE, table);
+
+	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
+		return -1;
+	
+	return 0;
+}
 
 
 static void init(void)

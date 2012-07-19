@@ -721,6 +721,22 @@ int dhcpv4_get_ip(struct dhcpv4_serv *serv, uint32_t *yiaddr, uint32_t *siaddr, 
 void dhcpv4_put_ip(struct dhcpv4_serv *serv, uint32_t ip)
 {
 	int n = ntohl(ip) - serv->range->startip;
+
+	if (n <= 0 || n / (8 * sizeof(long)) >= serv->range->len)
+		return;
+
+	pthread_mutex_lock(&serv->range->lock);
+	serv->range->free[n / (8 * sizeof(long))] |= 1 << (n % (8 * sizeof(long)));
+	pthread_mutex_unlock(&serv->range->lock);
+}
+
+void dhcpv4_reserve_ip(struct dhcpv4_serv *serv, uint32_t ip)
+{
+	int n = ntohl(ip) - serv->range->startip;
+	
+	if (n <= 0 || n / (8 * sizeof(long)) >= serv->range->len)
+		return;
+
 	pthread_mutex_lock(&serv->range->lock);
 	serv->range->free[n / (8 * sizeof(long))] |= 1 << (n % (8 * sizeof(long)));
 	pthread_mutex_unlock(&serv->range->lock);

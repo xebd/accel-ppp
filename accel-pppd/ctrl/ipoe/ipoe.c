@@ -30,6 +30,9 @@
 
 #include "iplink.h"
 #include "connlimit.h"
+#ifdef RADIUS
+#include "radius.h"
+#endif
 
 #include "ipoe.h"
 
@@ -49,6 +52,13 @@ static int conf_ifcfg = 1;
 //static int conf_dhcpv6;
 static int conf_username;
 static int conf_unit_cache;
+#ifdef RADIUS
+static int conf_attr_dhcp_client_ip;
+static int conf_attr_dhcp_router_ip;
+static int conf_attr_dhcp_mask;
+static int conf_attr_l4_redirect;
+#endif
+static int conf_l4_redirect_table;
 
 #ifdef USE_LUA
 static const char *conf_lua_username_func;
@@ -182,6 +192,29 @@ static void ipoe_session_set_username(struct ipoe_session *ses)
 	ses->ses.username = _strdup(ses->ses.ifname);
 }
 
+static void ipoe_change_l4_redirect(struct ipoe_session *ses, int del)
+{
+	in_addr_t addr;
+	
+	if (conf_l4_redirect_table <= 0)
+		return;
+
+	if (ses->ses.ipv4)
+		addr = ses->ses.ipv4->addr;
+	else
+		addr = ses->yiaddr;
+
+	if (del)
+		iprule_del(addr, conf_l4_redirect_table);
+	else
+		iprule_add(addr, conf_l4_redirect_table);
+}
+
+static void ipoe_change_addr(struct ipoe_session *ses, in_addr_t newaddr)
+{
+
+}
+
 static void ipoe_session_start(struct ipoe_session *ses)
 {
 	int r;
@@ -256,9 +289,11 @@ static void ipoe_session_start(struct ipoe_session *ses)
 		return;
 	}
 
-	dhcpv4_get_ip(ses->serv->dhcpv4, &ses->yiaddr, &ses->siaddr, &ses->mask);
-	if (ses->yiaddr)
-		ses->dhcp_addr = 1;
+	if (!ses->yiaddr) {
+		dhcpv4_get_ip(ses->serv->dhcpv4, &ses->yiaddr, &ses->siaddr, &ses->mask);
+		if (ses->yiaddr)
+			ses->dhcp_addr = 1;
+	}
 
 	ses->ses.ipv4 = ipdb_get_ipv4(&ses->ses);
 	/*if (!ses->ses.ipv4) {
@@ -390,6 +425,9 @@ static void ipoe_session_activate(struct ipoe_session *ses)
 	
 	if (ses->serv->opt_ifcfg)
 		ipoe_ifcfg_add(ses);
+	
+	if (ses->l4_redirect)
+		ipoe_change_l4_redirect(ses, 0);
 
 	ap_session_activate(&ses->ses);
 
@@ -494,6 +532,11 @@ static void ipoe_session_finished(struct ap_session *s)
 
 static void ipoe_session_terminate(struct ap_session *s, int hard)
 {
+	struct ipoe_session *ses = container_of(s, typeof(*ses), ses);
+
+	if (ses->l4_redirect)
+		ipoe_change_l4_redirect(ses, 1);
+
 	ap_session_finished(s);
 }
 
@@ -813,6 +856,62 @@ void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph)
 		break;
 	}
 }
+
+#ifdef RADIUS
+static void ev_radius_access_accept(struct ev_radius_t *ev)
+{
+	struct ipoe_session *ses = container_of(ev->ses, typeof(*ses), ses);
+	struct rad_attr_t *attr;
+
+	if (ev->ses->ctrl->type != CTRL_TYPE_IPOE)
+		return;
+
+	list_for_each_entry(attr, &ev->reply->attrs, entry) {
+		if (attr->attr->id == conf_attr_dhcp_client_ip)
+			ses->yiaddr = attr->val.ipaddr;
+		else if (attr->attr->id == conf_attr_dhcp_router_ip)
+			ses->siaddr = attr->val.ipaddr;
+		else if (attr->attr->id == conf_attr_dhcp_mask) {
+			if (attr->val.integer > 0 && attr->val.integer < 31)
+				ses->mask = attr->val.integer;
+		} else if (attr->attr->id == conf_attr_l4_redirect) {
+			if (attr->attr->type == ATTR_TYPE_STRING) {
+				if (attr->len && attr->val.string[0] != '0')
+					ses->l4_redirect = 1;
+			} else if (attr->val.integer != 0)
+				ses->l4_redirect = 1;
+		}
+	}
+}
+
+static void ev_radius_coa(struct ev_radius_t *ev)
+{
+	struct ipoe_session *ses = container_of(ev->ses, typeof(*ses), ses);
+	struct rad_attr_t *attr;
+	int l4_redirect;
+	
+	if (ev->ses->ctrl->type != CTRL_TYPE_IPOE)
+		return;
+	
+	l4_redirect = ses->l4_redirect;
+
+	list_for_each_entry(attr, &ev->request->attrs, entry) {
+		if (attr->attr->id == conf_attr_l4_redirect) {
+			if (attr->attr->type == ATTR_TYPE_STRING)
+				ses->l4_redirect = attr->len && attr->val.string[0] != '0';
+			else
+				ses->l4_redirect = ((unsigned int)attr->val.integer) > 0;
+		} else if (strcmp(attr->attr->name, "Framed-IP-Address") == 0) {
+			if (ses->ses.ipv4 && ses->ses.ipv4->peer_addr != attr->val.ipaddr)
+				ipoe_change_addr(ses, attr->val.ipaddr);
+		}
+	}
+
+	//if (l4_redirect && !ses->l4_redirect) || (!l4_redirect && ses->l4_redirect))
+	if (l4_redirect != ses->l4_redirect)
+		ipoe_change_l4_redirect(ses, l4_redirect);
+}
+#endif
 
 static void ipoe_serv_close(struct triton_context_t *ctx)
 {
@@ -1155,6 +1254,35 @@ static void load_local_nets(struct conf_sect_t *sect)
 	}
 }
 
+#ifdef RADIUS
+static void parse_conf_rad_attr(const char *opt, int *val)
+{
+	struct rad_dict_attr_t *attr;
+
+	opt = conf_get_opt("ipoe", opt);
+
+	if (opt) {
+		if (atoi(opt) > 0)
+			*val = atoi(opt);
+		else {
+			attr = rad_dict_find_attr(opt);
+			if (attr)
+				*val = attr->id;
+			else
+				log_emerg("ipoe: couldn't find '%s' in dictionary\n", opt);
+		}
+	} else
+		*val = -1;
+}
+static void load_radius_attrs(void)
+{
+	parse_conf_rad_attr("attr-dhcp-client-ip", &conf_attr_dhcp_client_ip);
+	parse_conf_rad_attr("attr-dhcp-router-ip", &conf_attr_dhcp_router_ip);
+	parse_conf_rad_attr("attr-dhcp-mask", &conf_attr_dhcp_mask);
+	parse_conf_rad_attr("attr-l4-redirect", &conf_attr_l4_redirect);
+}
+#endif
+
 static void load_config(void)
 {
 	const char *opt;
@@ -1210,6 +1338,12 @@ static void load_config(void)
 	if (opt)
 		conf_unit_cache = atoi(opt);
 	
+	opt = conf_get_opt("ipoe", "l4-redirect-table");
+	if (opt)
+		conf_l4_redirect_table = atoi(opt);
+	else
+		conf_l4_redirect_table = 0;
+	
 	opt = conf_get_opt("ipoe", "shared");
 	if (opt)
 		conf_shared = atoi(opt);
@@ -1248,6 +1382,11 @@ static void load_config(void)
 	if (!conf_dhcpv4 && !conf_up)
 		conf_dhcpv4 = 1;
 	
+#ifdef RADIUS
+	if (triton_module_loaded("radius"))
+		load_radius_attrs();
+#endif
+	
 	load_interfaces(s);
 	load_local_nets(s);
 }
@@ -1262,6 +1401,12 @@ static void ipoe_init(void)
 	cli_register_simple_cmd2(show_stat_exec, NULL, 2, "show", "stat");
 	
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
+
+#ifdef RADIUS
+	if (triton_module_loaded("radius"))
+		triton_event_register_handler(EV_RADIUS_ACCESS_ACCEPT, (triton_event_func)ev_radius_access_accept);
+		triton_event_register_handler(EV_RADIUS_COA, (triton_event_func)ev_radius_coa);
+#endif
 }
 
-DEFINE_INIT(20, ipoe_init);
+DEFINE_INIT(52, ipoe_init);
