@@ -11,16 +11,6 @@ INSTALL(TARGETS pppd_compat ippool ipv6pool sigchld chap-secrets logwtmp connlim
 	LIBRARY DESTINATION lib/accel-ppp
 )
 
-IF (SHAPER)
-	ADD_LIBRARY(shaper_tbf SHARED shaper_tbf.c)
-	IF (LIBNL_PREFIX)
-		SET_PROPERTY(TARGET shaper_tbf PROPERTY COMPILE_FLAGS "-I${LIBNL_PREFIX}/include")
-		SET_PROPERTY(TARGET shaper_tbf PROPERTY LINK_FLAGS "-L${LIBNL_PREFIX}/lib")
-	ENDIF (LIBNL_PREFIX)
-	TARGET_LINK_LIBRARIES(shaper_tbf nl m)
-	INSTALL(TARGETS shaper_tbf LIBRARY DESTINATION lib/accel-ppp)
-ENDIF (SHAPER)
-
 
 IF (NETSNMP)
 	ADD_SUBDIRECTORY(net-snmp)
