@@ -484,7 +484,7 @@ static int cln_read(struct triton_md_handler_t *h)
 		}
 		/*log_debug("cli: read(%i): ", n);
 		print_buf(cln->recv_buf + cln->recv_pos, n);*/
-		for (i = 0; i < n; i++) {
+		for (i = 0; i < n && !cln->disconnect; i++) {
 			if (telnet_input_char(cln, recv_buf[i]))
 				break;
 		}
