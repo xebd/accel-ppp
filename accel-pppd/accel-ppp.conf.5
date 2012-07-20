@@ -22,7 +22,6 @@ name3
  ....
 .br
 .SH SECTIONS
-.TP
 .SH [modules]
 containes list of modules to load
 .TP
@@ -72,7 +71,6 @@ Helper module to manage child processes, required by pppd_compat
 .TP
 .BI pppd_compat
 This module starts pppd compatible ip-up/ip-down scripts and ip-change to handle RADIUS CoA request.
-.TP
 .SH [core]
 Configuration of core module
 .TP
@@ -81,7 +79,6 @@ Path to file for core module error logging.
 .TP
 .BI "thread-count=" n
 number of working threads, optimal - number of processors/cores
-.TP
 .SH [ppp]
 .br
 PPP module configuration.
@@ -180,7 +177,99 @@ Specifies timeout in seconds to wait for any peer activity. If this option speci
 .BI "unit-cache=" n
 Specifies number of interfaces to keep in cache. It means that don't destory interface after corresponding session is destoyed, instead place it to cache and use it later for new sessions repeatedly.
 This should reduce kernel-level interface creation/deletion rate lack.
+.SH [ipoe]
 .TP
+.BI "verbose=" n
+If n is not zero ipoe module will produce verbose logging.
+.TP
+.BI "username=" ifname|lua:function
+Specifies how to determine username of DHCP user.
+.br
+If username=
+.B ifname
+then interface name from which packet was arrived will be used as username.
+.br
+If username=
+.B lua:username
+then lua function with name
+.B username
+will be called to construct username from dhcp packet fields.
+.TP
+.BI "lease-time=" n
+Specifies lease time in seconds to be sent to dhcp client.
+.TP
+.BI "max-lease-time=" n
+Specifies max lease time in seconds, after this time session will be terminated if client won't renew it.
+.TP
+.BI "unit-cache=" n
+Specifies number of interfaces to keep in cache. It means that don't destory interface after corresponding session is destoyed, instead place it to cache and use it later for new sessions repeatedly.
+This should reduce kernel-level interface creation/deletion rate lack.
+.TP
+.BI "l4-redirect-table=" n
+Specifies number of table. If L4-Redirect radius attribute is received and it's value is not 0 or '0' then accel-ppp will add following rule: ip rule add from client_ip table
+.B n
+.TP
+.BI "shared=" 0|1
+Specifies default value for per-interface
+.B shared
+parameter.
+.TP
+.BI "mode=" L2|L3
+Specifies default value for per-interface
+.B mode
+parameter.
+.TP
+.BI "start=" dhcpv4|up
+Specifies default value for per-interface
+.B start
+parameter.
+.TP
+.BI "ifcfg=" 0|1
+Specifies default value for per-interface
+.B ifcfg
+parameter.
+.TP
+.BI "interface=" [re:]name[,mode=L2|L3][,shared=0|1][,start=dhcpv4|up]
+.BI "" [,range=x.x.x.x/mask][,ifcfg=0|1]
+.br
+Specifies interface to listen dhcp or unclassified packets. You may specify multiple
+.B interface
+options.
+.br
+If
+.B name
+is prefixed with
+.B re:
+then
+.B name
+is treated as regular expression.
+.br
+The
+.B mode
+parameter specifies client connectivity mode. If mode=
+.B L2
+then it means that clients are on same network where interface is.
+.B L3
+means that client are behind some router.
+.br
+The
+.B shared
+parameter specifies where interface is shared by multiple users or it is vlan-per-user.
+.br
+The
+.B start
+parameter specifies which way session starts (up - unclassified packet).
+.br
+The
+.B range
+parameter specifies local range of ip address to give to dhcp clients. First IP in range is router IP.
+.br
+The
+.B ifcfg
+parameter specifies whether accel-ppp should add router IP address and route to client to interface or it is explicitly configured.
+.TP
+.BI "local-net=" x.x.x.x/mask
+Specifies networks from which packets will be treated as unclassified. You may specify multiple local-net options.
 .SH [dns]
 .TP
 .BI "dns1=" x.x.x.x
@@ -188,7 +277,6 @@ Specifies primary DNS to be sent to peer.
 .TP
 .BI "dns2=" x.x.x.x
 Specifies secondary DNS to be sent to peer.
-.TP
 .SH [dnsv6]
 .TP
 .BI "dns=" IPv6_address
@@ -196,7 +284,6 @@ Specifies IPv6 DNS to be sent to peer. You may specify up to 3 dns options.
 .TP
 .BI "dnssl=" name
 Specify DNS Search List. You may specify multiple dns and dnssl options.
-.TP
 .SH [client-ip-range]
 You have to explicitly specify range of ip address from which clients can connect to server in form:
 .br
@@ -205,7 +292,6 @@ You have to explicitly specify range of ip address from which clients can connec
 .br
 .B x.x.x.x-y
 (for example 10.0.0.1-254)
-.TP
 .SH [pptp]
 .br
 Configuration of PPTP module.
@@ -230,7 +316,6 @@ Specifies maximum number of echo-requests may be sent without valid echo-reply, 
 Timeout waiting reply from client in seconds (default 5).
 .TP
 .BI "mppe=" deny|allow|prefer|require
-.TP
 .SH [pppoe]
 .br
 Configuration of PPPoE module.
@@ -274,7 +359,6 @@ Specifies whether to handle TR101 tags.
 Specifies overall limit of PADI packets to reply in 1 second period (default 0 - unlimited). Rate of per-mac PADI packets is limited to no more than 1 packet per second.
 .TP
 .BI "mppe=" deny|allow|prefer|require
-.TP
 .SH [l2tp]
 .br
 Configuration of L2TP module.
@@ -307,7 +391,6 @@ is greater of zero then l2tp module will produce verbose logging.
 .TP
 .BI "secret=" string
 Specifies secret to connect to server.
-.TP
 .SH [radius]
 .br
 Configuration of RADIUS module.
@@ -370,7 +453,6 @@ Specifies timeout of accounting interim update.
 .TP
 .BI "acct-delay-time=" 0|1
 Specifies whether radius client should include Acct-Delay-Time attribute to accounting requests (default 0).
-.TP
 .SH [log]
 .br
 Configuration of log and log_file modules.
@@ -425,7 +507,6 @@ log error, warning and full information messages (use this level in conjuction w
 .br
 .B 5
 log all messages including debug messages
-.TP
 .SH [log-pgsql]
 .br
 Configuration of log_pgsql module.
@@ -447,7 +528,6 @@ text
 .br
 .B msg
 text
-.TP
 .SH [pppd_compat]
 .br
 Configuration of pppd_compat module.
@@ -469,7 +549,6 @@ Prefix of radattr files (for example /var/run/radattr, resulting files will be /
 .TP
 .BI "verbose=" n
 If specified and greated then zero pppd_module will produce verbose logging.
-.TP
 .SH [chap-secrets]
 .br
 Configuration of chap-secrets module.
@@ -479,7 +558,6 @@ Specifies address to use as local address of ppp interfaces if chap-secrets is u
 .TP
 .BI "chap-secrets=" file
 Specifies alternate chap-secrets file location (default is /etc/ppp/chap-secrets).
-.TP
 .SH [ip-pool]
 .br
 Configuration of ippool module.
@@ -511,7 +589,6 @@ Specifies which Radius attribute containes pool name.
 .TP
 .BI "vendor=" vendor
 If attribute is vendor-specific then specify vendor name in this option.
-.TP
 .SH [ipv6-pool]
 .br
 Configuration of ipv6pool module.
@@ -534,7 +611,6 @@ fc00:0:1:ffff::/64
 .BI "delegate=" ipv6prefix/mask,prefix_len
 Specifies range of prefixes to delegate to clients through DHCPv6 prefix delegation (rfc3633).
 Format is same as described above.
-.TP
 .SH [connlimit]
 .br
 This module limits connection rate from single source.
@@ -546,7 +622,6 @@ Specifies acceptable rate of connections, for example limit=1/s or limit=10/m.
 .TP
 .BI "timeout=" n
 Specifies timeout in seconds after which module doesn't check rate until burst number of connections will be arrived.
-.TP
 .SH [shaper]
 .br
 This module controls shaper.
