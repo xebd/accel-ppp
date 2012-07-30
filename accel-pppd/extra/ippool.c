@@ -209,9 +209,15 @@ static struct ipv4db_item_t *get_ip(struct ppp_t *ppp)
 {
 	struct ippool_item_t *it;
 	struct ippool_t *p;
+	const char *pool_name = NULL;
 
 	if (ppp->ipv4_pool_name)
-		p = find_pool(ppp->ipv4_pool_name, 0);
+		pool_name = ppp->ipv4_pool_name;
+	else if (ppp->ctrl->def_pool)
+		pool_name = ppp->ctrl->def_pool;
+
+	if (pool_name)
+		p = find_pool(pool_name, 0);
 	else
 		p = def_pool;
 

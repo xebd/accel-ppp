@@ -56,6 +56,7 @@ static int conf_dir300_quirk = 0;
 static const char *conf_host_name = "accel-ppp";
 static const char *conf_secret = NULL;
 static int conf_mppe = MPPE_UNSET;
+static char *conf_ip_pool;
 
 static unsigned int stat_active;
 static unsigned int stat_starting;
@@ -336,6 +337,7 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 	conn->ctrl.finished = l2tp_ppp_finished;
 	conn->ctrl.max_mtu = 1420;
 	conn->ctrl.mppe = conf_mppe;
+	conn->ctrl.def_pool = conf_ip_pool;
 
 	conn->ctrl.calling_station_id = _malloc(17);
 	conn->ctrl.called_station_id = _malloc(17);
@@ -1232,6 +1234,13 @@ static void load_config(void)
 		else if (strcmp(opt, "require") == 0)
 			conf_mppe = MPPE_REQUIRE;
 	}
+	
+	opt = conf_get_opt("l2tp", "ip-pool");
+	if (opt) {
+		if (!conf_ip_pool || strcmp(conf_ip_pool, opt))
+			conf_ip_pool = _strdup(opt);
+	} else
+		conf_ip_pool = NULL;
 }
 
 static void l2tp_init(void)

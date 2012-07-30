@@ -80,7 +80,8 @@ int conf_ifname_in_sid;
 char *conf_pado_delay;
 int conf_tr101 = 1;
 int conf_padi_limit = 0;
-int conf_mppe = MPPE_UNSET;
+static int conf_mppe = MPPE_UNSET;
+static char *conf_ip_pool;
 
 static mempool_t conn_pool;
 static mempool_t pado_pool;
@@ -265,6 +266,7 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 	conn->ctrl.type = CTRL_TYPE_PPPOE;
 	conn->ctrl.name = "pppoe";
 	conn->ctrl.mppe = conf_mppe;
+	conn->ctrl.def_pool = conf_ip_pool;
 
 	conn->ctrl.calling_station_id = _malloc(IFNAMSIZ + 19);
 	conn->ctrl.called_station_id = _malloc(IFNAMSIZ + 19);
@@ -1424,6 +1426,13 @@ static void load_config(void)
 		else if (strcmp(opt, "require") == 0)
 			conf_mppe = MPPE_REQUIRE;
 	}
+	
+	opt = conf_get_opt("pppoe", "ip-pool");
+	if (opt) {
+		if (!conf_ip_pool || strcmp(conf_ip_pool, opt))
+			conf_ip_pool = _strdup(opt);
+	} else
+		conf_ip_pool = NULL;
 }
 
 static void pppoe_init(void)

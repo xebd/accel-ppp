@@ -76,6 +76,7 @@ void rad_server_put(struct rad_server_t *s, int type)
 int rad_server_req_enter(struct rad_req_t *req)
 {
 	struct timespec ts;
+	//struct rad_req_t *r = NULL;
 	
 	if (req->serv->need_free)
 		return -1;
@@ -103,16 +104,26 @@ int rad_server_req_enter(struct rad_req_t *req)
 		triton_context_schedule();
 		pthread_mutex_lock(&req->serv->lock);
 
+		clock_gettime(CLOCK_MONOTONIC, &ts);
+
 		req->serv->queue_cnt--;
 		if (ts.tv_sec < req->serv->fail_time || req->serv->need_free) {
+			/*if (!list_empty(&req->serv->req_queue)) {
+				r = list_entry(req->serv->req_queue.next, typeof(*r), entry);
+				list_del(&r->entry);
+			}*/
 			pthread_mutex_unlock(&req->serv->lock);
+
+			/*if (r)
+				triton_context_wakeup(r->rpd->ppp->ctrl->ctx);*/
+
 			return -1;
 		}
 	}
 
 	req->serv->req_cnt++;
 	pthread_mutex_unlock(&req->serv->lock);
-
+	
 	return 0;
 }
 

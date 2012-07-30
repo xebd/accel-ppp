@@ -76,6 +76,7 @@ struct ppp_ctrl_t
 	struct triton_context_t *ctx;
 	int type;
 	const char *name;
+	const char *def_pool;
 	int max_mtu;
 	int mppe;
 	char *calling_station_id;

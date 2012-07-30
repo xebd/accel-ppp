@@ -59,6 +59,7 @@ static int conf_echo_interval = 0;
 static int conf_echo_failure = 3;
 static int conf_verbose = 0;
 static int conf_mppe = MPPE_UNSET;
+static char *conf_ip_pool;
 
 static mempool_t conn_pool;
 
@@ -671,6 +672,7 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		conn->ctrl.type = CTRL_TYPE_PPTP;
 		conn->ctrl.name = "pptp";
 		conn->ctrl.mppe = conf_mppe;
+		conn->ctrl.def_pool = conf_ip_pool;
 		
 		conn->ctrl.calling_station_id = _malloc(17);
 		conn->ctrl.called_station_id = _malloc(17);
@@ -755,6 +757,13 @@ static void load_config(void)
 		else if (strcmp(opt, "require") == 0)
 			conf_mppe = MPPE_REQUIRE;
 	}
+	
+	opt = conf_get_opt("pptp", "ip-pool");
+	if (opt) {
+		if (!conf_ip_pool || strcmp(conf_ip_pool, opt))
+			conf_ip_pool = _strdup(opt);
+	} else
+		conf_ip_pool = NULL;
 }
 
 static void pptp_init(void)

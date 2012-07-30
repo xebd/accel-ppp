@@ -231,6 +231,9 @@ Timeout waiting reply from client in seconds (default 5).
 .TP
 .BI "mppe=" deny|allow|prefer|require
 .TP
+.BI "ip-pool=" name
+Specifies ip pool name for address allocation. Usefull in conjuction with ippool module.
+.TP
 .SH [pppoe]
 .br
 Configuration of PPPoE module.
@@ -275,6 +278,9 @@ Specifies overall limit of PADI packets to reply in 1 second period (default 0 -
 .TP
 .BI "mppe=" deny|allow|prefer|require
 .TP
+.BI "ip-pool=" name
+Specifies ip pool name for address allocation. Usefull in conjuction with ippool module.
+.TP
 .SH [l2tp]
 .br
 Configuration of L2TP module.
@@ -307,6 +313,9 @@ is greater of zero then l2tp module will produce verbose logging.
 .TP
 .BI "secret=" string
 Specifies secret to connect to server.
+.TP
+.BI "ip-pool=" name
+Specifies ip pool name for address allocation. Usefull in conjuction with ippool module.
 .TP
 .SH [radius]
 .br
