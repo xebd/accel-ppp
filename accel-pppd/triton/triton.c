@@ -10,11 +10,10 @@
 #include "triton_p.h"
 #include "memdebug.h"
 
-#define WORKER_STACK_SIZE 1024*1024
-
 int thread_count = 2;
 int thread_count_max = 200;
 int max_events = 64;
+int conf_stack_size = 1024*1024;
 
 static spinlock_t threads_lock = SPINLOCK_INITIALIZER;
 static LIST_HEAD(threads);
@@ -247,7 +246,7 @@ struct _triton_thread_t *create_thread()
 	}
 
 	pthread_attr_init(&attr);
-	pthread_attr_setstacksize(&attr, WORKER_STACK_SIZE);
+	pthread_attr_setstacksize(&attr, conf_stack_size);
 
 	memset(thread, 0, sizeof(*thread));
 	pthread_mutex_init(&thread->sleep_lock, NULL);
@@ -621,6 +620,10 @@ void __export triton_run()
 	opt = conf_get_opt("core", "thread-count-max");
 	if (opt && atoi(opt) > 0)
 		thread_count_max = atoi(opt);
+
+	opt = conf_get_opt("core", "stack-size");
+	if (opt && atoi(opt) > 0)
+		conf_stack_size = atoi(opt);
 
 	for(i = 0; i < thread_count; i++) {
 		t = create_thread();
