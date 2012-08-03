@@ -1232,20 +1232,23 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 			serv->dhcpv4 = NULL;
 		}
 
-		serv->opt_up = opt_up;
-		serv->opt_mode = opt_mode;
-		serv->opt_ifcfg = opt_ifcfg;
-
 		if (serv->dhcpv4_relay && 
 				(serv->dhcpv4_relay->addr != relay_addr || serv->dhcpv4_relay->giaddr != giaddr)) {
-			ipoe_serv_del_addr(serv, serv->dhcpv4_relay->giaddr);
+			if (serv->opt_ifcfg)
+				ipoe_serv_del_addr(serv, serv->dhcpv4_relay->giaddr);
 			dhcpv4_relay_free(serv->dhcpv4_relay, &serv->ctx);
 			serv->dhcpv4_relay = NULL;
 		}
 
 		if (serv->opt_dhcpv4 && opt_relay && opt_giaddr)
-			ipoe_serv_add_addr(serv, serv->dhcpv4_relay->giaddr);
+			if (opt_ifcfg)
+				ipoe_serv_add_addr(serv, serv->dhcpv4_relay->giaddr);
 			serv->dhcpv4_relay = dhcpv4_relay_create(opt_relay, opt_giaddr, &serv->ctx, (triton_event_func)ipoe_recv_dhcpv4_relay);
+		
+		serv->opt_up = opt_up;
+		serv->opt_mode = opt_mode;
+		serv->opt_ifcfg = opt_ifcfg;
+
 
 		if (str0)
 			_free(str0);
@@ -1276,7 +1279,8 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 			serv->dhcpv4->recv = ipoe_recv_dhcpv4;
 	
 		if (opt_relay && opt_giaddr) {
-			ipoe_serv_add_addr(serv, giaddr);
+			if (opt_ifcfg)
+				ipoe_serv_add_addr(serv, giaddr);
 			serv->dhcpv4_relay = dhcpv4_relay_create(opt_relay, opt_giaddr, &serv->ctx, (triton_event_func)ipoe_recv_dhcpv4_relay);
 		}
 	}
@@ -1590,10 +1594,10 @@ static void ipoe_init(void)
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 
 #ifdef RADIUS
-	/*if (triton_module_loaded("radius")) {
+	if (triton_module_loaded("radius")) {
 		triton_event_register_handler(EV_RADIUS_ACCESS_ACCEPT, (triton_event_func)ev_radius_access_accept);
 		triton_event_register_handler(EV_RADIUS_COA, (triton_event_func)ev_radius_coa);
-	}*/
+	}
 #endif
 }
 
