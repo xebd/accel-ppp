@@ -79,6 +79,9 @@ static struct ccp_option_t *mppe_init(struct ppp_ccp_t *ccp)
 	if (mppe == MPPE_REQUIRE || mppe == MPPE_PREFER)
 		ccp->ld.passive = 0;
 
+	if (mppe == MPPE_REQUIRE)
+		ccp->ld.optional = 0;
+
 	mppe_opt->opt.id = CI_MPPE;
 	mppe_opt->opt.len = 6;
 
