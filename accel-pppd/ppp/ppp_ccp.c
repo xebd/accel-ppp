@@ -731,7 +731,7 @@ static void ccp_recv_proto_rej(struct ppp_handler_t *h)
 {
 	struct ppp_ccp_t *ccp = container_of(h, typeof(*ccp), hnd);
 
-	if (!ccp->ld.passive) {
+	if (!ccp->ld.optional) {
 		ppp_terminate(ccp->ppp, TERM_USER_ERROR, 0);
 		return;
 	}
