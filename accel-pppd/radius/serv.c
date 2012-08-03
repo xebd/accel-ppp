@@ -364,11 +364,11 @@ static void add_server_old(void)
 {
 	const char *opt;
 	in_addr_t auth_addr = 0;
-	int auth_port;
-	char *auth_secret;
+	int auth_port = 0;
+	char *auth_secret = NULL;
 	in_addr_t acct_addr = 0;
-	int acct_port;
-	char *acct_secret;
+	int acct_port = 0;
+	char *acct_secret = NULL;
 	struct rad_server_t *s;
 
 	opt = conf_get_opt("radius", "auth-server");

@@ -146,7 +146,7 @@ static void disconnect_request(struct radius_pd_t *rpd)
 static void coa_request(struct radius_pd_t *rpd)
 {
 	struct rad_attr_t *class;
-	void *prev_class;
+	void *prev_class = rpd->attr_class;
 	struct ev_radius_t ev = {
 		.ses = rpd->ses,
 		.request = rpd->dm_coa_req,
@@ -164,8 +164,6 @@ static void coa_request(struct radius_pd_t *rpd)
 	else {
 		class = rad_packet_find_attr(rpd->dm_coa_req, NULL, "Class");
 		if (class) {
-			prev_class = rpd->attr_class;
-
 			if (rpd->attr_class_len < class->len) {
 				if (rpd->attr_class)
 					_free(rpd->attr_class);

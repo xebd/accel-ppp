@@ -1139,7 +1139,7 @@ void pppoe_server_start(const char *opt, void *cli)
 	int f = 1;
 	struct ifreq ifr;
 	struct sockaddr_ll sa;
-	char *ifname;
+	char *ifname = NULL;
 	int padi_limit = conf_padi_limit;
 
 	if (parse_server(opt, &ifname, &padi_limit)) {

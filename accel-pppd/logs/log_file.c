@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <limits.h>
 #include <aio.h>
+#include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 

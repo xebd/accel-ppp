@@ -12,6 +12,7 @@
 #include "ppp.h"
 #include "ppp_lcp.h"
 #include "events.h"
+#include "iplink.h"
 
 #include "memdebug.h"
 
@@ -638,7 +639,7 @@ static void send_echo_reply(struct ppp_lcp_t *lcp)
 static void send_echo_request(struct triton_timer_t *t)
 {
 	struct ppp_lcp_t *lcp = container_of(t, typeof(*lcp), echo_timer);
-	struct ifpppstatsreq ifreq;
+	struct rtnl_link_stats stats;
 	int f = 0;
 	time_t ts;
 	struct lcp_echo_req_t
@@ -657,20 +658,13 @@ static void send_echo_request(struct triton_timer_t *t)
 
 	if (conf_echo_timeout) {
 		if (lcp->echo_sent == 2) {
-			memset(&ifreq, 0, sizeof(ifreq));
-			ifreq.stats_ptr = (void *)&ifreq.stats;
-			strcpy(ifreq.ifr__name, lcp->ppp->ses.ifname);
-		
-			if (ioctl(sock_fd, SIOCGPPPSTATS, &ifreq) == 0)
-				lcp->last_ipackets = ifreq.stats.p.ppp_ipackets;
+			if (iplink_get_stats(lcp->ppp->ses.ifindex, &stats) == 0)
+				lcp->last_ipackets = stats.rx_packets;
 
 			time(&lcp->last_echo_ts);
 		} else if (lcp->echo_sent > 2) {
 			time(&ts);
-			memset(&ifreq, 0, sizeof(ifreq));
-			ifreq.stats_ptr = (void *)&ifreq.stats;
-			strcpy(ifreq.ifr__name, lcp->ppp->ses.ifname);
-			if (ioctl(sock_fd, SIOCGPPPSTATS, &ifreq) == 0 && lcp->last_ipackets != ifreq.stats.p.ppp_ipackets) {
+			if (iplink_get_stats(lcp->ppp->ses.ifindex, &stats) == 0 && lcp->last_ipackets != stats.rx_packets) {
 				lcp->echo_sent = 1;
 				lcp_update_echo_timer(lcp);
 			} else if (ts - lcp->last_echo_ts > conf_echo_timeout) {

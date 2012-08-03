@@ -18,6 +18,7 @@
 #include "log.h"
 #include "utils.h"
 #include "sigchld.h"
+#include "iplink.h"
 
 #ifdef RADIUS
 #include "radius.h"
@@ -227,27 +228,19 @@ static void ev_ses_started(struct ap_session *ses)
 
 static void ev_ses_finishing(struct ap_session *ses)
 {
-	struct ifpppstatsreq ifreq;
+	struct rtnl_link_stats stats;
 	struct pppd_compat_pd_t *pd = find_pd(ses);
 	
 	if (!pd)
 		return;
 	
-	if (ses->ctrl->type == CTRL_TYPE_IPOE) {
-
-	} else  {
-		memset(&ifreq, 0, sizeof(ifreq));
-		ifreq.stats_ptr = (void *)&ifreq.stats;
-		strcpy(ifreq.ifr__name, ses->ifname);
-
-		if (ioctl(sock_fd, SIOCGPPPSTATS, &ifreq)) {
-			log_ppp_error("pppd_compat: failed to get ppp statistics: %s\n", strerror(errno));
-			return;
-		}
-
-		pd->bytes_sent = ifreq.stats.p.ppp_obytes;
-		pd->bytes_rcvd = ifreq.stats.p.ppp_ibytes;
+	if (iplink_get_stats(ses->ifindex, &stats)) {
+		log_ppp_error("pppd_compat: failed to get interface statistics\n");
+		return;
 	}
+
+	pd->bytes_sent = stats.tx_bytes;
+	pd->bytes_rcvd = stats.rx_bytes;
 }
 
 static void ev_ses_finished(struct ap_session *ses)
