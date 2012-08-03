@@ -229,8 +229,15 @@ Specifies default value for per-interface
 .B ifcfg
 parameter.
 .TP
+.BI "relay=" ipv4_address
+Specifies default value for per-interface
+.B relay
+parameter.
+.TP
 .BI "interface=" [re:]name[,mode=L2|L3][,shared=0|1][,start=dhcpv4|up]
 .BI "" [,range=x.x.x.x/mask][,ifcfg=0|1]
+.BI "" [,relay=x.x.x.x]
+.BI "" [,giaddr=x.x.x.x]
 .br
 Specifies interface to listen dhcp or unclassified packets. You may specify multiple
 .B interface
@@ -267,6 +274,16 @@ parameter specifies local range of ip address to give to dhcp clients. First IP 
 The
 .B ifcfg
 parameter specifies whether accel-ppp should add router IP address and route to client to interface or it is explicitly configured.
+.br
+The
+.B relay
+parameter specifies DHCPv4 relay IP address to pass requests to. If specified 
+.B giaddr
+is also needed.
+.br
+The
+.B giaddr
+parameter specifies relay agent IP address.
 .TP
 .BI "local-net=" x.x.x.x/mask
 Specifies networks from which packets will be treated as unclassified. You may specify multiple local-net options.

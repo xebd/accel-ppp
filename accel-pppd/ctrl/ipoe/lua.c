@@ -146,7 +146,7 @@ static int packet4_agent_circuit_id(lua_State *L)
 		return 0;
 	
 	if (ses->agent_circuit_id)
-		lua_pushlstring(L, (char *)ses->agent_circuit_id->data, ses->agent_circuit_id->len);
+		lua_pushlstring(L, (char *)(ses->agent_circuit_id + 1), *ses->agent_circuit_id);
 	else
 		lua_pushnil(L);
 	
@@ -161,7 +161,7 @@ static int packet4_agent_remote_id(lua_State *L)
 		return 0;
 	
 	if (ses->agent_remote_id)
-		lua_pushlstring(L, (char *)ses->agent_remote_id->data, ses->agent_remote_id->len);
+		lua_pushlstring(L, (char *)(ses->agent_remote_id + 1), *ses->agent_remote_id);
 	else
 		lua_pushnil(L);
 	

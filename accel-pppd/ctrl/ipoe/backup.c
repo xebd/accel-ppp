@@ -15,8 +15,7 @@
 
 #define IPOE_TAG_HWADDR              1
 #define IPOE_TAG_CLIENT_ID           2
-#define IPOE_TAG_AGENT_CIRCUIT_ID    3
-#define IPOE_TAG_AGENT_REMOTE_ID     4
+#define IPOE_TAG_RELAY_AGENT         3
 #define IPOE_TAG_XID                 5
 #define IPOE_TAG_GIADDR              6
 #define IPOE_TAG_CALLING_SID         7
@@ -26,12 +25,16 @@
 #define IPOE_TAG_YIADDR             11
 #define IPOE_TAG_SIADDR             12
 #define IPOE_TAG_MASK               13
+#define IPOE_TAG_RELAY_SERVER_ID    14
+#define IPOE_TAG_LEASE_TIME         15
 
 #define IPOE_TAG_IFINDEX           100
 
-#define IPOE_FLAG_IFCFG      0x01
-#define IPOE_FLAG_DHCP_ADDR  0x02
-#define IPOE_FLAG_L4_REDIR   0x04
+#define IPOE_FLAG_IFCFG          0x01
+#define IPOE_FLAG_DHCP_ADDR      0x02
+#define IPOE_FLAG_RELAY_ADDR     0x04
+#define IPOE_FLAG_L4_REDIR       0x08
+#define IPOE_FLAG_L4_REDIR_SET   0x10
 
 #define add_tag(id, data, size) if (!backup_add_tag(m, id, 0, data, size)) return -1;
 #define add_tag_i(id, data, size) if (!backup_add_tag(m, id, 1, data, size)) return -1;
@@ -52,8 +55,14 @@ static int session_save(struct ap_session *ses, struct backup_mod *m)
 	if (conn->dhcp_addr)
 		flags |= IPOE_FLAG_DHCP_ADDR;
 	
+	if (conn->relay_addr)
+		flags |= IPOE_FLAG_RELAY_ADDR;
+	
 	if (conn->l4_redirect)
 		flags |= IPOE_FLAG_L4_REDIR;
+	
+	if (conn->l4_redirect_set)
+		flags |= IPOE_FLAG_L4_REDIR_SET;
 
 	add_tag(IPOE_TAG_HWADDR, conn->hwaddr, 6);
 	add_tag(IPOE_TAG_CALLING_SID, ses->ctrl->calling_station_id, strlen(ses->ctrl->calling_station_id));
@@ -64,16 +73,16 @@ static int session_save(struct ap_session *ses, struct backup_mod *m)
 	add_tag(IPOE_TAG_SIADDR, &conn->siaddr, 4);
 	add_tag(IPOE_TAG_MASK, &conn->mask, 1);
 	add_tag(IPOE_TAG_FLAGS, &flags, 4);
+	add_tag(IPOE_TAG_RELAY_SERVER_ID, &conn->relay_server_id, 4);
+	add_tag(IPOE_TAG_LEASE_TIME, &conn->lease_time, 4);
+	add_tag(IPOE_TAG_IFNAME, conn->serv->ifname, strlen(conn->serv->ifname) + 1);
 
 	if (conn->client_id)
 		add_tag(IPOE_TAG_CLIENT_ID, conn->client_id->data, conn->client_id->len);
-	if (conn->agent_circuit_id)
-		add_tag(IPOE_TAG_AGENT_CIRCUIT_ID, conn->agent_circuit_id->data, conn->agent_circuit_id->len);
-	if (conn->agent_circuit_id)
-		add_tag(IPOE_TAG_AGENT_REMOTE_ID, conn->agent_remote_id->data, conn->agent_remote_id->len);
-	
-	add_tag(IPOE_TAG_IFNAME, conn->serv->ifname, strlen(conn->serv->ifname) + 1);
 
+	if (conn->relay_agent)
+		add_tag(IPOE_TAG_RELAY_AGENT, conn->relay_agent->data, conn->relay_agent->len);
+	
 	add_tag_i(IPOE_TAG_IFINDEX, &conn->ifindex, 4);
 
 	return 0;
@@ -87,9 +96,9 @@ static int session_restore(struct ap_session *ses, struct backup_mod *m)
 	return 0;
 }
 
-static void set_dhcpv4_opt(struct dhcp_opt **opt, struct backup_tag *t, uint8_t **ptr)
+static void set_dhcpv4_opt(struct dhcpv4_option **opt, struct backup_tag *t, uint8_t **ptr)
 {
-	*opt = (struct dhcp_opt *)(*ptr); 
+	*opt = (struct dhcpv4_option *)(*ptr); 
 	(*opt)->len = t->size;
 	memcpy((*opt)->data, t->data, t->size);
 	(*ptr) += sizeof(**opt) + t->size;
@@ -112,9 +121,8 @@ static struct ap_session *ctrl_restore(struct backup_mod *m)
 	list_for_each_entry(t, &m->tag_list, entry) {
 		switch(t->id) {
 			case IPOE_TAG_CLIENT_ID:
-			case IPOE_TAG_AGENT_CIRCUIT_ID:
-			case IPOE_TAG_AGENT_REMOTE_ID:
-				dlen += sizeof(struct dhcp_opt) + t->size;
+			case IPOE_TAG_RELAY_AGENT:
+				dlen += sizeof(struct dhcpv4_option) + t->size;
 				break;
 			case IPOE_TAG_IFNAME:
 				ifname = t;
@@ -162,11 +170,9 @@ static struct ap_session *ctrl_restore(struct backup_mod *m)
 			case IPOE_TAG_CLIENT_ID:
 				set_dhcpv4_opt(&ses->client_id, t, &ptr);
 				break;
-			case IPOE_TAG_AGENT_CIRCUIT_ID:
-				set_dhcpv4_opt(&ses->agent_circuit_id, t, &ptr);
-				break;
-			case IPOE_TAG_AGENT_REMOTE_ID:
-				set_dhcpv4_opt(&ses->agent_remote_id, t, &ptr);
+			case IPOE_TAG_RELAY_AGENT:
+				set_dhcpv4_opt(&ses->relay_agent, t, &ptr);
+				dhcpv4_parse_opt82(ses->relay_agent, &ses->agent_circuit_id, &ses->agent_remote_id);
 				break;
 			case IPOE_TAG_IFINDEX:
 				ses->ifindex = *(uint32_t *)t->data;
@@ -183,6 +189,12 @@ static struct ap_session *ctrl_restore(struct backup_mod *m)
 			case IPOE_TAG_FLAGS:
 				flags = *(uint32_t *)t->data;
 				break;
+			case IPOE_TAG_RELAY_SERVER_ID:
+				ses->relay_server_id = *(uint32_t *)t->data;
+				break;
+			case IPOE_TAG_LEASE_TIME:
+				ses->lease_time = *(uint32_t *)t->data;
+				break;
 		}
 	}
 
@@ -194,7 +206,13 @@ static struct ap_session *ctrl_restore(struct backup_mod *m)
 		ses->dhcp_addr = 1;
 	}
 	
+	if (flags & IPOE_FLAG_RELAY_ADDR)
+		ses->relay_addr = 1;
+	
 	if (flags & IPOE_FLAG_L4_REDIR)
+		ses->l4_redirect = 1;
+	
+	if (flags & IPOE_FLAG_L4_REDIR_SET && m->data->internal)
 		ses->l4_redirect = 1;
 
 	ses->serv = serv;

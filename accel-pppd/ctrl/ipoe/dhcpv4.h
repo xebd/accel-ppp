@@ -9,6 +9,10 @@
 
 #define __packed __attribute__((packed))
 
+#define DHCP_SERV_PORT 67
+#define DHCP_CLIENT_PORT 68
+#define DHCP_MAGIC "\x63\x82\x53\x63"
+
 #define DHCP_OP_REQUEST 1
 #define DHCP_OP_REPLY   2
 
@@ -53,11 +57,11 @@ struct dhcpv4_packet
 	struct dhcpv4_hdr *hdr;
 	struct list_head options;
 	struct dhcpv4_option *client_id;
-	struct dhcpv4_option *agent_circuit_id;
-	struct dhcpv4_option *agent_remote_id;
+	struct dhcpv4_option *relay_agent;
 	uint32_t request_ip;
 	uint32_t server_id;
 	int msg_type;
+	int volatile refs;
 	uint8_t *ptr;
 	uint8_t data[0];
 };
@@ -84,21 +88,40 @@ struct dhcpv4_serv
 	struct dhcpv4_iprange *range;
 };
 
+struct dhcpv4_relay
+{
+	struct list_head entry;
+	struct triton_context_t ctx;
+	struct triton_md_handler_t hnd;
+	struct list_head ctx_list;
+	in_addr_t addr;
+	in_addr_t giaddr;
+};
+
 struct ap_session;
 
 struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifname, const char *opt);
 void dhcpv4_free(struct dhcpv4_serv *);
 
+struct dhcpv4_relay *dhcpv4_relay_create(const char *addr, const char  *giaddr, struct triton_context_t *ctx, triton_event_func recv);
+void dhcpv4_relay_free(struct dhcpv4_relay *, struct triton_context_t *);
+int dhcpv4_relay_send(struct dhcpv4_relay *relay, struct dhcpv4_packet *request, uint32_t server_id);
+int dhcpv4_relay_send_release(struct dhcpv4_relay *relay, uint8_t *chaddr, uint32_t xid, uint32_t ciaddr,
+	struct dhcpv4_option *client_id, struct dhcpv4_option *relay_agent);
 
-int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_packet *req, uint32_t yiaddr, uint32_t siaddr, uint32_t mask, int lease_time);
+int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_packet *req, uint32_t yiaddr, uint32_t siaddr, uint32_t mask, int lease_time, struct dhcpv4_packet *relay_reply);
 int dhcpv4_send_nak(struct dhcpv4_serv *serv, struct dhcpv4_packet *req);
 
+void dhcpv4_packet_ref(struct dhcpv4_packet *pack);
+struct dhcpv4_option *dhcpv4_packet_find_opt(struct dhcpv4_packet *pack, int type);
 void dhcpv4_packet_free(struct dhcpv4_packet *pack);
 
 int dhcpv4_check_options(struct dhcpv4_packet *);
 void dhcpv4_print_options(struct dhcpv4_packet *, void (*)(const char *, ...));
 
-void dhcpv4_print_packet(struct dhcpv4_packet *pack, void (*print)(const char *fmt, ...));
+void dhcpv4_print_packet(struct dhcpv4_packet *pack, int relay, void (*print)(const char *fmt, ...));
+
+int dhcpv4_parse_opt82(struct dhcpv4_option *opt, uint8_t **agent_circuit_id, uint8_t **agent_remote_id);
 
 int dhcpv4_get_ip(struct dhcpv4_serv *serv, uint32_t *yiaddr, uint32_t *siaddr, int *mask);
 void dhcpv4_put_ip(struct dhcpv4_serv *serv, uint32_t ip);

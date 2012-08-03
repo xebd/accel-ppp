@@ -18,6 +18,7 @@ struct ipoe_serv
 	struct list_head sessions;
 	struct list_head addr_list;
 	struct dhcpv4_serv *dhcpv4;
+	struct dhcpv4_relay *dhcpv4_relay;
 	pthread_mutex_t lock;
 	int opt_mode;
 	int opt_shared:1;
@@ -25,12 +26,6 @@ struct ipoe_serv
 	int opt_up:1;
 	int opt_ifcfg:1;
 	int need_close:1;
-};
-
-struct dhcp_opt
-{
-	uint8_t len;
-	uint8_t data[0];
 };
 
 struct ipoe_session
@@ -42,20 +37,26 @@ struct ipoe_session
 	struct ap_ctrl ctrl;
 	struct ap_session ses;
 	uint8_t hwaddr[6];
-	struct dhcp_opt *client_id;
-	struct dhcp_opt *agent_circuit_id;
-	struct dhcp_opt *agent_remote_id;
+	struct dhcpv4_option *client_id;
+	struct dhcpv4_option *relay_agent;
+	uint8_t *agent_circuit_id;
+	uint8_t *agent_remote_id;
 	uint32_t xid;
 	uint32_t giaddr;
 	uint32_t yiaddr;
 	uint32_t siaddr;
+	uint32_t relay_server_id;
 	int mask;
+	int lease_time;
 	uint8_t *data;
 	struct dhcpv4_packet *dhcpv4_request;
+	struct dhcpv4_packet *dhcpv4_relay_reply;
 	int ifindex;
 	int ifcfg:1;
 	int dhcp_addr:1;
+	int relay_addr:1;
 	int l4_redirect:1;
+	int l4_redirect_set:1;
 };
 
 struct ipoe_session_info
