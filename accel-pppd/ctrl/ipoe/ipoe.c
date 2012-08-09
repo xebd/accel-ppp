@@ -282,7 +282,7 @@ static void ipoe_session_start(struct ipoe_session *ses)
 
 	ap_session_starting(&ses->ses);
 	
-	r = pwdb_check(&ses->ses, ses->ses.username, 0);
+	r = pwdb_check(&ses->ses, ses->ses.username, PPP_PAP);
 	if (r == PWDB_NO_IMPL) {
 		passwd = pwdb_get_passwd(&ses->ses, ses->ses.username);
 		if (!passwd)
@@ -1417,7 +1417,10 @@ static void parse_local_net(const char *opt)
 		mask = 24;
 	}
 
-	mask = (1 << mask) - 1;
+	if (mask == 32)
+		mask = 0xffffffff;
+	else
+		mask = (1 << mask) - 1;
 
 	ipoe_nl_add_net(addr & mask, mask);
 
