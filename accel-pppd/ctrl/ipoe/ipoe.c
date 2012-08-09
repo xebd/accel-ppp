@@ -282,7 +282,7 @@ static void ipoe_session_start(struct ipoe_session *ses)
 
 	ap_session_starting(&ses->ses);
 	
-	r = pwdb_check(&ses->ses, ses->ses.username, PPP_PAP);
+	r = pwdb_check(&ses->ses, ses->ses.username, PPP_PAP, ses->ses.username);
 	if (r == PWDB_NO_IMPL) {
 		passwd = pwdb_get_passwd(&ses->ses, ses->ses.username);
 		if (!passwd)
