@@ -26,6 +26,7 @@
 #include <net/flow.h>
 #include <net/net_namespace.h>
 #include <net/netns/generic.h>
+#include <net/pkt_sched.h>
 
 #include "ipoe.h"
 
@@ -347,6 +348,8 @@ static netdev_tx_t ipoe_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	if (!ses->peer_addr)
 		goto drop;
+	
+	skb->tc_verd = SET_TC_NCLS(0);
 	
 	noff = skb_network_offset(skb);
 
@@ -718,6 +721,8 @@ static unsigned int ipt_in_hook(unsigned int hook, struct sk_buff *skb, const st
 	cb_ptr = skb1->cb + sizeof(skb1->cb) - 2;
 	*(__u16 *)cb_ptr = IPOE_MAGIC;
 
+	skb1->tc_verd = SET_TC_NCLS(0);
+
 	netif_rx(skb1);
 	
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
@@ -938,6 +943,8 @@ static int ipoe_create(__be32 peer_addr, __be32 addr, const char *link_ifname, c
 		else
 			IPV4_DEVCONF(in_dev->cnf, RP_FILTER) = 1;
 	}
+
+	dev->tx_queue_len = 100;
 
 	rtnl_lock();
 	r = register_netdevice(dev);
