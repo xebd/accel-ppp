@@ -294,14 +294,14 @@ static int ipoe_route4(struct sk_buff *skb)
 	struct net *net = pick_net(skb);
 	struct rtable *rt;
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,37)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,38)
 	struct flowi fl4;
 #else
 	struct flowi4 fl4;
 #endif
 
 	memset(&fl4, 0, sizeof(fl4));
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,37)
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,38)
 	fl4.fl4_dst = iph->daddr;
 	fl4.fl4_tos = RT_TOS(iph->tos);
 	fl4.fl4_scope = RT_SCOPE_UNIVERSE;
@@ -644,7 +644,7 @@ static unsigned int ipt_in_hook(unsigned int hook, struct sk_buff *skb, const st
 	struct sk_buff *skb1;
 	unsigned char *cb_ptr;
 	struct net_device_stats *stats;
-	int ret = NF_ACCEPT;
+	int ret = NF_DROP;
 
 	if (skb->protocol != htons(ETH_P_IP))
 		return NF_ACCEPT;
@@ -664,9 +664,10 @@ static unsigned int ipt_in_hook(unsigned int hook, struct sk_buff *skb, const st
 	if (!iph->saddr)
 		return NF_ACCEPT;
 
-	//pr_info("ipoe: recv %08x %08x\n", iph->saddr, iph->daddr);
 	if (!ipoe_check_network(iph->saddr))
 		return NF_ACCEPT;
+	
+	//pr_info("ipoe: recv %08x %08x\n", iph->saddr, iph->daddr);
 	
 	ses = ipoe_lookup(iph->saddr);
 	
@@ -682,27 +683,28 @@ static unsigned int ipt_in_hook(unsigned int hook, struct sk_buff *skb, const st
 		eth = eth_hdr(skb);
 		if (memcmp(eth->h_source, ses->hwaddr, ETH_ALEN)) {
 			stats->rx_dropped++;
-			ret = NF_DROP;
 			goto out;
 		}
 	}
 	
-	if (skb->dev == ses->dev)
+	if (skb->dev == ses->dev) {
+		ret = NF_ACCEPT;
 		goto out;
+	}
 
-	if (ses->addr && ipoe_check_network(iph->daddr))
+	if (ses->addr && ipoe_check_network(iph->daddr)) {
+		ret = NF_ACCEPT;
 		goto out;
+	}
 	
 	skb1 = skb_clone(skb, GFP_ATOMIC);
 	if (!skb1) {
 		stats->rx_dropped++;
-		ret = NF_DROP;
 		goto out;
 	}
 
 	if (ses->addr > 1 && ipoe_do_nat(skb1, ses->addr, 0)) {
 		kfree_skb(skb1);
-		ret = NF_DROP;
 		goto out;
 	}
 
