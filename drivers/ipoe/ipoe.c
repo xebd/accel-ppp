@@ -1255,9 +1255,10 @@ static int fill_info(struct sk_buff *skb, struct ipoe_session *ses, u32 pid, u32
 	if (!hdr)
 		return -EMSGSIZE;
 	
-	NLA_PUT_U32(skb, IPOE_ATTR_IFINDEX, ses->dev->ifindex);
-	NLA_PUT_U32(skb, IPOE_ATTR_PEER_ADDR, ses->peer_addr);
-	NLA_PUT_U32(skb, IPOE_ATTR_ADDR, ses->addr);
+	if (nla_put_u32(skb, IPOE_ATTR_IFINDEX, ses->dev->ifindex) ||
+	    nla_put_u32(skb, IPOE_ATTR_PEER_ADDR, ses->peer_addr) ||
+	    nla_put_u32(skb, IPOE_ATTR_ADDR, ses->addr))
+		goto nla_put_failure;
 
 	return genlmsg_end(skb, hdr);
 
