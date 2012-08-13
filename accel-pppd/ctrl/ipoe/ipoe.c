@@ -59,6 +59,7 @@ static int conf_attr_dhcp_mask;
 static int conf_attr_l4_redirect;
 #endif
 static int conf_l4_redirect_table;
+static int conf_l4_redirect_on_reject;
 static const char *conf_relay;
 
 #ifdef USE_LUA
@@ -98,10 +99,23 @@ struct unit_cache
 	int ifindex;
 };
 
+struct l4_redirect
+{
+	struct list_head entry;
+	int ifindex;
+	in_addr_t addr;
+	time_t timeout;
+};
+
 static pthread_mutex_t uc_lock = PTHREAD_MUTEX_INITIALIZER;
 static LIST_HEAD(uc_list);
 static int uc_size;
 static mempool_t uc_pool;
+
+static pthread_rwlock_t l4_list_lock = PTHREAD_RWLOCK_INITIALIZER;
+static LIST_HEAD(l4_redirect_list);
+static struct triton_timer_t l4_redirect_timer;
+static struct triton_context_t l4_redirect_ctx;
 
 static void ipoe_session_finished(struct ap_session *s);
 static void ipoe_drop_sessions(struct ipoe_serv *serv, struct ipoe_session *skip);
@@ -196,6 +210,87 @@ static void ipoe_session_set_username(struct ipoe_session *ses)
 	} else
 #endif
 	ses->ses.username = _strdup(ses->ses.ifname);
+}
+
+static void l4_redirect_list_add(in_addr_t addr, int ifindex)
+{
+	struct l4_redirect *n = _malloc(sizeof(*n));
+	struct timespec ts;
+
+	if (!n)
+		return;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+
+	memset(n, 0, sizeof(*n));
+	n->addr = addr;
+	n->ifindex = ifindex;
+	n->timeout = ts.tv_sec + conf_l4_redirect_on_reject;
+	
+	ipoe_nl_modify(ifindex, addr, 1, NULL, NULL);
+	iprule_add(addr, conf_l4_redirect_table);
+
+	pthread_rwlock_wrlock(&l4_list_lock);
+	
+	list_add_tail(&n->entry, &l4_redirect_list);
+	
+	if (!l4_redirect_timer.tpd)
+		triton_timer_add(&l4_redirect_ctx, &l4_redirect_timer, 0);
+
+	pthread_rwlock_unlock(&l4_list_lock);	
+}
+
+static int l4_redirect_list_check(in_addr_t addr)
+{
+	struct l4_redirect *n;
+
+	pthread_rwlock_rdlock(&l4_list_lock);
+	list_for_each_entry(n, &l4_redirect_list, entry) {
+		if (n->addr == addr) {
+			pthread_rwlock_unlock(&l4_list_lock);
+			return 1;
+		}
+	}
+	pthread_rwlock_unlock(&l4_list_lock);
+	return 0;
+}
+
+static void l4_redirect_list_timer(struct triton_timer_t *t)
+{
+	struct l4_redirect *n;
+	struct timespec ts;
+	struct unit_cache *uc;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+
+	pthread_rwlock_wrlock(&l4_list_lock);
+	while (!list_empty(&l4_redirect_list)) {
+		n = list_entry(l4_redirect_list.next, typeof(*n), entry);
+		if (ts.tv_sec > n->timeout) {
+			list_del(&n->entry);
+			pthread_rwlock_unlock(&l4_list_lock);
+			iprule_del(n->addr, conf_l4_redirect_table);
+
+			if (uc_size < conf_unit_cache && ipoe_nl_modify(n->ifindex, 0, 0, "", NULL)) {
+				uc = mempool_alloc(uc_pool);
+				uc->ifindex = n->ifindex;
+				pthread_mutex_lock(&uc_lock);
+				list_add_tail(&uc->entry, &uc_list);
+				++uc_size;
+				pthread_mutex_unlock(&uc_lock);
+			} else
+				ipoe_nl_delete(n->ifindex);
+
+			_free(n);
+			pthread_rwlock_wrlock(&l4_list_lock);
+		} else
+			break;
+	}
+
+	if (list_empty(&l4_redirect_list) && l4_redirect_timer.tpd)
+		triton_timer_del(&l4_redirect_timer);
+
+	pthread_rwlock_unlock(&l4_list_lock);
 }
 
 static void ipoe_change_l4_redirect(struct ipoe_session *ses, int del)
@@ -296,6 +391,10 @@ static void ipoe_session_start(struct ipoe_session *ses)
 	if (r == PWDB_DENIED) {
 		if (conf_ppp_verbose)
 			log_ppp_warn("authentication failed\n");
+		if (conf_l4_redirect_on_reject && !ses->dhcpv4_request && ses->ifindex != -1) {
+			l4_redirect_list_add(ses->yiaddr, ses->ifindex);
+			ses->ifindex = -1;
+		}
 		ap_session_terminate(&ses->ses, TERM_AUTH_ERROR, 0);
 		return;
 	}
@@ -897,7 +996,10 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 
 	if (ap_shutdown)
 		return NULL;
-
+	
+	if (l4_redirect_list_check(iph->saddr))
+		return NULL;
+	
 	ses = mempool_alloc(ses_pool);
 	if (!ses) {
 		log_emerg("out of memery\n");
@@ -1086,6 +1188,26 @@ static void ipoe_serv_close(struct triton_context_t *ctx)
 
 	_free(serv->ifname);
 	_free(serv);
+}
+
+static void l4_redirect_ctx_close(struct triton_context_t *ctx)
+{
+	struct l4_redirect *n;
+
+	pthread_rwlock_wrlock(&l4_list_lock);
+	while (!list_empty(&l4_redirect_list)) {
+		n = list_entry(l4_redirect_list.next, typeof(*n), entry);
+		list_del(&n->entry);
+		iprule_del(n->addr, conf_l4_redirect_table);
+		ipoe_nl_delete(n->ifindex);
+		_free(n);
+	}
+	pthread_rwlock_unlock(&l4_list_lock);
+
+	if (l4_redirect_timer.tpd)
+		triton_timer_del(&l4_redirect_timer);
+	
+	triton_context_unregister(&l4_redirect_ctx);
 }
 
 static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
@@ -1534,7 +1656,19 @@ static void load_config(void)
 	if (opt)
 		conf_l4_redirect_table = atoi(opt);
 	else
-		conf_l4_redirect_table = 0;
+		conf_l4_redirect_table = 1;
+	
+	opt = conf_get_opt("ipoe", "l4-redirect-on-reject");
+	if (opt) {
+		conf_l4_redirect_on_reject = atoi(opt);
+	} else
+		conf_l4_redirect_on_reject = 0;
+		
+	if (conf_l4_redirect_on_reject) {
+		l4_redirect_timer.period = conf_l4_redirect_on_reject / 10 * 1000;
+		if (l4_redirect_timer.tpd)
+			triton_timer_mod(&l4_redirect_timer, 0);
+	}
 	
 	opt = conf_get_opt("ipoe", "shared");
 	if (opt)
@@ -1585,10 +1719,21 @@ static void load_config(void)
 	load_local_nets(s);
 }
 
+static struct triton_context_t l4_redirect_ctx = {
+	.close = l4_redirect_ctx_close,
+};
+
+static struct triton_timer_t l4_redirect_timer = {
+	.expire = l4_redirect_list_timer,
+};
+
 static void ipoe_init(void)
 {
 	ses_pool = mempool_create(sizeof(struct ipoe_session));
 	uc_pool = mempool_create(sizeof(struct unit_cache));
+
+	triton_context_register(&l4_redirect_ctx, NULL);
+	triton_context_wakeup(&l4_redirect_ctx);
 
 	load_config();
 
