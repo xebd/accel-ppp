@@ -242,7 +242,7 @@ static void idle_timeout(struct triton_timer_t *t)
 	rad_read_stats(rpd, &stats);
 
 	if (stats.rx_packets == rpd->acct_rx_packets && stats.tx_packets == rpd->acct_tx_packets) {
-		log_ppp_msg("radius: session timed out\n");
+		log_ppp_msg("radius: idle timed out\n");
 		ap_session_terminate(rpd->ses, TERM_IDLE_TIMEOUT, 0);
 	} else {
 		rpd->acct_rx_packets = stats.rx_packets;

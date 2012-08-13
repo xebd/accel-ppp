@@ -345,6 +345,7 @@ static netdev_tx_t ipoe_xmit(struct sk_buff *skb, struct net_device *dev)
 	unsigned char *arp_ptr;
 	__be32 tip;*/
 	int noff;
+	unsigned char *cb_ptr;
 
 	if (!ses->peer_addr)
 		goto drop;
@@ -402,6 +403,14 @@ static netdev_tx_t ipoe_xmit(struct sk_buff *skb, struct net_device *dev)
 				pskb_pull(skb, ETH_HLEN);
 				skb_reset_network_header(skb);
 
+				cb_ptr = skb->cb + sizeof(skb->cb) - 2;
+				*(__u16 *)cb_ptr = IPOE_MAGIC;
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,32)
+				skb->skb_iif = dev->ifindex;
+#else
+				skb->iif = dev->ifindex;
+#endif
+
 				ip_local_out(skb);
 
 				return NETDEV_TX_OK;
@@ -435,8 +444,14 @@ static netdev_tx_t ipoe_xmit(struct sk_buff *skb, struct net_device *dev)
 	}*/
 	
 	if (ses->link_dev) {
+		cb_ptr = skb->cb + sizeof(skb->cb) - 2;
+		*(__u16 *)cb_ptr = IPOE_MAGIC;
 		skb->dev = ses->link_dev;
-		//skb->skb_iif = dev->ifindex;
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,32)
+		skb->skb_iif = dev->ifindex;
+#else
+		skb->iif = dev->ifindex;
+#endif
 		dev_queue_xmit(skb);
 
 		return NETDEV_TX_OK;
@@ -721,7 +736,7 @@ static unsigned int ipt_in_hook(unsigned int hook, struct sk_buff *skb, const st
 	cb_ptr = skb1->cb + sizeof(skb1->cb) - 2;
 	*(__u16 *)cb_ptr = IPOE_MAGIC;
 
-	skb1->tc_verd = SET_TC_NCLS(0);
+	//skb1->tc_verd = SET_TC_NCLS(0);
 
 	netif_rx(skb1);
 	
@@ -739,7 +754,7 @@ out:
 
 static unsigned int ipt_out_hook(unsigned int hook, struct sk_buff *skb, const struct net_device *in, const struct net_device *out, int (*okfn)(struct sk_buff *skb))
 {
-	int noff;
+	int noff, iif;
 	struct iphdr *iph;
 	struct ipoe_session *ses;
 	unsigned char *cb_ptr;
@@ -767,8 +782,19 @@ static unsigned int ipt_out_hook(unsigned int hook, struct sk_buff *skb, const s
 	ses = ipoe_lookup(iph->daddr);
 	if (!ses)
 		return NF_ACCEPT;
+
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,32)
+	iif = skb->skb_iif;
+#else
+	iif = skb->iif;
+#endif
 	
-	skb->dev = ses->dev;		
+	if (iif == ses->dev->ifindex) {
+		atomic_dec(&ses->refs);
+		return NF_ACCEPT;
+	}
+	
+	skb->dev = ses->dev;
 	atomic_dec(&ses->refs);
 	
 	return NF_ACCEPT;
