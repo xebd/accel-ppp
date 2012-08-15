@@ -167,9 +167,10 @@ static int check(struct pwdb_t *pwdb, struct ap_session *ses, const char *userna
 					r = rad_auth_mschap_v2(rpd, username, args);
 					break;
 			}
-			case 0:
-				r = rad_auth_null(rpd, username, args);
-				break;
+			break;
+		case 0:
+			r = rad_auth_null(rpd, username, args);
+			break;
 	}
 
 	va_end(args);
