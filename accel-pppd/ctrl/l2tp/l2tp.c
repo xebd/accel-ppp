@@ -336,6 +336,7 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 	conn->ctrl.name = "l2tp";
 	conn->ctrl.started = l2tp_ppp_started;
 	conn->ctrl.finished = l2tp_ppp_finished;
+	conn->ctrl.terminate = ppp_terminate;
 	conn->ctrl.max_mtu = 1420;
 	conn->ctrl.mppe = conf_mppe;
 
