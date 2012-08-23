@@ -147,8 +147,11 @@ int l2tp_recv(int fd, struct l2tp_packet_t **p, struct in_pktinfo *pkt_info)
 
 	if (n < 0) {
 		mempool_free(buf);
-		if (errno == EAGAIN)
+		if (errno == EAGAIN) {
 			return -1;
+		} else if (errno == ECONNREFUSED) {
+			return -2;
+		}
 		log_error("l2tp: recv: %s\n", strerror(errno));
 		return 0;
 	}
