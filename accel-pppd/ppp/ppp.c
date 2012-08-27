@@ -126,7 +126,7 @@ int __export establish_ppp(struct ppp_t *ppp)
 		}
 	
 		if (fcntl(ppp->unit_fd, F_SETFL, O_NONBLOCK)) {
-			log_ppp_error("ppp: cann't to set nonblocking mode: %s\n", strerror(errno));
+			log_ppp_error("ppp: cannot set nonblocking mode: %s\n", strerror(errno));
 			goto exit_close_unit;
 		}
 	}
@@ -137,7 +137,7 @@ int __export establish_ppp(struct ppp_t *ppp)
 	}
 
 	if (fcntl(ppp->chan_fd, F_SETFL, O_NONBLOCK)) {
-		log_ppp_error("ppp: cann't to set nonblocking mode: %s\n", strerror(errno));
+		log_ppp_error("ppp: cannot set nonblocking mode: %s\n", strerror(errno));
 		goto exit_close_unit;
 	}
 	

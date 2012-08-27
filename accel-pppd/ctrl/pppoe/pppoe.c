@@ -1351,7 +1351,7 @@ static int init_secret(struct pppoe_serv_t *serv)
 	DES_cblock key;
 
 	if (read(urandom_fd, serv->secret, SECRET_LENGTH) < 0) {
-		log_emerg("pppoe: faild to read /dev/urandom\n", strerror(errno));
+		log_emerg("pppoe: failed to read /dev/urandom\n", strerror(errno));
 		return -1;
 	}
 

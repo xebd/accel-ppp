@@ -41,7 +41,7 @@ int timer_init(void)
 
 	epoll_events = _malloc(max_events * sizeof(struct epoll_event));
 	if (!epoll_events) {
-		fprintf(stderr,"timer:cann't allocate memory\n");
+		fprintf(stderr,"timer: cannot allocate memory\n");
 		return -1;
 	}
 
