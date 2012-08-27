@@ -333,11 +333,11 @@ static void __ppp_auth_started(struct ppp_t *ppp)
 	ppp_layer_started(ppp, &ad->ld);
 
 
-	log_ppp_info1("%s: authentication successed\n", ppp->username);
+	log_ppp_info1("%s: authentication succeeded\n", ppp->username);
 	triton_event_fire(EV_PPP_AUTHORIZED, ppp);
 }
 
-int __export ppp_auth_successed(struct ppp_t *ppp, char *username)
+int __export ppp_auth_succeeded(struct ppp_t *ppp, char *username)
 {
 	struct ppp_t *p;
 	struct auth_layer_data_t *ad = container_of(ppp_find_layer_data(ppp, &auth_layer), typeof(*ad), ld);

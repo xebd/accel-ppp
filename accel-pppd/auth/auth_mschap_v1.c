@@ -36,7 +36,7 @@ static int conf_interval = 0;
 static int conf_max_failure = 3;
 static int conf_any_login = 0;
 static char *conf_msg_failure = "E=691 R=0";
-static char *conf_msg_success = "Authentication successed";
+static char *conf_msg_success = "Authentication succeeded";
 ;
 
 struct chap_hdr_t
@@ -300,7 +300,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	}
 
 	if (conf_any_login) {
-		if (ppp_auth_successed(ad->ppp, name)) {
+		if (ppp_auth_succeeded(ad->ppp, name)) {
 			chap_send_failure(ad, mschap_error);
 			ppp_terminate(ad->ppp, TERM_AUTH_ERROR, 0);
 			_free(name);
@@ -325,7 +325,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		_free(name);
 	} else {
 		if (!ad->started) {
-			if (ppp_auth_successed(ad->ppp, name)) {
+			if (ppp_auth_succeeded(ad->ppp, name)) {
 				chap_send_failure(ad, mschap_error);
 				ppp_terminate(ad->ppp, TERM_AUTH_ERROR, 0);
 				_free(name);
