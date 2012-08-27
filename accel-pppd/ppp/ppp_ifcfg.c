@@ -98,7 +98,7 @@ void ppp_ifup(struct ppp_t *ppp)
 		ifr6.ifr6_ifindex = ppp->ifindex;
 
 		if (ioctl(sock6_fd, SIOCSIFADDR, &ifr6))
-			log_ppp_error("ppp: faild to set LL IPv6 address: %s\n", strerror(errno));
+			log_ppp_error("ppp: failed to set LL IPv6 address: %s\n", strerror(errno));
 		
 		list_for_each_entry(a, &ppp->ipv6->addr_list, entry) {
 			if (a->prefix_len == 128)

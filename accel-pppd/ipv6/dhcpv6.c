@@ -878,7 +878,7 @@ static void load_dns(void)
 				continue;
 
 			if (inet_pton(AF_INET6, opt->val ? opt->val : opt->name, &conf_dns[conf_dns_count]) == 0) {
-				log_error("dnsv6: faild to parse '%s'\n", opt->name);
+				log_error("dnsv6: failed to parse '%s'\n", opt->name);
 				continue;
 			}
 			conf_dns_count++;
