@@ -28,7 +28,7 @@
 #define VALUE_SIZE 16
 
 #define MSG_FAILURE   "Authentication failed"
-#define MSG_SUCCESS   "Authentication successed"
+#define MSG_SUCCESS   "Authentication succeeded"
 
 #define HDR_LEN (sizeof(struct chap_hdr_t)-2)
 
@@ -290,7 +290,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 	name = _strndup(msg->name,ntohs(msg->hdr.len) - sizeof(*msg) + 2);
 
 	if (conf_any_login) {
-		if (ppp_auth_successed(ad->ppp, name)) {
+		if (ppp_auth_succeeded(ad->ppp, name)) {
 			chap_send_failure(ad);
 			ap_session_terminate(&ad->ppp->ses, TERM_AUTH_ERROR, 0);
 			_free(name);
@@ -332,7 +332,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 			_free(name);
 		} else {
 			if (!ad->started) {
-				if (ppp_auth_successed(ad->ppp, name)) {
+				if (ppp_auth_succeeded(ad->ppp, name)) {
 					chap_send_failure(ad);
 					ap_session_terminate(&ad->ppp->ses, TERM_AUTH_ERROR, 0);
 					_free(name);
@@ -355,7 +355,7 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		_free(name);
 	} else {
 		if (!ad->started) {
-			if (ppp_auth_successed(ad->ppp, name)) {
+			if (ppp_auth_succeeded(ad->ppp, name)) {
 				chap_send_failure(ad);
 				ap_session_terminate(&ad->ppp->ses, TERM_AUTH_ERROR, 0);
 				_free(name);

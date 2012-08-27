@@ -13,7 +13,7 @@
 #include "memdebug.h"
 
 #define MSG_FAILED "Authentication failed"
-#define MSG_SUCCESSED "Authentication successed"
+#define MSG_SUCCESSED "Authentication succeeded"
 
 #define HDR_LEN (sizeof(struct pap_hdr_t)-2)
 
@@ -199,7 +199,7 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
 	peer_id = _strndup((const char*)peer_id, peer_id_len);
 	
 	if (conf_any_login) {
-		if (ppp_auth_successed(p->ppp, peer_id)) {
+		if (ppp_auth_succeeded(p->ppp, peer_id)) {
 			pap_send_nak(p, hdr->id);
 			ap_session_terminate(&p->ppp->ses, TERM_AUTH_ERROR, 0);
 			_free(peer_id);
@@ -232,7 +232,7 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
 		ret = -1;
 		_free(peer_id);
 	} else {
-		if (ppp_auth_successed(p->ppp, peer_id)) {
+		if (ppp_auth_succeeded(p->ppp, peer_id)) {
 			pap_send_nak(p, hdr->id);
 			ap_session_terminate(&p->ppp->ses, TERM_AUTH_ERROR, 0);
 			_free(peer_id);
