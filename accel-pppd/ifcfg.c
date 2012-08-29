@@ -119,7 +119,7 @@ void ap_session_ifup(struct ap_session *ses)
 
 				memset(&ifr6, 0, sizeof(ifr6));
 				
-				if (ses->ctrl->type != CTRL_TYPE_IPOE) {
+				if (ses->ctrl->ppp) {
 					ifr6.ifr6_addr.s6_addr32[0] = htons(0xfe80);
 					*(uint64_t *)(ifr6.ifr6_addr.s6_addr + 8) = ses->ipv6->intf_id;
 					ifr6.ifr6_prefixlen = 64;
@@ -149,7 +149,7 @@ void ap_session_ifup(struct ap_session *ses)
 			if (ioctl(sock_fd, SIOCSIFFLAGS, &ifr))
 				log_ppp_error("failed to set interface flags: %s\n", strerror(errno));
 
-			if (ses->ctrl->type != CTRL_TYPE_IPOE) {
+			if (ses->ctrl->ppp) {
 				ppp = container_of(ses, typeof(*ppp), ses);
 				if (ses->ipv4) {
 					np.protocol = PPP_IP;

@@ -342,7 +342,7 @@ static void setup_mppe(struct rad_req_t *req, const uint8_t *challenge)
 		.ppp = container_of(req->rpd->ses, typeof(struct ppp_t), ses),
 	};
 
-	if (req->rpd->ses->ctrl->type == CTRL_TYPE_IPOE)
+	if (!req->rpd->ses->ctrl->ppp)
 		return;
 
 	list_for_each_entry(attr, &req->reply->attrs, entry) {

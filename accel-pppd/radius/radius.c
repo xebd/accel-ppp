@@ -225,7 +225,7 @@ static void session_timeout(struct triton_timer_t *t)
 	if (rpd->ses->stop_time)
 		return;
 
-	if (rpd->termination_action == Termination_Action_RADIUS_Request && rpd->ses->ctrl->type != CTRL_TYPE_IPOE) {
+	if (rpd->termination_action == Termination_Action_RADIUS_Request && rpd->ses->ctrl->ppp) {
 		if (ppp_auth_restart(container_of(rpd->ses, struct ppp_t, ses)))
 			ap_session_terminate(rpd->ses, TERM_SESSION_TIMEOUT, 0);
 	} else

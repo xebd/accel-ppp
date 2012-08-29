@@ -20,10 +20,12 @@
 #define TERM_LOST_CARRIER 9
 #define TERM_IDLE_TIMEOUT 10
 
-#define CTRL_TYPE_PPTP  1
-#define CTRL_TYPE_L2TP  2
-#define CTRL_TYPE_PPPOE 3
-#define CTRL_TYPE_IPOE  4
+#define CTRL_TYPE_PPTP     1
+#define CTRL_TYPE_L2TP     2
+#define CTRL_TYPE_PPPOE    3
+#define CTRL_TYPE_IPOE     4
+#define CTRL_TYPE_OPENVPN  5
+#define CTRL_TYPE_SSTP     6
 
 #define MPPE_UNSET   -2
 #define MPPE_ALLOW   -1
@@ -44,6 +46,7 @@ struct ap_ctrl
 	char *calling_station_id;
 	char *called_station_id;
 	int dont_ifcfg:1;
+	int ppp:1;
 	void (*started)(struct ap_session*);
 	void (*finished)(struct ap_session *);
 	void (*terminate)(struct ap_session *, int hard);

@@ -671,6 +671,7 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		conn->ctrl.terminate = ppp_terminate;
 		conn->ctrl.max_mtu = PPTP_MAX_MTU;
 		conn->ctrl.type = CTRL_TYPE_PPTP;
+		conn->ctrl.ppp = 1;
 		conn->ctrl.name = "pptp";
 		conn->ctrl.mppe = conf_mppe;
 		

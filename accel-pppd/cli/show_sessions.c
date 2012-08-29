@@ -456,7 +456,7 @@ static void print_comp(const struct ap_session *ses, char *buf)
 
 	*buf = 0;
 
-	if (ses->ctrl->type != CTRL_TYPE_IPOE) {
+	if (ses->ctrl->ppp) {
 		ppp = container_of(ses, typeof(*ppp), ses);
 		if (ppp->comp)
 			snprintf(buf, CELL_SIZE, "%s", ppp->comp);

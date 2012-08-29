@@ -333,6 +333,7 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 	conn->hello_timer.period = conf_hello_interval * 1000;
 	conn->ctrl.ctx = &conn->ctx;
 	conn->ctrl.type = CTRL_TYPE_L2TP;
+	conn->ctrl.ppp = 1;
 	conn->ctrl.name = "l2tp";
 	conn->ctrl.started = l2tp_ppp_started;
 	conn->ctrl.finished = l2tp_ppp_finished;

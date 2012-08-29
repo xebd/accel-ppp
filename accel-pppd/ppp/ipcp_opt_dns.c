@@ -145,7 +145,7 @@ static void ev_dns(struct ev_dns_t *ev)
 	struct dns_option_t *dns_opt;
 	struct ppp_t *ppp;
 
-	if (ev->ses->ctrl->type == CTRL_TYPE_IPOE)
+	if (!ev->ses->ctrl->ppp)
 		return;
 	
 	ppp = container_of(ev->ses, typeof(*ppp), ses);

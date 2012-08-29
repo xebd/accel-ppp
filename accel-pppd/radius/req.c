@@ -29,7 +29,7 @@ static struct rad_req_t *__rad_req_alloc(struct radius_pd_t *rpd, int code, cons
 		return NULL;
 	}
 
-	if (rpd->ses->ctrl->type != CTRL_TYPE_IPOE)
+	if (rpd->ses->ctrl->ppp)
 		ppp = container_of(rpd->ses, typeof(*ppp), ses);
 
 	memset(req, 0, sizeof(*req));
