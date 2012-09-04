@@ -42,7 +42,7 @@ void cli_register_regexp_cmd(struct cli_regexp_cmd_t *cmd);
 void cli_show_ses_register(const char *name, const char *desc, void (*print)(const struct ppp_t *ppp, char *buf));
 
 int cli_send(void *client, const char *data);
-int cli_sendv(void *client, const char *fmt, ...);
+int cli_sendv(void *client, const char *fmt, ...) __attribute__((format(gnu_printf, 2, 3)));
 
 #endif
 

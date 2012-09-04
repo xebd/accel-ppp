@@ -104,8 +104,8 @@ int triton_queue_ctx(struct _triton_context_t*);
 void triton_thread_wakeup(struct _triton_thread_t*);
 int conf_load(const char *fname);
 int conf_reload(const char *fname);
-void triton_log_error(const char *fmt,...);
-void triton_log_debug(const char *fmt,...);
+void triton_log_error(const char *fmt, ...) __attribute__((format(gnu_printf, 1, 2)));
+void triton_log_debug(const char *fmt, ...) __attribute__((format(gnu_printf, 1, 2)));
 int load_modules(const char *name);
 
 #endif
