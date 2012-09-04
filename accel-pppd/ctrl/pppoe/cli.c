@@ -120,7 +120,7 @@ static int show_service_name_exec(const char *cmd, char * const *f, int f_cnt, v
 	if (conf_service_name)
 		cli_sendv(cli, "%s\r\n", conf_service_name);
 	else
-		cli_sendv(cli, "*\r\n", conf_service_name);
+		cli_sendv(cli, "*\r\n");
 	
 	return CLI_CMD_OK;
 }

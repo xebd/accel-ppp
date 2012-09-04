@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -221,7 +222,7 @@ static int pptp_start_ctrl_conn_rqst(struct pptp_conn_t *conn)
 	}
 
 	if (msg->version != htons(PPTP_VERSION)) {
-		log_ppp_warn("PPTP version mismatch: expecting %x, received %s\n", PPTP_VERSION, msg->version);
+		log_ppp_warn("PPTP version mismatch: expecting %x, received %" PRIu32 "\n", PPTP_VERSION, msg->version);
 		if (send_pptp_start_ctrl_conn_rply(conn, PPTP_CONN_RES_PROTOCOL, 0))
 			return -1;
 		return 0;

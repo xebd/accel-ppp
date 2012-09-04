@@ -860,7 +860,7 @@ static void lcp_recv(struct ppp_handler_t*h)
 			break;
 		case PROTOREJ:
 			if (conf_ppp_verbose)
-				log_ppp_info2("recv [LCP ProtoRej id=%x <%04x>]\n", hdr->code, hdr->id, ntohs(*(uint16_t*)(hdr + 1)));
+				log_ppp_info2("recv [LCP ProtoRej id=%x <%04x>]\n", hdr->id, ntohs(*(uint16_t*)(hdr + 1)));
 			ppp_recv_proto_rej(lcp->ppp, ntohs(*(uint16_t *)(hdr + 1)));
 			break;
 		case IDENT:

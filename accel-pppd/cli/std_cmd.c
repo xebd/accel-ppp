@@ -44,15 +44,15 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	hour = dt / (60 * 60);
 	dt %= 60 * 60;
 
-	cli_sendv(client, "uptime: %i.%02i:%02i:%02i\r\n", day, hour, dt / 60, dt % 60);
+	cli_sendv(client, "uptime: %i.%02i:%02lu:%02lu\r\n", day, hour, dt / 60, dt % 60);
 	cli_sendv(client, "cpu: %i%%\r\n", triton_stat.cpu);
 #ifdef MEMDEBUG
 	cli_send(client,  "memory:\r\n");
 	cli_sendv(client, "  rss/virt: %lu/%lu kB\r\n", vmrss * page_size_kb, vmsize * page_size_kb);
-	cli_sendv(client, "  arena: %lu kB\r\n", mi.arena / 1024);
-	cli_sendv(client, "  mmaped: %lu kB\r\n", mi.hblkhd / 1024);
-	cli_sendv(client, "  uordblks: %lu kB\r\n", mi.uordblks / 1024);
-	cli_sendv(client, "  fordblks: %lu kB\r\n", mi.fordblks / 1024);
+	cli_sendv(client, "  arena: %i kB\r\n", mi.arena / 1024);
+	cli_sendv(client, "  mmaped: %i kB\r\n", mi.hblkhd / 1024);
+	cli_sendv(client, "  uordblks: %i kB\r\n", mi.uordblks / 1024);
+	cli_sendv(client, "  fordblks: %i kB\r\n", mi.fordblks / 1024);
 #else
 	cli_sendv(client, "mem(rss/virt): %lu/%lu kB\r\n", vmrss * page_size_kb, vmsize * page_size_kb);
 #endif

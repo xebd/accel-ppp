@@ -205,7 +205,7 @@ static void chap_send_failure(struct chap_auth_data_t *ad, char *mschap_error, c
 	sprintf((char *)(hdr + 1), "%s M=%s", mschap_error, reply_msg);
 	
 	if (conf_ppp_verbose)
-		log_ppp_info2("send [MSCHAP-v2 Failure id=%x \"%s\"]\n", hdr->id, hdr + 1);
+		log_ppp_info2("send [MSCHAP-v2 Failure id=%x \"%s\"]\n", hdr->id, (char *)(hdr + 1));
 
 	ppp_chan_send(ad->ppp, hdr, ntohs(hdr->len) + 2);
 
@@ -223,7 +223,7 @@ static void chap_send_success(struct chap_auth_data_t *ad, struct chap_response_
 	sprintf((char *)(hdr + 1), "S=%s M=%s", authenticator, conf_msg_success);
 
 	if (conf_ppp_verbose)
-		log_ppp_info2("send [MSCHAP-v2 Success id=%x \"%s\"]\n", hdr->id, hdr + 1);
+		log_ppp_info2("send [MSCHAP-v2 Success id=%x \"%s\"]\n", hdr->id, (char *)(hdr + 1));
 
 	ppp_chan_send(ad->ppp, hdr, ntohs(hdr->len) + 2);
 

@@ -237,8 +237,8 @@ static void show_stat(struct rad_server_t *s, void *client)
 		cli_sendv(client, "  fail count: %lu\r\n", s->stat_fail_cnt);
 	}
 		
-	cli_sendv(client, "  request count: %lu\r\n", s->req_cnt);
-	cli_sendv(client, "  queue length: %lu\r\n", s->queue_cnt);
+	cli_sendv(client, "  request count: %i\r\n", s->req_cnt);
+	cli_sendv(client, "  queue length: %i\r\n", s->queue_cnt);
 
 	if (s->auth_port) {
 		cli_sendv(client, "  auth sent: %lu\r\n", s->stat_auth_sent);

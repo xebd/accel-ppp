@@ -201,7 +201,6 @@ overrun:
 static void send_next_chunk(void)
 {
 	struct log_file_t *lf;
-	int n;
 
 	spin_lock(&lf_queue_lock);
 	if (list_empty(&lf_queue)) {
@@ -211,7 +210,6 @@ static void send_next_chunk(void)
 	}
 	lf = list_entry(lf_queue.next, typeof(*lf), entry);
 	
-	n = log_file->entry.next == NULL;
 	list_del(&lf->entry);
 
 	spin_unlock(&lf_queue_lock);
