@@ -39,21 +39,21 @@ struct log_target_t
 
 void log_free_msg(struct log_msg_t *msg);
 
-void log_emerg(const char *fmt, ...);
+void log_emerg(const char *fmt, ...) __attribute__((format(gnu_printf, 1, 2)));
 
-void log_error(const char *fmt,...);
-void log_warn(const char *fmt,...);
-void log_info1(const char *fmt,...);
-void log_info2(const char *fmt,...);
-void log_debug(const char *fmt,...);
-void log_msg(const char *fmt,...);
+void log_error(const char *fmt, ...) __attribute__((format(gnu_printf, 1, 2)));
+void log_warn(const char *fmt, ...) __attribute__((format(gnu_printf, 1, 2)));
+void log_info1(const char *fmt, ...) __attribute__((format(gnu_printf, 1, 2)));
+void log_info2(const char *fmt, ...) __attribute__((format(gnu_printf, 1, 2)));
+void log_debug(const char *fmt, ...) __attribute__((format(gnu_printf, 1, 2)));
+void log_msg(const char *fmt, ...) __attribute__((format(gnu_printf, 1, 2)));
 
-void log_ppp_error(const char *fmt,...);
-void log_ppp_warn(const char *fmt,...);
-void log_ppp_info1(const char *fmt,...);
-void log_ppp_info2(const char *fmt,...);
-void log_ppp_debug(const char *fmt,...);
-void log_ppp_msg(const char *fmt,...);
+void log_ppp_error(const char *fmt, ...) __attribute__((format(gnu_printf, 1, 2)));
+void log_ppp_warn(const char *fmt, ...) __attribute__((format(gnu_printf, 1, 2)));
+void log_ppp_info1(const char *fmt, ...) __attribute__((format(gnu_printf, 1, 2)));
+void log_ppp_info2(const char *fmt, ...) __attribute__((format(gnu_printf, 1, 2)));
+void log_ppp_debug(const char *fmt, ...) __attribute__((format(gnu_printf, 1, 2)));
+void log_ppp_msg(const char *fmt, ...) __attribute__((format(gnu_printf, 1, 2)));
 
 void log_switch(struct triton_context_t *ctx, void *arg);
 
