@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <sched.h>
 #include <limits.h>
+#include <inttypes.h>
 #include <sys/ioctl.h>
 #include <netinet/in.h>
 #include "linux_ppp.h"
@@ -484,8 +485,8 @@ static void fill_env(char **env, struct pppd_compat_pd_t *pd)
 	
 	if (pd->ppp->stop_time && env[1]) {
 		snprintf(env[1], 24, "CONNECT_TIME=%lu", pd->ppp->stop_time - pd->ppp->start_time);
-		snprintf(env[2], 24, "BYTES_SENT=%llu", (long long unsigned)tx_bytes);
-		snprintf(env[3], 24, "BYTES_RCVD=%llu", (long long unsigned)rx_bytes);
+		snprintf(env[2], 24, "BYTES_SENT=%" PRIu64, tx_bytes);
+		snprintf(env[3], 24, "BYTES_RCVD=%" PRIu64, rx_bytes);
 	}
 }
 

@@ -42,7 +42,7 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	hour = dt / (60 * 60);
 	dt %= 60 * 60;
 
-	cli_sendv(client, "uptime: %i.%02i:%02i:%02i\r\n", day, hour, dt / 60, dt % 60);
+	cli_sendv(client, "uptime: %i.%02i:%02lu:%02lu\r\n", day, hour, dt / 60, dt % 60);
 	cli_sendv(client, "cpu: %i%%\r\n", triton_stat.cpu);
 #ifdef MEMDEBUG
 	cli_send(client,  "memory:\r\n");
