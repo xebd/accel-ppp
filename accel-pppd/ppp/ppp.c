@@ -108,6 +108,7 @@ static void generate_sessionid(struct ppp_t *ppp)
 
 int __export establish_ppp(struct ppp_t *ppp)
 {
+	struct rtnl_link_stats stats;
 	struct ifreq ifr;
 	struct pppunit_cache *uc = NULL;
 
@@ -188,6 +189,17 @@ int __export establish_ppp(struct ppp_t *ppp)
 	}
 	ppp->ifindex = ifr.ifr_ifindex;
 
+	if (uc) {
+		if (iplink_get_stats(ppp->ifindex, &stats))
+			log_ppp_warn("ppp: failed to get interface statistics\n");
+		else {
+			ppp->acct_rx_packets_i = stats.rx_packets;
+			ppp->acct_tx_packets_i = stats.tx_packets;
+			ppp->acct_rx_bytes_i = stats.rx_bytes;
+			ppp->acct_tx_bytes_i = stats.tx_bytes;
+		}
+	}
+
 	log_ppp_info1("connect: %s <--> %s(%s)\n", ppp->ifname, ppp->ctrl->name, ppp->chan_name);
 
 	init_layers(ppp);
@@ -238,6 +250,8 @@ exit_close_chan:
 static void destablish_ppp(struct ppp_t *ppp)
 {
 	struct pppunit_cache *uc;
+
+	ppp_read_stats(ppp, NULL);
 
 	triton_event_fire(EV_PPP_PRE_FINISHED, ppp);
 
@@ -730,6 +744,34 @@ static void save_seq(void)
 		fprintf(f, "%llu", seq);
 		fclose(f);
 	}
+}
+
+int __export ppp_read_stats(struct ppp_t *ppp,  struct rtnl_link_stats *stats)
+{
+	struct rtnl_link_stats lstats;
+
+	if (!stats)
+		stats = &lstats;
+
+	if (iplink_get_stats(ppp->ifindex, stats)) {
+		log_ppp_warn("ppp: failed to get interface statistics\n");
+		return -1;
+	}
+	
+	stats->rx_packets -= ppp->acct_rx_packets_i;
+	stats->tx_packets -= ppp->acct_tx_packets_i;
+	stats->rx_bytes -= ppp->acct_rx_bytes_i;
+	stats->tx_bytes -= ppp->acct_tx_bytes_i;
+
+	if (stats->rx_bytes < ppp->acct_rx_bytes)
+		ppp->acct_input_gigawords++;
+	ppp->acct_rx_bytes = stats->rx_bytes;
+
+	if (stats->tx_bytes < ppp->acct_tx_bytes)
+		ppp->acct_output_gigawords++;
+	ppp->acct_tx_bytes = stats->tx_bytes;
+
+	return 0;
 }
 
 static void load_config(void)

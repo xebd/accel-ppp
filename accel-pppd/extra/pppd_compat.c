@@ -47,8 +47,6 @@ struct pppd_compat_pd_t
 #endif
 	int started:1;
 	int res;
-	int bytes_sent;
-	int bytes_rcvd;
 	in_addr_t ipv4_addr;
 	in_addr_t ipv4_peer_addr;
 };
@@ -222,27 +220,6 @@ static void ev_ppp_started(struct ppp_t *ppp)
 	}
 	
 	pd->started = 1;
-}
-
-static void ev_ppp_finishing(struct ppp_t *ppp)
-{
-	struct ifpppstatsreq ifreq;
-	struct pppd_compat_pd_t *pd = find_pd(ppp);
-	
-	if (!pd)
-		return;
-	
-	memset(&ifreq, 0, sizeof(ifreq));
-	ifreq.stats_ptr = (void *)&ifreq.stats;
-	strcpy(ifreq.ifr__name, ppp->ifname);
-
-	if (ioctl(sock_fd, SIOCGPPPSTATS, &ifreq)) {
-		log_ppp_error("pppd_compat: failed to get ppp statistics: %s\n", strerror(errno));
-		return;
-	}
-
-	pd->bytes_sent = ifreq.stats.p.ppp_obytes;
-	pd->bytes_rcvd = ifreq.stats.p.ppp_ibytes;
 }
 
 static void ev_ppp_finished(struct ppp_t *ppp)
@@ -497,12 +474,18 @@ static void fill_argv(char **argv, struct pppd_compat_pd_t *pd, char *path)
 
 static void fill_env(char **env, struct pppd_compat_pd_t *pd)
 {
+	struct ppp_t *ppp = pd->ppp;
+	uint64_t tx_bytes, rx_bytes;
+	
+	tx_bytes = (uint64_t)ppp->acct_tx_bytes + ppp->acct_output_gigawords*4294967296llu;
+	rx_bytes = (uint64_t)ppp->acct_rx_bytes + ppp->acct_input_gigawords*4294967296llu;
+
 	snprintf(env[0], 64, "PEERNAME=%s", pd->ppp->username);
 	
 	if (pd->ppp->stop_time && env[1]) {
 		snprintf(env[1], 24, "CONNECT_TIME=%lu", pd->ppp->stop_time - pd->ppp->start_time);
-		snprintf(env[2], 24, "BYTES_SENT=%u", pd->bytes_sent);
-		snprintf(env[3], 24, "BYTES_RCVD=%u", pd->bytes_rcvd);
+		snprintf(env[2], 24, "BYTES_SENT=%llu", (long long unsigned)tx_bytes);
+		snprintf(env[3], 24, "BYTES_RCVD=%llu", (long long unsigned)rx_bytes);
 	}
 }
 
@@ -537,7 +520,6 @@ static void init(void)
 	triton_event_register_handler(EV_PPP_STARTING, (triton_event_func)ev_ppp_starting);
 	triton_event_register_handler(EV_PPP_PRE_UP, (triton_event_func)ev_ppp_pre_up);
 	triton_event_register_handler(EV_PPP_STARTED, (triton_event_func)ev_ppp_started);
-	triton_event_register_handler(EV_PPP_FINISHING, (triton_event_func)ev_ppp_finishing);
 	triton_event_register_handler(EV_PPP_PRE_FINISHED, (triton_event_func)ev_ppp_finished);
 #ifdef RADIUS
 	if (triton_module_loaded("radius")) {

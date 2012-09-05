@@ -8,6 +8,7 @@
 
 #include "triton.h"
 #include "list.h"
+#include "iputils.h"
 
 /*
  * Packet header = Code, id, length.
@@ -134,6 +135,15 @@ struct ppp_t
 	struct ppp_lcp_t *lcp;
 
 	struct list_head pd_list;
+	
+	uint32_t acct_rx_bytes;
+	uint32_t acct_tx_bytes;
+	uint32_t acct_input_gigawords;
+	uint32_t acct_output_gigawords;
+	uint32_t acct_rx_packets_i;
+	uint32_t acct_tx_packets_i;
+	uint32_t acct_rx_bytes_i;
+	uint32_t acct_tx_bytes_i;
 };
 
 struct ppp_layer_t;
@@ -199,6 +209,8 @@ void ppp_unregister_handler(struct ppp_t *, struct ppp_handler_t *);
 int ppp_register_layer(const char *name, struct ppp_layer_t *);
 void ppp_unregister_layer(struct ppp_layer_t *);
 struct ppp_layer_data_t *ppp_find_layer_data(struct ppp_t *, struct ppp_layer_t *);
+
+int ppp_read_stats(struct ppp_t *ppp,  struct rtnl_link_stats *stats);
 
 extern int ppp_shutdown;
 void ppp_shutdown_soft(void);
