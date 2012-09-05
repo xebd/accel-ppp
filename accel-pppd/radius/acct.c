@@ -12,7 +12,7 @@
 #include "log.h"
 #include "backup.h"
 #include "ap_session_backup.h"
-#include "iplink.h"
+#include "iputils.h"
 
 #include "radius_p.h"
 
@@ -20,33 +20,6 @@
 
 #define STAT_UPDATE_INTERVAL (10 * 60 * 1000)
 #define INTERIM_SAFE_TIME 10
-
-int rad_read_stats(struct radius_pd_t *rpd, struct rtnl_link_stats *stats)
-{
-	int r;
-
-	if (iplink_get_stats(rpd->ses->ifindex, stats)) {
-		log_ppp_warn("radius: failed to get interface statistics\n");
-		return -1;
-	}
-	
-	stats->rx_packets -= rpd->acct_rx_packets_i;
-	stats->tx_packets -= rpd->acct_tx_packets_i;
-	stats->rx_bytes -= rpd->acct_rx_bytes_i;
-	stats->tx_bytes -= rpd->acct_tx_bytes_i;
-
-	r = stats->rx_bytes != rpd->acct_rx_bytes || stats->tx_bytes < rpd->acct_tx_bytes;
-
-	if (stats->rx_bytes < rpd->acct_rx_bytes)
-		rpd->acct_input_gigawords++;
-	rpd->acct_rx_bytes = stats->rx_packets;
-
-	if (stats->tx_bytes < rpd->acct_tx_bytes)
-		rpd->acct_output_gigawords++;
-	rpd->acct_tx_bytes = stats->tx_bytes;
-
-	return r;
-}
 
 static int req_set_RA(struct rad_req_t *req, const char *secret)
 {
@@ -75,13 +48,13 @@ static void req_set_stat(struct rad_req_t *req, struct ap_session *ses)
 	else
 		time(&stop_time);
 
-	if (rad_read_stats(rpd, &stats) > 0) {
+	if (ap_session_read_stats(ses, &stats) == 0) {
 		rad_packet_change_int(req->pack, NULL, "Acct-Input-Octets", stats.rx_bytes);
 		rad_packet_change_int(req->pack, NULL, "Acct-Output-Octets", stats.tx_bytes);
 		rad_packet_change_int(req->pack, NULL, "Acct-Input-Packets", stats.rx_packets);
 		rad_packet_change_int(req->pack, NULL, "Acct-Output-Packets", stats.tx_packets);
-		rad_packet_change_int(req->pack, NULL, "Acct-Input-Gigawords", rpd->acct_input_gigawords);
-		rad_packet_change_int(req->pack, NULL, "Acct-Output-Gigawords", rpd->acct_output_gigawords);
+		rad_packet_change_int(req->pack, NULL, "Acct-Input-Gigawords", rpd->ses->acct_input_gigawords);
+		rad_packet_change_int(req->pack, NULL, "Acct-Output-Gigawords", rpd->ses->acct_output_gigawords);
 	}
 
 	rad_packet_change_int(req->pack, NULL, "Acct-Session-Time", stop_time - ses->start_time);
@@ -248,20 +221,10 @@ int rad_acct_start(struct radius_pd_t *rpd)
 	int i;
 	time_t ts;
 	unsigned int dt;
-	struct rtnl_link_stats stats;
 	
 	if (!conf_accounting)
 		return 0;
 	
-	if (iplink_get_stats(rpd->ses->ifindex, &stats))
-		log_ppp_warn("radius: failed to get interface statistics\n");
-	else {
-		rpd->acct_rx_packets_i = stats.rx_packets;
-		rpd->acct_tx_packets_i = stats.tx_packets;
-		rpd->acct_rx_bytes_i = stats.rx_bytes;
-		rpd->acct_tx_bytes_i = stats.tx_bytes;
-	}
-
 	if (!rpd->acct_req)
 		rpd->acct_req = rad_req_alloc(rpd, CODE_ACCOUNTING_REQUEST, rpd->ses->username);
 

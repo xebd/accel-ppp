@@ -109,10 +109,9 @@ void __export sigchld_unlock()
 	pthread_mutex_unlock(&handlers_lock);
 }
 
-static void init(void)
+static void __init init(void)
 {
 	if (pthread_create(&sigchld_thr, NULL, sigchld_thread, NULL))
 		log_emerg("sigchld: pthread_create: %s\n", strerror(errno));
 }
 
-DEFINE_INIT(100, init);

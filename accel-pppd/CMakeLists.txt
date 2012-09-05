@@ -76,7 +76,7 @@ ADD_EXECUTABLE(accel-pppd
 	cli/cli.c
 	
 	libnetlink/libnetlink.c
-	libnetlink/iplink.c
+	libnetlink/iputils.c
 	libnetlink/genl.c
 
 	pwdb.c

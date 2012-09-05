@@ -235,19 +235,18 @@ static void session_timeout(struct triton_timer_t *t)
 static void idle_timeout(struct triton_timer_t *t)
 {
 	struct radius_pd_t *rpd = container_of(t, typeof(*rpd), idle_timeout);
-	struct rtnl_link_stats stats;
+	time_t tt;
 	
 	if (rpd->ses->stop_time)
 		return;
 
-	rad_read_stats(rpd, &stats);
+	time(&tt);
 
-	if (stats.rx_packets == rpd->acct_rx_packets && stats.tx_packets == rpd->acct_tx_packets) {
+	ap_session_read_stats(rpd->ses, NULL);
+
+	if (tt - rpd->ses->idle_time > t->period / 1000) {
 		log_ppp_msg("radius: idle timed out\n");
 		ap_session_terminate(rpd->ses, TERM_IDLE_TIMEOUT, 0);
-	} else {
-		rpd->acct_rx_packets = stats.rx_packets;
-		rpd->acct_tx_packets = stats.tx_packets;
 	}
 }
 

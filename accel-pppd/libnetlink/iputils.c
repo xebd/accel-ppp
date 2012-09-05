@@ -20,7 +20,7 @@
 #include "log.h"
 
 #include "libnetlink.h"
-#include "iplink.h"
+#include "iputils.h"
 
 #include "memdebug.h"
 

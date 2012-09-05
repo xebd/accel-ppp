@@ -18,6 +18,7 @@
 #include "events.h"
 #include "ap_session.h"
 #include "backup.h"
+#include "iputils.h"
 #include "spinlock.h"
 #include "mempool.h"
 #include "memdebug.h"
@@ -53,6 +54,7 @@ void __export ap_session_init(struct ap_session *ses)
 int __export ap_session_starting(struct ap_session *ses)
 {
 	struct ifreq ifr;
+	struct rtnl_link_stats stats;
 
 	if (ses->ifindex == -1) {
 		memset(&ifr, 0, sizeof(ifr));
@@ -64,9 +66,19 @@ int __export ap_session_starting(struct ap_session *ses)
 		}
 		ses->ifindex = ifr.ifr_ifindex;
 	}
+			
+	if (iplink_get_stats(ses->ifindex, &stats))
+		log_ppp_warn("failed to get interface statistics\n");
+	else {
+		ses->acct_rx_packets_i = stats.rx_packets;
+		ses->acct_tx_packets_i = stats.tx_packets;
+		ses->acct_rx_bytes_i = stats.rx_bytes;
+		ses->acct_tx_bytes_i = stats.tx_bytes;
+	}
 
 	if (ses->state != AP_STATE_RESTORE) {
 		ses->start_time = time(NULL);
+		ses->idle_time = ses->start_time;
 		generate_sessionid(ses);
 
 		ses->state = AP_STATE_STARTING;
@@ -213,6 +225,40 @@ static void generate_sessionid(struct ap_session *ses)
 		sprintf(ses->sessionid, "%016llX", sid);
 	else
 		sprintf(ses->sessionid, "%016llx", sid);
+}
+
+int __export ap_session_read_stats(struct ap_session *ses, struct rtnl_link_stats *stats)
+{
+	struct rtnl_link_stats lstats;
+	time_t t;
+
+	if (!stats)
+		stats = &lstats;
+
+	time(&t);
+
+	if (iplink_get_stats(ses->ifindex, stats)) {
+		log_ppp_warn("failed to get interface statistics\n");
+		return -1;
+	}
+	
+	stats->rx_packets -= ses->acct_rx_packets_i;
+	stats->tx_packets -= ses->acct_tx_packets_i;
+	stats->rx_bytes -= ses->acct_rx_bytes_i;
+	stats->tx_bytes -= ses->acct_tx_bytes_i;
+
+	if (stats->rx_bytes != ses->acct_rx_bytes || stats->tx_bytes != ses->acct_tx_bytes)
+		time(&ses->idle_time);
+
+	if (stats->rx_bytes < ses->acct_rx_bytes)
+		ses->acct_input_gigawords++;
+	ses->acct_rx_bytes = stats->rx_bytes;
+
+	if (stats->tx_bytes < ses->acct_tx_bytes)
+		ses->acct_output_gigawords++;
+	ses->acct_tx_bytes = stats->tx_bytes;
+
+	return 0;
 }
 
 static void save_seq(void)

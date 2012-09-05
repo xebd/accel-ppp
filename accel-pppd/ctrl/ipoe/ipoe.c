@@ -28,7 +28,7 @@
 #include "pwdb.h"
 #include "ipdb.h"
 
-#include "iplink.h"
+#include "iputils.h"
 #include "connlimit.h"
 #ifdef RADIUS
 #include "radius.h"

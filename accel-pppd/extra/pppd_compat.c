@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <sched.h>
 #include <limits.h>
+#include <inttypes.h>
 #include <sys/ioctl.h>
 #include <netinet/in.h>
 #include "linux_ppp.h"
@@ -18,7 +19,7 @@
 #include "log.h"
 #include "utils.h"
 #include "sigchld.h"
-#include "iplink.h"
+#include "iputils.h"
 
 #ifdef RADIUS
 #include "radius.h"
@@ -48,8 +49,6 @@ struct pppd_compat_pd_t
 #endif
 	int started:1;
 	int res;
-	int bytes_sent;
-	int bytes_rcvd;
 	in_addr_t ipv4_addr;
 	in_addr_t ipv4_peer_addr;
 };
@@ -224,23 +223,6 @@ static void ev_ses_started(struct ap_session *ses)
 	}
 	
 	pd->started = 1;
-}
-
-static void ev_ses_finishing(struct ap_session *ses)
-{
-	struct rtnl_link_stats stats;
-	struct pppd_compat_pd_t *pd = find_pd(ses);
-	
-	if (!pd)
-		return;
-	
-	if (iplink_get_stats(ses->ifindex, &stats)) {
-		log_ppp_error("pppd_compat: failed to get interface statistics\n");
-		return;
-	}
-
-	pd->bytes_sent = stats.tx_bytes;
-	pd->bytes_rcvd = stats.rx_bytes;
 }
 
 static void ev_ses_finished(struct ap_session *ses)
@@ -498,12 +480,18 @@ static void fill_argv(char **argv, struct pppd_compat_pd_t *pd, char *path)
 
 static void fill_env(char **env, struct pppd_compat_pd_t *pd)
 {
+	struct ap_session *ses = pd->ses;
+	uint64_t tx_bytes, rx_bytes;
+	
+	tx_bytes = (uint64_t)ses->acct_tx_bytes + ses->acct_output_gigawords*4294967296llu;
+	rx_bytes = (uint64_t)ses->acct_rx_bytes + ses->acct_input_gigawords*4294967296llu;
+	
 	snprintf(env[0], 64, "PEERNAME=%s", pd->ses->username);
 	
 	if (pd->ses->stop_time && env[1]) {
 		snprintf(env[1], 24, "CONNECT_TIME=%lu", pd->ses->stop_time - pd->ses->start_time);
-		snprintf(env[2], 24, "BYTES_SENT=%u", pd->bytes_sent);
-		snprintf(env[3], 24, "BYTES_RCVD=%u", pd->bytes_rcvd);
+		snprintf(env[2], 24, "BYTES_SENT=%" PRIu64, tx_bytes);
+		snprintf(env[3], 24, "BYTES_RCVD=%" PRIu64, rx_bytes);
 	}
 }
 
@@ -538,7 +526,6 @@ static void init(void)
 	triton_event_register_handler(EV_SES_STARTING, (triton_event_func)ev_ses_starting);
 	triton_event_register_handler(EV_SES_PRE_UP, (triton_event_func)ev_ses_pre_up);
 	triton_event_register_handler(EV_SES_STARTED, (triton_event_func)ev_ses_started);
-	triton_event_register_handler(EV_SES_FINISHING, (triton_event_func)ev_ses_finishing);
 	triton_event_register_handler(EV_SES_PRE_FINISHED, (triton_event_func)ev_ses_finished);
 #ifdef RADIUS
 	if (triton_module_loaded("radius")) {

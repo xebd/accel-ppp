@@ -35,6 +35,7 @@
 
 struct ap_session;
 struct backup_data;
+struct rtnl_link_stats;
 
 struct ap_ctrl
 {
@@ -70,6 +71,7 @@ struct ap_session
 	char sessionid[AP_SESSIONID_LEN+1];
 	time_t start_time;
 	time_t stop_time;
+	time_t idle_time;
 	char *username;
 	struct ipv4db_item_t *ipv4;
 	struct ipv6db_item_t *ipv6;
@@ -87,6 +89,15 @@ struct ap_session
 	int terminate_cause;
 
 	struct list_head pd_list;
+	
+	uint32_t acct_rx_bytes;
+	uint32_t acct_tx_bytes;
+	uint32_t acct_input_gigawords;
+	uint32_t acct_output_gigawords;
+	uint32_t acct_rx_packets_i;
+	uint32_t acct_tx_packets_i;
+	uint32_t acct_rx_bytes_i;
+	uint32_t acct_tx_bytes_i;
 };
 
 struct ap_session_stat
@@ -113,6 +124,8 @@ void ap_session_activate(struct ap_session *ses);
 
 void ap_session_ifup(struct ap_session *ses);
 void ap_session_ifdown(struct ap_session *ses);
+
+int ap_session_read_stats(struct ap_session *ses, struct rtnl_link_stats *stats);
 
 void ap_shutdown_soft(void (*cb)(void));
 

@@ -12,7 +12,7 @@
 #include "ppp.h"
 #include "ppp_lcp.h"
 #include "events.h"
-#include "iplink.h"
+#include "iputils.h"
 
 #include "memdebug.h"
 
@@ -656,15 +656,15 @@ static void send_echo_request(struct triton_timer_t *t)
 
 	++lcp->echo_sent;
 
+	ap_session_read_stats(&lcp->ppp->ses, &stats);
+
 	if (conf_echo_timeout) {
 		if (lcp->echo_sent == 2) {
-			if (iplink_get_stats(lcp->ppp->ses.ifindex, &stats) == 0)
-				lcp->last_ipackets = stats.rx_packets;
-
+			lcp->last_ipackets = stats.rx_packets;
 			time(&lcp->last_echo_ts);
 		} else if (lcp->echo_sent > 2) {
 			time(&ts);
-			if (iplink_get_stats(lcp->ppp->ses.ifindex, &stats) == 0 && lcp->last_ipackets != stats.rx_packets) {
+			if (lcp->last_ipackets != stats.rx_packets) {
 				lcp->echo_sent = 1;
 				lcp_update_echo_timer(lcp);
 			} else if (ts - lcp->last_echo_ts > conf_echo_timeout) {

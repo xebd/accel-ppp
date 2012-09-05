@@ -25,17 +25,6 @@ struct radius_pd_t
 	struct rad_req_t *acct_req;
 	struct triton_timer_t acct_interim_timer;
 
-	uint32_t acct_rx_bytes;
-	uint32_t acct_tx_bytes;
-	uint32_t acct_rx_packets;
-	uint32_t acct_tx_packets;
-	uint32_t acct_input_gigawords;
-	uint32_t acct_output_gigawords;
-	uint32_t acct_rx_packets_i;
-	uint32_t acct_tx_packets_i;
-	uint32_t acct_rx_bytes_i;
-	uint32_t acct_tx_bytes_i;
-
 	struct triton_timer_t session_timeout;
 	struct triton_timer_t idle_timeout;
 
