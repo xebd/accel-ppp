@@ -119,9 +119,34 @@ static void l2tp_send_SCCRP(struct l2tp_conn_t *conn);
 static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack, int log_debug);
 static int l2tp_conn_read(struct triton_md_handler_t *);
 
+static void l2tp_session_free(struct l2tp_conn_t *conn)
+{
+	if (conn->state == STATE_PPP) {
+		__sync_sub_and_fetch(&stat_active, 1);
+		conn->state = STATE_FIN;
+		ap_session_terminate(&conn->sess.ppp.ses,
+				     TERM_USER_REQUEST, 1);
+	} else if (conn->state != STATE_FIN)
+		__sync_sub_and_fetch(&stat_starting, 1);
+
+	if (conn->sess.ppp.fd != -1)
+		close(conn->sess.ppp.fd);
+
+	triton_event_fire(EV_CTRL_FINISHED, &conn->sess.ppp.ses);
+
+	log_ppp_info1("disconnected\n");
+
+	if (conn->sess.ppp.ses.chan_name)
+		_free(conn->sess.ppp.ses.chan_name);
+	_free(conn->sess.ctrl.calling_station_id);
+	_free(conn->sess.ctrl.called_station_id);
+}
+
 static void l2tp_disconnect(struct l2tp_conn_t *conn)
 {
 	struct l2tp_packet_t *pack;
+
+	l2tp_session_free(conn);
 
 	triton_md_unregister_handler(&conn->hnd);
 	close(conn->hnd.fd);
@@ -135,27 +160,12 @@ static void l2tp_disconnect(struct l2tp_conn_t *conn)
 	if (conn->hello_timer.tpd)
 		triton_timer_del(&conn->hello_timer);
 
-	if (conn->state == STATE_PPP) {
-		__sync_sub_and_fetch(&stat_active, 1);
-		conn->state = STATE_FIN;
-		ap_session_terminate(&conn->sess.ppp.ses,
-				     TERM_USER_REQUEST, 1);
-	} else if (conn->state != STATE_FIN)
-		__sync_sub_and_fetch(&stat_starting, 1);
-
 	pthread_mutex_lock(&l2tp_lock);
 	l2tp_conn[conn->tid] = NULL;
 	pthread_mutex_unlock(&l2tp_lock);
 
-	if (conn->sess.ppp.fd != -1)
-		close(conn->sess.ppp.fd);
-	
 	if (conn->tunnel_fd != -1)
 		close(conn->tunnel_fd);
-
-	triton_event_fire(EV_CTRL_FINISHED, &conn->sess.ppp.ses);
-
-	log_ppp_info1("disconnected\n");
 
 	triton_context_unregister(&conn->ctx);
 
@@ -165,12 +175,8 @@ static void l2tp_disconnect(struct l2tp_conn_t *conn)
 		l2tp_packet_free(pack);
 	}
 
-	if (conn->sess.ppp.ses.chan_name)
-		_free(conn->sess.ppp.ses.chan_name);
 	if (conn->challenge_len)
 	    _free(conn->challenge.octets);
-	_free(conn->sess.ctrl.calling_station_id);
-	_free(conn->sess.ctrl.called_station_id);
 
 	mempool_free(conn);
 }
