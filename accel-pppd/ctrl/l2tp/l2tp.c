@@ -76,6 +76,7 @@ struct l2tp_sess_t
 	int state1;
 	int state2;
 
+	struct triton_timer_t timeout_timer;
 	struct ap_ctrl ctrl;
 	struct ppp_t ppp;
 };
@@ -194,6 +195,9 @@ static void l2tp_session_free(struct l2tp_sess_t *sess)
 
 	if (sess->ppp.ses.chan_name)
 		_free(sess->ppp.ses.chan_name);
+	if (sess->timeout_timer.tpd)
+		triton_timer_del(&sess->timeout_timer);
+
 	_free(sess->ctrl.calling_station_id);
 	_free(sess->ctrl.called_station_id);
 
@@ -294,6 +298,18 @@ static void l2tp_ppp_finished(struct ap_session *ses)
 			    l2tp_ppp_session_disconnect, sess);
 }
 
+static void l2tp_session_timeout(struct triton_timer_t *t)
+{
+	struct l2tp_sess_t *sess = container_of(t, typeof(*sess),
+						timeout_timer);
+	log_ppp_debug("l2tp: session timeout\n");
+	l2tp_session_free(sess);
+
+	/* Disconnect the tunnel when all sessions have been closed */
+	l2tp_tunnel_disconnect(sess->paren_conn, 1, 0);
+	sess->paren_conn->state = STATE_FIN;
+}
+
 static struct l2tp_sess_t *l2tp_session_alloc(struct l2tp_conn_t *conn)
 {
 	struct l2tp_sess_t *sess = &conn->sess;
@@ -322,6 +338,8 @@ static struct l2tp_sess_t *l2tp_session_alloc(struct l2tp_conn_t *conn)
 		    sess->ctrl.calling_station_id);
 	u_inet_ntoa(conn->lns_addr.sin_addr.s_addr,
 		    sess->ctrl.called_station_id);
+	sess->timeout_timer.expire = l2tp_session_timeout;
+	sess->timeout_timer.period = conf_timeout * 1000;
 
 	ppp_init(&sess->ppp);
 	sess->ppp.ses.ctrl = &sess->ctrl;
@@ -731,11 +749,11 @@ static int l2tp_send_ICRP(struct l2tp_sess_t *sess)
 
 	l2tp_send(sess->paren_conn, pack, 0);
 
-	if (!sess->paren_conn->timeout_timer.tpd)
+	if (!sess->timeout_timer.tpd)
 		triton_timer_add(&sess->paren_conn->ctx,
-				 &sess->paren_conn->timeout_timer, 0);
+				 &sess->timeout_timer, 0);
 	else
-		triton_timer_mod(&sess->paren_conn->timeout_timer, 0);
+		triton_timer_mod(&sess->timeout_timer, 0);
 	
 	sess->state1 = STATE_WAIT_ICCN;
 	
@@ -873,7 +891,7 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 static int l2tp_recv_SCCCN(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 {
 	if (conn->state == STATE_WAIT_SCCCN) {
-		triton_timer_mod(&conn->timeout_timer, 0);
+		triton_timer_del(&conn->timeout_timer);
 		if (l2tp_tunnel_connect(conn) < 0) {
 			l2tp_tunnel_disconnect(conn, 2, 0);
 			return -1;
@@ -978,7 +996,7 @@ static int l2tp_recv_ICCN(struct l2tp_sess_t *sess, struct l2tp_packet_t *pack)
 	if (l2tp_send_ZLB(sess->paren_conn))
 		return -1;
 
-	triton_timer_del(&sess->paren_conn->timeout_timer);
+	triton_timer_del(&sess->timeout_timer);
 
 	return 0;
 }
