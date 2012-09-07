@@ -1,4 +1,5 @@
 #include <unistd.h>
+#include <search.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -104,7 +105,7 @@ struct l2tp_conn_t
 	struct list_head send_queue;
 
 	int state;
-	struct l2tp_sess_t sess;
+	void *sessions;
 };
 
 static pthread_mutex_t l2tp_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -112,6 +113,7 @@ static struct l2tp_conn_t **l2tp_conn;
 static uint16_t l2tp_tid;
 
 static mempool_t l2tp_conn_pool;
+static mempool_t l2tp_sess_pool;
 
 static void l2tp_timeout(struct triton_timer_t *t);
 static void l2tp_rtimeout(struct triton_timer_t *t);
@@ -119,6 +121,25 @@ static void l2tp_send_HELLO(struct triton_timer_t *t);
 static void l2tp_send_SCCRP(struct l2tp_conn_t *conn);
 static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack, int log_debug);
 static int l2tp_conn_read(struct triton_md_handler_t *);
+
+static int sess_cmp(const void *a, const void *b)
+{
+	const struct l2tp_sess_t *sess_a = a;
+	const struct l2tp_sess_t *sess_b = b;
+
+	return (sess_a->sid > sess_b->sid) - (sess_a->sid < sess_b->sid);
+}
+
+static struct l2tp_sess_t *l2tp_tunnel_get_session(struct l2tp_conn_t *conn,
+						   uint16_t sid)
+{
+	struct l2tp_sess_t sess = {.sid = sid, 0};
+	struct l2tp_sess_t **res = NULL;
+
+	res = tfind(&sess, &conn->sessions, sess_cmp);
+
+	return (res) ? *res : NULL;
+}
 
 static int l2tp_send_StopCCN(struct l2tp_conn_t *conn,
 			     uint16_t res, uint16_t err)
@@ -170,38 +191,55 @@ out_err:
 	return -1;
 }
 
-static void l2tp_session_free(struct l2tp_sess_t *sess)
+static void __l2tp_session_free(void *data)
 {
+	struct l2tp_sess_t *sess = data;
+
 	switch (sess->state1) {
 	case STATE_PPP:
 		__sync_sub_and_fetch(&stat_active, 1);
+		sess->state1 = STATE_CLOSE;
 		ap_session_terminate(&sess->ppp.ses,
 				     TERM_USER_REQUEST, 1);
-		break;
+		triton_event_fire(EV_CTRL_FINISHED, &sess->ppp.ses);
+		/* No cleanup here, "sess" must remain a valid session
+		   pointer (even if it no l2tp_conn_t points to it anymore).
+		   This is because the above call to ap_session_terminate()
+		   ends up in calling the l2tp_ppp_finished() callback,
+		   which expects a valid session pointer. It is then the
+		   responsibility of l2tp_ppp_finished() to eventually
+		   cleanup the session structure by calling again
+		   __l2tp_session_free(). */
+		return;
 	case STATE_WAIT_ICCN:
 	case STATE_ESTB:
 		__sync_sub_and_fetch(&stat_starting, 1);
+		triton_event_fire(EV_CTRL_FINISHED, &sess->ppp.ses);
 		break;
-	default:
-		return;
 	}
-
-	if (sess->ppp.fd != -1)
-		close(sess->ppp.fd);
-
-	triton_event_fire(EV_CTRL_FINISHED, &sess->ppp.ses);
 
 	log_ppp_info1("disconnected\n");
 
-	if (sess->ppp.ses.chan_name)
-		_free(sess->ppp.ses.chan_name);
 	if (sess->timeout_timer.tpd)
 		triton_timer_del(&sess->timeout_timer);
+	if (sess->ppp.fd != -1)
+		close(sess->ppp.fd);
+	if (sess->ppp.ses.chan_name)
+		_free(sess->ppp.ses.chan_name);
+	if (sess->ctrl.calling_station_id)
+		_free(sess->ctrl.calling_station_id);
+	if (sess->ctrl.called_station_id)
+		_free(sess->ctrl.called_station_id);
 
-	_free(sess->ctrl.calling_station_id);
-	_free(sess->ctrl.called_station_id);
+	mempool_free(sess);
+}
 
-	sess->state1 = STATE_CLOSE;
+static void l2tp_session_free(struct l2tp_sess_t *sess)
+{
+	if (tdelete(sess, &sess->paren_conn->sessions, sess_cmp) == NULL) {
+		log_warn("ERROR: impossible to delete unexisting session %hu\n", sess->sid);
+	}
+	__l2tp_session_free(sess);
 }
 
 static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
@@ -211,7 +249,7 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 	if (conn->state == STATE_CLOSE)
 		return;
 
-	l2tp_session_free(&conn->sess);
+	tdestroy(conn->sessions, __l2tp_session_free);
 
 	triton_md_unregister_handler(&conn->hnd);
 	close(conn->hnd.fd);
@@ -268,19 +306,30 @@ static int l2tp_session_disconnect(struct l2tp_sess_t *sess,
 	l2tp_session_free(sess);
 
 	/* Free the tunnel when all sessions have been closed */
-	return l2tp_tunnel_disconnect(sess->paren_conn, 1, 0);
+	if (sess->paren_conn->sessions == NULL)
+		return l2tp_tunnel_disconnect(sess->paren_conn, 1, 0);
+	else
+		return 0;
 }
 
 static void l2tp_ppp_session_disconnect(void *param)
 {
 	struct l2tp_sess_t *sess = param;
 
-	l2tp_send_CDN(sess, 2, 0);
-	l2tp_session_free(sess);
+	if (sess->state1 != STATE_CLOSE) {
+		l2tp_send_CDN(sess, 2, 0);
+		l2tp_session_free(sess);
+	} else {
+		/* Called by __l2tp_session_free() via ap_session_terminate().
+		   Now, call __l2tp_session_free() again to finish cleanup. */
+		__l2tp_session_free(sess);
+	}
 
 	/* Disconnect the tunnel when all sessions have been closed */
-	l2tp_tunnel_disconnect(sess->paren_conn, 1, 0);
-	sess->paren_conn->state = STATE_FIN;
+	if (sess->paren_conn->sessions == NULL) {
+		l2tp_tunnel_disconnect(sess->paren_conn, 1, 0);
+		sess->paren_conn->state = STATE_FIN;
+	}
 }
 
 static void l2tp_ppp_started(struct ap_session *ses)
@@ -306,19 +355,66 @@ static void l2tp_session_timeout(struct triton_timer_t *t)
 	l2tp_session_free(sess);
 
 	/* Disconnect the tunnel when all sessions have been closed */
-	l2tp_tunnel_disconnect(sess->paren_conn, 1, 0);
-	sess->paren_conn->state = STATE_FIN;
+	if (sess->paren_conn->sessions == NULL) {
+		l2tp_tunnel_disconnect(sess->paren_conn, 1, 0);
+		sess->paren_conn->state = STATE_FIN;
+	}
+}
+
+static struct l2tp_sess_t *l2tp_tunnel_new_session(struct l2tp_conn_t *conn)
+{
+	struct l2tp_sess_t *sess = NULL;
+	struct l2tp_sess_t **sess_search = NULL;
+	ssize_t rdlen = 0;
+
+	sess = mempool_alloc(l2tp_sess_pool);
+	if (sess == NULL) {
+		log_warn("l2tp: Impossible to allocate new session for"
+			 " tunnel %hu: memory allocation error\n", conn->tid);
+		goto out_err;
+	}
+	memset(sess, 0, sizeof(*sess));
+
+	rdlen = read(urandom_fd, &sess->sid, sizeof(sess->sid));
+	if (rdlen != sizeof(sess->sid)) {
+		log_warn("l2tp: Impossible to allocate new session for"
+			 " tunnel %hu: could not get random number (%s)\n",
+			 conn->tid,
+			 (rdlen < 0) ? strerror(errno) : "short read");
+		goto out_err;
+	}
+	if (sess->sid == 0) {
+		log_warn("l2tp: Impossible to allocate new session for"
+			 " tunnel %hu: could not get a valid session ID\n",
+			 conn->tid);
+		goto out_err;
+	}
+
+	sess_search = tsearch(sess, &conn->sessions, sess_cmp);
+	if (*sess_search != sess) {
+		log_warn("l2tp: Impossible to allocate new session for"
+			 " tunnel %hu: could not find any unused session ID\n",
+			 conn->tid);
+		goto out_err;
+	}
+
+	return sess;
+
+out_err:
+	if (sess)
+		mempool_free(sess);
+	return NULL;
 }
 
 static struct l2tp_sess_t *l2tp_session_alloc(struct l2tp_conn_t *conn)
 {
-	struct l2tp_sess_t *sess = &conn->sess;
+	struct l2tp_sess_t *sess = NULL;
 
-	if (sess->state1 != STATE_CLOSE)
+	sess = l2tp_tunnel_new_session(conn);
+	if (sess == NULL)
 		return NULL;
 
 	sess->paren_conn = conn;
-	sess->sid = 1;
 	sess->peer_sid = 0;
 	sess->state1 = STATE_CLOSE;
 	sess->state2 = STATE_CLOSE;
@@ -470,7 +566,7 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 		l2tp_packet_print(pack, log_ppp_info2);
 	}
 
-	conn->sess.state1 = STATE_CLOSE;
+	conn->sessions = NULL;
 	triton_context_call(&conn->ctx, (triton_event_func)l2tp_send_SCCRP, conn);
 
 	return 0;
@@ -1036,7 +1132,10 @@ static int l2tp_recv_CDN(struct l2tp_sess_t *sess, struct l2tp_packet_t *pack)
 	l2tp_session_free(sess);
 
 	/* Free the tunnel when all sessions have been closed */
-	return l2tp_tunnel_disconnect(sess->paren_conn, 1, 0);
+	if (sess->paren_conn->sessions == NULL)
+		return l2tp_tunnel_disconnect(sess->paren_conn, 1, 0);
+	else
+		return 0;
 }
 
 static int l2tp_recv_SLI(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
@@ -1047,6 +1146,7 @@ static int l2tp_recv_SLI(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 static int l2tp_conn_read(struct triton_md_handler_t *h)
 {
 	struct l2tp_conn_t *conn = container_of(h, typeof(*conn), hnd);
+	struct l2tp_sess_t *sess = NULL;
 	struct l2tp_packet_t *pack, *p;
 	struct l2tp_attr_t *msg_type;
 	int res;
@@ -1139,19 +1239,23 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 					goto drop;
 				break;
 			case Message_Type_Incoming_Call_Connected:
-				if (l2tp_recv_ICCN(&conn->sess, pack))
+				sess = l2tp_tunnel_get_session(conn, ntohs(pack->hdr.sid));
+				if (sess == NULL || l2tp_recv_ICCN(sess, pack) < 0)
 					goto drop;
 				break;
 			case Message_Type_Outgoing_Call_Reply:
-				if (l2tp_recv_OCRP(&conn->sess, pack))
+				sess = l2tp_tunnel_get_session(conn, ntohs(pack->hdr.sid));
+				if (sess == NULL || l2tp_recv_OCRP(sess, pack) < 0)
 					goto drop;
 				break;
 			case Message_Type_Outgoing_Call_Connected:
-				if (l2tp_recv_OCCN(&conn->sess, pack))
+				sess = l2tp_tunnel_get_session(conn, ntohs(pack->hdr.sid));
+				if (sess == NULL || l2tp_recv_OCCN(sess, pack) < 0)
 					goto drop;
 				break;
 			case Message_Type_Call_Disconnect_Notify:
-				if (l2tp_recv_CDN(&conn->sess, pack))
+				sess = l2tp_tunnel_get_session(conn, ntohs(pack->hdr.sid));
+				if (sess == NULL || l2tp_recv_CDN(sess, pack) < 0)
 					goto drop;
 				break;
 			case Message_Type_Set_Link_Info:
@@ -1388,6 +1492,7 @@ static void l2tp_init(void)
 	memset(l2tp_conn, 0, L2TP_MAX_TID * sizeof(void *));
 
 	l2tp_conn_pool = mempool_create(sizeof(struct l2tp_conn_t));
+	l2tp_sess_pool = mempool_create(sizeof(struct l2tp_sess_t));
 
 	load_config();
 
