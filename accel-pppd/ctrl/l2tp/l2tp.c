@@ -269,14 +269,7 @@ static int l2tp_session_disconnect(struct l2tp_conn_t *conn,
 
 static void l2tp_ppp_started(struct ap_session *ses)
 {
-	struct ppp_t *ppp = container_of(ses, typeof(*ppp), ses);
-	struct l2tp_sess_t *sess = container_of(ppp, typeof(*sess), ppp);
-	struct l2tp_conn_t *conn = sess->paren_conn;
-
 	log_ppp_debug("l2tp: ppp started\n");
-	
-	if (conf_hello_interval)
-		triton_timer_add(&conn->ctx, &conn->hello_timer, 0);
 }
 
 static void l2tp_ppp_finished(struct ap_session *ses)
@@ -557,6 +550,9 @@ static int l2tp_tunnel_connect(struct l2tp_conn_t *conn)
 		log_ppp_error("l2tp: connect(tunnel): %s\n", strerror(errno));
 		goto out_err;
 	}
+
+	if (conf_hello_interval)
+		triton_timer_add(&conn->ctx, &conn->hello_timer, 0);
 
 	return 0;
 
