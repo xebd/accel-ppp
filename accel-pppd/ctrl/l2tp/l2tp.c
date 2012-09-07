@@ -90,7 +90,8 @@ struct l2tp_conn_t
 
 	int tunnel_fd;
 
-	struct sockaddr_in addr;
+	struct sockaddr_in lac_addr;
+	struct sockaddr_in lns_addr;
 	uint16_t tid;
 	uint16_t peer_tid;
 	uint32_t framing_cap;
@@ -181,7 +182,8 @@ static int l2tp_terminate(struct l2tp_conn_t *conn, int res, int err)
 
 	log_ppp_debug("l2tp: terminate (%i, %i)\n", res, err);
 
-	pack = l2tp_packet_alloc(2, Message_Type_Stop_Ctrl_Conn_Notify, &conn->addr);
+	pack = l2tp_packet_alloc(2, Message_Type_Stop_Ctrl_Conn_Notify,
+				 &conn->lac_addr);
 	if (!pack)
 		return -1;
 	
@@ -226,6 +228,39 @@ static void l2tp_ppp_finished(struct ap_session *ses)
 		if (l2tp_terminate(conn, 0, 0))
 			triton_context_call(&conn->ctx, (triton_event_func)l2tp_disconnect, conn);
 	}
+}
+
+static int l2tp_session_alloc(struct l2tp_conn_t *conn)
+{
+	conn->sess.paren_conn = conn;
+	conn->sess.sid = 1;
+	conn->sess.peer_sid = 0;
+	conn->sess.state1 = STATE_CLOSE;
+	conn->sess.state2 = STATE_CLOSE;
+
+	conn->sess.ctrl.ctx = &conn->ctx;
+	conn->sess.ctrl.type = CTRL_TYPE_L2TP;
+	conn->sess.ctrl.ppp = 1;
+	conn->sess.ctrl.name = "l2tp";
+	conn->sess.ctrl.started = l2tp_ppp_started;
+	conn->sess.ctrl.finished = l2tp_ppp_finished;
+	conn->sess.ctrl.terminate = ppp_terminate;
+	conn->sess.ctrl.max_mtu = 1420;
+	conn->sess.ctrl.mppe = conf_mppe;
+	conn->sess.ctrl.calling_station_id = _malloc(17);
+	conn->sess.ctrl.called_station_id = _malloc(17);
+	u_inet_ntoa(conn->lac_addr.sin_addr.s_addr,
+		    conn->sess.ctrl.calling_station_id);
+	u_inet_ntoa(conn->lns_addr.sin_addr.s_addr,
+		    conn->sess.ctrl.called_station_id);
+
+	ppp_init(&conn->sess.ppp);
+	conn->sess.ppp.ses.ctrl = &conn->sess.ctrl;
+	conn->sess.ppp.fd = -1;
+
+	__sync_add_and_fetch(&stat_starting, 1);
+
+	return 0;
 }
 
 static void l2tp_conn_close(struct triton_context_t *ctx)
@@ -309,9 +344,8 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 		return -1;
 	}
 
-	conn->sess.sid = 1;
-
-	memcpy(&conn->addr, &pack->addr, sizeof(pack->addr));
+	memcpy(&conn->lac_addr, &pack->addr, sizeof(pack->addr));
+	memcpy(&conn->lns_addr, &addr, sizeof(addr));
 	conn->peer_tid = assigned_tid->val.uint16;
 	conn->framing_cap = framing_cap->val.uint32;
 
@@ -341,41 +375,22 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 	conn->rtimeout_timer.period = conf_rtimeout * 1000;
 	conn->hello_timer.expire = l2tp_send_HELLO;
 	conn->hello_timer.period = conf_hello_interval * 1000;
-	conn->sess.paren_conn = conn;
-	conn->sess.ctrl.ctx = &conn->ctx;
-	conn->sess.ctrl.type = CTRL_TYPE_L2TP;
-	conn->sess.ctrl.ppp = 1;
-	conn->sess.ctrl.name = "l2tp";
-	conn->sess.ctrl.started = l2tp_ppp_started;
-	conn->sess.ctrl.finished = l2tp_ppp_finished;
-	conn->sess.ctrl.terminate = ppp_terminate;
-	conn->sess.ctrl.max_mtu = 1420;
-	conn->sess.ctrl.mppe = conf_mppe;
 
-	conn->sess.ctrl.calling_station_id = _malloc(17);
-	conn->sess.ctrl.called_station_id = _malloc(17);
-	u_inet_ntoa(conn->addr.sin_addr.s_addr, conn->sess.ctrl.calling_station_id);
-	u_inet_ntoa(addr.sin_addr.s_addr, conn->sess.ctrl.called_station_id);
-
-	ppp_init(&conn->sess.ppp);
-	conn->sess.ppp.ses.ctrl = &conn->sess.ctrl;
-	conn->sess.ppp.fd = -1;
 	conn->tunnel_fd = -1;
 
-	triton_context_register(&conn->ctx, &conn->sess.ppp.ses);
+	triton_context_register(&conn->ctx, NULL);
 	triton_md_register_handler(&conn->ctx, &conn->hnd);
 	triton_md_enable_handler(&conn->hnd, MD_MODE_READ);
 	triton_context_wakeup(&conn->ctx);
 
 	if (conf_verbose) {
-		log_switch(&conn->ctx, &conn->sess.ppp);
+		log_switch(&conn->ctx, NULL);
 		log_ppp_info2("recv ");
 		l2tp_packet_print(pack, log_ppp_info2);
 	}
 
+	l2tp_session_alloc(conn);
 	triton_context_call(&conn->ctx, (triton_event_func)l2tp_send_SCCRP, conn);
-
-	__sync_add_and_fetch(&stat_starting, 1);
 
 	return 0;
 
@@ -395,7 +410,7 @@ static int l2tp_connect(struct l2tp_conn_t *conn)
 	pppox_addr.sa_family = AF_PPPOX;
 	pppox_addr.sa_protocol = PX_PROTO_OL2TP;
 	pppox_addr.pppol2tp.fd = conn->hnd.fd;
-	memcpy(&pppox_addr.pppol2tp.addr, &conn->addr, sizeof(conn->addr));
+	memcpy(&pppox_addr.pppol2tp.addr, &conn->lac_addr, sizeof(conn->lac_addr));
 	pppox_addr.pppol2tp.s_tunnel = conn->tid;
 	pppox_addr.pppol2tp.d_tunnel = conn->peer_tid;
 
@@ -451,7 +466,7 @@ static int l2tp_connect(struct l2tp_conn_t *conn)
 		goto out_err;
 	}
 
-	conn->sess.ppp.ses.chan_name = _strdup(inet_ntoa(conn->addr.sin_addr));
+	conn->sess.ppp.ses.chan_name = _strdup(inet_ntoa(conn->lac_addr.sin_addr));
 
 	triton_event_fire(EV_CTRL_STARTED, &conn->sess.ppp.ses);
 
@@ -548,7 +563,7 @@ static int l2tp_send_ZLB(struct l2tp_conn_t *conn)
 {
 	struct l2tp_packet_t *pack;
 
-	pack = l2tp_packet_alloc(2, 0, &conn->addr);
+	pack = l2tp_packet_alloc(2, 0, &conn->lac_addr);
 	if (!pack)
 		return -1;
 
@@ -563,7 +578,7 @@ static void l2tp_send_HELLO(struct triton_timer_t *t)
 	struct l2tp_conn_t *conn = container_of(t, typeof(*conn), hello_timer);
 	struct l2tp_packet_t *pack;
 
-	pack = l2tp_packet_alloc(2, Message_Type_Hello, &conn->addr);
+	pack = l2tp_packet_alloc(2, Message_Type_Hello, &conn->lac_addr);
 	if (!pack) {
 		l2tp_disconnect(conn);
 		return;
@@ -577,7 +592,7 @@ static void l2tp_send_SCCRP(struct l2tp_conn_t *conn)
 {
 	struct l2tp_packet_t *pack;
 
-	pack = l2tp_packet_alloc(2, Message_Type_Start_Ctrl_Conn_Reply, &conn->addr);
+	pack = l2tp_packet_alloc(2, Message_Type_Start_Ctrl_Conn_Reply, &conn->lac_addr);
 	if (!pack)
 		goto out;
 	
@@ -619,7 +634,7 @@ static int l2tp_send_ICRP(struct l2tp_conn_t *conn)
 {
 	struct l2tp_packet_t *pack;
 
-	pack = l2tp_packet_alloc(2, Message_Type_Incoming_Call_Reply, &conn->addr);
+	pack = l2tp_packet_alloc(2, Message_Type_Incoming_Call_Reply, &conn->lac_addr);
 	if (!pack)
 		return -1;
 
@@ -648,7 +663,7 @@ out_err:
 {
 	struct l2tp_packet_t *pack;
 
-	pack = l2tp_packet_alloc(2, Message_Type_Outgoing_Call_Request, &conn->addr);
+	pack = l2tp_packet_alloc(2, Message_Type_Outgoing_Call_Request, &conn->lac_addr);
 	if (!pack)
 		return -1;
 	
