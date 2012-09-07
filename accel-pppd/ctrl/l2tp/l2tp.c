@@ -142,7 +142,7 @@ static void l2tp_session_free(struct l2tp_conn_t *conn)
 	_free(conn->sess.ctrl.called_station_id);
 }
 
-static void l2tp_disconnect(struct l2tp_conn_t *conn)
+static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 {
 	struct l2tp_packet_t *pack;
 
@@ -232,7 +232,7 @@ static void l2tp_ppp_finished(struct ap_session *ses)
 	if (conn->state != STATE_FIN) {
 		__sync_sub_and_fetch(&stat_active, 1);
 		if (l2tp_terminate(conn, 0, 0))
-			triton_context_call(&conn->ctx, (triton_event_func)l2tp_disconnect, conn);
+			triton_context_call(&conn->ctx, (triton_event_func)l2tp_tunnel_free, conn);
 	}
 }
 
@@ -280,7 +280,7 @@ static void l2tp_conn_close(struct triton_context_t *ctx)
 	}
 	
 	if (l2tp_terminate(conn, 0, 0))
-		l2tp_disconnect(conn);
+		l2tp_tunnel_free(conn);
 }
 
 static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack, struct in_pktinfo *pkt_info, struct l2tp_attr_t *assigned_tid, 
@@ -515,7 +515,7 @@ static void l2tp_rtimeout(struct triton_timer_t *t)
 			if (l2tp_packet_send(conn->hnd.fd, pack) == 0)
 				return;
 		} else
-			l2tp_disconnect(conn);
+			l2tp_tunnel_free(conn);
 	}
 }
 
@@ -523,7 +523,7 @@ static void l2tp_timeout(struct triton_timer_t *t)
 {
 	struct l2tp_conn_t *conn = container_of(t, typeof(*conn), timeout_timer);
 	log_ppp_debug("l2tp: timeout\n");
-	l2tp_disconnect(conn);
+	l2tp_tunnel_free(conn);
 }
 
 static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack, int log_debug)
@@ -586,12 +586,12 @@ static void l2tp_send_HELLO(struct triton_timer_t *t)
 
 	pack = l2tp_packet_alloc(2, Message_Type_Hello, &conn->lac_addr);
 	if (!pack) {
-		l2tp_disconnect(conn);
+		l2tp_tunnel_free(conn);
 		return;
 	}
 
 	if (l2tp_send(conn, pack, 1))
-		l2tp_disconnect(conn);
+		l2tp_tunnel_free(conn);
 }
 
 static void l2tp_send_SCCRP(struct l2tp_conn_t *conn)
@@ -633,7 +633,7 @@ static void l2tp_send_SCCRP(struct l2tp_conn_t *conn)
 out_err:
 	l2tp_packet_free(pack);
 out:
-	l2tp_disconnect(conn);
+	l2tp_tunnel_free(conn);
 }
 
 static int l2tp_send_ICRP(struct l2tp_conn_t *conn)
@@ -954,7 +954,7 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 		if (res) {
 			if (res == -2)
 				/* No peer listening, tear down connection */
-				l2tp_disconnect(conn);
+				l2tp_tunnel_free(conn);
 			return 0;
 		}
 
@@ -1078,7 +1078,7 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 
 drop:
 	l2tp_packet_free(pack);
-	l2tp_disconnect(conn);
+	l2tp_tunnel_free(conn);
 	return -1;
 }
 
