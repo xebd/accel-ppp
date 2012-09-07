@@ -267,6 +267,19 @@ static int l2tp_session_disconnect(struct l2tp_conn_t *conn,
 	return l2tp_tunnel_disconnect(conn, 1, 0);
 }
 
+static void l2tp_ppp_session_disconnect(void *param)
+{
+	struct l2tp_sess_t *sess = param;
+	struct l2tp_conn_t *conn = sess->paren_conn;
+
+	l2tp_send_CDN(conn, 2, 0);
+	l2tp_session_free(conn);
+
+	/* Disconnect the tunnel when all sessions have been closed */
+	l2tp_tunnel_disconnect(conn, 1, 0);
+	conn->state = STATE_FIN;
+}
+
 static void l2tp_ppp_started(struct ap_session *ses)
 {
 	log_ppp_debug("l2tp: ppp started\n");
@@ -276,15 +289,10 @@ static void l2tp_ppp_finished(struct ap_session *ses)
 {
 	struct ppp_t *ppp = container_of(ses, typeof(*ppp), ses);
 	struct l2tp_sess_t *sess = container_of(ppp, typeof(*sess), ppp);
-	struct l2tp_conn_t *conn = sess->paren_conn;
 
 	log_ppp_debug("l2tp: ppp finished\n");
-
-	if (conn->sess.state1 == STATE_PPP) {
-		__sync_sub_and_fetch(&stat_active, 1);
-		if (l2tp_tunnel_disconnect(conn, 0, 0))
-			triton_context_call(&conn->ctx, (triton_event_func)l2tp_tunnel_free, conn);
-	}
+	triton_context_call(&sess->paren_conn->ctx,
+			    l2tp_ppp_session_disconnect, sess);
 }
 
 static int l2tp_session_alloc(struct l2tp_conn_t *conn)
