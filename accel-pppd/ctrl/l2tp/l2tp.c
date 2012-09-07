@@ -406,36 +406,11 @@ out_err:
 	return -1;
 }
 
-static int l2tp_connect(struct l2tp_conn_t *conn)
+static int l2tp_session_connect(struct l2tp_conn_t *conn)
 {
 	struct sockaddr_pppol2tp pppox_addr;
 	int arg = 1;
 	int flg;
-
-	memset(&pppox_addr, 0, sizeof(pppox_addr));
-	pppox_addr.sa_family = AF_PPPOX;
-	pppox_addr.sa_protocol = PX_PROTO_OL2TP;
-	pppox_addr.pppol2tp.fd = conn->hnd.fd;
-	memcpy(&pppox_addr.pppol2tp.addr, &conn->lac_addr, sizeof(conn->lac_addr));
-	pppox_addr.pppol2tp.s_tunnel = conn->tid;
-	pppox_addr.pppol2tp.d_tunnel = conn->peer_tid;
-
-	conn->tunnel_fd = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
-	if (conn->tunnel_fd < 0) {
-		log_ppp_error("l2tp: socket(AF_PPPOX): %s\n", strerror(errno));
-		goto out_err;
-	}
-
-	flg = fcntl(conn->tunnel_fd, F_GETFD);
-	if (flg < 0) {
-		log_ppp_error("l2tp: fcntl(F_GETFD): %s\n", strerror(errno));
-		goto out_err;
-	}
-	flg = fcntl(conn->tunnel_fd, F_SETFD, flg | FD_CLOEXEC);
-	if (flg < 0) {
-		log_ppp_error("l2tp: fcntl(F_SETFD): %s\n", strerror(errno));
-		goto out_err;
-	}
 
 	conn->sess.ppp.fd = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
 	if (conn->sess.ppp.fd < 0) {
@@ -454,11 +429,13 @@ static int l2tp_connect(struct l2tp_conn_t *conn)
 		goto out_err;
 	}
 
-	if (connect(conn->tunnel_fd, (struct sockaddr *)&pppox_addr, sizeof(pppox_addr)) < 0) {
-		log_ppp_error("l2tp: connect(tunnel): %s\n", strerror(errno));
-		goto out_err;
-	}
-
+	memset(&pppox_addr, 0, sizeof(pppox_addr));
+	pppox_addr.sa_family = AF_PPPOX;
+	pppox_addr.sa_protocol = PX_PROTO_OL2TP;
+	pppox_addr.pppol2tp.fd = conn->hnd.fd;
+	memcpy(&pppox_addr.pppol2tp.addr, &conn->lac_addr, sizeof(conn->lac_addr));
+	pppox_addr.pppol2tp.s_tunnel = conn->tid;
+	pppox_addr.pppol2tp.d_tunnel = conn->peer_tid;
 	pppox_addr.pppol2tp.s_session = conn->sess.sid;
 	pppox_addr.pppol2tp.d_session = conn->sess.peer_sid;
 
@@ -487,13 +464,54 @@ static int l2tp_connect(struct l2tp_conn_t *conn)
 	return 0;
 
 out_err:
-	if (conn->tunnel_fd >= 0) {
-		close(conn->tunnel_fd);
-		conn->tunnel_fd = -1;
-	}
 	if (conn->sess.ppp.fd >= 0) {
 		close(conn->sess.ppp.fd);
 		conn->sess.ppp.fd = -1;
+	}
+	return -1;
+}
+
+static int l2tp_tunnel_connect(struct l2tp_conn_t *conn)
+{
+	struct sockaddr_pppol2tp pppox_addr;
+	int flg;
+
+	memset(&pppox_addr, 0, sizeof(pppox_addr));
+	pppox_addr.sa_family = AF_PPPOX;
+	pppox_addr.sa_protocol = PX_PROTO_OL2TP;
+	pppox_addr.pppol2tp.fd = conn->hnd.fd;
+	memcpy(&pppox_addr.pppol2tp.addr, &conn->lac_addr, sizeof(conn->lac_addr));
+	pppox_addr.pppol2tp.s_tunnel = conn->tid;
+	pppox_addr.pppol2tp.d_tunnel = conn->peer_tid;
+
+	conn->tunnel_fd = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
+	if (conn->tunnel_fd < 0) {
+		log_ppp_error("l2tp: socket(AF_PPPOX): %s\n", strerror(errno));
+		goto out_err;
+	}
+
+	flg = fcntl(conn->tunnel_fd, F_GETFD);
+	if (flg < 0) {
+		log_ppp_error("l2tp: fcntl(F_GETFD): %s\n", strerror(errno));
+		goto out_err;
+	}
+	flg = fcntl(conn->tunnel_fd, F_SETFD, flg | FD_CLOEXEC);
+	if (flg < 0) {
+		log_ppp_error("l2tp: fcntl(F_SETFD): %s\n", strerror(errno));
+		goto out_err;
+	}
+
+	if (connect(conn->tunnel_fd, (struct sockaddr *)&pppox_addr, sizeof(pppox_addr)) < 0) {
+		log_ppp_error("l2tp: connect(tunnel): %s\n", strerror(errno));
+		goto out_err;
+	}
+
+	return 0;
+
+out_err:
+	if (conn->tunnel_fd >= 0) {
+		close(conn->tunnel_fd);
+		conn->tunnel_fd = -1;
 	}
 	return -1;
 }
@@ -793,6 +811,10 @@ static int l2tp_recv_SCCCN(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 {
 	if (conn->state == STATE_WAIT_SCCCN) {
 		triton_timer_mod(&conn->timeout_timer, 0);
+		if (l2tp_tunnel_connect(conn) < 0) {
+			l2tp_terminate(conn, 2, 0);
+			return -1;
+		}
 		conn->state = STATE_ESTB;
 		conn->sess.state1 = STATE_WAIT_ICRQ;
 	}
@@ -878,7 +900,7 @@ static int l2tp_recv_ICCN(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 
 	conn->sess.state1 = STATE_ESTB;
 
-	if (l2tp_connect(conn)) {
+	if (l2tp_session_connect(conn)) {
 		if (l2tp_terminate(conn, 2, 0))
 			return -1;
 		return 0;
