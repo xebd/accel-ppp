@@ -121,13 +121,19 @@ static int l2tp_conn_read(struct triton_md_handler_t *);
 
 static void l2tp_session_free(struct l2tp_conn_t *conn)
 {
-	if (conn->state == STATE_PPP) {
+	switch (conn->sess.state1) {
+	case STATE_PPP:
 		__sync_sub_and_fetch(&stat_active, 1);
-		conn->state = STATE_FIN;
 		ap_session_terminate(&conn->sess.ppp.ses,
 				     TERM_USER_REQUEST, 1);
-	} else if (conn->state != STATE_FIN)
+		break;
+	case STATE_WAIT_ICCN:
+	case STATE_ESTB:
 		__sync_sub_and_fetch(&stat_starting, 1);
+		break;
+	default:
+		return;
+	}
 
 	if (conn->sess.ppp.fd != -1)
 		close(conn->sess.ppp.fd);
@@ -140,11 +146,16 @@ static void l2tp_session_free(struct l2tp_conn_t *conn)
 		_free(conn->sess.ppp.ses.chan_name);
 	_free(conn->sess.ctrl.calling_station_id);
 	_free(conn->sess.ctrl.called_station_id);
+
+	conn->sess.state1 = STATE_CLOSE;
 }
 
 static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 {
 	struct l2tp_packet_t *pack;
+
+	if (conn->state == STATE_CLOSE)
+		return;
 
 	l2tp_session_free(conn);
 
@@ -177,6 +188,8 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 
 	if (conn->challenge_len)
 	    _free(conn->challenge.octets);
+
+	conn->state = STATE_CLOSE;
 
 	mempool_free(conn);
 }
@@ -229,7 +242,7 @@ static void l2tp_ppp_finished(struct ap_session *ses)
 
 	log_ppp_debug("l2tp: ppp finished\n");
 
-	if (conn->state != STATE_FIN) {
+	if (conn->sess.state1 == STATE_PPP) {
 		__sync_sub_and_fetch(&stat_active, 1);
 		if (l2tp_terminate(conn, 0, 0))
 			triton_context_call(&conn->ctx, (triton_event_func)l2tp_tunnel_free, conn);
@@ -272,10 +285,9 @@ static int l2tp_session_alloc(struct l2tp_conn_t *conn)
 static void l2tp_conn_close(struct triton_context_t *ctx)
 {
 	struct l2tp_conn_t *conn = container_of(ctx, typeof(*conn), ctx);
-	
-	if (conn->state == STATE_PPP) {
+
+	if (conn->sess.state1 == STATE_PPP) {
 		__sync_sub_and_fetch(&stat_active, 1);
-		conn->state = STATE_FIN;
 		ap_session_terminate(&conn->sess.ppp.ses, TERM_ADMIN_RESET, 1);
 	}
 	
@@ -459,7 +471,7 @@ static int l2tp_session_connect(struct l2tp_conn_t *conn)
 	__sync_sub_and_fetch(&stat_starting, 1);
 	__sync_add_and_fetch(&stat_active, 1);
 
-	conn->state = STATE_PPP;
+	conn->sess.state1 = STATE_PPP;
 
 	return 0;
 
@@ -816,7 +828,6 @@ static int l2tp_recv_SCCCN(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 			return -1;
 		}
 		conn->state = STATE_ESTB;
-		conn->sess.state1 = STATE_WAIT_ICRQ;
 	}
 	else
 		log_ppp_warn("l2tp: unexpected SCCCN\n");
@@ -843,8 +854,13 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 	struct l2tp_attr_t *attr;
 	struct l2tp_attr_t *assigned_sid = NULL;
 
-	if (conn->sess.state1 != STATE_WAIT_ICRQ) {
+	if (conn->state != STATE_ESTB) {
 		log_ppp_warn("l2tp: unexpected ICRQ\n");
+		return 0;
+	}
+
+	if (conn->sess.state1 != STATE_CLOSE) {
+		log_ppp_warn("l2tp: no more session available\n");
 		return 0;
 	}
 
@@ -946,13 +962,7 @@ static int l2tp_recv_CDN(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 		return 0;
 	}
 
-	if (conn->state == STATE_PPP) {
-		__sync_sub_and_fetch(&stat_active, 1);
-		conn->state = STATE_FIN;
-		ap_session_terminate(&conn->sess.ppp.ses,
-				     TERM_USER_REQUEST, 1);
-	}
-	
+	l2tp_session_free(conn);
 	if (l2tp_terminate(conn, 0, 0))
 		return -1;
 	
