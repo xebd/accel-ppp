@@ -119,6 +119,32 @@ static void l2tp_send_SCCRP(struct l2tp_conn_t *conn);
 static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack, int log_debug);
 static int l2tp_conn_read(struct triton_md_handler_t *);
 
+static int l2tp_send_CDN(struct l2tp_conn_t *conn, uint16_t res, uint16_t err)
+{
+	struct l2tp_packet_t *pack = NULL;
+	struct l2tp_avp_result_code rc = {res, err};
+
+	pack = l2tp_packet_alloc(2, Message_Type_Call_Disconnect_Notify,
+				 &conn->lac_addr);
+	if (pack == NULL)
+		goto out_err;
+	if (l2tp_packet_add_int16(pack, Assigned_Session_ID,
+				  conn->sess.sid, 1) < 0)
+		goto out_err;
+	if (l2tp_packet_add_octets(pack, Result_Code, (uint8_t *)&rc,
+				   sizeof(rc), 1) < 0)
+		goto out_err;
+
+	pack->hdr.sid = htons(conn->sess.peer_sid);
+
+	return l2tp_send(conn, pack, 0);
+
+out_err:
+	if (pack)
+		l2tp_packet_free(pack);
+	return -1;
+}
+
 static void l2tp_session_free(struct l2tp_conn_t *conn)
 {
 	switch (conn->sess.state1) {
@@ -220,6 +246,17 @@ static int l2tp_terminate(struct l2tp_conn_t *conn, int res, int err)
 out_err:
 	l2tp_packet_free(pack);
 	return -1;
+}
+
+static int l2tp_session_disconnect(struct l2tp_conn_t *conn,
+				   uint16_t res, uint16_t err)
+{
+	if (l2tp_send_CDN(conn, res, err) < 0)
+		return -1;
+	l2tp_session_free(conn);
+
+	/* Free the tunnel when all sessions have been closed */
+	return l2tp_terminate(conn, 1, 0);
 }
 
 static void l2tp_ppp_started(struct ap_session *ses)
@@ -881,7 +918,7 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 				if (attr->M) {
 					if (conf_verbose) {
 						log_ppp_warn("l2tp: ICRQ: unknown attribute %i\n", attr->attr->id);
-						if (l2tp_terminate(conn, 2, 8))
+						if (l2tp_session_disconnect(conn, 2, 8) < 0)
 							return -1;
 						return 0;
 					}
@@ -892,7 +929,7 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 	if (!assigned_sid) {
 		if (conf_verbose)
 			log_ppp_warn("l2tp: ICRQ: no Assigned-Session-ID attribute present in message\n");
-		if (l2tp_terminate(conn, 2, 0))
+		if (l2tp_session_disconnect(conn, 0, 0) < 0)
 			return -1;
 	}
 
@@ -917,7 +954,7 @@ static int l2tp_recv_ICCN(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 	conn->sess.state1 = STATE_ESTB;
 
 	if (l2tp_session_connect(conn)) {
-		if (l2tp_terminate(conn, 2, 0))
+		if (l2tp_session_disconnect(conn, 2, 4) < 0)
 			return -1;
 		return 0;
 	}
@@ -963,10 +1000,9 @@ static int l2tp_recv_CDN(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 	}
 
 	l2tp_session_free(conn);
-	if (l2tp_terminate(conn, 0, 0))
-		return -1;
-	
-	return 0;
+
+	/* Free the tunnel when all sessions have been closed */
+	return l2tp_terminate(conn, 1, 0);
 }
 
 static int l2tp_recv_SLI(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
