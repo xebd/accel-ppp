@@ -119,6 +119,30 @@ static void l2tp_send_SCCRP(struct l2tp_conn_t *conn);
 static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack, int log_debug);
 static int l2tp_conn_read(struct triton_md_handler_t *);
 
+static int l2tp_send_StopCCN(struct l2tp_conn_t *conn,
+			     uint16_t res, uint16_t err)
+{
+	struct l2tp_packet_t *pack = NULL;
+	struct l2tp_avp_result_code rc = {res, err};
+
+	pack = l2tp_packet_alloc(2, Message_Type_Stop_Ctrl_Conn_Notify,
+				 &conn->lac_addr);
+	if (pack == NULL)
+		goto out_err;
+	if (l2tp_packet_add_int16(pack, Assigned_Tunnel_ID, conn->tid, 1) < 0)
+		goto out_err;
+	if (l2tp_packet_add_octets(pack, Result_Code, (uint8_t *)&rc,
+				   sizeof(rc), 1) < 0)
+		goto out_err;
+
+	return l2tp_send(conn, pack, 0);
+
+out_err:
+	if (pack)
+		l2tp_packet_free(pack);
+	return -1;
+}
+
 static int l2tp_send_CDN(struct l2tp_conn_t *conn, uint16_t res, uint16_t err)
 {
 	struct l2tp_packet_t *pack = NULL;
@@ -220,32 +244,16 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 	mempool_free(conn);
 }
 
-static int l2tp_terminate(struct l2tp_conn_t *conn, int res, int err)
+static int l2tp_tunnel_disconnect(struct l2tp_conn_t *conn, int res, int err)
 {
-	struct l2tp_packet_t *pack;
-	struct l2tp_avp_result_code rc = {res, err};
-
 	log_ppp_debug("l2tp: terminate (%i, %i)\n", res, err);
 
-	pack = l2tp_packet_alloc(2, Message_Type_Stop_Ctrl_Conn_Notify,
-				 &conn->lac_addr);
-	if (!pack)
+	if (l2tp_send_StopCCN(conn, res, err) < 0)
 		return -1;
-	
-	if (l2tp_packet_add_int16(pack, Assigned_Tunnel_ID, conn->tid, 1))
-		goto out_err;
-	if (l2tp_packet_add_octets(pack, Result_Code, (uint8_t *)&rc, sizeof(rc), 0))
-		goto out_err;
-
-	l2tp_send(conn, pack, 0);
 
 	conn->state = STATE_FIN;
 
 	return 0;
-
-out_err:
-	l2tp_packet_free(pack);
-	return -1;
 }
 
 static int l2tp_session_disconnect(struct l2tp_conn_t *conn,
@@ -256,7 +264,7 @@ static int l2tp_session_disconnect(struct l2tp_conn_t *conn,
 	l2tp_session_free(conn);
 
 	/* Free the tunnel when all sessions have been closed */
-	return l2tp_terminate(conn, 1, 0);
+	return l2tp_tunnel_disconnect(conn, 1, 0);
 }
 
 static void l2tp_ppp_started(struct ap_session *ses)
@@ -281,7 +289,7 @@ static void l2tp_ppp_finished(struct ap_session *ses)
 
 	if (conn->sess.state1 == STATE_PPP) {
 		__sync_sub_and_fetch(&stat_active, 1);
-		if (l2tp_terminate(conn, 0, 0))
+		if (l2tp_tunnel_disconnect(conn, 0, 0))
 			triton_context_call(&conn->ctx, (triton_event_func)l2tp_tunnel_free, conn);
 	}
 }
@@ -323,13 +331,8 @@ static void l2tp_conn_close(struct triton_context_t *ctx)
 {
 	struct l2tp_conn_t *conn = container_of(ctx, typeof(*conn), ctx);
 
-	if (conn->sess.state1 == STATE_PPP) {
-		__sync_sub_and_fetch(&stat_active, 1);
-		ap_session_terminate(&conn->sess.ppp.ses, TERM_ADMIN_RESET, 1);
-	}
-	
-	if (l2tp_terminate(conn, 0, 0))
-		l2tp_tunnel_free(conn);
+	l2tp_tunnel_disconnect(conn, 0, 0);
+	l2tp_tunnel_free(conn);
 }
 
 static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack, struct in_pktinfo *pkt_info, struct l2tp_attr_t *assigned_tid, 
@@ -861,7 +864,7 @@ static int l2tp_recv_SCCCN(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 	if (conn->state == STATE_WAIT_SCCCN) {
 		triton_timer_mod(&conn->timeout_timer, 0);
 		if (l2tp_tunnel_connect(conn) < 0) {
-			l2tp_terminate(conn, 2, 0);
+			l2tp_tunnel_disconnect(conn, 2, 0);
 			return -1;
 		}
 		conn->state = STATE_ESTB;
@@ -1002,7 +1005,7 @@ static int l2tp_recv_CDN(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 	l2tp_session_free(conn);
 
 	/* Free the tunnel when all sessions have been closed */
-	return l2tp_terminate(conn, 1, 0);
+	return l2tp_tunnel_disconnect(conn, 1, 0);
 }
 
 static int l2tp_recv_SLI(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
@@ -1136,7 +1139,7 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 				if (conf_verbose)
 					log_warn("l2tp: unknown Message-Type %i\n", msg_type->val.uint16);
 				if (msg_type->M) {
-					if (l2tp_terminate(conn, 2, 8))
+					if (l2tp_tunnel_disconnect(conn, 2, 8))
 						goto drop;
 				}
 		}
