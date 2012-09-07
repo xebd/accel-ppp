@@ -77,6 +77,7 @@ struct l2tp_sess_t
 	int state1;
 	int state2;
 
+	struct triton_context_t sctx;
 	struct triton_timer_t timeout_timer;
 	struct ap_ctrl ctrl;
 	struct ppp_t ppp;
@@ -191,6 +192,18 @@ out_err:
 	return -1;
 }
 
+static int l2tp_tunnel_disconnect(struct l2tp_conn_t *conn, int res, int err)
+{
+	log_ppp_debug("l2tp: terminate (%i, %i)\n", res, err);
+
+	if (l2tp_send_StopCCN(conn, res, err) < 0)
+		return -1;
+
+	conn->state = STATE_FIN;
+
+	return 0;
+}
+
 static void __l2tp_session_free(void *data)
 {
 	struct l2tp_sess_t *sess = data;
@@ -220,6 +233,8 @@ static void __l2tp_session_free(void *data)
 
 	log_ppp_info1("disconnected\n");
 
+	triton_context_unregister(&sess->sctx);
+
 	if (sess->timeout_timer.tpd)
 		triton_timer_del(&sess->timeout_timer);
 	if (sess->ppp.fd != -1)
@@ -234,12 +249,29 @@ static void __l2tp_session_free(void *data)
 	mempool_free(sess);
 }
 
+static void __l2tp_tunnel_free_session(void *data)
+{
+	struct l2tp_sess_t *sess = data;
+
+	triton_context_call(&sess->sctx, __l2tp_session_free, sess);
+}
+
+static void l2tp_tunnel_free_session(void *sess)
+{
+	struct triton_context_t *ctx = triton_context_self();
+	struct l2tp_conn_t *conn = container_of(ctx, typeof(*conn), ctx);
+
+	tdelete(sess, &conn->sessions, sess_cmp);
+	__l2tp_tunnel_free_session(sess);
+	if (conn->sessions == NULL) {
+		l2tp_tunnel_disconnect(conn, 1, 0);
+	}
+}
+
 static void l2tp_session_free(struct l2tp_sess_t *sess)
 {
-	if (tdelete(sess, &sess->paren_conn->sessions, sess_cmp) == NULL) {
-		log_warn("ERROR: impossible to delete unexisting session %hu\n", sess->sid);
-	}
-	__l2tp_session_free(sess);
+	triton_context_call(&sess->paren_conn->ctx, l2tp_tunnel_free_session,
+			    sess);
 }
 
 static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
@@ -249,7 +281,7 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 	if (conn->state == STATE_CLOSE)
 		return;
 
-	tdestroy(conn->sessions, __l2tp_session_free);
+	tdestroy(conn->sessions, __l2tp_tunnel_free_session);
 
 	triton_md_unregister_handler(&conn->hnd);
 	close(conn->hnd.fd);
@@ -286,18 +318,6 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 	mempool_free(conn);
 }
 
-static int l2tp_tunnel_disconnect(struct l2tp_conn_t *conn, int res, int err)
-{
-	log_ppp_debug("l2tp: terminate (%i, %i)\n", res, err);
-
-	if (l2tp_send_StopCCN(conn, res, err) < 0)
-		return -1;
-
-	conn->state = STATE_FIN;
-
-	return 0;
-}
-
 static int l2tp_session_disconnect(struct l2tp_sess_t *sess,
 				   uint16_t res, uint16_t err)
 {
@@ -305,11 +325,7 @@ static int l2tp_session_disconnect(struct l2tp_sess_t *sess,
 		return -1;
 	l2tp_session_free(sess);
 
-	/* Free the tunnel when all sessions have been closed */
-	if (sess->paren_conn->sessions == NULL)
-		return l2tp_tunnel_disconnect(sess->paren_conn, 1, 0);
-	else
-		return 0;
+	return 0;
 }
 
 static void l2tp_ppp_session_disconnect(void *param)
@@ -324,12 +340,6 @@ static void l2tp_ppp_session_disconnect(void *param)
 		   Now, call __l2tp_session_free() again to finish cleanup. */
 		__l2tp_session_free(sess);
 	}
-
-	/* Disconnect the tunnel when all sessions have been closed */
-	if (sess->paren_conn->sessions == NULL) {
-		l2tp_tunnel_disconnect(sess->paren_conn, 1, 0);
-		sess->paren_conn->state = STATE_FIN;
-	}
 }
 
 static void l2tp_ppp_started(struct ap_session *ses)
@@ -343,22 +353,16 @@ static void l2tp_ppp_finished(struct ap_session *ses)
 	struct l2tp_sess_t *sess = container_of(ppp, typeof(*sess), ppp);
 
 	log_ppp_debug("l2tp: ppp finished\n");
-	triton_context_call(&sess->paren_conn->ctx,
-			    l2tp_ppp_session_disconnect, sess);
+	triton_context_call(&sess->sctx, l2tp_ppp_session_disconnect, sess);
 }
 
 static void l2tp_session_timeout(struct triton_timer_t *t)
 {
 	struct l2tp_sess_t *sess = container_of(t, typeof(*sess),
 						timeout_timer);
+
 	log_ppp_debug("l2tp: session timeout\n");
 	l2tp_session_free(sess);
-
-	/* Disconnect the tunnel when all sessions have been closed */
-	if (sess->paren_conn->sessions == NULL) {
-		l2tp_tunnel_disconnect(sess->paren_conn, 1, 0);
-		sess->paren_conn->state = STATE_FIN;
-	}
 }
 
 static struct l2tp_sess_t *l2tp_tunnel_new_session(struct l2tp_conn_t *conn)
@@ -406,7 +410,14 @@ out_err:
 	return NULL;
 }
 
-static struct l2tp_sess_t *l2tp_session_alloc(struct l2tp_conn_t *conn)
+static void l2tp_sess_close(struct triton_context_t *ctx)
+{
+	struct l2tp_sess_t *sess = container_of(ctx, typeof(*sess), sctx);
+
+	l2tp_session_disconnect(sess, 3, 0);
+}
+
+static struct l2tp_sess_t *l2tp_tunnel_alloc_session(struct l2tp_conn_t *conn)
 {
 	struct l2tp_sess_t *sess = NULL;
 
@@ -419,7 +430,10 @@ static struct l2tp_sess_t *l2tp_session_alloc(struct l2tp_conn_t *conn)
 	sess->state1 = STATE_CLOSE;
 	sess->state2 = STATE_CLOSE;
 
-	sess->ctrl.ctx = &conn->ctx;
+	sess->sctx.before_switch = log_switch;
+	sess->sctx.close = l2tp_sess_close;
+
+	sess->ctrl.ctx = &sess->sctx;
 	sess->ctrl.type = CTRL_TYPE_L2TP;
 	sess->ctrl.ppp = 1;
 	sess->ctrl.name = "l2tp";
@@ -441,9 +455,31 @@ static struct l2tp_sess_t *l2tp_session_alloc(struct l2tp_conn_t *conn)
 	sess->ppp.ses.ctrl = &sess->ctrl;
 	sess->ppp.fd = -1;
 
+	return sess;
+}
+
+static int l2tp_tunnel_confirm_session(struct l2tp_sess_t *sess)
+{
+	if (triton_context_register(&sess->sctx, &sess->ppp.ses) < 0)
+		return -1;
+	triton_context_wakeup(&sess->sctx);
 	__sync_add_and_fetch(&stat_starting, 1);
 
-	return sess;
+	return 0;
+}
+
+static int l2tp_tunnel_cancel_session(struct l2tp_sess_t *sess,
+				      uint16_t res, uint16_t err)
+{
+	l2tp_send_CDN(sess, res, err);
+	tdelete(sess, &sess->paren_conn->sessions, sess_cmp);
+	if (sess->ctrl.calling_station_id)
+		_free(sess->ctrl.calling_station_id);
+	if (sess->ctrl.called_station_id)
+		_free(sess->ctrl.called_station_id);
+	mempool_free(sess);
+
+	return 0;
 }
 
 static void l2tp_conn_close(struct triton_context_t *ctx)
@@ -1019,13 +1055,15 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 	struct l2tp_attr_t *attr;
 	struct l2tp_attr_t *assigned_sid = NULL;
 	struct l2tp_sess_t *sess = NULL;
+	uint16_t res = 0;
+	uint16_t err = 0;
 
 	if (conn->state != STATE_ESTB) {
 		log_ppp_warn("l2tp: unexpected ICRQ\n");
 		return 0;
 	}
 
-	sess = l2tp_session_alloc(conn);
+	sess = l2tp_tunnel_alloc_session(conn);
 	if (sess == NULL) {
 		log_ppp_warn("l2tp: no more session available\n");
 		return 0;
@@ -1048,30 +1086,40 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 				if (attr->M) {
 					if (conf_verbose) {
 						log_ppp_warn("l2tp: ICRQ: unknown attribute %i\n", attr->attr->id);
-						if (l2tp_session_disconnect(sess, 2, 8) < 0)
-							return -1;
-						return 0;
 					}
+					res = 2;
+					err = 8;
 				}
+				break;
 		}
 	}
 
 	if (!assigned_sid) {
 		if (conf_verbose)
 			log_ppp_warn("l2tp: ICRQ: no Assigned-Session-ID attribute present in message\n");
-		if (l2tp_session_disconnect(sess, 0, 0) < 0)
-			return -1;
+		res = 0;
+		err = 0;
+		goto out_reject;
 	}
 
 	sess->peer_sid = assigned_sid->val.uint16;
 
+	if (err)
+		goto out_reject;
+
+	if (l2tp_tunnel_confirm_session(sess) < 0) {
+		res = 2;
+		err = 4;
+		goto out_reject;
+	}
 	if (l2tp_send_ICRP(sess))
 		return -1;
-		
-	/*if (l2tp_send_OCRQ(conn))
-		return -1;*/
-	
+
 	return 0;
+
+out_reject:
+	l2tp_tunnel_cancel_session(sess, res, err);
+	return -1;
 }
 
 static int l2tp_recv_ICCN(struct l2tp_sess_t *sess, struct l2tp_packet_t *pack)
@@ -1131,16 +1179,57 @@ static int l2tp_recv_CDN(struct l2tp_sess_t *sess, struct l2tp_packet_t *pack)
 
 	l2tp_session_free(sess);
 
-	/* Free the tunnel when all sessions have been closed */
-	if (sess->paren_conn->sessions == NULL)
-		return l2tp_tunnel_disconnect(sess->paren_conn, 1, 0);
-	else
-		return 0;
+	return 0;
 }
 
 static int l2tp_recv_SLI(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 {
 	return 0;
+}
+
+static void l2tp_session_recv(void *data)
+{
+	struct triton_context_t *ctx = triton_context_self();
+	struct l2tp_sess_t *sess = container_of(ctx, typeof(*sess), sctx);
+	struct l2tp_packet_t *pack = data;
+	struct l2tp_attr_t *msg_type = NULL;
+
+	msg_type = list_entry(pack->attrs.next, typeof(*msg_type), entry);
+	if (msg_type->attr->id != Message_Type) {
+		if (conf_verbose)
+			log_ppp_error("l2tp: first attribute is not"
+				      " Message-Type, dropping session...\n");
+		l2tp_session_disconnect(sess, 2, 3);
+		goto out;
+	}
+
+	switch (msg_type->val.uint16) {
+	case Message_Type_Incoming_Call_Connected:
+		l2tp_recv_ICCN(sess, pack);
+		break;
+	case Message_Type_Outgoing_Call_Reply:
+		l2tp_recv_OCRP(sess, pack);
+		break;
+	case Message_Type_Outgoing_Call_Connected:
+		l2tp_recv_OCCN(sess, pack);
+		break;
+	case Message_Type_Call_Disconnect_Notify:
+		l2tp_recv_CDN(sess, pack);
+		break;
+	default:
+		if (conf_verbose) {
+			log_warn("l2tp: unexpected Message-Type %hu\n",
+				 msg_type->val.uint16);
+		}
+		if (msg_type->M) {
+			l2tp_session_disconnect(sess, 2, 8);
+		}
+		break;
+	}
+
+out:
+	l2tp_packet_free(pack);
+	return;
 }
 
 static int l2tp_conn_read(struct triton_md_handler_t *h)
@@ -1239,25 +1328,14 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 					goto drop;
 				break;
 			case Message_Type_Incoming_Call_Connected:
-				sess = l2tp_tunnel_get_session(conn, ntohs(pack->hdr.sid));
-				if (sess == NULL || l2tp_recv_ICCN(sess, pack) < 0)
-					goto drop;
-				break;
 			case Message_Type_Outgoing_Call_Reply:
-				sess = l2tp_tunnel_get_session(conn, ntohs(pack->hdr.sid));
-				if (sess == NULL || l2tp_recv_OCRP(sess, pack) < 0)
-					goto drop;
-				break;
 			case Message_Type_Outgoing_Call_Connected:
-				sess = l2tp_tunnel_get_session(conn, ntohs(pack->hdr.sid));
-				if (sess == NULL || l2tp_recv_OCCN(sess, pack) < 0)
-					goto drop;
-				break;
 			case Message_Type_Call_Disconnect_Notify:
 				sess = l2tp_tunnel_get_session(conn, ntohs(pack->hdr.sid));
-				if (sess == NULL || l2tp_recv_CDN(sess, pack) < 0)
+				if (sess == NULL)
 					goto drop;
-				break;
+				triton_context_call(&sess->sctx, l2tp_session_recv, pack);
+				continue;
 			case Message_Type_Set_Link_Info:
 				if (l2tp_recv_SLI(conn, pack))
 					goto drop;
