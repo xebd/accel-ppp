@@ -961,10 +961,10 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 		} else {
 			if (ntohs(pack->hdr.Ns) < conn->Nr + 1 || (ntohs(pack->hdr.Ns > 32767 && conn->Nr + 1 < 32767))) {
 				log_ppp_debug("duplicate packet\n");
-				//if (l2tp_send_ZLB(conn))
-				//	goto drop;
 				if (!list_empty(&conn->send_queue))
 					l2tp_retransmit(conn);
+				else if (l2tp_send_ZLB(conn))
+					goto drop;
 			} else
 				log_ppp_debug("reordered packet\n");
 			l2tp_packet_free(pack);
