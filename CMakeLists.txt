@@ -43,5 +43,3 @@ endif (BUILD_IPOE_DRIVER)
 if (BUILD_OPENVPN_DRIVER)
 	add_subdirectory(drivers/openvpn)
 endif (BUILD_OPENVPN_DRIVER)
-
-add_subdirectory(drivers/astrill)
