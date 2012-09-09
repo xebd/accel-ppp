@@ -123,6 +123,15 @@ static void l2tp_send_SCCRP(struct l2tp_conn_t *conn);
 static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack, int log_debug);
 static int l2tp_conn_read(struct triton_md_handler_t *);
 
+static void l2tp_conn_log(void (*print)(const char *fmt, ...), struct l2tp_conn_t *conn)
+{
+	char addr[17];
+
+	u_inet_ntoa(conn->lac_addr.sin_addr.s_addr, addr);
+
+	print("%s:%i: ", addr, ntohs(conn->lac_addr.sin_port));
+}
+
 static int sess_cmp(const void *a, const void *b)
 {
 	const struct l2tp_sess_t *sess_a = a;
@@ -280,6 +289,9 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 
 	if (conn->state == STATE_CLOSE)
 		return;
+
+	l2tp_conn_log(log_debug, conn);
+	log_debug("tunnel_free\n");
 
 	tdestroy(conn->sessions, __l2tp_tunnel_free_session);
 
@@ -619,6 +631,8 @@ static int l2tp_session_connect(struct l2tp_sess_t *sess)
 	struct l2tp_conn_t *conn = sess->paren_conn;
 	int arg = 1;
 	int flg;
+	char addr[17];
+	char chan_name[64];
 
 	sess->ppp.fd = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
 	if (sess->ppp.fd < 0) {
@@ -657,7 +671,9 @@ static int l2tp_session_connect(struct l2tp_sess_t *sess)
 		goto out_err;
 	}
 
-	sess->ppp.ses.chan_name = _strdup(inet_ntoa(conn->lac_addr.sin_addr));
+	u_inet_ntoa(conn->lac_addr.sin_addr.s_addr, addr);
+	sprintf(chan_name, "%s:%i session %i", addr, ntohs(conn->lac_addr.sin_port), sess->sid);
+	sess->ppp.ses.chan_name = _strdup(chan_name);
 
 	triton_event_fire(EV_CTRL_STARTED, &sess->ppp.ses);
 
@@ -755,7 +771,7 @@ static void l2tp_timeout(struct triton_timer_t *t)
 	l2tp_tunnel_free(conn);
 }
 
-static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack, int log_debug)
+static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack, int debug)
 {
 	conn->retransmit = 0;
 
@@ -768,12 +784,14 @@ static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack, int l
 		conn->Ns++;
 
 	if (conf_verbose) {
-		if (log_debug) {
-			log_ppp_debug("send ");
-			l2tp_packet_print(pack, log_ppp_debug);
+		if (debug) {
+			l2tp_conn_log(log_debug, conn);
+			log_debug("send ");
+			l2tp_packet_print(pack, log_debug);
 		} else {
-			log_ppp_info2("send ");
-			l2tp_packet_print(pack, log_ppp_info2);
+			l2tp_conn_log(log_info2, conn);
+			log_info2("send ");
+			l2tp_packet_print(pack, log_info2);
 		}
 	}
 
@@ -1195,13 +1213,6 @@ static void l2tp_session_recv(void *data)
 	struct l2tp_attr_t *msg_type = NULL;
 
 	msg_type = list_entry(pack->attrs.next, typeof(*msg_type), entry);
-	if (msg_type->attr->id != Message_Type) {
-		if (conf_verbose)
-			log_ppp_error("l2tp: first attribute is not"
-				      " Message-Type, dropping session...\n");
-		l2tp_session_disconnect(sess, 2, 3);
-		goto out;
-	}
 
 	switch (msg_type->val.uint16) {
 	case Message_Type_Incoming_Call_Connected:
@@ -1227,9 +1238,7 @@ static void l2tp_session_recv(void *data)
 		break;
 	}
 
-out:
 	l2tp_packet_free(pack);
-	return;
 }
 
 static int l2tp_conn_read(struct triton_md_handler_t *h)
@@ -1253,8 +1262,10 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 			continue;
 
 		if (ntohs(pack->hdr.tid) != conn->tid && (pack->hdr.tid || !conf_dir300_quirk)) {
-			if (conf_verbose)
-				log_warn("l2tp: incorrect tid %i in tunnel %i\n", ntohs(pack->hdr.tid), conn->tid);
+			if (conf_verbose) {
+				l2tp_conn_log(log_warn, conn);
+				log_warn("incorrect tid %i in tunnel %i\n", ntohs(pack->hdr.tid), conn->tid);
+			}
 			l2tp_packet_free(pack);
 			continue;
 		}
@@ -1278,11 +1289,14 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 			}
 		} else {
 			if (ntohs(pack->hdr.Ns) < conn->Nr + 1 || (ntohs(pack->hdr.Ns > 32767 && conn->Nr + 1 < 32767))) {
-				log_ppp_debug("duplicate packet\n");
+				l2tp_conn_log(log_debug, conn);
+				log_debug("duplicate packet %i\n", ntohs(pack->hdr.Ns));
 				if (l2tp_send_ZLB(conn))
 					goto drop;
-			} else
-				log_ppp_debug("reordered packet\n");
+			} else {
+				l2tp_conn_log(log_debug, conn);
+				log_debug("reordered packet %i\n", ntohs(pack->hdr.Ns));
+			}
 			l2tp_packet_free(pack);
 			continue;
 		}
@@ -1295,18 +1309,22 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 		msg_type = list_entry(pack->attrs.next, typeof(*msg_type), entry);
 
 		if (msg_type->attr->id != Message_Type) {
-			if (conf_verbose)
-				log_ppp_error("l2tp: first attribute is not Message-Type, dropping connection...\n");
+			if (conf_verbose) {
+				l2tp_conn_log(log_error, conn);
+				log_error("first attribute is not Message-Type, dropping connection...\n");
+			}
 			goto drop;
 		}
 
 		if (conf_verbose) {
 			if (msg_type->val.uint16 == Message_Type_Hello) {
-				log_ppp_debug("recv ");
-				l2tp_packet_print(pack, log_ppp_debug);
+				l2tp_conn_log(log_debug, conn);
+				log_debug("recv ");
+				l2tp_packet_print(pack, log_debug);
 			} else {
-				log_ppp_info2("recv ");
-				l2tp_packet_print(pack, log_ppp_info2);
+				l2tp_conn_log(log_info2, conn);
+				log_info2("recv ");
+				l2tp_packet_print(pack, log_info2);
 			}
 		}
 
