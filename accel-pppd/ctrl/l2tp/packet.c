@@ -25,11 +25,11 @@ void l2tp_packet_print(struct l2tp_packet_t *pack, void (*print)(const char *fmt
 	struct l2tp_dict_value_t *val;
 
 	if (pack->hdr.ver == 2) {
-		print("[L2TP tid=%i sid=%i", ntohs(pack->hdr.tid), ntohs(pack->hdr.sid));
-		log_ppp_debug(" Ns=%i Nr=%i", ntohs(pack->hdr.Ns), ntohs(pack->hdr.Nr));
+		print("[L2TP tid=%u sid=%u", ntohs(pack->hdr.tid), ntohs(pack->hdr.sid));
+		log_ppp_debug(" Ns=%u Nr=%u", ntohs(pack->hdr.Ns), ntohs(pack->hdr.Nr));
 	} else {
 		print("[L2TP cid=%u", pack->hdr.cid);
-		log_ppp_debug(" Ns=%i Nr=%i", ntohs(pack->hdr.Ns), ntohs(pack->hdr.Nr));
+		log_ppp_debug(" Ns=%u Nr=%u", ntohs(pack->hdr.Ns), ntohs(pack->hdr.Nr));
 	}
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
