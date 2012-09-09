@@ -121,6 +121,7 @@ static void l2tp_rtimeout(struct triton_timer_t *t);
 static void l2tp_send_HELLO(struct triton_timer_t *t);
 static void l2tp_send_SCCRP(struct l2tp_conn_t *conn);
 static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack, int log_debug);
+static void __l2tp_send(struct l2tp_packet_t *pack);
 static int l2tp_conn_read(struct triton_md_handler_t *);
 
 static void l2tp_conn_log(void (*print)(const char *fmt, ...), struct l2tp_conn_t *conn)
@@ -193,7 +194,9 @@ static int l2tp_send_CDN(struct l2tp_sess_t *sess, uint16_t res, uint16_t err)
 
 	pack->hdr.sid = htons(sess->peer_sid);
 
-	return l2tp_send(sess->paren_conn, pack, 0);
+	triton_context_call(&sess->paren_conn->ctx, (triton_event_func)__l2tp_send, pack);
+
+	return 0;
 
 out_err:
 	if (pack)
@@ -672,7 +675,7 @@ static int l2tp_session_connect(struct l2tp_sess_t *sess)
 	}
 
 	u_inet_ntoa(conn->lac_addr.sin_addr.s_addr, addr);
-	sprintf(chan_name, "%s:%i session %i", addr, ntohs(conn->lac_addr.sin_port), sess->sid);
+	sprintf(chan_name, "%s:%i session %i", addr, ntohs(conn->lac_addr.sin_port), sess->peer_sid);
 	sess->ppp.ses.chan_name = _strdup(chan_name);
 
 	triton_event_fire(EV_CTRL_STARTED, &sess->ppp.ses);
@@ -743,6 +746,20 @@ out_err:
 	return -1;
 }
 
+static void l2tp_retransmit(struct l2tp_conn_t *conn)
+{
+	struct l2tp_packet_t *pack;
+
+	pack = list_entry(conn->send_queue.next, typeof(*pack), entry);
+	pack->hdr.Nr = htons(conn->Nr + 1);
+	if (conf_verbose) {
+		l2tp_conn_log(log_debug, conn);
+		log_debug("send ");
+		l2tp_packet_print(pack, log_debug);
+	}
+	l2tp_packet_send(conn->hnd.fd, pack);
+}
+
 static void l2tp_rtimeout(struct triton_timer_t *t)
 {
 	struct l2tp_conn_t *conn = container_of(t, typeof(*conn), rtimeout_timer);
@@ -810,6 +827,14 @@ static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack, int d
 out_err:
 	l2tp_packet_free(pack);
 	return -1;
+}
+
+static void __l2tp_send(struct l2tp_packet_t *pack)
+{
+	struct l2tp_conn_t *conn = container_of(triton_context_self(), typeof(*conn), ctx);
+
+	if (l2tp_send(conn, pack, 0))
+		l2tp_tunnel_free(conn);
 }
 
 static int l2tp_send_ZLB(struct l2tp_conn_t *conn)
@@ -1291,6 +1316,8 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 			if (ntohs(pack->hdr.Ns) < conn->Nr + 1 || (ntohs(pack->hdr.Ns > 32767 && conn->Nr + 1 < 32767))) {
 				l2tp_conn_log(log_debug, conn);
 				log_debug("duplicate packet %i\n", ntohs(pack->hdr.Ns));
+				if (!list_empty(&conn->send_queue))
+					l2tp_retransmit(conn);
 				if (l2tp_send_ZLB(conn))
 					goto drop;
 			} else {
