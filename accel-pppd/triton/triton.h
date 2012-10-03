@@ -42,6 +42,7 @@ struct conf_option_t
 	struct list_head entry;
 	char *name;
 	char *val;
+	char *raw;
 };
 
 struct conf_sect_t

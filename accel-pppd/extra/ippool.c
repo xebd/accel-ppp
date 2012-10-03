@@ -6,11 +6,13 @@
 #include <arpa/inet.h>
 
 #include "events.h"
-#include "ipdb.h"
+#include "log.h"
 #include "list.h"
 #include "spinlock.h"
 #include "backup.h"
 #include "ap_session_backup.h"
+
+#include "ipdb.h"
 
 #ifdef RADIUS
 #include "radius.h"
@@ -27,6 +29,7 @@ struct ippool_t
 	struct list_head items;
 	uint32_t startip;
 	uint32_t endip;
+	void (*generate)(struct ippool_t *);
 	spinlock_t lock;
 };
 
@@ -60,6 +63,7 @@ struct ippool_t *create_pool(const char *name)
 	memset(p, 0, sizeof(*p));
 	if (name)
 		p->name = strdup(name);
+
 	INIT_LIST_HEAD(&p->gw_list);
 	INIT_LIST_HEAD(&p->tunnel_list);
 	INIT_LIST_HEAD(&p->items);
@@ -147,7 +151,7 @@ static int parse2(const char *str, uint32_t *begin, uint32_t *end)
 	return 0;
 }
 
-static void add_range(struct ippool_t *p, struct list_head *list, const char *name)
+static void add_range(struct ippool_t *p, struct list_head *list, const char *name, void (*generate)(struct ippool_t *))
 {
 	uint32_t i,startip, endip;
 	struct ipaddr_t *ip;
@@ -168,9 +172,10 @@ static void add_range(struct ippool_t *p, struct list_head *list, const char *na
 
 	p->startip = startip;
 	p->endip = endip;
+	p->generate = generate;
 }
 
-static void generate_pool(struct ippool_t *p)
+static void generate_pool_p2p(struct ippool_t *p)
 {
 	struct ippool_item_t *it;
 	struct ipaddr_t *addr = NULL;
@@ -211,6 +216,53 @@ static void generate_pool(struct ippool_t *p)
 		list_add_tail(&it->entry, &p->items);
 	}
 }
+
+static void generate_pool_net30(struct ippool_t *p)
+{
+	struct ippool_item_t *it;
+	struct ipaddr_t *addr[4];
+	int i;
+
+	while (1) {
+		memset(addr, 0, sizeof(addr));
+
+		for (i = 0; i < 4; i++) {
+			if (list_empty(&p->tunnel_list))
+				break;
+
+			addr[i] = list_entry(p->tunnel_list.next, typeof(*addr[i]), entry);
+			list_del(&addr[i]->entry);
+		}
+
+		if (!addr[2])
+			break;
+
+
+		it = malloc(sizeof(*it));
+		if (!it) {
+			log_emerg("ippool: out of memory\n");
+			break;
+		}
+
+		it->pool = p;
+		it->it.owner = &ipdb;
+		it->it.addr = addr[1]->addr;
+		it->it.peer_addr = addr[2]->addr;
+
+		list_add_tail(&it->entry, &p->items);
+		
+		for (i = 0; i < 4; i++) {
+			if (addr[i])
+				free(addr[i]);
+		}
+	}
+		
+	for (i = 0; i < 4; i++) {
+		if (addr[i])
+			free(addr[i]);
+	}
+}
+
 
 static struct ipv4db_item_t *get_ip(struct ap_session *ses)
 {
@@ -401,12 +453,38 @@ static int parse_vendor_opt(const char *opt)
 }
 #endif
 
+static void parse_options(const char *opt, char **pool_name, char **allocator)
+{
+	char *ptr1, *ptr2;
+	int len;
+
+	ptr1 = strstr(opt, "name=");
+	if (ptr1) {
+		for (ptr2 = ptr1 + 5; *ptr2 && *ptr2 != ','; ptr2++);
+		len = ptr2 - (ptr1 + 5);
+		*pool_name = _malloc(len + 1);
+		memcpy(*pool_name, ptr1 + 5, len);
+		(*pool_name)[len] = 0;
+	}
+
+	ptr1 = strstr(opt, "allocator=");
+	if (ptr1) {
+		for (ptr2 = ptr1 + 10; *ptr2 && *ptr2 != ','; ptr2++);
+		len = ptr2 - (ptr1 + 10);
+		*allocator = _malloc(len + 1);
+		memcpy(*allocator, ptr1 + 10, len);
+		(*allocator)[len] = 0;
+	}
+}
+
 static void ippool_init(void)
 {
 	struct conf_sect_t *s = conf_get_section("ip-pool");
 	struct conf_option_t *opt;
 	struct ippool_t *p;
-	char *pool_name;
+	char *pool_name = NULL;
+	char *allocator = NULL;
+	void (*generate)(struct ippool_t *pool);
 	
 	if (!s)
 		return;
@@ -430,26 +508,44 @@ static void ippool_init(void)
 		if (!strcmp(opt->name, "gw-ip-address"))
 			parse_gw_ip_address(opt->val);
 		else {
-			if (opt->val)
-				pool_name = strchr(opt->val, ',');
-			else
-				pool_name = strchr(opt->name, ',');
+			pool_name = NULL;
+			allocator = NULL;
 
-			p = pool_name ? find_pool(pool_name + 1, 1) : def_pool;
+			parse_options(opt->raw, &pool_name, &allocator);
+
+			if (allocator) {
+				if (strcmp(allocator, "p2p") == 0)
+					generate = generate_pool_p2p;
+				else if (strcmp(allocator, "net30") == 0)
+					generate = generate_pool_net30;
+				else {
+					log_error("ipool: '%s': unknown allocator\n", opt->raw);
+				}
+			} else
+				generate = generate_pool_p2p;
+
+			p = pool_name ? find_pool(pool_name, 1) : def_pool;
 
 			if (!strcmp(opt->name, "gw"))
-				add_range(p, &p->gw_list, opt->val);
+				add_range(p, &p->gw_list, opt->val, generate);
 			else if (!strcmp(opt->name, "tunnel"))
-				add_range(p, &p->tunnel_list, opt->val);
-			else if (!opt->val)
-				add_range(p, &p->tunnel_list, opt->name);
+				add_range(p, &p->tunnel_list, opt->val, generate);
+			else if (!opt->val || strchr(opt->name, ','))
+				add_range(p, &p->tunnel_list, opt->name, generate);
+
+			if (pool_name)
+				_free(pool_name);
+
+			if (allocator)
+				_free(allocator);
 		}
 	}
-
-	generate_pool(def_pool);
+	
+	if (def_pool->generate)
+		def_pool->generate(def_pool);
 
 	list_for_each_entry(p, &pool_list, entry)
-		generate_pool(p);
+		p->generate(p);
 
 	ipdb_register(&ipdb);
 

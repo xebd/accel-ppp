@@ -24,14 +24,14 @@ static char* skip_word(char *str);
 
 static struct conf_sect_t *find_sect(const char *name);
 static struct conf_sect_t *create_sect(const char *name);
-static void sect_add_item(struct conf_sect_t *sect, const char *name, const char *val);
+static void sect_add_item(struct conf_sect_t *sect, const char *name, const char *val, char *raw);
 static struct conf_option_t *find_item(struct conf_sect_t *, const char *name);
 
 static char *buf;
 
 int __conf_load(const char *fname, struct conf_sect_t *cur_sect)
 {
-	char *str,*str2;
+	char *str, *str2, *raw;
 	int cur_line = 0;
 
 	FILE *f = fopen(fname, "r");
@@ -50,6 +50,7 @@ int __conf_load(const char *fname, struct conf_sect_t *cur_sect)
 		str = skip_space(buf);
 		if (*str == '#' || *str == 0)
 			continue;
+
 		if (strncmp(str, "$include", 8) == 0)	{
 			str = skip_word(str);
 			str = skip_space(str);
@@ -57,6 +58,7 @@ int __conf_load(const char *fname, struct conf_sect_t *cur_sect)
 				break;
 			continue;
 		}
+
 		if (*str == '[') {
 			for (str2 = ++str; *str2 && *str2 != ']'; str2++);
 			if (*str2 != ']') {
@@ -69,15 +71,19 @@ int __conf_load(const char *fname, struct conf_sect_t *cur_sect)
 				cur_sect = create_sect(str);	
 			continue;
 		}
+
 		if (!cur_sect) {
 			fprintf(stderr, "conf_file:%s:%i: no section opened\n", fname, cur_line);
 			return -1;
 		}
+
+		raw = _strdup(str);
 		str2 = skip_word(str);
 		if (*str2 == ' ') {
 			*str2 = 0;
 			++str2;
 		}
+
 		str2 = skip_space(str2);
 		if (*str2 == '=' || *str2 == ',') {
 			*str2 = 0;
@@ -99,7 +105,7 @@ int __conf_load(const char *fname, struct conf_sect_t *cur_sect)
 			}
 		} else
 			str2 = NULL;
-		sect_add_item(cur_sect, str, str2);
+		sect_add_item(cur_sect, str, str2, raw);
 	}
 	
 	fclose(f);
@@ -162,6 +168,7 @@ int conf_reload(const char *fname)
 				if (opt->val)
 					_free(opt->val);
 				_free(opt->name);
+				_free(opt->raw);
 				_free(opt);
 			}
 			_free((char *)sect->sect->name);
@@ -205,12 +212,13 @@ static struct conf_sect_t *create_sect(const char *name)
 	return s->sect;
 }
 
-static void sect_add_item(struct conf_sect_t *sect, const char *name, const char *val)
+static void sect_add_item(struct conf_sect_t *sect, const char *name, const char *val, char *raw)
 {
 	struct conf_option_t *opt = _malloc(sizeof(struct conf_option_t));
 	
 	opt->name = _strdup(name);
 	opt->val = val ? _strdup(val) : NULL;
+	opt->raw = raw;
 	
 	list_add_tail(&opt->entry, &sect->items);
 }
