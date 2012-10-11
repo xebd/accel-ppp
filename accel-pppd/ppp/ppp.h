@@ -64,7 +64,6 @@ struct ppp_t
 
 	struct list_head layers;
 	
-	const char *comp;
 	struct ppp_lcp_t *lcp;
 };
 

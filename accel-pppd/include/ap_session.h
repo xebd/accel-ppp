@@ -78,7 +78,9 @@ struct ap_session
 	char *ipv4_pool_name;
 	char *ipv6_pool_name;
 
-	struct ap_ctrl *ctrl;
+	const struct ap_ctrl *ctrl;
+
+	const char *comp;
 
 #ifdef USE_BACKUP
 	struct backup_data *backup;

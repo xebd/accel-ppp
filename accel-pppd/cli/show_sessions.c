@@ -452,15 +452,8 @@ static void print_sid(const struct ap_session *ses, char *buf)
 
 static void print_comp(const struct ap_session *ses, char *buf)
 {
-	struct ppp_t *ppp;
-
-	*buf = 0;
-
-	if (ses->ctrl->ppp) {
-		ppp = container_of(ses, typeof(*ppp), ses);
-		if (ppp->comp)
-			snprintf(buf, CELL_SIZE, "%s", ppp->comp);
-	}
+	if (ses->comp)
+		snprintf(buf, CELL_SIZE, "%s", ses->comp);
 }
 
 static void init(void)
