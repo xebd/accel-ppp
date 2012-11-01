@@ -128,6 +128,8 @@ static int terminate_exec1(char * const *f, int f_cnt, void *cli)
 
 	pthread_rwlock_rdlock(&ppp_lock);
 	list_for_each_entry(ppp, &ppp_list, entry) {
+		if (!ppp->username)
+			continue;
 		if (pcre_exec(re, NULL, ppp->username, strlen(ppp->username), 0, 0, NULL, 0) < 0)
 			continue;
 		if (hard)
