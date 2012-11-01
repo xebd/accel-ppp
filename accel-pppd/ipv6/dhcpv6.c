@@ -173,7 +173,8 @@ static void insert_dp_routes(struct ppp_t *ppp, struct dhcpv6_pd *pd)
 			if (ioctl(sock6_fd, SIOCADDRT, &rt6)) {
 				err = errno;
 				inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
-				log_ppp_error("dhcpv6: route add %s/%i: %s\n", str1, p->prefix_len);
+				log_ppp_error("dhcpv6: route add %s/%i: %s\n",
+					      str1, p->prefix_len, strerror(err));
 			} else if (conf_verbose) {
 				inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
 				log_ppp_info2("dhcpv6: route add %s/%i\n", str1, p->prefix_len);

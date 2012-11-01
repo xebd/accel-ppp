@@ -67,6 +67,8 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 		goto out_err;
 	if (rad_packet_add_val(req->pack, NULL, "NAS-Port-Type", "Virtual"))
 		goto out_err;
+	if (rad_packet_add_int(req->pack, NULL, "Tunnel-Type", rpd->ppp->ctrl->type))
+		goto out_err;
 	if (rad_packet_add_val(req->pack, NULL, "Service-Type", "Framed-User"))
 		goto out_err;
 	if (rad_packet_add_val(req->pack, NULL, "Framed-Protocol", "PPP"))

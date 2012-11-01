@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,7 +39,7 @@ int __export connlimit_check(uint64_t key)
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	pthread_mutex_lock(&lock);
-	log_debug("connlimit: check entry %llu\n", key);
+	log_debug("connlimit: check entry %" PRIu64 "\n", key);
 	list_for_each_safe(pos, n, &items) {
 		it = list_entry(pos, typeof(*it), entry);
 
@@ -66,7 +67,7 @@ int __export connlimit_check(uint64_t key)
 		}
 
 		if (d > conf_burst_timeout) {
-			log_debug("connlimit: remove %llu\n", it->key);
+			log_debug("connlimit: remove %" PRIu64 "\n", it->key);
 			list_move(&it->entry, &tmp_list);
 		}
 	}
@@ -78,7 +79,7 @@ int __export connlimit_check(uint64_t key)
 		it->ts = ts;
 		it->key = key;
 
-		log_debug("connlimit: add entry %llu\n", key);
+		log_debug("connlimit: add entry %" PRIu64 "\n", key);
 
 		pthread_mutex_lock(&lock);
 		list_add(&it->entry, &items);
@@ -88,9 +89,9 @@ int __export connlimit_check(uint64_t key)
 	}
 	
 	if (r == 0)
-		log_debug("connlimit: accept %llu\n", key);
+		log_debug("connlimit: accept %" PRIu64 "\n", key);
 	else
-		log_debug("connlimit: drop %llu\n", key);
+		log_debug("connlimit: drop %" PRIu64 "\n", key);
 
 	
 	while (!list_empty(&tmp_list)) {

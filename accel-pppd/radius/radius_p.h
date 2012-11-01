@@ -23,11 +23,6 @@ struct radius_pd_t
 	struct rad_req_t *auth_req;
 	struct rad_req_t *acct_req;
 	struct triton_timer_t acct_interim_timer;
-	uint32_t acct_input_octets;
-	uint32_t acct_output_octets;
-	uint32_t acct_input_gigawords;
-	uint32_t acct_output_gigawords;
-
 	struct triton_timer_t session_timeout;
 
 	struct rad_packet_t *dm_coa_req;

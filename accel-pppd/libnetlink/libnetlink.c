@@ -26,9 +26,11 @@
 #include "libnetlink.h"
 #include "log.h"
 
+#define __export __attribute__((visibility("default")))
+
 int rcvbuf = 1024 * 1024;
 
-void rtnl_close(struct rtnl_handle *rth)
+void __export rtnl_close(struct rtnl_handle *rth)
 {
 	if (rth->fd >= 0) {
 		close(rth->fd);
@@ -36,7 +38,7 @@ void rtnl_close(struct rtnl_handle *rth)
 	}
 }
 
-int rtnl_open_byproto(struct rtnl_handle *rth, unsigned subscriptions,
+int __export rtnl_open_byproto(struct rtnl_handle *rth, unsigned subscriptions,
 		      int protocol)
 {
 	socklen_t addr_len;
@@ -85,12 +87,12 @@ int rtnl_open_byproto(struct rtnl_handle *rth, unsigned subscriptions,
 	return 0;
 }
 
-int rtnl_open(struct rtnl_handle *rth, unsigned subscriptions)
+int __export rtnl_open(struct rtnl_handle *rth, unsigned subscriptions)
 {
 	return rtnl_open_byproto(rth, subscriptions, NETLINK_ROUTE);
 }
 
-int rtnl_wilddump_request(struct rtnl_handle *rth, int family, int type)
+int __export rtnl_wilddump_request(struct rtnl_handle *rth, int family, int type)
 {
 	struct {
 		struct nlmsghdr nlh;
@@ -108,12 +110,12 @@ int rtnl_wilddump_request(struct rtnl_handle *rth, int family, int type)
 	return send(rth->fd, (void*)&req, sizeof(req), 0);
 }
 
-int rtnl_send(struct rtnl_handle *rth, const char *buf, int len)
+int __export rtnl_send(struct rtnl_handle *rth, const char *buf, int len)
 {
 	return send(rth->fd, buf, len, 0);
 }
 
-int rtnl_send_check(struct rtnl_handle *rth, const char *buf, int len)
+int __export rtnl_send_check(struct rtnl_handle *rth, const char *buf, int len)
 {
 	struct nlmsghdr *h;
 	int status;
@@ -146,7 +148,7 @@ int rtnl_send_check(struct rtnl_handle *rth, const char *buf, int len)
 	return 0;
 }
 
-int rtnl_dump_request(struct rtnl_handle *rth, int type, void *req, int len)
+int __export rtnl_dump_request(struct rtnl_handle *rth, int type, void *req, int len)
 {
 	struct nlmsghdr nlh;
 	struct sockaddr_nl nladdr;
@@ -173,7 +175,7 @@ int rtnl_dump_request(struct rtnl_handle *rth, int type, void *req, int len)
 	return sendmsg(rth->fd, &msg, 0);
 }
 
-int rtnl_dump_filter_l(struct rtnl_handle *rth,
+int __export rtnl_dump_filter_l(struct rtnl_handle *rth,
 		       const struct rtnl_dump_filter_arg *arg)
 {
 	struct sockaddr_nl nladdr;
@@ -266,7 +268,7 @@ skip_it:
 	}
 }
 
-int rtnl_dump_filter(struct rtnl_handle *rth,
+int __export rtnl_dump_filter(struct rtnl_handle *rth,
 		     rtnl_filter_t filter,
 		     void *arg1,
 		     rtnl_filter_t junk,
@@ -280,7 +282,7 @@ int rtnl_dump_filter(struct rtnl_handle *rth,
 	return rtnl_dump_filter_l(rth, a);
 }
 
-int rtnl_talk(struct rtnl_handle *rtnl, struct nlmsghdr *n, pid_t peer,
+int __export rtnl_talk(struct rtnl_handle *rtnl, struct nlmsghdr *n, pid_t peer,
 	      unsigned groups, struct nlmsghdr *answer,
 	      rtnl_filter_t junk,
 	      void *jarg, int ignore_einval)
@@ -405,7 +407,7 @@ int rtnl_talk(struct rtnl_handle *rtnl, struct nlmsghdr *n, pid_t peer,
 	}
 }
 
-int rtnl_listen(struct rtnl_handle *rtnl,
+int __export rtnl_listen(struct rtnl_handle *rtnl,
 		rtnl_filter_t handler,
 		void *jarg)
 {
@@ -480,62 +482,7 @@ int rtnl_listen(struct rtnl_handle *rtnl,
 	}
 }
 
-int rtnl_from_file(FILE *rtnl, rtnl_filter_t handler,
-		   void *jarg)
-{
-	int status;
-	struct sockaddr_nl nladdr;
-	char   buf[8192];
-	struct nlmsghdr *h = (void*)buf;
-
-	memset(&nladdr, 0, sizeof(nladdr));
-	nladdr.nl_family = AF_NETLINK;
-	nladdr.nl_pid = 0;
-	nladdr.nl_groups = 0;
-
-	while (1) {
-		int err, len, type;
-		int l;
-
-		status = fread(&buf, 1, sizeof(*h), rtnl);
-
-		if (status < 0) {
-			if (errno == EINTR)
-				continue;
-			log_error("libnetlink: ""rtnl_from_file: fread");
-			return -1;
-		}
-		if (status == 0)
-			return 0;
-
-		len = h->nlmsg_len;
-		type= h->nlmsg_type;
-		l = len - sizeof(*h);
-
-		if (l<0 || len>sizeof(buf)) {
-			log_error("libnetlink: ""!!!malformed message: len=%d @%lu\n",
-				len, ftell(rtnl));
-			return -1;
-		}
-
-		status = fread(NLMSG_DATA(h), 1, NLMSG_ALIGN(l), rtnl);
-
-		if (status < 0) {
-			log_error("libnetlink: ""rtnl_from_file: fread");
-			return -1;
-		}
-		if (status < l) {
-			log_error("libnetlink: ""rtnl-from_file: truncated message\n");
-			return -1;
-		}
-
-		err = handler(&nladdr, h, jarg);
-		if (err < 0)
-			return err;
-	}
-}
-
-int addattr32(struct nlmsghdr *n, int maxlen, int type, __u32 data)
+int __export addattr32(struct nlmsghdr *n, int maxlen, int type, __u32 data)
 {
 	int len = RTA_LENGTH(4);
 	struct rtattr *rta;
@@ -551,7 +498,7 @@ int addattr32(struct nlmsghdr *n, int maxlen, int type, __u32 data)
 	return 0;
 }
 
-int addattr_l(struct nlmsghdr *n, int maxlen, int type, const void *data,
+int __export addattr_l(struct nlmsghdr *n, int maxlen, int type, const void *data,
 	      int alen)
 {
 	int len = RTA_LENGTH(alen);
@@ -569,7 +516,7 @@ int addattr_l(struct nlmsghdr *n, int maxlen, int type, const void *data,
 	return 0;
 }
 
-int addraw_l(struct nlmsghdr *n, int maxlen, const void *data, int len)
+int __export addraw_l(struct nlmsghdr *n, int maxlen, const void *data, int len)
 {
 	if (NLMSG_ALIGN(n->nlmsg_len) + NLMSG_ALIGN(len) > maxlen) {
 		log_error("libnetlink: ""addraw_l ERROR: message exceeded bound of %d\n",maxlen);
@@ -582,7 +529,7 @@ int addraw_l(struct nlmsghdr *n, int maxlen, const void *data, int len)
 	return 0;
 }
 
-struct rtattr *addattr_nest(struct nlmsghdr *n, int maxlen, int type)
+struct rtattr __export *addattr_nest(struct nlmsghdr *n, int maxlen, int type)
 {
 	struct rtattr *nest = NLMSG_TAIL(n);
 
@@ -590,13 +537,13 @@ struct rtattr *addattr_nest(struct nlmsghdr *n, int maxlen, int type)
 	return nest;
 }
 
-int addattr_nest_end(struct nlmsghdr *n, struct rtattr *nest)
+int __export addattr_nest_end(struct nlmsghdr *n, struct rtattr *nest)
 {
 	nest->rta_len = (void *)NLMSG_TAIL(n) - (void *)nest;
 	return n->nlmsg_len;
 }
 
-struct rtattr *addattr_nest_compat(struct nlmsghdr *n, int maxlen, int type,
+struct rtattr __export *addattr_nest_compat(struct nlmsghdr *n, int maxlen, int type,
 				   const void *data, int len)
 {
 	struct rtattr *start = NLMSG_TAIL(n);
@@ -606,7 +553,7 @@ struct rtattr *addattr_nest_compat(struct nlmsghdr *n, int maxlen, int type,
 	return start;
 }
 
-int addattr_nest_compat_end(struct nlmsghdr *n, struct rtattr *start)
+int __export addattr_nest_compat_end(struct nlmsghdr *n, struct rtattr *start)
 {
 	struct rtattr *nest = (void *)start + NLMSG_ALIGN(start->rta_len);
 
@@ -615,7 +562,7 @@ int addattr_nest_compat_end(struct nlmsghdr *n, struct rtattr *start)
 	return n->nlmsg_len;
 }
 
-int rta_addattr32(struct rtattr *rta, int maxlen, int type, __u32 data)
+int __export rta_addattr32(struct rtattr *rta, int maxlen, int type, __u32 data)
 {
 	int len = RTA_LENGTH(4);
 	struct rtattr *subrta;
@@ -632,7 +579,7 @@ int rta_addattr32(struct rtattr *rta, int maxlen, int type, __u32 data)
 	return 0;
 }
 
-int rta_addattr_l(struct rtattr *rta, int maxlen, int type,
+int __export rta_addattr_l(struct rtattr *rta, int maxlen, int type,
 		  const void *data, int alen)
 {
 	struct rtattr *subrta;
@@ -650,7 +597,7 @@ int rta_addattr_l(struct rtattr *rta, int maxlen, int type,
 	return 0;
 }
 
-int parse_rtattr(struct rtattr *tb[], int max, struct rtattr *rta, int len)
+int __export parse_rtattr(struct rtattr *tb[], int max, struct rtattr *rta, int len)
 {
 	memset(tb, 0, sizeof(struct rtattr *) * (max + 1));
 	while (RTA_OK(rta, len)) {

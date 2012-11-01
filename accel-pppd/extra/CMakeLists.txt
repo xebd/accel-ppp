@@ -1,4 +1,5 @@
 ADD_LIBRARY(pppd_compat SHARED pppd_compat.c)
+TARGET_LINK_LIBRARIES(pppd_compat sigchld)
 ADD_LIBRARY(ippool SHARED ippool.c)
 ADD_LIBRARY(ipv6pool SHARED ipv6pool.c)
 ADD_LIBRARY(sigchld SHARED sigchld.c)

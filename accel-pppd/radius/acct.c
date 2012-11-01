@@ -34,7 +34,7 @@ static int req_set_RA(struct rad_req_t *req, const char *secret)
 
 static void req_set_stat(struct rad_req_t *req, struct ppp_t *ppp)
 {
-	struct ifpppstatsreq ifreq;
+	struct rtnl_link_stats stats;
 	time_t stop_time;
 	
 	if (ppp->stop_time)
@@ -42,29 +42,14 @@ static void req_set_stat(struct rad_req_t *req, struct ppp_t *ppp)
 	else
 		time(&stop_time);
 
-	memset(&ifreq, 0, sizeof(ifreq));
-	ifreq.stats_ptr = (void *)&ifreq.stats;
-	strcpy(ifreq.ifr__name, ppp->ifname);
-
-	if (ioctl(sock_fd, SIOCGPPPSTATS, &ifreq)) {
-		log_ppp_error("radius: failed to get ppp statistics: %s\n", strerror(errno));
-		return;
+	if (ppp_read_stats(ppp, &stats) == 0) {
+		rad_packet_change_int(req->pack, NULL, "Acct-Input-Octets", stats.rx_bytes);
+		rad_packet_change_int(req->pack, NULL, "Acct-Output-Octets", stats.tx_bytes);
+		rad_packet_change_int(req->pack, NULL, "Acct-Input-Packets", stats.rx_packets);
+		rad_packet_change_int(req->pack, NULL, "Acct-Output-Packets", stats.tx_packets);
+		rad_packet_change_int(req->pack, NULL, "Acct-Input-Gigawords", ppp->acct_input_gigawords);
+		rad_packet_change_int(req->pack, NULL, "Acct-Output-Gigawords", ppp->acct_output_gigawords);
 	}
-
-	if (ifreq.stats.p.ppp_ibytes < req->rpd->acct_input_octets)
-		req->rpd->acct_input_gigawords++;
-	req->rpd->acct_input_octets = ifreq.stats.p.ppp_ibytes;
-
-	if (ifreq.stats.p.ppp_obytes < req->rpd->acct_output_octets)
-		req->rpd->acct_output_gigawords++;
-	req->rpd->acct_output_octets = ifreq.stats.p.ppp_obytes;
-
-	rad_packet_change_int(req->pack, NULL, "Acct-Input-Octets", ifreq.stats.p.ppp_ibytes);
-	rad_packet_change_int(req->pack, NULL, "Acct-Output-Octets", ifreq.stats.p.ppp_obytes);
-	rad_packet_change_int(req->pack, NULL, "Acct-Input-Packets", ifreq.stats.p.ppp_ipackets);
-	rad_packet_change_int(req->pack, NULL, "Acct-Output-Packets", ifreq.stats.p.ppp_opackets);
-	rad_packet_change_int(req->pack, NULL, "Acct-Input-Gigawords", req->rpd->acct_input_gigawords);
-	rad_packet_change_int(req->pack, NULL, "Acct-Output-Gigawords", req->rpd->acct_output_gigawords);
 	rad_packet_change_int(req->pack, NULL, "Acct-Session-Time", stop_time - ppp->start_time);
 }
 

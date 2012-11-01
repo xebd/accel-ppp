@@ -158,7 +158,7 @@ int l2tp_recv(int fd, struct l2tp_packet_t **p, struct in_pktinfo *pkt_info)
 
 	if (n < sizeof(*hdr)) {
 		if (conf_verbose)
-			log_warn("l2tp: short packet received (%i/%i)\n", n, sizeof(*hdr));
+			log_warn("l2tp: short packet received (%i/%zu)\n", n, sizeof(*hdr));
 		goto out_err_hdr;
 	}
 
