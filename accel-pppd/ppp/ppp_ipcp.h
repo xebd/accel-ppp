@@ -58,7 +58,7 @@ struct ipcp_option_t
 	int id;
 	int len;
 	int state;
-	uint8_t *ptr;
+	int print:1;
 	struct ipcp_option_handler_t *h;
 };
 

@@ -265,18 +265,18 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 			return -1;
 		}
 		if (n) {
-			lopt->ptr = ptr;
 			ptr += n;
+			lopt->print = 1;
 		} else
-			lopt->ptr = NULL;
+			lopt->print = 0;
 	}
 
 	if (conf_ppp_verbose) {
 		log_ppp_info2("send [IPCP ConfReq id=%x", ipcp_hdr->id);
 		list_for_each_entry(lopt,&ipcp->options,entry) {
-			if (lopt->ptr) {
+			if (lopt->print) {
 				log_ppp_info2(" ");
-				lopt->h->print(log_ppp_info2, lopt, lopt->ptr);
+				lopt->h->print(log_ppp_info2, lopt, NULL);
 			}
 		}
 		log_ppp_info2("]\n");

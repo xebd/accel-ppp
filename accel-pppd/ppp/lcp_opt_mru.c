@@ -118,7 +118,7 @@ static int mru_recv_conf_ack(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, ui
 {
 	struct mru_option_t *mru_opt = container_of(opt,typeof(*mru_opt), opt);
 	struct ifreq ifr = {
-		.ifr_mtu = mru_opt->mtu < mru_opt->mru ? mru_opt->mtu : mru_opt->mru,
+		.ifr_mtu = mru_opt->mtu,
 	};
 
 	strcpy(ifr.ifr_name, lcp->ppp->ifname);
