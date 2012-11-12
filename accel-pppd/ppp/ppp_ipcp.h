@@ -12,6 +12,8 @@
 #define CI_ADDR 3   /* IP-Address */
 #define CI_DNS1 129 /* Primary-DNS-Address */
 #define CI_DNS2 131 /* Secondary-DNS-Address */
+#define CI_WINS1 130 /* Primary-NBNS-Address */
+#define CI_WINS2 132 /* Secondary-NBNS-Address */
 
 struct ipcp_hdr_t
 {
