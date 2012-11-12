@@ -682,10 +682,10 @@ static void send_echo_request(struct triton_timer_t *t)
 		return;
 	}
 
-	if (conf_ppp_verbose) {
+	if (conf_ppp_verbose)
 		log_ppp_debug("send [LCP EchoReq id=%x <magic %x>]\n", msg.hdr.id, lcp->magic);
-		ppp_chan_send(lcp->ppp,&msg,ntohs(msg.hdr.len)+2);
-	}
+
+	ppp_chan_send(lcp->ppp,&msg,ntohs(msg.hdr.len)+2);
 }
 
 static void start_echo(struct ppp_lcp_t *lcp)
