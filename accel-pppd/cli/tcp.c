@@ -208,8 +208,10 @@ static int cln_write(struct triton_md_handler_t *h)
 		_free(cln->xmit_buf);
 		cln->xmit_pos = 0;
 
-		if (list_empty(&cln->xmit_queue))
+		if (list_empty(&cln->xmit_queue)) {
+			cln->xmit_buf = NULL;
 			break;
+		}
 
 		cln->xmit_buf = list_entry(cln->xmit_queue.next, typeof(*cln->xmit_buf), entry);
 		list_del(&cln->xmit_buf->entry);
