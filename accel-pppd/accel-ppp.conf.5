@@ -299,6 +299,13 @@ Specifies primary DNS to be sent to peer.
 .TP
 .BI "dns2=" x.x.x.x
 Specifies secondary DNS to be sent to peer.
+.SH [wins]
+.TP
+.BI "wins1=" x.x.x.x
+Specifies primary NBNS to be sent to peer.
+.TP
+.BI "wins2=" x.x.x.x
+Specifies secondary NBNS to be sent to peer.
 .SH [dnsv6]
 .TP
 .BI "dns=" IPv6_address
@@ -684,4 +691,4 @@ Specifies downstream rate limiting method.
 .TP
 .BI "leaf-qdisc=" "qdisc parameters"
 In case if htb is used as up-limiter or down-limiter specified leaf qdisc can be attached automaticaly.
-At present on sfq qdisc is implemented. Parameters are same as for tc: [ limit NUMBER ] [ perturn SECS ] [ quantum BYTES ].
+At present only sfq qdisc is implemented. Parameters are same as for tc: [ limit NUMBER ] [ perturn SECS ] [ quantum BYTES ].

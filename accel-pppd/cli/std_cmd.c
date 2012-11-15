@@ -130,6 +130,8 @@ static int terminate_exec1(char * const *f, int f_cnt, void *cli)
 
 	pthread_rwlock_rdlock(&ses_lock);
 	list_for_each_entry(ses, &ses_list, entry) {
+		if (!ses->username)
+			continue;
 		if (pcre_exec(re, NULL, ses->username, strlen(ses->username), 0, 0, NULL, 0) < 0)
 			continue;
 		if (hard)

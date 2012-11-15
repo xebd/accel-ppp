@@ -1318,7 +1318,7 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 				log_debug("duplicate packet %i\n", ntohs(pack->hdr.Ns));
 				if (!list_empty(&conn->send_queue))
 					l2tp_retransmit(conn);
-				if (l2tp_send_ZLB(conn))
+				else if (l2tp_send_ZLB(conn))
 					goto drop;
 			} else {
 				l2tp_conn_log(log_debug, conn);

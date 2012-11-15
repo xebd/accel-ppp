@@ -21,6 +21,7 @@
 #define EV_SHAPER           101
 #define EV_MPPE_KEYS        102
 #define EV_DNS              103
+#define EV_WINS             104
 #define EV_RADIUS_ACCESS_ACCEPT 200
 #define EV_RADIUS_COA           201
 
@@ -57,5 +58,10 @@ struct ev_dns_t
 	in_addr_t dns2;
 };
 
+struct ev_wins_t
+{
+	struct ap_session *ses;
+	in_addr_t wins1;
+	in_addr_t wins2;
+};
 #endif
-

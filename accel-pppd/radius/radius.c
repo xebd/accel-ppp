@@ -59,9 +59,11 @@ int rad_proc_attrs(struct rad_req_t *req)
 	struct rad_attr_t *attr;
 	struct ipv6db_addr_t *a;
 	struct ev_dns_t dns;
+	struct ev_wins_t wins;
 	int res = 0;
 
 	dns.ses = NULL;
+	wins.ses = NULL;
 	req->rpd->acct_interim_interval = conf_acct_interim_interval;
 
 	list_for_each_entry(attr, &req->reply->attrs, entry) {
@@ -74,6 +76,14 @@ int rad_proc_attrs(struct rad_req_t *req)
 				case MS_Secondary_DNS_Server:
 					dns.ses = req->rpd->ses;
 					dns.dns2 = attr->val.ipaddr;
+					break;
+				case MS_Primary_NBNS_Server:
+					wins.ses = req->rpd->ses;
+					wins.wins1 = attr->val.ipaddr;
+					break;
+				case MS_Secondary_NBNS_Server:
+					wins.ses = req->rpd->ses;
+					wins.wins2 = attr->val.ipaddr;
 					break;
 			}
 			continue;
@@ -137,6 +147,8 @@ int rad_proc_attrs(struct rad_req_t *req)
 
 	if (dns.ses)
 		triton_event_fire(EV_DNS, &dns);
+	if (wins.ses)
+		triton_event_fire(EV_WINS, &wins);
 
 	return res;
 }
