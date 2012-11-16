@@ -140,5 +140,6 @@ void triton_terminate(void);
 	(type *)( (char *)__mptr - offsetof(type,member) );})
 
 #define DEFINE_INIT(o, func) static void __init __init__(void){triton_register_init(o,func);}
+#define DEFINE_INIT2(o, func) static void __init __init2__(void){triton_register_init(o,func);}
 
 #endif

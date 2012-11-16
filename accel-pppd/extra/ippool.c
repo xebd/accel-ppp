@@ -317,7 +317,12 @@ static int parse_vendor_opt(const char *opt)
 }
 #endif
 
-static void ippool_init(void)
+static void ippool_init1(void)
+{
+	ipdb_register(&ipdb);
+}
+
+static void ippool_init2(void)
 {
 	struct conf_sect_t *s = conf_get_section("ip-pool");
 	struct conf_option_t *opt;
@@ -367,13 +372,12 @@ static void ippool_init(void)
 	list_for_each_entry(p, &pool_list, entry)
 		generate_pool(p);
 
-	ipdb_register(&ipdb);
-
 #ifdef RADIUS
 	if (triton_module_loaded("radius"))
 		triton_event_register_handler(EV_RADIUS_ACCESS_ACCEPT, (triton_event_func)ev_radius_access_accept);
 #endif
 }
 
-DEFINE_INIT(51, ippool_init);
+DEFINE_INIT(51, ippool_init1);
+DEFINE_INIT2(52, ippool_init2);
 
