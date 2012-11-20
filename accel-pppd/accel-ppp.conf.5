@@ -246,10 +246,14 @@ Specifies ip pool name for address allocation. Usefull in conjuction with ippool
 .br
 Configuration of PPPoE module.
 .TP
-.BI "interface=" ethX[,padi-limit=n]
+.BI "interface=" [re:]ifname[,padi-limit=n]
 Specifies interface name to listen/send discovery packets. You may specify multiple
 .B interface
-options. Optional
+options. If
+.B ifname
+is prefixed with
+.B re:
+then ifname is considered as regular expression. Optional
 .B padi-limit
 parameter specifies limit of PADI packets to reply on this interface in 1 second period.
 .TP

@@ -26,6 +26,7 @@
 #include "radius.h"
 #endif
 
+#include "iputils.h"
 #include "connlimit.h"
 
 #include "pppoe.h"
@@ -73,6 +74,13 @@ struct padi_t
 	uint8_t addr[ETH_ALEN];
 };
 
+struct iplink_arg
+{
+	pcre *re;
+	const char *opt;
+	void *cli;
+};
+
 int conf_verbose;
 char *conf_service_name;
 char *conf_ac_name;
@@ -107,6 +115,7 @@ static void pppoe_send_PADT(struct pppoe_conn_t *conn);
 static void _server_stop(struct pppoe_serv_t *serv);
 void pppoe_server_free(struct pppoe_serv_t *serv);
 static int init_secret(struct pppoe_serv_t *serv);
+static void __pppoe_server_start(const char *ifname, const char *opt, void *cli);
 
 static void disconnect(struct pppoe_conn_t *conn)
 {
@@ -1108,41 +1117,94 @@ static void pppoe_serv_close(struct triton_context_t *ctx)
 	pthread_mutex_unlock(&serv->lock);
 }
 
-static int parse_server(const char *opt, char **ifname, int *padi_limit)
+static int parse_server(const char *opt, int *padi_limit)
 {
-	char *str = _strdup(opt);
-	char *ptr1, *ptr2, *endptr;
+	char *ptr, *endptr;
 
-	ptr1 = strchr(str, ',');
-	if (ptr1) {
-		ptr2 = strstr(ptr1, ",padi-limit=");
-		*padi_limit = strtol(ptr2 + 12, &endptr, 10);
+	ptr = strstr(opt, ",padi-limit=");
+	if (ptr) {
+		*padi_limit = strtol(ptr + 12, &endptr, 10);
 		if (*endptr != 0 && *endptr != ',')
 			goto out_err;
-
-		*ptr1 = 0;
 	}
-
-	*ifname = str;
 
 	return 0;
 
 out_err:
-	_free(str);
 	return -1;
 }
 
+static int __pppoe_add_interface_re(int index, int flags, const char *name, struct iplink_arg *arg)
+{
+	if (pcre_exec(arg->re, NULL, name, strlen(name), 0, 0, NULL, 0) < 0)
+		return 0;
+
+	__pppoe_server_start(name, arg->opt, arg->cli);
+
+	return 0;
+}
+
+static void pppoe_add_interface_re(const char *opt, void *cli)
+{
+	pcre *re = NULL;
+	const char *pcre_err;
+	char *pattern;
+	const char *ptr;
+	int pcre_offset;
+	struct iplink_arg arg;
+
+	for (ptr = opt; *ptr && *ptr != ','; ptr++);
+	
+	pattern = _malloc(ptr - (opt + 3) + 1);
+	memcpy(pattern, opt + 3, ptr - (opt + 3));
+	pattern[ptr - (opt + 3)] = 0;
+	
+	re = pcre_compile2(pattern, 0, NULL, &pcre_err, &pcre_offset, NULL);
+		
+	if (!re) {
+		log_error("pppoe: %s at %i\r\n", pcre_err, pcre_offset);
+		return;
+	}
+
+	arg.re = re;
+	arg.opt = ptr;
+	arg.cli = cli;
+
+	iplink_list((iplink_list_func)__pppoe_add_interface_re, &arg);
+
+	pcre_free(re);
+	_free(pattern);
+}
+
 void pppoe_server_start(const char *opt, void *cli)
+{
+	char name[IFNAMSIZ];
+	const char *ptr;
+
+	if (strlen(opt) > 3 && memcmp(opt, "re:", 3) == 0) {
+		pppoe_add_interface_re(opt, cli);
+		return;
+	}
+
+	ptr = strchr(opt, ',');
+	if (ptr) {
+		memcpy(name, opt, ptr - opt);
+		name[ptr - opt] = 0;
+		__pppoe_server_start(name, ptr, cli);
+	} else
+		__pppoe_server_start(opt, opt, cli);
+}
+
+static void __pppoe_server_start(const char *ifname, const char *opt, void *cli)
 {
 	struct pppoe_serv_t *serv;
 	int sock;
 	int f = 1;
 	struct ifreq ifr;
 	struct sockaddr_ll sa;
-	char *ifname;
 	int padi_limit = conf_padi_limit;
 
-	if (parse_server(opt, &ifname, &padi_limit)) {
+	if (parse_server(opt, &padi_limit)) {
 		if (cli)
 			cli_sendv(cli, "failed to parse '%s'\r\n", opt);
 		else
