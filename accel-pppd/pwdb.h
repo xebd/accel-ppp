@@ -6,6 +6,10 @@
 
 struct ppp_t;
 
+#define CHAP_MD5 5
+#define MSCHAP_V1 0x80
+#define MSCHAP_V2 0x81
+
 #define PWDB_SUCCESS 0
 #define PWDB_DENIED  1
 #define PWDB_NO_IMPL 2

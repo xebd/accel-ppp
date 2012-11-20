@@ -18,10 +18,6 @@
 
 #include "memdebug.h"
 
-#define CHAP_MD5 5
-#define MSCHAP_V1 0x80
-#define MSCHAP_V2 0x81
-
 int conf_max_try = 3;
 int conf_timeout = 3;
 int conf_acct_timeout = 3;

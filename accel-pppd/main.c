@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
+#include <pthread.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/resource.h>
@@ -16,6 +17,43 @@
 
 static char *pid_file;
 static char *conf_file;
+
+#ifdef CRYPTO_OPENSSL
+#include <openssl/ssl.h>
+
+static pthread_mutex_t *ssl_lock_cs;
+
+static unsigned long ssl_thread_id(void)
+{
+	return (unsigned long)pthread_self();
+}
+
+static void ssl_lock(int mode, int type, const char *file, int line)
+{
+	if (mode & CRYPTO_LOCK)
+		pthread_mutex_lock(&ssl_lock_cs[type]);
+	else
+		pthread_mutex_unlock(&ssl_lock_cs[type]);
+}
+
+static void openssl_init(void)
+{
+	int i;
+
+	SSL_library_init();
+	SSL_load_error_strings();
+	OpenSSL_add_all_algorithms();
+	OpenSSL_add_all_digests();
+
+	ssl_lock_cs = OPENSSL_malloc(CRYPTO_num_locks() * sizeof(pthread_mutex_t));
+
+	for (i = 0; i < CRYPTO_num_locks(); i++)
+		pthread_mutex_init(&ssl_lock_cs[i], NULL);
+
+	CRYPTO_set_id_callback(ssl_thread_id);
+	CRYPTO_set_locking_callback(ssl_lock);
+}
+#endif
 
 static void change_limits(void)
 {
@@ -113,6 +151,10 @@ int main(int argc, char **argv)
 	}
 
 	change_limits();
+
+#ifdef CRYPTO_OPENSSL
+	openssl_init();
+#endif
 
 	if (triton_load_modules("modules"))
 		return EXIT_FAILURE;

@@ -127,6 +127,7 @@ void triton_terminate(void);
 #define __init __attribute__((constructor))
 #define __exit __attribute__((destructor))
 #define __export __attribute__((visibility("default")))
+#define __unused __attribute__((unused))
 
 #undef offsetof
 #ifdef __compiler_offsetof

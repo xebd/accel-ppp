@@ -17,7 +17,7 @@ if (NOT BUILD_DRIVER_ONLY)
 
 	if (CRYPTO STREQUAL OPENSSL)
 		add_definitions(-DCRYPTO_OPENSSL)
-		set(crypto_lib crypto)
+		set(crypto_lib crypto ssl)
 	elseif (CRYPTO STREQUAL TOMCRYPT)
 		add_definitions(-DCRYPTO_TOMCRYPT)
 		set(crypto_lib tomcrypt)
