@@ -1,7 +1,7 @@
 #ifndef __AP_SESSION_H__
 #define __AP_SESSION_H__
 
-#define AP_SESSIONID_LEN 16
+//#define AP_SESSIONID_LEN 16
 #define AP_IFNAME_LEN 16
 
 #define AP_STATE_STARTING  1

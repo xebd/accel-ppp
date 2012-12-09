@@ -23,8 +23,12 @@
 #include "mempool.h"
 #include "memdebug.h"
 
+#define SID_SOURCE_SEQ 0
+#define SID_SOURCE_URANDOM 1
+
 static int conf_sid_ucase;
 static int conf_single_session = -1;
+static int conf_sid_source;
 
 pthread_rwlock_t __export ses_lock = PTHREAD_RWLOCK_INITIALIZER;
 __export LIST_HEAD(ses_list);
@@ -213,20 +217,31 @@ void ap_shutdown_soft(void (*cb)(void))
 
 static void generate_sessionid(struct ap_session *ses)
 {
-	unsigned long long sid;
-
+	if (conf_sid_source == SID_SOURCE_SEQ) {
+		unsigned long long sid;
 #if __WORDSIZE == 32
-	spin_lock(&seq_lock);
-	sid = ++seq;
-	spin_unlock(&seq_lock);
+		spin_lock(&seq_lock);
+		sid = ++seq;
+		spin_unlock(&seq_lock);
 #else
-	sid = __sync_add_and_fetch(&seq, 1);
+		sid = __sync_add_and_fetch(&seq, 1);
 #endif
 
-	if (conf_sid_ucase)
-		sprintf(ses->sessionid, "%016llX", sid);
-	else
-		sprintf(ses->sessionid, "%016llx", sid);
+		if (conf_sid_ucase)
+			sprintf(ses->sessionid, "%016llX", sid);
+		else
+			sprintf(ses->sessionid, "%016llx", sid);
+	} else {
+		uint8_t sid[AP_SESSIONID_LEN/2];
+		int i;
+		read(urandom_fd, sid, AP_SESSIONID_LEN/2);
+		for (i = 0; i < AP_SESSIONID_LEN/2; i++) {
+			if (conf_sid_ucase)
+				sprintf(ses->sessionid + i*2, "%02X", sid[i]);
+			else
+				sprintf(ses->sessionid + i*2, "%02x", sid[i]);
+		}
+	}
 }
 
 int __export ap_session_read_stats(struct ap_session *ses, struct rtnl_link_stats *stats)
@@ -328,6 +343,17 @@ static void load_config(void)
 			conf_single_session = 1;
 	} else 
 		conf_single_session = -1;
+	
+	opt = conf_get_opt("common", "sid-source");
+	if (opt) {
+		if (strcmp(opt, "seq") == 0)
+			conf_sid_source = SID_SOURCE_SEQ;
+		else if (strcmp(opt, "urandom") == 0)
+			conf_sid_source = SID_SOURCE_URANDOM;
+		else
+			log_error("unknown sid-source\n");
+	} else
+		conf_sid_source = SID_SOURCE_SEQ;
 }
 
 static void init(void)
