@@ -482,7 +482,7 @@ int l2tp_packet_add_octets(struct l2tp_packet_t *pack, int id, const uint8_t *va
 
 	attr->length = size;
 	attr->val.octets = _malloc(size);
-	if (!attr->val.string) {
+	if (!attr->val.octets) {
 		log_emerg("l2tp: out of memory\n");
 		mempool_free(attr);
 		return -1;
