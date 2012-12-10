@@ -59,6 +59,7 @@ void triton_log_error(const char *fmt,...)
 
 	va_start(ap, fmt);
 	do_log(f_error, fmt, ap);
+	va_end(ap);
 }
 
 void triton_log_debug(const char *fmt,...)
@@ -70,5 +71,6 @@ void triton_log_debug(const char *fmt,...)
 	
 	va_start(ap, fmt);
 	do_log(f_debug, fmt, ap);
+	va_end(ap);
 }
 

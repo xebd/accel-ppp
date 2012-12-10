@@ -54,6 +54,8 @@ void __export cli_register_simple_cmd2(
 		c->hdr[i] = va_arg(ap, char *);
 	
 	list_add_tail(&c->entry, &simple_cmd_list);
+
+	va_end(ap);
 }
 
 void __export cli_register_regexp_cmd(struct cli_regexp_cmd_t *cmd)
