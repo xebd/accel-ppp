@@ -129,10 +129,12 @@ static void ev_ses_pre_up(struct ap_session *ses)
 {
 	pid_t pid;
 	char *argv[8];
-	char *env[2];
+	char *env[4];
 	char ipaddr[17];
 	char peer_ipaddr[17];
 	char peername[64];
+	char calling_sid[64];
+	char called_sid[64];
 	struct pppd_compat_pd_t *pd = find_pd(ses);
 	
 	if (!pd)
@@ -148,7 +150,9 @@ static void ev_ses_pre_up(struct ap_session *ses)
 	fill_argv(argv, pd, conf_ip_up);
 	
 	env[0] = peername;
-	env[1] = NULL;
+	env[1] = calling_sid;
+	env[2] = called_sid;
+	env[3] = NULL;
 	fill_env(env, pd);
 
 	if (conf_ip_pre_up) {
@@ -184,10 +188,12 @@ static void ev_ses_started(struct ap_session *ses)
 {
 	pid_t pid;
 	char *argv[8];
-	char *env[2];
+	char *env[4];
 	char ipaddr[17];
 	char peer_ipaddr[17];
 	char peername[64];
+	char calling_sid[64];
+	char called_sid[64];
 	struct pppd_compat_pd_t *pd = find_pd(ses);
 	
 	if (!pd)
@@ -198,7 +204,9 @@ static void ev_ses_started(struct ap_session *ses)
 	fill_argv(argv, pd, conf_ip_up);
 	
 	env[0] = peername;
-	env[1] = NULL;
+	env[1] = calling_sid;
+	env[2] = called_sid;
+	env[3] = NULL;
 	fill_env(env, pd);
 
 	if (conf_ip_up) {
@@ -229,10 +237,12 @@ static void ev_ses_finished(struct ap_session *ses)
 {
 	pid_t pid;
 	char *argv[8];
-	char *env[5];
+	char *env[7];
 	char ipaddr[17];
 	char peer_ipaddr[17];
 	char peername[64];
+	char calling_sid[64];
+	char called_sid[64];
 	char connect_time[24];
 	char bytes_sent[24];
 	char bytes_rcvd[24];
@@ -256,10 +266,12 @@ static void ev_ses_finished(struct ap_session *ses)
 	fill_argv(argv, pd, conf_ip_down);
 
 	env[0] = peername;
-	env[1] = connect_time;
-	env[2] = bytes_sent;
-	env[3] = bytes_rcvd;
-	env[4] = NULL;
+	env[1] = calling_sid;
+	env[2] = called_sid;
+	env[3] = connect_time;
+	env[4] = bytes_sent;
+	env[5] = bytes_rcvd;
+	env[6] = NULL;
 	fill_env(env, pd);
 
 	if (conf_ip_down) {
@@ -327,6 +339,8 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 	char ipaddr[17];
 	char peer_ipaddr[17];
 	char peername[64];
+	char calling_sid[64];
+	char called_sid[64];
 	struct pppd_compat_pd_t *pd = find_pd(ev->ses);
 	
 	if (!pd)
@@ -339,7 +353,9 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 	fill_argv(argv, pd, conf_ip_change);
 
 	env[0] = peername;
-	env[1] = NULL;
+	env[1] = calling_sid;
+	env[2] = called_sid;
+	env[3] = NULL;
 	fill_env(env, pd);
 
 	sigchld_lock();
@@ -487,11 +503,13 @@ static void fill_env(char **env, struct pppd_compat_pd_t *pd)
 	rx_bytes = (uint64_t)ses->acct_rx_bytes + ses->acct_input_gigawords*4294967296llu;
 	
 	snprintf(env[0], 64, "PEERNAME=%s", pd->ses->username);
+	snprintf(env[1], 64, "CALLING_SID=%s", pd->ses->ctrl->calling_station_id);
+	snprintf(env[2], 64, "CALLED_SID=%s", pd->ses->ctrl->called_station_id);
 	
-	if (pd->ses->stop_time && env[1]) {
-		snprintf(env[1], 24, "CONNECT_TIME=%lu", pd->ses->stop_time - pd->ses->start_time);
-		snprintf(env[2], 24, "BYTES_SENT=%" PRIu64, tx_bytes);
-		snprintf(env[3], 24, "BYTES_RCVD=%" PRIu64, rx_bytes);
+	if (pd->ses->stop_time && env[3]) {
+		snprintf(env[3], 24, "CONNECT_TIME=%lu", pd->ses->stop_time - pd->ses->start_time);
+		snprintf(env[4], 24, "BYTES_SENT=%" PRIu64, tx_bytes);
+		snprintf(env[5], 24, "BYTES_RCVD=%" PRIu64, rx_bytes);
 	}
 }
 
