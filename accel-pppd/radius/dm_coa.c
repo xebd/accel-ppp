@@ -162,7 +162,7 @@ static void coa_request(struct radius_pd_t *rpd)
 	if (ev.res)
 		dm_coa_send_nak(serv.hnd.fd, rpd->dm_coa_req, &rpd->dm_coa_addr, 0);
 	else {
-		class = rad_packet_find_attr(rpd->dm_coa_req->pack, NULL, "Class");
+		class = rad_packet_find_attr(rpd->dm_coa_req, NULL, "Class");
 		if (class) {
 			prev_class = rpd->attr_class;
 
