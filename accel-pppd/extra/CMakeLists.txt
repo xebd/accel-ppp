@@ -1,6 +1,6 @@
 ADD_LIBRARY(pppd_compat SHARED pppd_compat.c)
 TARGET_LINK_LIBRARIES(pppd_compat sigchld)
-set_property(TARGET pppd_compat PROPERTY INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib/accel-ppp)
+set_property(TARGET pppd_compat PROPERTY INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib${LIB_SUFFIX}/accel-ppp)
 ADD_LIBRARY(ippool SHARED ippool.c)
 ADD_LIBRARY(ipv6pool SHARED ipv6pool.c)
 ADD_LIBRARY(sigchld SHARED sigchld.c)
@@ -10,7 +10,7 @@ TARGET_LINK_LIBRARIES(logwtmp util)
 ADD_LIBRARY(connlimit SHARED connlimit.c)
 
 INSTALL(TARGETS pppd_compat ippool ipv6pool sigchld chap-secrets logwtmp connlimit
-	LIBRARY DESTINATION lib/accel-ppp
+	LIBRARY DESTINATION lib${LIB_SUFFIX}/accel-ppp
 )
 
 IF (SHAPER)
@@ -20,7 +20,7 @@ IF (SHAPER)
 		SET_PROPERTY(TARGET shaper_tbf PROPERTY LINK_FLAGS "-L${LIBNL_PREFIX}/lib")
 	ENDIF (LIBNL_PREFIX)
 	TARGET_LINK_LIBRARIES(shaper_tbf nl m)
-	INSTALL(TARGETS shaper_tbf LIBRARY DESTINATION lib/accel-ppp)
+	INSTALL(TARGETS shaper_tbf LIBRARY DESTINATION lib${LIB_SUFFIX}/accel-ppp)
 ENDIF (SHAPER)
 
 
