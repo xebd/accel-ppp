@@ -94,9 +94,9 @@ static void magic_print(void (*print)(const char *fmt,...),struct lcp_option_t *
 	struct lcp_opt32_t *opt32 = (struct lcp_opt32_t *)ptr;
 
 	if (ptr)
-		print("<magic %04x>", ntohl(opt32->val));
+		print("<magic %08x>", ntohl(opt32->val));
 	else
-		print("<magic %04x>", magic_opt->magic);
+		print("<magic %08x>", magic_opt->magic);
 }
 
 static void magic_opt_init()
