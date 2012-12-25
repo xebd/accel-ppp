@@ -209,6 +209,12 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 	req_set_RA(rpd->acct_req, rpd->acct_req->serv->secret);
 
 	__rad_req_send(rpd->acct_req);
+	/* The above call may set rpd->acct_req to NULL in the following chain of events:
+	   1. __rad_req_send fails (on rad_server_realloc) and calls ppp_terminate;
+	   2. As a result, an EV_PPP_FINISHING event is fired;
+	   3. ppp_finishing calls rad_acct_stop that cleans up the request. */
+	if (!rpd->acct_req)
+		return;
 
 	__sync_add_and_fetch(&rpd->acct_req->serv->stat_interim_sent, 1);
 
