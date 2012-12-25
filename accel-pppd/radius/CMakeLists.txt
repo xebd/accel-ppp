@@ -19,7 +19,7 @@ ADD_DEFINITIONS(-DDICTIONARY="${CMAKE_INSTALL_PREFIX}/share/accel-ppp/radius/dic
 ADD_LIBRARY(radius SHARED ${sources})
 
 INSTALL(TARGETS radius
-	LIBRARY DESTINATION lib/accel-ppp
+	LIBRARY DESTINATION lib${LIB_SUFFIX}/accel-ppp
 )
 FILE(GLOB dict "${CMAKE_CURRENT_SOURCE_DIR}/dict/*")
 INSTALL(FILES ${dict} DESTINATION share/accel-ppp/radius)
