@@ -335,7 +335,7 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 {
 	pid_t pid;
 	char *argv[8];
-	char *env[2];
+	char *env[4];
 	char ipaddr[17];
 	char peer_ipaddr[17];
 	char peername[64];
