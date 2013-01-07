@@ -743,9 +743,9 @@ static void load_config(void)
 		conf_echo_failure = atoi(opt);
 
 	opt = conf_get_opt("pptp", "verbose");
-	if (opt && atoi(opt) > 0)
-		conf_verbose = 1;
-	
+	if (opt && atoi(opt) >= 0)
+		conf_verbose = atoi(opt) > 0;
+
 	conf_mppe = MPPE_UNSET;
 	opt = conf_get_opt("pptp", "mppe");
 	if (opt) {

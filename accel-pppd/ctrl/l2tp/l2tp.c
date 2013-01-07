@@ -1201,12 +1201,12 @@ static void load_config(void)
 	const char *opt;
 
 	opt = conf_get_opt("l2tp", "verbose");
-	if (opt && atoi(opt) > 0)
-		conf_verbose = 1;
+	if (opt && atoi(opt) >= 0)
+		conf_verbose = atoi(opt) > 0;
 
 	opt = conf_get_opt("l2tp", "avp_permissive");
-	if (opt && atoi(opt) > 0)
-		conf_avp_permissive = 1;
+	if (opt && atoi(opt) >= 0)
+		conf_avp_permissive = atoi(opt) > 0;
 
 	opt = conf_get_opt("l2tp", "hello-interval");
 	if (opt && atoi(opt) > 0)

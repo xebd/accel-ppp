@@ -177,8 +177,8 @@ static void load_config(void)
 	const char *opt;
 
 	opt = conf_get_opt("ppp", "check-ip");
-	if (opt && atoi(opt) > 0)
-		conf_check_exists = 1;
+	if (opt && atoi(opt) >= 0)
+		conf_check_exists = atoi(opt) > 0;
 }
 
 static void ipaddr_opt_init()
