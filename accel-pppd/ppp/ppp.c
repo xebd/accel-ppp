@@ -595,8 +595,8 @@ static void load_config(void)
 	const char *opt;
 
 	opt = conf_get_opt("ppp", "verbose");
-	if (opt && atoi(opt) > 0)
-		conf_ppp_verbose = 1;
+	if (opt && atoi(opt) >= 0)
+		conf_ppp_verbose = atoi(opt) > 0;
 
 	opt = conf_get_opt("ppp", "unit-cache");
 	if (opt && atoi(opt) > 0)

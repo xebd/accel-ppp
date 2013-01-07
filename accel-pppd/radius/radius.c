@@ -542,13 +542,13 @@ static int load_config(void)
 		conf_acct_timeout = atoi(opt);
 
 	opt = conf_get_opt("radius", "verbose");
-	if (opt && atoi(opt) > 0)
-		conf_verbose = 1;
-	
+	if (opt && atoi(opt) >= 0)
+		conf_verbose = atoi(opt) > 0;
+
 	opt = conf_get_opt("radius", "interim-verbose");
-	if (opt && atoi(opt) > 0)
-		conf_interim_verbose = 1;
-	
+	if (opt && atoi(opt) >= 0)
+		conf_interim_verbose = atoi(opt) > 0;
+
 	opt = conf_get_opt("radius", "nas-ip-address");
 	if (opt)
 		conf_nas_ip_address = inet_addr(opt);

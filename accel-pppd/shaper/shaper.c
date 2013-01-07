@@ -908,9 +908,9 @@ static void load_config(void)
 
 
 	opt = conf_get_opt("shaper", "verbose");
-	if (opt && atoi(opt) > 0)
-		conf_verbose = 1;
-	
+	if (opt && atoi(opt) >= 0)
+		conf_verbose = atoi(opt) > 0;
+
 	triton_context_call(&shaper_ctx, (triton_event_func)load_time_ranges, NULL);
 }
 
