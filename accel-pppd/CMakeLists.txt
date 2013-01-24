@@ -105,10 +105,10 @@ INSTALL(TARGETS accel-pppd
 INSTALL(FILES accel-ppp.conf.5 DESTINATION share/man/man5)
 
 IF (NOT DEFINED CPACK_TYPE)
-	INSTALL(FILES accel-ppp.conf DESTINATION /etc RENAME accel-ppp.conf.dist)
+	INSTALL(FILES accel-ppp.conf DESTINATION ${CMAKE_FIND_ROOT_PATH}/etc RENAME accel-ppp.conf.dist)
 
-	INSTALL(CODE "EXECUTE_PROCESS(COMMAND mkdir -p /var/log/accel-ppp)")
-	INSTALL(CODE "EXECUTE_PROCESS(COMMAND mkdir -p /var/run/accel-ppp)")
-	INSTALL(CODE "EXECUTE_PROCESS(COMMAND 'echo 0 > /var/run/accel-ppp/seq')")
+	INSTALL(CODE "EXECUTE_PROCESS(COMMAND mkdir -p ${CMAKE_FIND_ROOT_PATH}/var/log/accel-ppp)")
+	INSTALL(CODE "EXECUTE_PROCESS(COMMAND mkdir -p ${CMAKE_FIND_ROOT_PATH}/var/run/accel-ppp)")
+	INSTALL(CODE "EXECUTE_PROCESS(COMMAND 'echo 0 > ${CMAKE_FIND_ROOT_PATH}/var/run/accel-ppp/seq')")
 ENDIF (NOT DEFINED CPACK_TYPE)
 
