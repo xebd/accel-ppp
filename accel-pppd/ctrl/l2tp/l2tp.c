@@ -403,10 +403,11 @@ static int l2tp_session_disconnect(struct l2tp_sess_t *sess,
 	return 0;
 }
 
-static void l2tp_ppp_session_disconnect(void *param)
+static void l2tp_ppp_finished(struct ap_session *ses)
 {
-	struct l2tp_sess_t *sess = param;
+	struct l2tp_sess_t *sess = l2tp_session_self();
 
+	log_ppp_debug("l2tp: ppp finished\n");
 	if (sess->state1 != STATE_CLOSE) {
 		l2tp_send_CDN(sess, 2, 0);
 		l2tp_session_free(sess);
@@ -420,15 +421,6 @@ static void l2tp_ppp_session_disconnect(void *param)
 static void l2tp_ppp_started(struct ap_session *ses)
 {
 	log_ppp_debug("l2tp: ppp started\n");
-}
-
-static void l2tp_ppp_finished(struct ap_session *ses)
-{
-	struct ppp_t *ppp = container_of(ses, typeof(*ppp), ses);
-	struct l2tp_sess_t *sess = container_of(ppp, typeof(*sess), ppp);
-
-	log_ppp_debug("l2tp: ppp finished\n");
-	triton_context_call(&sess->sctx, l2tp_ppp_session_disconnect, sess);
 }
 
 static void l2tp_session_timeout(struct triton_timer_t *t)
