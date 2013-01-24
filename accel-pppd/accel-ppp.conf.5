@@ -349,10 +349,14 @@ Timeout waiting reply from client in seconds (default 5).
 .br
 Configuration of PPPoE module.
 .TP
-.BI "interface=" ethX[,padi-limit=n]
+.BI "interface=" [re:]ifname[,padi-limit=n]
 Specifies interface name to listen/send discovery packets. You may specify multiple
 .B interface
-options. Optional
+options. If
+.B ifname
+is prefixed with
+.B re:
+then ifname is considered as regular expression. Optional
 .B padi-limit
 parameter specifies limit of PADI packets to reply on this interface in 1 second period.
 .TP
@@ -587,6 +591,18 @@ Specifies address to use as local address of ppp interfaces if chap-secrets is u
 .TP
 .BI "chap-secrets=" file
 Specifies alternate chap-secrets file location (default is /etc/ppp/chap-secrets).
+.TP
+.BI "encrypted=" 0|1
+Specifies either chap-secrets is encrypted (read README).
+.TP
+.BI "username-hash=" hash1[,hash2]
+Specifies hash chain to calculate username hash.
+.br
+.B hash1
+,
+.B hash2
+are openssl known digest names (md5, sha1, etc).
+.TP
 .SH [ip-pool]
 .br
 Configuration of ippool module.

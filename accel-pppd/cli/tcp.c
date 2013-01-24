@@ -144,7 +144,7 @@ static int cln_read(struct triton_md_handler_t *h)
 	char *d;
 
 	while (1) {
-		n = read(h->fd, cln->cmdline + cln->recv_pos, RECV_BUF_SIZE - cln->recv_pos);
+		n = read(h->fd, cln->cmdline + cln->recv_pos, RECV_BUF_SIZE - 1 - cln->recv_pos);
 		if (n == 0)
 			break;
 		if (n < 0) {
@@ -154,11 +154,12 @@ static int cln_read(struct triton_md_handler_t *h)
 		}
 
 		cln->recv_pos += n;
-		
+		cln->cmdline[cln->recv_pos] = '\0';
+
 		while (cln->recv_pos) {
 			d = strchr((char *)cln->cmdline, '\n');
 			if (!d) {
-				if (cln->recv_pos == RECV_BUF_SIZE) {
+				if (cln->recv_pos == RECV_BUF_SIZE - 1) {
 					log_warn("cli: tcp: recv buffer overflow\n");
 					goto drop;
 				}
@@ -191,6 +192,9 @@ static int cln_write(struct triton_md_handler_t *h)
 {
 	struct tcp_client_t *cln = container_of(h, typeof(*cln), hnd);
 	int k;
+	
+	if (!cln->xmit_buf)
+		return 0;
 	
 	while (1) {
 		for (; cln->xmit_pos < cln->xmit_buf->size; cln->xmit_pos += k) {

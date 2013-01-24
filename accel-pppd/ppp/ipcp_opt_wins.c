@@ -19,33 +19,31 @@ static void wins_free(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt);
 static int wins_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt, uint8_t *ptr);
 static int wins_send_conf_nak(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt, uint8_t *ptr);
 static int wins_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt, uint8_t *ptr);
-static int wins_recv_conf_rej(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt, uint8_t *ptr);
-static void wins1_print(void (*print)(const char *fmt,...), struct ipcp_option_t*, uint8_t *ptr);
-static void wins2_print(void (*print)(const char *fmt,...), struct ipcp_option_t*, uint8_t *ptr);
+static void wins1_print(void (*print)(const char *fmt, ...), struct ipcp_option_t *, uint8_t *ptr);
+static void wins2_print(void (*print)(const char *fmt, ...), struct ipcp_option_t *, uint8_t *ptr);
 
 struct wins_option_t
 {
 	struct ipcp_option_t opt;
 	in_addr_t addr;
-	int rejected;
 };
 
-static struct ipcp_option_handler_t wins1_opt_hnd = {
+static struct ipcp_option_handler_t wins1_opt_hnd =
+{
 	.init = wins1_init,
 	.send_conf_req = wins_send_conf_req,
 	.send_conf_nak = wins_send_conf_nak,
 	.recv_conf_req = wins_recv_conf_req,
-	.recv_conf_rej = wins_recv_conf_rej,
 	.free = wins_free,
 	.print = wins1_print,
 };
 
-static struct ipcp_option_handler_t wins2_opt_hnd = {
+static struct ipcp_option_handler_t wins2_opt_hnd =
+{
 	.init = wins2_init,
 	.send_conf_req = wins_send_conf_req,
 	.send_conf_nak = wins_send_conf_nak,
 	.recv_conf_req = wins_recv_conf_req,
-	.recv_conf_rej = wins_recv_conf_rej,
 	.free = wins_free,
 	.print = wins2_print,
 };
@@ -53,9 +51,11 @@ static struct ipcp_option_handler_t wins2_opt_hnd = {
 static struct ipcp_option_t *wins1_init(struct ppp_ipcp_t *ipcp)
 {
 	struct wins_option_t *wins_opt = _malloc(sizeof(*wins_opt));
+
 	memset(wins_opt, 0, sizeof(*wins_opt));
 	wins_opt->opt.id = CI_WINS1;
 	wins_opt->opt.len = 6;
+	wins_opt->addr = conf_wins1;
 
 	return &wins_opt->opt;
 }
@@ -63,33 +63,25 @@ static struct ipcp_option_t *wins1_init(struct ppp_ipcp_t *ipcp)
 static struct ipcp_option_t *wins2_init(struct ppp_ipcp_t *ipcp)
 {
 	struct wins_option_t *wins_opt = _malloc(sizeof(*wins_opt));
+
 	memset(wins_opt, 0, sizeof(*wins_opt));
 	wins_opt->opt.id = CI_WINS2;
 	wins_opt->opt.len = 6;
+	wins_opt->addr = conf_wins2;
 
 	return &wins_opt->opt;
 }
 
 static void wins_free(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt)
 {
-	struct wins_option_t *wins_opt=container_of(opt,typeof(*wins_opt),opt);
+	struct wins_option_t *wins_opt = container_of(opt, typeof(*wins_opt), opt);
 
 	_free(wins_opt);
 }
 
 static int wins_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt, uint8_t *ptr)
 {
-	struct wins_option_t *wins_opt = container_of(opt, typeof(*wins_opt), opt);
-	struct ipcp_opt32_t *opt32 = (struct ipcp_opt32_t *)ptr;
-
-	if (!wins_opt->addr || wins_opt->rejected)
-		return 0;
-	
-	opt32->hdr.id = wins_opt->opt.id;
-	opt32->hdr.len = 6;
-	opt32->val = 0;
-
-	return 6;
+	return 0;
 }
 
 static int wins_send_conf_nak(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt, uint8_t *ptr)
@@ -105,21 +97,14 @@ static int wins_send_conf_nak(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt
 static int wins_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt, uint8_t *ptr)
 {
 	struct wins_option_t *wins_opt = container_of(opt, typeof(*wins_opt), opt);
-	struct ipcp_opt32_t *opt32 = (struct ipcp_opt32_t*)ptr;
+	struct ipcp_opt32_t *opt32 = (struct ipcp_opt32_t *)ptr;
 
 	if (opt32->hdr.len != 6)
 		return IPCP_OPT_REJ;
 
-	if (!wins_opt->addr)	{
-		if (wins_opt->opt.id == CI_WINS1 && conf_wins1)
-			wins_opt->addr=conf_wins1;
-		else if (wins_opt->opt.id == CI_WINS2 && conf_wins2)
-			wins_opt->addr=conf_wins2;
-		
-		if (!wins_opt->addr) {
-			wins_opt->addr = opt32->val;
-			return IPCP_OPT_ACK;
-		}
+	if (!wins_opt->addr) {
+		wins_opt->addr = opt32->val;
+		return IPCP_OPT_ACK;
 	}
 
 	if (wins_opt->addr == opt32->val)
@@ -128,16 +113,7 @@ static int wins_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt
 	return IPCP_OPT_NAK;
 }
 
-static int wins_recv_conf_rej(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt, uint8_t *ptr)
-{
-	struct wins_option_t *wins_opt = container_of(opt, typeof(*wins_opt), opt);
-
-	wins_opt->rejected = 1;
-
-	return 0;
-}
-
-static void wins1_print(void (*print)(const char *fmt,...), struct ipcp_option_t *opt, uint8_t *ptr)
+static void wins1_print(void (*print)(const char *fmt, ...), struct ipcp_option_t *opt, uint8_t *ptr)
 {
 	struct wins_option_t *wins_opt = container_of(opt, typeof(*wins_opt), opt);
 	struct ipcp_opt32_t *opt32 = (struct ipcp_opt32_t *)ptr;
@@ -151,7 +127,7 @@ static void wins1_print(void (*print)(const char *fmt,...), struct ipcp_option_t
 	print("<wins1 %s>", inet_ntoa(in));
 }
 
-static void wins2_print(void (*print)(const char *fmt,...), struct ipcp_option_t *opt, uint8_t *ptr)
+static void wins2_print(void (*print)(const char *fmt, ...), struct ipcp_option_t *opt, uint8_t *ptr)
 {
 	struct wins_option_t *wins_opt = container_of(opt, typeof(*wins_opt), opt);
 	struct ipcp_opt32_t *opt32 = (struct ipcp_opt32_t *)ptr;

@@ -11,6 +11,7 @@ SET(sources_c
 	ppp_ipcp.c
 	ipcp_opt_ipaddr.c
 	ipcp_opt_dns.c
+	ipcp_opt_wins.c
 	ppp_ccp.c	
 )
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})

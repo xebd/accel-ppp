@@ -215,22 +215,22 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
 	r = pwdb_check(&p->ppp->ses, peer_id, PPP_PAP, passwd);
 	if (r == PWDB_NO_IMPL) {
 		passwd2 = pwdb_get_passwd(&p->ppp->ses, peer_id);
-		if (!passwd2 || strcmp(passwd2, passwd))
+		if (!passwd2) {
+			if (conf_ppp_verbose)
+				log_ppp_warn("pap: user not found\n");
+			goto failed;
+		}
+
+		if (strcmp(passwd2, passwd))
 			r = PWDB_DENIED;
 		else
 			r = PWDB_SUCCESS;
+
 		_free(passwd2);
 	}
+
 	if (r == PWDB_DENIED) {
-		if (conf_ppp_verbose)
-			log_ppp_warn("PAP: authentication error\n");
-		pap_send_nak(p, hdr->id);
-		if (p->started)
-			ap_session_terminate(&p->ppp->ses, TERM_AUTH_ERROR, 0);
-		else
-			ppp_auth_failed(p->ppp, peer_id);
-		ret = -1;
-		_free(peer_id);
+		goto failed;
 	} else {
 		if (ppp_auth_succeeded(p->ppp, peer_id)) {
 			pap_send_nak(p, hdr->id);
@@ -246,7 +246,19 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
 
 	_free(passwd);
 
-	return ret;
+	return 0;
+		
+failed:
+	pap_send_nak(p, hdr->id);
+	if (p->started)
+		ap_session_terminate(&p->ppp->ses, TERM_AUTH_ERROR, 0);
+	else
+		ppp_auth_failed(p->ppp, peer_id);
+	
+	_free(passwd);
+	_free(peer_id);
+	
+	return -1;
 }
 
 static void pap_recv(struct ppp_handler_t *h)

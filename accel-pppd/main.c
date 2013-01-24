@@ -35,6 +35,8 @@ static char *conf_dump;
 static sigset_t orig_set;
 
 #ifdef CRYPTO_OPENSSL
+#include <openssl/ssl.h>
+
 static pthread_mutex_t *ssl_lock_cs;
 
 static unsigned long ssl_thread_id(void)
@@ -57,6 +59,7 @@ static void openssl_init(void)
 	SSL_library_init();
 	SSL_load_error_strings();
 	OpenSSL_add_all_algorithms();
+	OpenSSL_add_all_digests();
 
 	ssl_lock_cs = OPENSSL_malloc(CRYPTO_num_locks() * sizeof(pthread_mutex_t));
 

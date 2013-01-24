@@ -128,6 +128,7 @@ void triton_terminate(void);
 #define __init __attribute__((constructor))
 #define __exit __attribute__((destructor))
 #define __export __attribute__((visibility("default")))
+#define __unused __attribute__((unused))
 
 #undef offsetof
 #ifdef __compiler_offsetof
@@ -141,5 +142,6 @@ void triton_terminate(void);
 	(type *)( (char *)__mptr - offsetof(type,member) );})
 
 #define DEFINE_INIT(o, func) static void __init __init__(void){triton_register_init(o,func);}
+#define DEFINE_INIT2(o, func) static void __init __init2__(void){triton_register_init(o,func);}
 
 #endif

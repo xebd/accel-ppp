@@ -22,10 +22,12 @@ int __export pwdb_check(struct ap_session *ses, const char *username, int type, 
 		r = pwdb->check(pwdb, ses, username, type, args);
 		if (r == PWDB_NO_IMPL)
 			continue;
-		if (r == PWDB_SUCCESS)
-			return PWDB_SUCCESS;
 		res = r;
+		if (r == PWDB_SUCCESS)
+			break;
 	}
+
+	va_end(args);
 
 	return res;
 }
