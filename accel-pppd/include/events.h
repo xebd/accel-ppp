@@ -16,6 +16,7 @@
 #define EV_SES_ACCT_START   10
 #define EV_CONFIG_RELOAD		11
 #define EV_SES_AUTH_FAILED  12
+#define EV_SES_PRE_FINISHED 13
 #define EV_IP_CHANGED       100
 #define EV_SHAPER           101
 #define EV_MPPE_KEYS        102

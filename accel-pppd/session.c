@@ -125,6 +125,10 @@ void __export ap_session_finished(struct ap_session *ses)
 {
 	ses->terminated = 1;
 
+	ap_session_read_stats(ses, NULL);
+	
+	triton_event_fire(EV_SES_PRE_FINISHED, ses);
+
 	pthread_rwlock_wrlock(&ses_lock);
 	list_del(&ses->entry);
 	pthread_rwlock_unlock(&ses_lock);
@@ -202,11 +206,10 @@ void __export ap_session_terminate(struct ap_session *ses, int cause, int hard)
 	log_ppp_debug("terminate\n");
 
 	ap_session_ifdown(ses);
-	ap_session_read_stats(ses, NULL);
 
+	triton_event_fire(EV_SES_FINISHING, ses);
+			
 	ses->ctrl->terminate(ses, hard);
-
-	triton_event_fire(EV_SES_FINISHING, ses);		
 }
 
 void ap_shutdown_soft(void (*cb)(void))
