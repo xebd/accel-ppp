@@ -48,7 +48,7 @@ case "$1" in
   ;;
 
   status)
-    do_status
+	status_of_proc /usr/sbin/accel-pppd "accel-pppd"
   ;;
   *)
     log_success_msg "Usage: /etc/init.d/accel-ppp {start|stop|status|restart}"
