@@ -598,8 +598,8 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 		log_error("l2tp: bind: %s\n", strerror(errno));
 		goto out_err;
 	}
-	
-	if (connect(conn->hnd.fd, (struct sockaddr *)&pack->addr, sizeof(addr))) {
+
+	if (connect(conn->hnd.fd, (struct sockaddr *)&pack->addr, sizeof(pack->addr))) {
 		log_error("l2tp: connect: %s\n", strerror(errno));
 		goto out_err;
 	}
