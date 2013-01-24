@@ -1196,8 +1196,8 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 	if (!assigned_sid) {
 		if (conf_verbose)
 			log_ppp_warn("l2tp: ICRQ: no Assigned-Session-ID attribute present in message\n");
-		res = 0;
-		err = 0;
+		res = 2;
+		err = 6;
 		goto out_reject;
 	}
 
