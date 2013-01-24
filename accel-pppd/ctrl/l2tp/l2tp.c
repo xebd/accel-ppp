@@ -107,6 +107,7 @@ struct l2tp_conn_t
 
 	int state;
 	void *sessions;
+	unsigned int sess_count;
 };
 
 static pthread_mutex_t l2tp_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -123,6 +124,18 @@ static void l2tp_send_SCCRP(struct l2tp_conn_t *conn);
 static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack, int log_debug);
 static void __l2tp_send(struct l2tp_packet_t *pack);
 static int l2tp_conn_read(struct triton_md_handler_t *);
+static void l2tp_tunnel_session_freed(void *data);
+
+
+static inline struct l2tp_conn_t *l2tp_tunnel_self(void)
+{
+	return container_of(triton_context_self(), struct l2tp_conn_t, ctx);
+}
+
+static inline struct l2tp_sess_t *l2tp_session_self(void)
+{
+	return container_of(triton_context_self(), struct l2tp_sess_t, sctx);
+}
 
 static void l2tp_conn_log(void (*print)(const char *fmt, ...), struct l2tp_conn_t *conn)
 {
@@ -258,6 +271,9 @@ static void __l2tp_session_free(void *data)
 	if (sess->ctrl.called_station_id)
 		_free(sess->ctrl.called_station_id);
 
+	triton_context_call(&sess->paren_conn->ctx,
+			    l2tp_tunnel_session_freed, NULL);
+
 	mempool_free(sess);
 }
 
@@ -275,9 +291,6 @@ static void l2tp_tunnel_free_session(void *sess)
 
 	tdelete(sess, &conn->sessions, sess_cmp);
 	__l2tp_tunnel_free_session(sess);
-	if (conn->sessions == NULL) {
-		l2tp_tunnel_disconnect(conn, 1, 0);
-	}
 }
 
 static void l2tp_session_free(struct l2tp_sess_t *sess)
@@ -290,13 +303,39 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 {
 	struct l2tp_packet_t *pack;
 
-	if (conn->state == STATE_CLOSE)
+	if (conn->state != STATE_CLOSE) {
+		l2tp_conn_log(log_debug, conn);
+		log_debug("tunnel_free\n");
+		conn->state = STATE_CLOSE;
+	}
+
+	if (conn->sess_count != 0) {
+		/*
+		 * There are still sessions in this tunnel: remove the ones
+		 * accessible from conn->sessions then exit.
+		 *
+		 * Each removed session will make an asynchronous call to
+		 * l2tp_tunnel_session_freed(), which is responsible for
+		 * calling l2tp_tunnel_free() again once the last session
+		 * gets removed.
+		 *
+		 * There may be also sessions in this tunnel that are not
+		 * referenced in conn->sessions. This can happen when a
+		 * a session has been removed, but its cleanup function has
+		 * not yet been scheduled. Such sessions will also call
+		 * l2tp_tunnel_session_freed() after cleanup, so
+		 * l2tp_tunnel_free() will be called again once every sessions
+		 * have been cleaned up.
+		 *
+		 * This behaviour ensures that the parent tunnel of a session
+		 * remains valid during this session's lifetime.
+		 */
+		if (conn->sessions) {
+			tdestroy(conn->sessions, __l2tp_tunnel_free_session);
+			conn->sessions = NULL;
+		}
 		return;
-
-	l2tp_conn_log(log_debug, conn);
-	log_debug("tunnel_free\n");
-
-	tdestroy(conn->sessions, __l2tp_tunnel_free_session);
+	}
 
 	triton_md_unregister_handler(&conn->hnd);
 	close(conn->hnd.fd);
@@ -328,9 +367,18 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 	if (conn->challenge_len)
 	    _free(conn->challenge.octets);
 
-	conn->state = STATE_CLOSE;
-
 	mempool_free(conn);
+}
+
+static void l2tp_tunnel_session_freed(void *data)
+{
+	struct l2tp_conn_t *conn = l2tp_tunnel_self();
+
+	if (--conn->sess_count == 0) {
+		if (conn->state != STATE_CLOSE)
+			l2tp_send_StopCCN(conn, 1, 0);
+		l2tp_tunnel_free(conn);
+	}
 }
 
 static int l2tp_session_disconnect(struct l2tp_sess_t *sess,
@@ -475,10 +523,13 @@ static struct l2tp_sess_t *l2tp_tunnel_alloc_session(struct l2tp_conn_t *conn)
 
 static int l2tp_tunnel_confirm_session(struct l2tp_sess_t *sess)
 {
+	struct l2tp_conn_t *conn = l2tp_tunnel_self();
+
 	if (triton_context_register(&sess->sctx, &sess->ppp.ses) < 0)
 		return -1;
 	triton_context_wakeup(&sess->sctx);
 	__sync_add_and_fetch(&stat_starting, 1);
+	++conn->sess_count;
 
 	return 0;
 }
@@ -618,6 +669,7 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 	}
 
 	conn->sessions = NULL;
+	conn->sess_count = 0;
 	triton_context_call(&conn->ctx, (triton_event_func)l2tp_send_SCCRP, conn);
 
 	return 0;
