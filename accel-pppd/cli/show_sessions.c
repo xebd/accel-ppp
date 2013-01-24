@@ -454,6 +454,8 @@ static void print_comp(const struct ap_session *ses, char *buf)
 {
 	if (ses->comp)
 		snprintf(buf, CELL_SIZE, "%s", ses->comp);
+	else
+		buf[0] = 0;
 }
 
 static void init(void)
