@@ -624,8 +624,7 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 	if (!conn->tid) {
 		if (conf_verbose)
 			log_warn("l2tp: no free tid available\n");
-		mempool_free(conn);
-		return -1;
+		goto out_err;
 	}
 
 	memcpy(&conn->lac_addr, &pack->addr, sizeof(pack->addr));
