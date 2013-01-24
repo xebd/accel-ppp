@@ -1276,6 +1276,7 @@ static int l2tp_recv_CDN(struct l2tp_sess_t *sess, struct l2tp_packet_t *pack)
 		return 0;
 	}
 
+	l2tp_send_ZLB(sess->paren_conn);
 	l2tp_session_free(sess);
 
 	return 0;
