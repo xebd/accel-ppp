@@ -293,10 +293,22 @@ static void l2tp_tunnel_free_session(void *sess)
 	__l2tp_tunnel_free_session(sess);
 }
 
+static void l2tp_tunnel_free_sessionid(void *data)
+{
+	uint16_t sid = (intptr_t)data;
+	struct l2tp_conn_t *conn = l2tp_tunnel_self();
+	struct l2tp_sess_t *sess = l2tp_tunnel_get_session(conn, sid);
+
+	if (sess)
+		l2tp_tunnel_free_session(sess);
+}
+
 static void l2tp_session_free(struct l2tp_sess_t *sess)
 {
-	triton_context_call(&sess->paren_conn->ctx, l2tp_tunnel_free_session,
-			    sess);
+	intptr_t sid = sess->sid;
+
+	triton_context_call(&sess->paren_conn->ctx,
+			    l2tp_tunnel_free_sessionid, (void *)sid);
 }
 
 static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
