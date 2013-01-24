@@ -186,7 +186,7 @@ static void destablish_ppp(struct ppp_t *ppp)
 {
 	struct pppunit_cache *uc;
 
-	triton_event_fire(EV_SES_PRE_FINISHED, ppp);
+	triton_event_fire(EV_SES_PRE_FINISHED, &ppp->ses);
 
 	triton_md_unregister_handler(&ppp->chan_hnd);
 	triton_md_unregister_handler(&ppp->unit_hnd);
@@ -434,7 +434,7 @@ void __export ppp_layer_finished(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 	destablish_ppp(ppp);
 }
 
-void __export ppp_terminate(struct ap_session *ses, int hard)
+void ppp_terminate(struct ap_session *ses, int hard)
 {
 	struct ppp_t *ppp = container_of(ses, typeof(*ppp), ses);
 	struct layer_node_t *n;
