@@ -62,6 +62,9 @@ int __export ap_session_starting(struct ap_session *ses)
 	struct ifreq ifr;
 	struct rtnl_link_stats stats;
 
+	if (ap_shutdown)
+		return -1;
+
 	if (ses->ifindex == -1) {
 		memset(&ifr, 0, sizeof(ifr));
 		strcpy(ifr.ifr_name, ses->ifname);
@@ -103,6 +106,9 @@ int __export ap_session_starting(struct ap_session *ses)
 
 void __export ap_session_activate(struct ap_session *ses)
 {
+	if (ap_shutdown)
+		return;
+
 	ap_session_ifup(ses);
 
 	ses->state = AP_STATE_ACTIVE;
@@ -118,6 +124,10 @@ void __export ap_session_activate(struct ap_session *ses)
 void __export ap_session_finished(struct ap_session *ses)
 {
 	ses->terminated = 1;
+
+	ap_session_read_stats(ses, NULL);
+	
+	triton_event_fire(EV_SES_PRE_FINISHED, ses);
 
 	pthread_rwlock_wrlock(&ses_lock);
 	list_del(&ses->entry);
