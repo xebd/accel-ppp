@@ -185,9 +185,7 @@ exit_close_chan:
 static void destablish_ppp(struct ppp_t *ppp)
 {
 	struct pppunit_cache *uc;
-
-	triton_event_fire(EV_SES_PRE_FINISHED, ppp);
-
+	
 	triton_md_unregister_handler(&ppp->chan_hnd);
 	triton_md_unregister_handler(&ppp->unit_hnd);
 	
@@ -442,7 +440,7 @@ void __export ppp_terminate(struct ap_session *ses, int hard)
 	int s = 0;
 
 	if (hard) {
-		destablish_ppp(ppp);
+		triton_context_call(ses->ctrl->ctx, (triton_event_func)destablish_ppp, ppp);
 		return;
 	}
 	
@@ -457,7 +455,7 @@ void __export ppp_terminate(struct ap_session *ses, int hard)
 	if (s)
 		return;
 
-	destablish_ppp(ppp);
+	triton_context_call(ses->ctrl->ctx, (triton_event_func)destablish_ppp, ppp);
 }
 
 void __export ppp_register_chan_handler(struct ppp_t *ppp,struct ppp_handler_t *h)
