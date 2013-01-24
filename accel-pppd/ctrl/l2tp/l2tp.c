@@ -235,11 +235,9 @@ static void __l2tp_session_free(void *data)
 
 	switch (sess->state1) {
 	case STATE_PPP:
-		__sync_sub_and_fetch(&stat_active, 1);
 		sess->state1 = STATE_CLOSE;
 		ap_session_terminate(&sess->ppp.ses,
 				     TERM_USER_REQUEST, 1);
-		triton_event_fire(EV_CTRL_FINISHED, &sess->ppp.ses);
 		/* No cleanup here, "sess" must remain a valid session
 		   pointer (even if it no l2tp_conn_t points to it anymore).
 		   This is because the above call to ap_session_terminate()
@@ -252,9 +250,10 @@ static void __l2tp_session_free(void *data)
 	case STATE_WAIT_ICCN:
 	case STATE_ESTB:
 		__sync_sub_and_fetch(&stat_starting, 1);
-		triton_event_fire(EV_CTRL_FINISHED, &sess->ppp.ses);
 		break;
 	}
+
+	triton_event_fire(EV_CTRL_FINISHED, &sess->ppp.ses);
 
 	log_ppp_info1("disconnected\n");
 
@@ -408,7 +407,9 @@ static void l2tp_ppp_finished(struct ap_session *ses)
 	struct l2tp_sess_t *sess = l2tp_session_self();
 
 	log_ppp_debug("l2tp: ppp finished\n");
+	__sync_sub_and_fetch(&stat_active, 1);
 	if (sess->state1 != STATE_CLOSE) {
+		sess->state1 = STATE_CLOSE;
 		l2tp_send_CDN(sess, 2, 0);
 		l2tp_session_free(sess);
 	} else {
