@@ -257,10 +257,10 @@ static void __l2tp_session_free(void *data)
 
 	log_ppp_info1("disconnected\n");
 
-	triton_context_unregister(&sess->sctx);
-
 	if (sess->timeout_timer.tpd)
 		triton_timer_del(&sess->timeout_timer);
+	triton_context_unregister(&sess->sctx);
+
 	if (sess->ppp.fd != -1)
 		close(sess->ppp.fd);
 	if (sess->ppp.ses.chan_name)
@@ -982,8 +982,7 @@ static int l2tp_send_ICRP(struct l2tp_sess_t *sess)
 	l2tp_send(sess->paren_conn, pack, 0);
 
 	if (!sess->timeout_timer.tpd)
-		triton_timer_add(&sess->paren_conn->ctx,
-				 &sess->timeout_timer, 0);
+		triton_timer_add(&sess->sctx, &sess->timeout_timer, 0);
 	else
 		triton_timer_mod(&sess->timeout_timer, 0);
 	
