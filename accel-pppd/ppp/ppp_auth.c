@@ -317,11 +317,6 @@ static void auth_layer_free(struct ppp_layer_data_t *ld)
 	_free(ad);
 }
 
-static void __terminate_sec(struct ap_session *ses)
-{
-	ap_session_terminate(ses, TERM_NAS_REQUEST, 0);
-}
-
 static void __ppp_auth_started(struct ppp_t *ppp)
 {
 	struct auth_layer_data_t *ad = container_of(ppp_find_layer_data(ppp, &auth_layer), typeof(*ad), ld);
@@ -339,31 +334,12 @@ static void __ppp_auth_started(struct ppp_t *ppp)
 
 int __export ppp_auth_succeeded(struct ppp_t *ppp, char *username)
 {
-	struct ap_session *ses;
 	struct auth_layer_data_t *ad = container_of(ppp_find_layer_data(ppp, &auth_layer), typeof(*ad), ld);
 
-	if (conf_single_session >= 0) {
-		pthread_rwlock_rdlock(&ses_lock);
-		list_for_each_entry(ses, &ses_list, entry) {
-			if (ses->username && !strcmp(ses->username, username)) {
-				if (conf_single_session == 0) {
-					pthread_rwlock_unlock(&ses_lock);
-					log_ppp_info1("%s: second session denied\n", username);
-					return -1;
-				} else {
-					if (conf_single_session == 1) {
-						ap_session_ifdown(ses);
-						triton_context_call(ses->ctrl->ctx, (triton_event_func)__terminate_sec, ses);
-					}
-				}
-			}
-		}
-		pthread_rwlock_unlock(&ses_lock);
-	}
+	if (ap_session_check_single(username))
+		return -1;
 
-	pthread_rwlock_wrlock(&ses_lock);
 	ppp->ses.username = username;
-	pthread_rwlock_unlock(&ses_lock);
 
 	triton_context_call(ppp->ses.ctrl->ctx, (triton_event_func)__ppp_auth_started, ppp);
 

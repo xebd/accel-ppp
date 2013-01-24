@@ -28,7 +28,6 @@
 #include "memdebug.h"
 
 int __export conf_ppp_verbose;
-int conf_single_session = -1;
 int conf_unit_cache = 0;
 
 static mempool_t buf_pool;
@@ -599,15 +598,6 @@ static void load_config(void)
 	if (opt && atoi(opt) > 0)
 		conf_ppp_verbose = 1;
 
-	opt = conf_get_opt("ppp", "single-session");
-	if (opt) {
-		if (!strcmp(opt, "deny"))
-			conf_single_session = 0;
-		else if (!strcmp(opt, "replace"))
-			conf_single_session = 1;
-	} else 
-		conf_single_session = -1;
-	
 	opt = conf_get_opt("ppp", "unit-cache");
 	if (opt && atoi(opt) > 0)
 		conf_unit_cache = atoi(opt);

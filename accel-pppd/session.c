@@ -23,7 +23,9 @@
 #include "mempool.h"
 #include "memdebug.h"
 
-int conf_sid_ucase;
+static int conf_sid_ucase;
+static int conf_single_session = -1;
+
 pthread_rwlock_t __export ses_lock = PTHREAD_RWLOCK_INITIALIZER;
 __export LIST_HEAD(ses_list);
 
@@ -261,10 +263,41 @@ int __export ap_session_read_stats(struct ap_session *ses, struct rtnl_link_stat
 	return 0;
 }
 
+static void __terminate_sec(struct ap_session *ses)
+{
+	ap_session_terminate(ses, TERM_NAS_REQUEST, 0);
+}
+
+int __export ap_session_check_single(const char *username)
+{
+	struct ap_session *ses;
+
+	if (conf_single_session >= 0) {
+		pthread_rwlock_rdlock(&ses_lock);
+		list_for_each_entry(ses, &ses_list, entry) {
+			if (ses->username && !strcmp(ses->username, username)) {
+				if (conf_single_session == 0) {
+					pthread_rwlock_unlock(&ses_lock);
+					log_ppp_info1("%s: second session denied\n", username);
+					return -1;
+				} else {
+					if (conf_single_session == 1) {
+						ap_session_ifdown(ses);
+						triton_context_call(ses->ctrl->ctx, (triton_event_func)__terminate_sec, ses);
+					}
+				}
+			}
+		}
+		pthread_rwlock_unlock(&ses_lock);
+	}
+
+	return 0;
+}
+
 static void save_seq(void)
 {
 	FILE *f;
-	char *opt = conf_get_opt("ppp", "seq-file");
+	char *opt = conf_get_opt("common", "seq-file");
 	if (!opt)
 		opt = "/var/run/accel-ppp/seq";
 
@@ -277,7 +310,7 @@ static void save_seq(void)
 
 static void load_config(void)
 {
-	char *opt;
+	const char *opt;
 
 	opt = conf_get_opt("common", "sid-case");
 	if (opt) {
@@ -286,6 +319,15 @@ static void load_config(void)
 		else if (strcmp(opt, "lower"))
 			log_emerg("sid-case: invalid format\n");
 	}
+	
+	opt = conf_get_opt("common", "single-session");
+	if (opt) {
+		if (!strcmp(opt, "deny"))
+			conf_single_session = 0;
+		else if (!strcmp(opt, "replace"))
+			conf_single_session = 1;
+	} else 
+		conf_single_session = -1;
 }
 
 static void init(void)
@@ -315,7 +357,7 @@ static void init(void)
 	
 	fcntl(urandom_fd, F_SETFD, fcntl(urandom_fd, F_GETFD) | FD_CLOEXEC);
 
-	opt = conf_get_opt("session", "seq-file");
+	opt = conf_get_opt("common", "seq-file");
 	if (!opt)
 		opt = "/var/run/accel-ppp/seq";
 	
