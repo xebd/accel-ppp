@@ -1128,6 +1128,7 @@ static int l2tp_recv_SCCCN(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 			return -1;
 		}
 		conn->state = STATE_ESTB;
+		l2tp_send_ZLB(conn);
 	}
 	else
 		log_ppp_warn("l2tp: unexpected SCCCN\n");
