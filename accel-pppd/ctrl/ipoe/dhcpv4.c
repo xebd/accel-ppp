@@ -44,6 +44,7 @@ static mempool_t opt_pool;
 static LIST_HEAD(relay_list);
 
 static int dhcpv4_read(struct triton_md_handler_t *h);
+int dhcpv4_packet_add_opt(struct dhcpv4_packet *pack, int type, const void *data, int len);
 
 static struct dhcpv4_iprange *parse_range(const char *str)
 {
@@ -433,6 +434,27 @@ int dhcpv4_parse_opt82(struct dhcpv4_option *opt, uint8_t **agent_circuit_id, ui
 	return 0;
 }
 
+int dhcpv4_packet_insert_opt82(struct dhcpv4_packet *pack, const char *agent_circuit_id, const char *agent_remote_id)
+{
+	int len1 = strlen(agent_circuit_id);
+	int len2 = strlen(agent_remote_id);
+	uint8_t *data = _malloc(4 + len1 + len2);
+	uint8_t *ptr = data;
+	int r;
+
+	*ptr++ = 1;
+	*ptr++ = len1;
+	memcpy(ptr, agent_circuit_id, len1); ptr += len1;
+
+	*ptr++ = 2;
+	*ptr++ = len2;
+	memcpy(ptr, agent_remote_id, len2); ptr += len2;
+
+	r = dhcpv4_packet_add_opt(pack, 82, data, 4 + len1 + len2);
+	_free(data);
+
+	return r;
+}
 
 static int dhcpv4_read(struct triton_md_handler_t *h)
 {
@@ -628,6 +650,9 @@ int dhcpv4_packet_add_opt(struct dhcpv4_packet *pack, int type, const void *data
 	memcpy(opt->data, data, len);
 
 	list_add_tail(&opt->entry, &pack->options);
+
+	if (type == 82)
+		pack->relay_agent = opt;
 
 	return 0;
 }

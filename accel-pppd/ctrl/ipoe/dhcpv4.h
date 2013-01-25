@@ -114,6 +114,7 @@ int dhcpv4_send_nak(struct dhcpv4_serv *serv, struct dhcpv4_packet *req);
 
 void dhcpv4_packet_ref(struct dhcpv4_packet *pack);
 struct dhcpv4_option *dhcpv4_packet_find_opt(struct dhcpv4_packet *pack, int type);
+int dhcpv4_packet_insert_opt82(struct dhcpv4_packet *pack, const char *agent_circuit_id, const char *agent_remote_id);
 void dhcpv4_packet_free(struct dhcpv4_packet *pack);
 
 int dhcpv4_check_options(struct dhcpv4_packet *);

@@ -72,6 +72,7 @@ static int conf_netmask = 24;
 static int conf_lease_time = 600;
 static int conf_lease_timeout = 660;
 static int conf_verbose;
+static const char *conf_agent_remote_id;
 
 static unsigned int stat_starting;
 static unsigned int stat_active;
@@ -400,6 +401,11 @@ static void ipoe_session_start(struct ipoe_session *ses)
 	}
 
 	if (ses->dhcpv4_request && ses->serv->dhcpv4_relay) {
+		if (!ses->dhcpv4_request->relay_agent && dhcpv4_packet_insert_opt82(ses->dhcpv4_request, ses->serv->ifname, conf_agent_remote_id)) {
+			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 0);
+			return;
+		}
+
 		dhcpv4_relay_send(ses->serv->dhcpv4_relay, ses->dhcpv4_request, ses->relay_server_id);
 
 		ses->timer.expire = ipoe_session_timeout;
@@ -1695,6 +1701,12 @@ static void load_config(void)
 		conf_mode = MODE_L2;
 	
 	conf_relay = conf_get_opt("ipoe", "relay");
+	
+	opt = conf_get_opt("ipoe", "agent-remote-id");
+	if (opt)
+		conf_agent_remote_id = opt;
+	else
+		conf_agent_remote_id = "accel-pppd";
 
 	conf_dhcpv4 = 0;
 	conf_up = 0;
