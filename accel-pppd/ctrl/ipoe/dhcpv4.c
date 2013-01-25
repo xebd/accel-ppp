@@ -442,6 +442,8 @@ int dhcpv4_packet_insert_opt82(struct dhcpv4_packet *pack, const char *agent_cir
 	uint8_t *ptr = data;
 	int r;
 
+	pack->ptr--;
+
 	*ptr++ = 1;
 	*ptr++ = len1;
 	memcpy(ptr, agent_circuit_id, len1); ptr += len1;
@@ -452,6 +454,8 @@ int dhcpv4_packet_insert_opt82(struct dhcpv4_packet *pack, const char *agent_cir
 
 	r = dhcpv4_packet_add_opt(pack, 82, data, 4 + len1 + len2);
 	_free(data);
+	
+	*pack->ptr++ = 255;
 
 	return r;
 }
