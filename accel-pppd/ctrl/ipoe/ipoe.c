@@ -1369,7 +1369,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 		}
 
 		if (serv->opt_dhcpv4 && opt_relay && opt_giaddr) {
-			if (opt_ifcfg)
+			if (opt_ifcfg && opt_mode == MODE_L3)
 				ipoe_serv_add_addr(serv, giaddr);
 			serv->dhcpv4_relay = dhcpv4_relay_create(opt_relay, opt_giaddr, &serv->ctx, (triton_event_func)ipoe_recv_dhcpv4_relay);
 		}
