@@ -566,7 +566,7 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 		}
 	}
 	
-	if (ses->serv->opt_ifcfg)
+	if (ses->serv->opt_ifcfg || ses->serv->mode == MODE_L2)
 		ipoe_ifcfg_add(ses);
 	
 	if (ses->l4_redirect)
