@@ -439,6 +439,12 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 		
 		if (!ses->siaddr)
 			ses->siaddr = ses->ses.ipv4->addr;
+	} else if (ses->yiaddr) {
+		ses->ses.ipv4 = &ses->ipv4;
+		ses->ipv4.addr = ses->siaddr;
+		ses->ipv4.peer_addr = ses->yiaddr;
+		ses->ipv4.mask = ses->mask;
+		ses->ipv4.owner = NULL;
 	}
 	
 	if (!ses->mask)
@@ -456,8 +462,13 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 	} else {
 		if (ipoe_nl_modify(ses->ifindex, ses->yiaddr, ses->ses.ipv4 ? ses->ses.ipv4->peer_addr : 1, NULL, NULL))
 			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 0);
-		else
+		else {
 			ap_session_activate(&ses->ses);
+			ses->timer.expire = ipoe_session_timeout;
+			ses->timer.expire_tv.tv_sec = conf_lease_timeout ? conf_lease_timeout : ses->lease_time;
+			if (ses->timer.tpd)
+				triton_timer_mod(&ses->timer, 0);
+		}
 	}
 }
 
@@ -512,16 +523,18 @@ static void ipoe_ifcfg_add(struct ipoe_session *ses)
 {
 	struct ipoe_serv *serv = ses->serv;
 
-	if (ses->serv->opt_shared || ses->serv->dhcpv4_relay)
-		ipoe_serv_add_addr(ses->serv, ses->siaddr);
-	else {
-		pthread_mutex_lock(&serv->lock);
-		if (ipaddr_add(serv->ifindex, ses->siaddr, 32))
-			log_ppp_warn("ipoe: failed to add addess to interface '%s'\n", serv->ifname);
-		pthread_mutex_unlock(&serv->lock);
-	}
-
-	if (iproute_add(serv->ifindex, ses->siaddr, ses->yiaddr))
+	if (ses->mask != 32) {
+		if (ses->serv->opt_shared)
+			ipoe_serv_add_addr(ses->serv, ses->siaddr);
+		else {
+			pthread_mutex_lock(&serv->lock);
+			if (ipaddr_add(serv->ifindex, ses->siaddr, 32))
+				log_ppp_warn("ipoe: failed to add addess to interface '%s'\n", serv->ifname);
+			pthread_mutex_unlock(&serv->lock);
+		}
+		if (iproute_add(serv->ifindex, ses->siaddr, ses->yiaddr))
+			log_ppp_warn("ipoe: failed to add route to interface '%s'\n", serv->ifname);
+	} else if (iproute_add(serv->ifindex, 0, ses->yiaddr))
 		log_ppp_warn("ipoe: failed to add route to interface '%s'\n", serv->ifname);
 
 	ses->ifcfg = 1;
@@ -531,17 +544,20 @@ static void ipoe_ifcfg_del(struct ipoe_session *ses)
 {
 	struct ipoe_serv *serv = ses->serv;
 
-	if (iproute_del(serv->ifindex, ses->yiaddr))
+	if (ses->mask != 32) {
+		if (iproute_del(serv->ifindex, ses->yiaddr))
+			log_ppp_warn("ipoe: failed to delete route from interface '%s'\n", serv->ifname);
+			
+		if (ses->serv->opt_shared) {
+			ipoe_serv_del_addr(ses->serv, ses->siaddr);
+		} else {
+			pthread_mutex_lock(&serv->lock);
+			if (ipaddr_del(serv->ifindex, ses->siaddr))
+				log_ppp_warn("ipoe: failed to remove addess from interface '%s'\n", serv->ifname);
+			pthread_mutex_unlock(&serv->lock);
+		}
+	} else if (iproute_del(serv->ifindex, ses->yiaddr))
 		log_ppp_warn("ipoe: failed to delete route from interface '%s'\n", serv->ifname);
-		
-	if (ses->serv->opt_shared || ses->serv->dhcpv4_relay) {
-		ipoe_serv_del_addr(ses->serv, ses->siaddr);
-	} else {
-		pthread_mutex_lock(&serv->lock);
-		if (ipaddr_del(serv->ifindex, ses->siaddr))
-			log_ppp_warn("ipoe: failed to add addess to interface '%s'\n", serv->ifname);
-		pthread_mutex_unlock(&serv->lock);
-	}
 }
 
 static void __ipoe_session_activate(struct ipoe_session *ses)
@@ -578,6 +594,11 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 		dhcpv4_packet_free(ses->dhcpv4_request);
 		ses->dhcpv4_request = NULL;
 	}
+	
+	ses->timer.expire = ipoe_session_timeout;
+	ses->timer.expire_tv.tv_sec = conf_lease_timeout ? conf_lease_timeout : ses->lease_time;
+	if (ses->timer.tpd)
+		triton_timer_mod(&ses->timer, 0);
 }
 
 static void ipoe_session_activate(struct ipoe_session *ses)
@@ -615,6 +636,23 @@ static void ipoe_session_keepalive(struct dhcpv4_packet *pack)
 	dhcpv4_packet_free(ses->dhcpv4_request);
 	ses->dhcpv4_request = NULL;
 }
+			
+static void ipoe_session_decline(struct dhcpv4_packet *pack)
+{
+	struct ipoe_session *ses = container_of(triton_context_self(), typeof(*ses), ctx);
+
+	if (conf_verbose) {
+		log_ppp_info2("recv ");
+		dhcpv4_print_packet(pack, 0, log_ppp_info2);
+	}
+	
+	if (pack->msg_type == DHCPDECLINE && ses->serv->dhcpv4_relay)
+		dhcpv4_relay_send(ses->serv->dhcpv4_relay, pack, 0, ses->serv->ifname, conf_agent_remote_id);
+
+	dhcpv4_packet_free(pack);
+
+	ap_session_terminate(&ses->ses, TERM_USER_REQUEST, 0);
+}
 
 static void ipoe_session_started(struct ap_session *s)
 {
@@ -622,8 +660,6 @@ static void ipoe_session_started(struct ap_session *s)
 	
 	log_ppp_debug("ipoe: session started\n");
 
-	ses->timer.expire = ipoe_session_timeout;
-	ses->timer.expire_tv.tv_sec = conf_lease_timeout;
 	if (ses->timer.tpd)
 		triton_timer_mod(&ses->timer, 0);
 }
@@ -801,6 +837,11 @@ static struct ipoe_session *ipoe_session_create_dhcpv4(struct ipoe_serv *serv, s
 	return ses;
 }
 
+static void __ipoe_session_terminate(struct ap_session *ses)
+{
+	ap_session_terminate(ses, TERM_USER_REQUEST, 0);
+}
+
 static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *pack)
 {
 	struct ipoe_serv *serv = container_of(dhcpv4->ctx, typeof(*serv), ctx);
@@ -846,11 +887,14 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 
 			dhcpv4_send_nak(dhcpv4, pack);
 		} else {
+			if (pack->hdr->ciaddr == ses->yiaddr && pack->hdr->xid != ses->xid)
+				ses->xid = pack->hdr->xid;
 			if ((pack->server_id && (pack->server_id != ses->siaddr || pack->request_ip != ses->yiaddr)) ||
 				(pack->hdr->ciaddr && (pack->hdr->xid != ses->xid || pack->hdr->ciaddr != ses->yiaddr))) {
 
 				if (conf_verbose) {
-					log_info2("recv ");
+					log_switch(dhcpv4->ctx, &ses->ses);
+					log_ppp_info2("recv ");
 					dhcpv4_print_packet(pack, 0, log_info2);
 				}
 
@@ -858,8 +902,8 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 					dhcpv4_send_nak(dhcpv4, pack);
 				else if (ses->serv->dhcpv4_relay)
 					dhcpv4_relay_send(ses->serv->dhcpv4_relay, pack, 0, ses->serv->ifname, conf_agent_remote_id);
-
-				ap_session_terminate(&ses->ses, TERM_USER_REQUEST, 0);
+				
+				triton_context_call(&ses->ctx, (triton_event_func)__ipoe_session_terminate, &ses->ses);
 			} else {
 				if (conf_verbose) {
 					log_switch(dhcpv4->ctx, &ses->ses);
@@ -883,16 +927,8 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 	} else if (pack->msg_type == DHCPDECLINE || pack->msg_type == DHCPRELEASE) {
 		ses = ipoe_session_lookup(serv, pack);
 		if (ses) {
-			if (conf_verbose) {
-				log_switch(dhcpv4->ctx, &ses->ses);
-				log_ppp_info2("recv ");
-				dhcpv4_print_packet(pack, 0, log_ppp_info2);
-			}
-			
-			if (pack->msg_type == DHCPDECLINE && ses->serv->dhcpv4_relay)
-				dhcpv4_relay_send(ses->serv->dhcpv4_relay, pack, 0, ses->serv->ifname, conf_agent_remote_id);
-
-			ap_session_terminate(&ses->ses, TERM_USER_REQUEST, 0);
+			dhcpv4_packet_ref(pack);
+			triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_decline, pack);
 		}
 	}
 	pthread_mutex_unlock(&serv->lock);
@@ -932,6 +968,9 @@ static void ipoe_ses_recv_dhcpv4_relay(struct ipoe_session *ses)
 			if (opt)
 				ses->siaddr = *(in_addr_t *)opt->data;
 		}
+
+		if ((!ses->siaddr || ses->siaddr == ses->yiaddr) && ses->serv->dhcpv4_relay)
+			ses->siaddr = ses->serv->dhcpv4_relay->giaddr;
 
 		opt = dhcpv4_packet_find_opt(pack, 51);
 		if (opt)
@@ -1645,10 +1684,14 @@ static void load_config(void)
 	opt = conf_get_opt("ipoe", "lease-time");
 	if (opt)
 		conf_lease_time = atoi(opt);
+	else
+		conf_lease_time = 600;
 	
 	opt = conf_get_opt("ipoe", "max-lease-time");
 	if (opt)
 		conf_lease_timeout = atoi(opt);
+	else
+		conf_lease_timeout = 660;
 	
 	opt = conf_get_opt("ipoe", "unit-cache");
 	if (opt)

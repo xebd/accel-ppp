@@ -250,7 +250,8 @@ int __export iproute_add(int ifindex, in_addr_t src, in_addr_t dst)
 	req.i.rtm_type = RTN_UNICAST;
 	req.i.rtm_dst_len = 32;
 
-	addattr32(&req.n, sizeof(req), RTA_PREFSRC, src);
+	if (src)
+		addattr32(&req.n, sizeof(req), RTA_PREFSRC, src);
 	addattr32(&req.n, sizeof(req), RTA_DST, dst);
 	addattr32(&req.n, sizeof(req), RTA_OIF, ifindex);
 

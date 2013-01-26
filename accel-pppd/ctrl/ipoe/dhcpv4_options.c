@@ -103,7 +103,7 @@ void dhcpv4_print_options(struct dhcpv4_packet *pack, void (*print)(const char *
 			print("%s ", kopt->name);
 			kopt->print(opt, kopt->elem_size, print);
 		} else {
-			print("Option-%i ");
+			print("Option-%i ", opt->type);
 			print_hex(opt, 1, print);
 		}
 		print(">");

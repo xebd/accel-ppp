@@ -6,6 +6,7 @@
 
 #include "triton.h"
 #include "ap_session.h"
+#include "ipdb.h"
 #include "dhcpv4.h"
 
 struct ipoe_serv
@@ -52,6 +53,7 @@ struct ipoe_session
 	struct dhcpv4_packet *dhcpv4_request;
 	struct dhcpv4_packet *dhcpv4_relay_reply;
 	int ifindex;
+	struct ipv4db_item_t ipv4;
 	int ifcfg:1;
 	int dhcp_addr:1;
 	int relay_addr:1;
