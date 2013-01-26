@@ -401,12 +401,7 @@ static void ipoe_session_start(struct ipoe_session *ses)
 	}
 
 	if (ses->dhcpv4_request && ses->serv->dhcpv4_relay) {
-		if (!ses->dhcpv4_request->relay_agent && dhcpv4_packet_insert_opt82(ses->dhcpv4_request, ses->serv->ifname, conf_agent_remote_id)) {
-			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 0);
-			return;
-		}
-
-		dhcpv4_relay_send(ses->serv->dhcpv4_relay, ses->dhcpv4_request, ses->relay_server_id);
+		dhcpv4_relay_send(ses->serv->dhcpv4_relay, ses->dhcpv4_request, ses->relay_server_id, ses->serv->ifname, conf_agent_remote_id);
 
 		ses->timer.expire = ipoe_session_timeout;
 		ses->timer.expire_tv.tv_sec = conf_offer_timeout;
@@ -588,7 +583,7 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 static void ipoe_session_activate(struct ipoe_session *ses)
 {
 	if (ses->serv->dhcpv4_relay)
-		dhcpv4_relay_send(ses->serv->dhcpv4_relay, ses->dhcpv4_request, ses->relay_server_id);
+		dhcpv4_relay_send(ses->serv->dhcpv4_relay, ses->dhcpv4_request, ses->relay_server_id, ses->serv->ifname, conf_agent_remote_id);
 	else
 		__ipoe_session_activate(ses);
 }
@@ -608,7 +603,7 @@ static void ipoe_session_keepalive(struct dhcpv4_packet *pack)
 	ses->xid = ses->dhcpv4_request->hdr->xid;
 	
 	if (ses->ses.state == AP_STATE_ACTIVE && ses->serv->dhcpv4_relay) {
-		dhcpv4_relay_send(ses->serv->dhcpv4_relay, ses->dhcpv4_request, ses->relay_server_id);
+		dhcpv4_relay_send(ses->serv->dhcpv4_relay, ses->dhcpv4_request, ses->relay_server_id, ses->serv->ifname, conf_agent_remote_id);
 		return;
 	}
 
@@ -685,7 +680,7 @@ static void ipoe_session_finished(struct ap_session *s)
 		dhcpv4_put_ip(ses->serv->dhcpv4, ses->yiaddr);
 	
 	if (ses->relay_addr && ses->serv->dhcpv4_relay)
-		dhcpv4_relay_send_release(ses->serv->dhcpv4_relay, ses->hwaddr, ses->xid, ses->yiaddr, ses->client_id, ses->relay_agent);
+		dhcpv4_relay_send_release(ses->serv->dhcpv4_relay, ses->hwaddr, ses->xid, ses->yiaddr, ses->client_id, ses->relay_agent, ses->serv->ifname, conf_agent_remote_id);
 
 	if (ses->ifcfg)
 		ipoe_ifcfg_del(ses);
@@ -862,7 +857,7 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 				if (pack->server_id == ses->siaddr)
 					dhcpv4_send_nak(dhcpv4, pack);
 				else if (ses->serv->dhcpv4_relay)
-					dhcpv4_relay_send(ses->serv->dhcpv4_relay, pack, 0);
+					dhcpv4_relay_send(ses->serv->dhcpv4_relay, pack, 0, ses->serv->ifname, conf_agent_remote_id);
 
 				ap_session_terminate(&ses->ses, TERM_USER_REQUEST, 0);
 			} else {
@@ -895,7 +890,7 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 			}
 			
 			if (pack->msg_type == DHCPDECLINE && ses->serv->dhcpv4_relay)
-				dhcpv4_relay_send(ses->serv->dhcpv4_relay, pack, 0);
+				dhcpv4_relay_send(ses->serv->dhcpv4_relay, pack, 0, ses->serv->ifname, conf_agent_remote_id);
 
 			ap_session_terminate(&ses->ses, TERM_USER_REQUEST, 0);
 		}
