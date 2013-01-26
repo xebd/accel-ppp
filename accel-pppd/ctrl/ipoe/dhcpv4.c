@@ -891,16 +891,13 @@ void dhcpv4_relay_free(struct dhcpv4_relay *r, struct triton_context_t *ctx)
 	}
 }
 
-int dhcpv4_relay_send(struct dhcpv4_relay *relay, struct dhcpv4_packet *request, uint32_t server_id, const char *agent_circuit_id, const char *agent_remote_id)
+int dhcpv4_relay_send(struct dhcpv4_relay *relay, struct dhcpv4_packet *request, uint32_t server_id)
 {
 	int n;
 	int len = request->ptr - request->data;
 	uint32_t giaddr = request->hdr->giaddr;
 	struct dhcpv4_option *opt = NULL;
 	uint32_t _server_id;
-
-	if (!request->relay_agent && dhcpv4_packet_insert_opt82(request, agent_circuit_id, agent_remote_id))
-		return -1;
 
 	request->hdr->giaddr = relay->giaddr;
 
@@ -931,8 +928,7 @@ int dhcpv4_relay_send(struct dhcpv4_relay *relay, struct dhcpv4_packet *request,
 }
 
 int dhcpv4_relay_send_release(struct dhcpv4_relay *relay, uint8_t *chaddr, uint32_t xid, uint32_t ciaddr,
-	struct dhcpv4_option *client_id, struct dhcpv4_option *relay_agent,
-	const char *agent_circuit_id, const char *agent_remote_id)
+	struct dhcpv4_option *client_id, struct dhcpv4_option *relay_agent)
 {
 	struct dhcpv4_packet *pack;
 	int n, len;
@@ -963,14 +959,8 @@ int dhcpv4_relay_send_release(struct dhcpv4_relay *relay, uint8_t *chaddr, uint3
 	
 	if (relay_agent && dhcpv4_packet_add_opt(pack, 82, relay_agent->data, relay_agent->len))
 		goto out_err;
-	else if (!relay_agent) {
-		pack->ptr++;
-		if (dhcpv4_packet_insert_opt82(pack, agent_circuit_id, agent_remote_id))
-			goto out_err;
-		pack->ptr--;
-	}
-	
-	*pack->ptr++ = 255;
+
+	*pack->ptr = 255; pack->ptr++;
 
 	len = pack->ptr - pack->data;
 	
