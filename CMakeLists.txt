@@ -30,6 +30,7 @@ if (NOT BUILD_DRIVER_ONLY)
 	
 	add_subdirectory(accel-pppd)
 	add_subdirectory(crypto)
+	add_subdirectory(accel-cmd)
 endif (NOT BUILD_DRIVER_ONLY)
 
 if (BUILD_DRIVER OR BUILD_DRIVER_ONLY)
