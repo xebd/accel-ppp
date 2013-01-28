@@ -52,6 +52,7 @@ static int conf_ifcfg = 1;
 //static int conf_dhcpv6;
 static int conf_username;
 static int conf_unit_cache;
+static int conf_noauth;
 #ifdef RADIUS
 static int conf_attr_dhcp_client_ip;
 static int conf_attr_dhcp_router_ip;
@@ -378,26 +379,28 @@ static void ipoe_session_start(struct ipoe_session *ses)
 
 	ap_session_starting(&ses->ses);
 	
-	r = pwdb_check(&ses->ses, ses->ses.username, PPP_PAP, ses->ses.username);
-	if (r == PWDB_NO_IMPL) {
-		passwd = pwdb_get_passwd(&ses->ses, ses->ses.username);
-		if (!passwd)
-			r = PWDB_DENIED;
-		else {
-			r = PWDB_SUCCESS;
-			_free(passwd);
+	if (!conf_noauth) {
+		r = pwdb_check(&ses->ses, ses->ses.username, PPP_PAP, ses->ses.username);
+		if (r == PWDB_NO_IMPL) {
+			passwd = pwdb_get_passwd(&ses->ses, ses->ses.username);
+			if (!passwd)
+				r = PWDB_DENIED;
+			else {
+				r = PWDB_SUCCESS;
+				_free(passwd);
+			}
 		}
-	}
 
-	if (r == PWDB_DENIED) {
-		if (conf_ppp_verbose)
-			log_ppp_warn("authentication failed\n");
-		if (conf_l4_redirect_on_reject && !ses->dhcpv4_request && ses->ifindex != -1) {
-			l4_redirect_list_add(ses->yiaddr, ses->ifindex);
-			ses->ifindex = -1;
+		if (r == PWDB_DENIED) {
+			if (conf_ppp_verbose)
+				log_ppp_warn("authentication failed\n");
+			if (conf_l4_redirect_on_reject && !ses->dhcpv4_request && ses->ifindex != -1) {
+				l4_redirect_list_add(ses->yiaddr, ses->ifindex);
+				ses->ifindex = -1;
+			}
+			ap_session_terminate(&ses->ses, TERM_AUTH_ERROR, 0);
+			return;
 		}
-		ap_session_terminate(&ses->ses, TERM_AUTH_ERROR, 0);
-		return;
 	}
 
 	if (ses->dhcpv4_request && ses->serv->dhcpv4_relay) {
@@ -1754,6 +1757,12 @@ static void load_config(void)
 		conf_agent_remote_id = opt;
 	else
 		conf_agent_remote_id = "accel-pppd";
+	
+	opt = conf_get_opt("ipoe", "noauth");
+	if (opt)
+		conf_noauth = atoi(opt);
+	else
+		conf_noauth = 0;
 
 	conf_dhcpv4 = 0;
 	conf_up = 0;
