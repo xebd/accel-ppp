@@ -413,7 +413,7 @@ static void ipoe_session_start(struct ipoe_session *ses)
 static void __ipoe_session_start(struct ipoe_session *ses) 
 {
 	if (!ses->yiaddr) {
-		dhcpv4_get_ip(ses->serv->dhcpv4, &ses->yiaddr, &ses->siaddr, &ses->mask);
+		dhcpv4_get_ip(ses->serv->dhcpv4, &ses->yiaddr, &ses->router, &ses->mask);
 		if (ses->yiaddr)
 			ses->dhcp_addr = 1;
 	}
@@ -436,9 +436,9 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 
 		if (!ses->yiaddr)
 			ses->yiaddr = ses->ses.ipv4->peer_addr;
-		
-		if (!ses->siaddr)
-			ses->siaddr = ses->ses.ipv4->addr;
+	
+		if (!ses->router)
+			ses->router = ses->ses.ipv4->addr;
 	} else if (ses->yiaddr) {
 		ses->ses.ipv4 = &ses->ipv4;
 		ses->ipv4.addr = ses->siaddr;
@@ -446,12 +446,30 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 		ses->ipv4.mask = ses->mask;
 		ses->ipv4.owner = NULL;
 	}
+
+	if (!ses->yiaddr) {
+		log_ppp_error("no free IPv4 address\n");
+		ap_session_terminate(&ses->ses, TERM_NAS_REQUEST, 0);
+		return;
+	}
+		
+	if (!ses->siaddr && ses->router != ses->yiaddr)
+		ses->siaddr = ses->router;
 	
+	if (!ses->siaddr && ses->serv->dhcpv4_relay)
+		ses->siaddr = ses->serv->dhcpv4_relay->giaddr;
+
+	if (!ses->siaddr) {
+		log_ppp_error("can't determine Server-ID\n");
+		ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 0);
+		return;
+	}
+			
 	if (!ses->mask)
-		ses->mask = 24;
+		ses->mask = 32;
 	
 	if (ses->dhcpv4_request) {
-		dhcpv4_send_reply(DHCPOFFER, ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
+		dhcpv4_send_reply(DHCPOFFER, ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
 
 		dhcpv4_packet_free(ses->dhcpv4_request);
 		ses->dhcpv4_request = NULL;
@@ -587,7 +605,7 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 
 	if (ses->dhcpv4_request) {
 		if (ses->ses.state == AP_STATE_ACTIVE)
-			dhcpv4_send_reply(DHCPACK, ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
+			dhcpv4_send_reply(DHCPACK, ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
 		else
 			dhcpv4_send_nak(ses->serv->dhcpv4, ses->dhcpv4_request);
 
@@ -629,7 +647,7 @@ static void ipoe_session_keepalive(struct dhcpv4_packet *pack)
 	}
 
 	if (ses->ses.state == AP_STATE_ACTIVE) {
-		dhcpv4_send_reply(DHCPACK, ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
+		dhcpv4_send_reply(DHCPACK, ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
 	} else
 		dhcpv4_send_nak(ses->serv->dhcpv4, ses->dhcpv4_request);
 
@@ -874,7 +892,7 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 			}
 
 			if (ses->ses.state == AP_STATE_ACTIVE && pack->request_ip == ses->yiaddr)
-				dhcpv4_send_reply(DHCPOFFER, dhcpv4, pack, ses->yiaddr, ses->siaddr, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
+				dhcpv4_send_reply(DHCPOFFER, dhcpv4, pack, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
 		}
 	} else if (pack->msg_type == DHCPREQUEST) {
 		ses = ipoe_session_lookup(serv, pack);
@@ -963,15 +981,6 @@ static void ipoe_ses_recv_dhcpv4_relay(struct ipoe_session *ses)
 			ses->relay_addr = 1;
 		}
 		
-		if (!ses->siaddr) {
-			opt = dhcpv4_packet_find_opt(pack, 3);
-			if (opt)
-				ses->siaddr = *(in_addr_t *)opt->data;
-		}
-
-		if ((!ses->siaddr || ses->siaddr == ses->yiaddr) && ses->serv->dhcpv4_relay)
-			ses->siaddr = ses->serv->dhcpv4_relay->giaddr;
-
 		opt = dhcpv4_packet_find_opt(pack, 51);
 		if (opt)
 			ses->lease_time = ntohl(*(uint32_t *)opt->data);
@@ -985,7 +994,7 @@ static void ipoe_ses_recv_dhcpv4_relay(struct ipoe_session *ses)
 		if (ses->ses.state == AP_STATE_STARTING)
 			__ipoe_session_activate(ses);
 		else
-			dhcpv4_send_reply(DHCPACK, ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
+			dhcpv4_send_reply(DHCPACK, ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
 
 	} else if (pack->msg_type == DHCPNAK) {
 		dhcpv4_send_nak(ses->serv->dhcpv4, ses->dhcpv4_request);
@@ -1161,7 +1170,7 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 		if (attr->attr->id == conf_attr_dhcp_client_ip)
 			ses->yiaddr = attr->val.ipaddr;
 		else if (attr->attr->id == conf_attr_dhcp_router_ip)
-			ses->siaddr = attr->val.ipaddr;
+			ses->router = attr->val.ipaddr;
 		else if (attr->attr->id == conf_attr_dhcp_mask) {
 			if (attr->val.integer > 0 && attr->val.integer < 31)
 				ses->mask = attr->val.integer;

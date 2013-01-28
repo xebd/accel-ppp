@@ -46,6 +46,7 @@ struct ipoe_session
 	uint32_t giaddr;
 	uint32_t yiaddr;
 	uint32_t siaddr;
+	uint32_t router;
 	uint32_t relay_server_id;
 	int mask;
 	int lease_time;
