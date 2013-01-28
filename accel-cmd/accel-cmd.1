@@ -1,0 +1,87 @@
+.TH ACCEL-CMD 1 "January 2013"
+.SH NAME
+accel-cmd \- send commands to accel-ppp
+.SH SYNOPSIS
+.B accel-cmd
+.RB [ -n "] [" -4 "] [" -6 "] [" -f " \fIFAMILY\fR] [" -H " \fIHOST\fR]"
+.RB [ -p " \fIPORT\fR] [" -i " \fITIMEOUT\fR]"
+.RI "[--] [" COMMAND "]"
+.SH DESCRIPTION
+.BR accel-cmd " is a client for accel-ppp's " cli " module. It sends"
+.IR COMMAND "s to accel-ppp's tcp interface and displays the result on"
+.RI "standard output. If no " COMMAND " is supplied, then"
+.BR accel-cmd " reads and sends data from its standard input."
+.SH OPTIONS
+.TP
+.BR \-f " \fIFAMILY\fR, " \-\-family "=\fIFAMILY\fR"
+.RI "Connect to " HOST " using the given protocol family. Supported families"
+.RB "are " inet " (IPv4), " inet6 " (IPv6) and " unspec " (automatic)."
+.TP
+.B \-4
+.RB "Shorcut for " "--family=inet" .
+.TP
+.B \-6
+.RB "Shorcut for " "--family=inet6" .
+.TP
+.BR \-H " \fIHOST\fR, " \-\-host "=\fIHOST\fR"
+.RB "Set the host name or IP address to connect to. Defaults to " localhost .
+.TP
+.BR \-p " \fIPORT\fR, " \-\-port "=\fIPORT\fR"
+Set the service name or port number on which connection should be done.
+.RB "Defaults to " 2001 .
+.TP
+.BR \-n ", " \-\-numeric
+.RI "Inhibit name resolution of " HOST " and " PORT ". In this case,"
+.IR HOST " must be an IP address and " PORT " a numeric port number."
+.TP
+.BR \-t " \fITIMEOUT\fR, " \-\-timeout "=\fITIMEOUT\fR"
+.RB "Set an inactivity timeout."
+.IR TIMEOUT " must be an integer and may be immediately followed by a time"
+.RB "unit. Supported units are " s " (seconds), " ms " (milliseconds) and " us
+.RB "(microseconds). The default unit is " s "."
+.RI "If this option is not supplied, or if " TIMEOUT " is zero, then no"
+timeout is set.
+.TP
+.BR \-v ", " \-\-verbose
+Verbose output.
+.TP
+.BR \-V ", " \-\-version
+Display version number and exit.
+.TP
+.BR \-h ", " \-\-help
+Display help message and exit.
+.SH EXAMPLES
+.TP
+Send the "show sessions" command to accel-ppp on localhost and display \
+the result on standard output:
+$ accel-cmd show sessions
+.TP
+Execute commands stored in file "cmds":
+$ accel-cmd < cmds
+.TP
+Same as above, but send commands to another host and timeout after \
+1.5 seconds of inactivity:
+$ accel-cmd --timeout 1500ms --host accelppp.example.com < cmds
+.SH EXIT STATUS
+.TP
+0
+success,
+.TP
+1
+invalid command line option,
+.TP
+2
+invalid parameter given to a command line option,
+.TP
+3
+connection to accel-ppp failed,
+.TP
+4
+timeout expired,
+.TP
+5
+\fICOMMAND\fR too big (standard input may be used instead \
+for sending big amounts of data),
+.TP
+100 (or above)
+internal error.
