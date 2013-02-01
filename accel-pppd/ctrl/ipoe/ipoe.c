@@ -644,7 +644,7 @@ static void ipoe_session_keepalive(struct dhcpv4_packet *pack)
 
 	ses->xid = ses->dhcpv4_request->hdr->xid;
 	
-	if (ses->ses.state == AP_STATE_ACTIVE && ses->serv->dhcpv4_relay) {
+	if (/*ses->ses.state == AP_STATE_ACTIVE &&*/ ses->serv->dhcpv4_relay) {
 		dhcpv4_relay_send(ses->serv->dhcpv4_relay, ses->dhcpv4_request, ses->relay_server_id, ses->serv->ifname, conf_agent_remote_id);
 		return;
 	}
@@ -894,8 +894,13 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 				dhcpv4_print_packet(pack, 0, log_ppp_info2);
 			}
 
-			if (ses->ses.state == AP_STATE_ACTIVE && pack->request_ip == ses->yiaddr)
-				dhcpv4_send_reply(DHCPOFFER, dhcpv4, pack, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
+			if (ses->yiaddr) {
+				if (ses->serv->dhcpv4_relay) {
+					dhcpv4_packet_ref(pack);
+					triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_keepalive, pack);
+				} else
+					dhcpv4_send_reply(DHCPOFFER, dhcpv4, pack, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
+			}
 		}
 	} else if (pack->msg_type == DHCPREQUEST) {
 		ses = ipoe_session_lookup(serv, pack);
@@ -974,25 +979,28 @@ static void ipoe_ses_recv_dhcpv4_relay(struct ipoe_session *ses)
 		dhcpv4_print_packet(pack, 1, log_ppp_info2);
 	}
 
-	if (pack->msg_type == DHCPOFFER && ses->ses.state == AP_STATE_STARTING) {
-		triton_timer_del(&ses->timer);
+	opt = dhcpv4_packet_find_opt(pack, 51);
+	if (opt)
+		ses->lease_time = ntohl(*(uint32_t *)opt->data);
 
-		ses->relay_server_id = pack->server_id;
+	opt = dhcpv4_packet_find_opt(pack, 1);
+	if (opt)
+		ses->mask = parse_dhcpv4_mask(ntohl(*(uint32_t *)opt->data));
 
-		if (!ses->yiaddr) {
-			ses->yiaddr = pack->hdr->yiaddr;
-			ses->relay_addr = 1;
-		}
-		
-		opt = dhcpv4_packet_find_opt(pack, 51);
-		if (opt)
-			ses->lease_time = ntohl(*(uint32_t *)opt->data);
-	
-		opt = dhcpv4_packet_find_opt(pack, 1);
-		if (opt)
-			ses->mask = parse_dhcpv4_mask(ntohl(*(uint32_t *)opt->data));
+	if (pack->msg_type == DHCPOFFER) {
+		if (ses->ses.state == AP_STATE_STARTING) {
+			triton_timer_del(&ses->timer);
 
-		__ipoe_session_start(ses);
+			ses->relay_server_id = pack->server_id;
+
+			if (!ses->yiaddr) {
+				ses->yiaddr = pack->hdr->yiaddr;
+				ses->relay_addr = 1;
+			}
+
+			__ipoe_session_start(ses);
+		} else
+			dhcpv4_send_reply(DHCPOFFER, ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
 	} else if (pack->msg_type == DHCPACK) {
 		if (ses->ses.state == AP_STATE_STARTING)
 			__ipoe_session_activate(ses);
