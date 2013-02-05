@@ -544,7 +544,7 @@ static void ipoe_ifcfg_add(struct ipoe_session *ses)
 {
 	struct ipoe_serv *serv = ses->serv;
 
-	if (ses->mask != 32) {
+	if (ses->serv->opt_shared || ses->serv->opt_ifcfg) {
 		if (ses->serv->opt_shared)
 			ipoe_serv_add_addr(ses->serv, ses->siaddr);
 		else {
@@ -565,7 +565,7 @@ static void ipoe_ifcfg_del(struct ipoe_session *ses)
 {
 	struct ipoe_serv *serv = ses->serv;
 
-	if (ses->mask != 32) {
+	if (ses->serv->opt_shared || ses->serv->opt_ifcfg) {
 		if (iproute_del(serv->ifindex, ses->yiaddr))
 			log_ppp_warn("ipoe: failed to delete route from interface '%s'\n", serv->ifname);
 			
