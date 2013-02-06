@@ -75,7 +75,6 @@ struct l2tp_sess_t
 	uint16_t peer_sid;
 
 	int state1;
-	int state2;
 
 	struct triton_context_t sctx;
 	struct triton_timer_t timeout_timer;
@@ -498,7 +497,6 @@ static struct l2tp_sess_t *l2tp_tunnel_alloc_session(struct l2tp_conn_t *conn)
 	sess->paren_conn = conn;
 	sess->peer_sid = 0;
 	sess->state1 = STATE_CLOSE;
-	sess->state2 = STATE_CLOSE;
 
 	sess->sctx.before_switch = log_switch;
 	sess->sctx.close = l2tp_sess_close;
