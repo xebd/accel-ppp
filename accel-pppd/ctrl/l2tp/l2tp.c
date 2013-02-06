@@ -248,6 +248,8 @@ static void __l2tp_session_free(void *data)
 		   __l2tp_session_free(). */
 		return;
 	case STATE_WAIT_ICCN:
+	case STATE_WAIT_OCRP:
+	case STATE_WAIT_OCCN:
 	case STATE_ESTB:
 		__sync_sub_and_fetch(&stat_starting, 1);
 		break;
@@ -992,17 +994,16 @@ out_err:
 	return -1;
 }
 
-/*static int l2tp_send_OCRQ(struct l2tp_conn_t *conn)
+static int l2tp_send_OCRQ(struct l2tp_sess_t *sess)
 {
 	struct l2tp_packet_t *pack;
 
-	pack = l2tp_packet_alloc(2, Message_Type_Outgoing_Call_Request, &conn->lac_addr);
+	pack = l2tp_packet_alloc(2, Message_Type_Outgoing_Call_Request,
+				 &sess->paren_conn->lac_addr);
 	if (!pack)
 		return -1;
-	
-	pack->hdr.sid = htons(conn->peer_sid);
 
-	if (l2tp_packet_add_int16(pack, Assigned_Session_ID, conn->sess.sid, 1))
+	if (l2tp_packet_add_int16(pack, Assigned_Session_ID, sess->sid, 1))
 		goto out_err;
 	if (l2tp_packet_add_int32(pack, Call_Serial_Number, 0, 1))
 		goto out_err;
@@ -1017,23 +1018,20 @@ out_err:
 	if (l2tp_packet_add_string(pack, Called_Number, "", 1))
 		goto out_err;
 
-	if (l2tp_send(conn, pack, 0))
+	if (l2tp_send(sess->paren_conn, pack, 0))
 		return -1;
 
-	if (!conn->timeout_timer.tpd)
-		triton_timer_add(&conn->ctx, &conn->timeout_timer, 0);
+	if (!sess->timeout_timer.tpd)
+		triton_timer_add(&sess->sctx, &sess->timeout_timer, 0);
 	else
-		triton_timer_mod(&conn->timeout_timer, 0);
-	
-	conn->state2 = STATE_WAIT_OCRP;
-	
+		triton_timer_mod(&sess->timeout_timer, 0);
+
 	return 0;
 
 out_err:
 	l2tp_packet_free(pack);
 	return -1;
-}*/
-
+}
 
 static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack, struct in_pktinfo *pkt_info)
 {
@@ -1243,26 +1241,103 @@ static int l2tp_recv_ICCN(struct l2tp_sess_t *sess, struct l2tp_packet_t *pack)
 	return 0;
 }
 
-static int  l2tp_recv_OCRP(struct l2tp_sess_t *sess, struct l2tp_packet_t *pack)
+static int l2tp_recv_OCRP(struct l2tp_sess_t *sess, struct l2tp_packet_t *pack)
 {
-	if (sess->state2 != STATE_WAIT_OCRP) {
+	struct l2tp_attr_t *assigned_sid = NULL;
+	struct l2tp_attr_t *unknown_attr = NULL;
+	struct l2tp_attr_t *attr = NULL;
+
+	if (sess->state1 != STATE_WAIT_OCRP) {
 		log_ppp_warn("l2tp: unexpected OCRP\n");
-		return 0;
+		return -1;
 	}
 
-	sess->state2 = STATE_WAIT_OCCN;
+	list_for_each_entry(attr, &pack->attrs, entry) {
+		switch(attr->attr->id) {
+		case Message_Type:
+			break;
+		case Assigned_Session_ID:
+			assigned_sid = attr;
+			break;
+		default:
+			if (attr->M)
+				unknown_attr = attr;
+			else
+				log_ppp_warn("l2tp: OCRP:"
+					     " unknown attribute %i\n",
+					     attr->attr->id);
+			break;
+		}
+	}
+
+	if (assigned_sid == NULL) {
+		log_ppp_error("l2tp: OCRP: missing mandatory AVP:"
+			      " Assigned Session ID\n");
+		l2tp_session_disconnect(sess, 2, 6);
+		return -1;
+	}
+
+	/* Set peer_sid as soon as possible so that CDN
+	   will be sent to the right tunnel in case of error */
+	sess->peer_sid = assigned_sid->val.uint16;
+
+	if (unknown_attr) {
+		log_ppp_error("l2tp: OCRP: unknown mandatory attribute %i\n",
+			      unknown_attr->attr->id);
+		l2tp_session_disconnect(sess, 2, 8);
+		return -1;
+	}
+
+	sess->state1 = STATE_WAIT_OCCN;
 
 	return 0;
 }
 
 static int l2tp_recv_OCCN(struct l2tp_sess_t *sess, struct l2tp_packet_t *pack)
 {
-	if (sess->state2 != STATE_WAIT_OCCN) {
+	struct l2tp_attr_t *unknown_attr = NULL;
+	struct l2tp_attr_t *attr = NULL;
+
+	if (sess->state1 != STATE_WAIT_OCCN) {
 		log_ppp_warn("l2tp: unexpected OCCN\n");
 		return 0;
 	}
 
-	sess->state2 = STATE_ESTB;
+	triton_timer_del(&sess->timeout_timer);
+
+	list_for_each_entry(attr, &pack->attrs, entry) {
+		switch (attr->attr->id) {
+		case Message_Type:
+		case TX_Speed:
+		case Framing_Type:
+			break;
+		default:
+			if (attr->M)
+				unknown_attr = attr;
+			else
+				log_ppp_warn("l2tp: OCCN:"
+					     " unknown attribute %i\n",
+					     attr->attr->id);
+			break;
+		}
+	}
+
+	if (unknown_attr) {
+		log_ppp_error("l2tp: OCCN: unknown mandatory attribute %i\n",
+			      unknown_attr->attr->id);
+		l2tp_session_disconnect(sess, 2, 8);
+		return -1;
+	}
+
+	sess->state1 = STATE_ESTB;
+
+	if (l2tp_session_connect(sess) < 0) {
+		l2tp_session_disconnect(sess, 2, 4);
+		return -1;
+	}
+
+	if (l2tp_send_ZLB(sess->paren_conn) < 0)
+		return -1;
 
 	return 0;
 }
@@ -1284,6 +1359,44 @@ static int l2tp_recv_CDN(struct l2tp_sess_t *sess, struct l2tp_packet_t *pack)
 static int l2tp_recv_SLI(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 {
 	return 0;
+}
+
+static void l2tp_session_outcall(void *data)
+{
+	struct l2tp_sess_t *sess = data;
+
+	if (l2tp_send_OCRQ(sess) < 0) {
+		log_ppp_error("l2tp: impossible to place call:"
+			      " error while sending OCRQ\n");
+		return;
+	}
+	sess->state1 = STATE_WAIT_OCRP;
+}
+
+static void l2tp_tunnel_create_session(void *data)
+{
+	struct l2tp_conn_t *conn = data;
+	struct l2tp_sess_t *sess = NULL;
+
+	if (conn->state != STATE_ESTB) {
+		log_ppp_error("l2tp: impossible to place call:"
+			      " tunnel is not connected\n");
+		return;
+	}
+
+	sess = l2tp_tunnel_alloc_session(conn);
+	if (sess == NULL) {
+		log_ppp_error("l2tp: impossible to place call:"
+			      " no more session available\n");
+		return;
+	}
+	if (l2tp_tunnel_confirm_session(sess) < 0) {
+		log_ppp_error("l2tp: impossible to place call:"
+			      " session initialisation failed\n");
+		l2tp_tunnel_cancel_session(sess);
+		return;
+	}
+	triton_context_call(&sess->sctx, l2tp_session_outcall, sess);
 }
 
 static void l2tp_session_recv(void *data)
@@ -1600,6 +1713,43 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	return CLI_CMD_OK;
 }
 
+static int l2tp_create_session_exec(const char *cmd, char * const *fields,
+				    int fields_cnt, void *client)
+{
+	struct l2tp_conn_t *conn = NULL;
+	long int tid;
+	int res;
+
+	if (fields_cnt != 5)
+		return CLI_CMD_SYNTAX;
+
+	if (strcmp("tid", fields[3]) != 0)
+		return CLI_CMD_SYNTAX;
+
+	if (u_readlong(&tid, fields[4], 1, L2TP_MAX_TID - 1) < 0)
+		return CLI_CMD_INVAL;
+
+	pthread_mutex_lock(&l2tp_lock);
+	conn = l2tp_conn[tid];
+	if (conn) {
+		triton_context_call(&conn->ctx,
+				    l2tp_tunnel_create_session, conn);
+		res = CLI_CMD_OK;
+	} else
+		res = CLI_CMD_INVAL;
+	pthread_mutex_unlock(&l2tp_lock);
+
+	return res;
+}
+
+static void l2tp_create_session_help(char * const *fields, int fields_cnt,
+				     void *client)
+{
+	cli_send(client,
+		 "l2tp create session tid <tid>"
+		 " - place new call in tunnel <tid>\r\n");
+}
+
 void __export l2tp_get_stat(unsigned int **starting, unsigned int **active)
 {
 	*starting = &stat_starting;
@@ -1678,7 +1828,10 @@ static void l2tp_init(void)
 	start_udp_server();
 
 	cli_register_simple_cmd2(&show_stat_exec, NULL, 2, "show", "stat");
-	
+	cli_register_simple_cmd2(l2tp_create_session_exec,
+				 l2tp_create_session_help, 3,
+				 "l2tp", "create", "session");
+
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 
