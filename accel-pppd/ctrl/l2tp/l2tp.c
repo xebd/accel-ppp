@@ -539,10 +539,8 @@ static int l2tp_tunnel_confirm_session(struct l2tp_sess_t *sess)
 	return 0;
 }
 
-static int l2tp_tunnel_cancel_session(struct l2tp_sess_t *sess,
-				      uint16_t res, uint16_t err)
+static int l2tp_tunnel_cancel_session(struct l2tp_sess_t *sess)
 {
-	l2tp_send_CDN(sess, res, err);
 	tdelete(sess, &sess->paren_conn->sessions, sess_cmp);
 	if (sess->ctrl.calling_station_id)
 		_free(sess->ctrl.calling_station_id);
@@ -1217,7 +1215,8 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 	return 0;
 
 out_reject:
-	l2tp_tunnel_cancel_session(sess, res, err);
+	l2tp_send_CDN(sess, res, err);
+	l2tp_tunnel_cancel_session(sess);
 	return -1;
 }
 
