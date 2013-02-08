@@ -171,6 +171,7 @@ static int cli_process_help_cmd(struct cli_client_t *cln)
 	struct cli_simple_cmd_t *sicmd = NULL;
 	char *cmd = (char *)cln->cmdline;
 	char *items[MAX_CMD_ITEMS] = { 0 };
+	int cmd_found = 0;
 	int nb_items;
 
 	cmd = skip_space(cmd);
@@ -182,19 +183,40 @@ static int cli_process_help_cmd(struct cli_client_t *cln)
 
 	cmd = skip_space(cmd + helpcmd_len);
 
+	if (cmd[0] == '\0')
+		/* "help" with no argument always succeeds */
+		cmd_found = 1;
+
 	list_for_each_entry(recmd, &regexp_cmd_list, entry) {
 		if (cmd[0] == '\0'
 		    || pcre_exec(recmd->h_re, NULL, cmd, strlen(cmd),
 				 0, 0, NULL, 0) >= 0) {
+			cmd_found = 1;
 			if (recmd->help)
 				recmd->help(cmd, cln);
 		}
 	}
 
 	nb_items = split(cmd, items);
-	list_for_each_entry(sicmd, &simple_cmd_list, entry)
-		if (sicmd->help)
-			sicmd->help(items, nb_items, cln);
+	list_for_each_entry(sicmd, &simple_cmd_list, entry) {
+		int indx = 0;
+		int found = 1;
+		while (indx < sicmd->hdr_len && indx < nb_items) {
+			if (strcmp(sicmd->hdr[indx], items[indx]) != 0) {
+				found = 0;
+				break;
+			}
+			++indx;
+		}
+		if (found) {
+			cmd_found = 1;
+			if (sicmd->help)
+				sicmd->help(items, nb_items, cln);
+		}
+	}
+
+	if (!cmd_found)
+		cli_send(cln, MSG_INVAL_ERROR);
 
 	return 1;
 }
