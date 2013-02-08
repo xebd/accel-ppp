@@ -167,68 +167,95 @@ static int cli_process_help_cmd(struct cli_client_t *cln)
 	return 1;
 }
 
+static int cli_process_regexp_cmd(struct cli_client_t *cln, int *err)
+{
+	struct cli_regexp_cmd_t *recmd = NULL;
+	char *cmd = (char *)cln->cmdline;
+	int found = 0;
+	int res;
+
+	list_for_each_entry(recmd, &regexp_cmd_list, entry)
+		if (pcre_exec(recmd->re, NULL, cmd, strlen(cmd),
+			      0, 0, NULL, 0) >= 0) {
+			found = 1;
+			res = recmd->exec(cmd, cln);
+			if (res != CLI_CMD_OK)
+				break;
+		}
+	if (found)
+		*err = res;
+
+	return found;
+}
+
+static int cli_process_simple_cmd(struct cli_client_t *cln, int *err)
+{
+	struct cli_simple_cmd_t *sicmd = NULL;
+	char *cmd = (char *)cln->cmdline;
+	char *items[MAX_CMD_ITEMS] = { 0 };
+	int found = 0;
+	int nb_items;
+	int indx;
+	int res;
+
+	nb_items = split(cmd, items);
+	list_for_each_entry(sicmd, &simple_cmd_list, entry) {
+		if (sicmd->hdr_len <= 0 || nb_items < sicmd->hdr_len)
+			continue;
+		for (indx = 0; indx < sicmd->hdr_len; ++indx) {
+			if (strcmp(sicmd->hdr[indx], items[indx]) != 0)
+				break;
+		}
+		if (indx == sicmd->hdr_len) {
+			found = 1;
+			res = sicmd->exec(cmd, items, nb_items, cln);
+			if (res != CLI_CMD_OK)
+				break;
+		}
+	}
+	if (found)
+		*err = res;
+
+	return found;
+}
+
 int __export cli_process_cmd(struct cli_client_t *cln)
 {
-	struct cli_simple_cmd_t *cmd1;
-	struct cli_regexp_cmd_t *cmd2;
-	char *f[MAX_CMD_ITEMS];
-	int r, i, n, found = 0;
+	int found;
+	int err;
 
 	if (cli_process_help_cmd(cln))
 		return 0;
 
-	n = split((char *)cln->cmdline, f);
+	found = cli_process_regexp_cmd(cln, &err);
+	if (found && err != CLI_CMD_OK)
+		goto out_found;
 
-	list_for_each_entry(cmd1, &simple_cmd_list, entry) {
-		if (cmd1->hdr_len && n >= cmd1->hdr_len) {
-			for (i = 0; i < cmd1->hdr_len; i++) {
-				if (strcmp(cmd1->hdr[i], f[i]))
-					break;
-			}
-			if (i < cmd1->hdr_len)
-				continue;
-			r = cmd1->exec((char *)cln->cmdline, f, n, cln);
-			switch (r) {
-				case CLI_CMD_EXIT:
-					cln->disconnect(cln);
-				case CLI_CMD_FAILED:
-					return -1;
-				case CLI_CMD_SYNTAX:
-					cli_send(cln, MSG_SYNTAX_ERROR);
-					return 0;
-				case CLI_CMD_INVAL:
-					cli_send(cln, MSG_INVAL_ERROR);
-					return 0;
-				case CLI_CMD_OK:
-					found = 1;
-			}
-		}
+	found |= cli_process_simple_cmd(cln, &err);
+	if (found)
+		goto out_found;
+
+	if (cli_send(cln, MSG_UNKNOWN_CMD))
+		return -1;
+	else
+		return 0;
+
+out_found:
+	switch (err) {
+	case CLI_CMD_EXIT:
+		cln->disconnect(cln);
+	case CLI_CMD_FAILED:
+		return -1;
+	case CLI_CMD_SYNTAX:
+		cli_send(cln, MSG_SYNTAX_ERROR);
+		return 0;
+	case CLI_CMD_INVAL:
+		cli_send(cln, MSG_INVAL_ERROR);
+		return 0;
+	case CLI_CMD_OK:
+		return 0;
 	}
-
-	list_for_each_entry(cmd2, &regexp_cmd_list, entry) {
-		r = cmd2->exec((char *)cln->cmdline, cln);
-		switch (r) {
-			case CLI_CMD_EXIT:
-				cln->disconnect(cln);
-			case CLI_CMD_FAILED:
-				return -1;
-			case CLI_CMD_SYNTAX:
-				cli_send(cln, MSG_SYNTAX_ERROR);
-				return 0;
-			case CLI_CMD_INVAL:
-				cli_send(cln, MSG_INVAL_ERROR);
-				return 0;
-			case CLI_CMD_OK:
-				found = 1;
-		}
-	}
-
-	if (!found) {
-		if (cli_send(cln, MSG_UNKNOWN_CMD))
-			return -1;
-	}
-
-	return 0;
+	return -1;
 }
 
 static void load_config(void)
