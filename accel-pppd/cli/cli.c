@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
@@ -16,6 +17,9 @@
 #define MSG_SYNTAX_ERROR "syntax error\r\n"
 #define MSG_INVAL_ERROR "invalid argument\r\n"
 #define MSG_UNKNOWN_CMD "command unknown\r\n"
+
+static const char helpcmd[] = "help";
+static const size_t helpcmd_len = sizeof(helpcmd) -1;
 
 char *conf_cli_passwd;
 static const char *def_cli_prompt = "accel-ppp";
@@ -137,6 +141,32 @@ static int split(char *buf, char **ptr)
 	return i;
 }
 
+static int cli_process_help_cmd(struct cli_client_t *cln)
+{
+	struct cli_regexp_cmd_t *recmd = NULL;
+	struct cli_simple_cmd_t *sicmd = NULL;
+	char *cmd = (char *)cln->cmdline;
+	char *items[MAX_CMD_ITEMS] = { 0 };
+	int nb_items;
+
+	cmd = skip_space(cmd);
+	if (strncmp(helpcmd, cmd, helpcmd_len) != 0)
+		return 0;
+
+	if (!isblank(cmd[helpcmd_len]) && cmd[helpcmd_len] != '\0')
+		return 0;
+
+	nb_items = split(cmd, items);
+	list_for_each_entry(recmd, &regexp_cmd_list, entry)
+		if (recmd->help)
+			recmd->help(items, nb_items, cln);
+	list_for_each_entry(sicmd, &simple_cmd_list, entry)
+		if (sicmd->help)
+			sicmd->help(items, nb_items, cln);
+
+	return 1;
+}
+
 int __export cli_process_cmd(struct cli_client_t *cln)
 {
 	struct cli_simple_cmd_t *cmd1;
@@ -144,19 +174,10 @@ int __export cli_process_cmd(struct cli_client_t *cln)
 	char *f[MAX_CMD_ITEMS];
 	int r, i, n, found = 0;
 
-	n = split((char *)cln->cmdline, f);
-
-	if (n >= 1 && !strcmp(f[0], "help")) {
-		list_for_each_entry(cmd1, &simple_cmd_list, entry)
-			if (cmd1->help)
-				cmd1->help(f, n, cln);
-
-		list_for_each_entry(cmd2, &regexp_cmd_list, entry)
-			if (cmd2->help)
-				cmd2->help(f, n, cln);
-
+	if (cli_process_help_cmd(cln))
 		return 0;
-	}
+
+	n = split((char *)cln->cmdline, f);
 
 	list_for_each_entry(cmd1, &simple_cmd_list, entry) {
 		if (cmd1->hdr_len && n >= cmd1->hdr_len) {
