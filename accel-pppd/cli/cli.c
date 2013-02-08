@@ -104,7 +104,7 @@ int __export cli_sendv(void *client, const char *fmt, ...)
 static char *skip_word(char *ptr)
 {
 	for(; *ptr; ptr++)
-		if (*ptr == ' ' || *ptr == '\t' || *ptr == '\n') 
+		if (!isgraph(*ptr))
 			break;
 	return ptr;
 }
@@ -119,24 +119,21 @@ static int split(char *buf, char **ptr)
 {
 	int i;
 
-	ptr[0] = buf;
+	buf = skip_space(buf);
+	if (!*buf)
+		return 0;
 
-	for (i = 1; i <= MAX_CMD_ITEMS; i++) {
+	for (i = 0; i < MAX_CMD_ITEMS; i++) {
+		ptr[i] = buf;
 		buf = skip_word(buf);
 		if (!*buf)
-			return i;
-		
+			return i + 1;
+
 		*buf = 0;
-		
 		buf = skip_space(buf + 1);
 		if (!*buf)
-			return i;
-
-		ptr[i] = buf;
+			return i + 1;
 	}
-
-	buf = skip_word(buf);
-	*buf = 0;
 
 	return i;
 }
