@@ -26,9 +26,32 @@ static void show_interfaces(void *cli)
 
 static void intf_help(char * const *fields, int fields_cnt, void *client)
 {
-	cli_send(client, "pppoe interface add <name> - start pppoe server on specified interface\r\n");
-	cli_send(client, "pppoe interface del <name> - stop pppoe server on specified interface and drop his connections\r\n");
-	cli_send(client, "pppoe interface show - show interfaces on which pppoe server started\r\n");
+	uint8_t show = 7;
+
+	if (fields_cnt >= 3) {
+		show &= (strcmp(fields[2], "add")) ? ~1 : ~0;
+		show &= (strcmp(fields[2], "del")) ? ~2 : ~0;
+		show &= (strcmp(fields[2], "show")) ? ~4 : ~0;
+		if (show == 0) {
+			cli_sendv(client, "Invalid action \"%s\"\r\n",
+				  fields[2]);
+			show = 7;
+		}
+	}
+	if (show & 1)
+		cli_send(client,
+			 "pppoe interface add <name>"
+			 " - start pppoe server on specified interface\r\n");
+	if (show & 2)
+		cli_send(client,
+			 "pppoe interface del <name>"
+			 " - stop pppoe server on specified interface and"
+			 " drop his connections\r\n");
+	if (show & 4)
+		cli_send(client,
+			 "pppoe interface show"
+			 " - show interfaces on which pppoe server"
+			 " started\r\n");
 }
 
 static int intf_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
@@ -82,13 +105,41 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 static void set_verbose_help(char * const *f, int f_cnt, void *cli)
 {
 	cli_send(cli, "pppoe set verbose <n> - set verbosity of pppoe logging\r\n");
+}
+
+static void set_pado_delay_help(char * const *f, int f_cnt, void *cli)
+{
 	cli_send(cli, "pppoe set PADO-delay <delay[,delay1:count1[,delay2:count2[,...]]]> - set PADO delays (ms)\r\n");
+}
+
+static void set_service_name_help(char * const *f, int f_cnt, void *cli)
+{
 	cli_send(cli, "pppoe set Service-Name <name> - set Service-Name to respond\r\n");
 	cli_send(cli, "pppoe set Service-Name * - respond with client's Service-Name\r\n");
+}
+
+static void set_ac_name_help(char * const *f, int f_cnt, void *cli)
+{
 	cli_send(cli, "pppoe set AC-Name <name> - set AC-Name tag value\r\n");
+}
+
+static void show_verbose_help(char * const *f, int f_cnt, void *cli)
+{
 	cli_send(cli, "pppoe show verbose - show current verbose value\r\n");
+}
+
+static void show_pado_delay_help(char * const *f, int f_cnt, void *cli)
+{
 	cli_send(cli, "pppoe show PADO-delay - show current PADO delay value\r\n");
+}
+
+static void show_service_name_help(char * const *f, int f_cnt, void *cli)
+{
 	cli_send(cli, "pppoe show Service-Name - show current Service-Name value\r\n");
+}
+
+static void show_ac_name_help(char * const *f, int f_cnt, void *cli)
+{
 	cli_send(cli, "pppoe show AC-Name - show current AC-Name tag value\r\n");
 }
 
@@ -195,13 +246,20 @@ static void init(void)
 	cli_register_simple_cmd2(show_stat_exec, NULL, 2, "show", "stat");
 	cli_register_simple_cmd2(intf_exec, intf_help, 2, "pppoe", "interface");
 	cli_register_simple_cmd2(set_verbose_exec, set_verbose_help, 3, "pppoe", "set", "verbose");
-	cli_register_simple_cmd2(set_pado_delay_exec, NULL, 3, "pppoe", "set", "PADO-delay");
-	cli_register_simple_cmd2(set_service_name_exec, NULL, 3, "pppoe", "set", "Service-Name");
-	cli_register_simple_cmd2(set_ac_name_exec, NULL, 3, "pppoe", "set", "AC-Name");
-	cli_register_simple_cmd2(show_verbose_exec, NULL, 3, "pppoe", "show", "verbose");
-	cli_register_simple_cmd2(show_pado_delay_exec, NULL, 3, "pppoe", "show", "PADO-delay");
-	cli_register_simple_cmd2(show_service_name_exec, NULL, 3, "pppoe", "show", "Service-Name");
-	cli_register_simple_cmd2(show_ac_name_exec, NULL, 3, "pppoe", "show", "AC-Name");
+	cli_register_simple_cmd2(set_pado_delay_exec, set_pado_delay_help,
+				 3, "pppoe", "set", "PADO-delay");
+	cli_register_simple_cmd2(set_service_name_exec, set_service_name_help,
+				 3, "pppoe", "set", "Service-Name");
+	cli_register_simple_cmd2(set_ac_name_exec, set_ac_name_help,
+				 3, "pppoe", "set", "AC-Name");
+	cli_register_simple_cmd2(show_verbose_exec, show_verbose_help,
+				 3, "pppoe", "show", "verbose");
+	cli_register_simple_cmd2(show_pado_delay_exec, show_pado_delay_help,
+				 3, "pppoe", "show", "PADO-delay");
+	cli_register_simple_cmd2(show_service_name_exec, show_service_name_help,
+				 3, "pppoe", "show", "Service-Name");
+	cli_register_simple_cmd2(show_ac_name_exec, show_ac_name_help,
+				 3, "pppoe", "show", "AC-Name");
 }
 
 DEFINE_INIT(22, init);

@@ -228,7 +228,8 @@ static int cmd_exec(const char *cmd, char * const *fields, int fields_cnt, void 
 		mac_filter_del(fields[3], client);
 	} else if (!strcmp(fields[2], "show")) {
 		mac_filter_show(client);
-	}
+	} else
+		goto help;
 
 	return CLI_CMD_OK;
 help:
@@ -238,10 +239,34 @@ help:
 
 static void cmd_help(char * const *fields, int fields_cnt, void *client)
 {
-	cli_send(client, "pppoe mac-filter reload - reload mac-filter file\r\n");
-	cli_send(client, "pppoe mac-filter add <address> - add address to mac-filter list\r\n");
-	cli_send(client, "pppoe mac-filter del <address> - delete address from mac-filter list\r\n");
-	cli_send(client, "pppoe mac-filter show - show current mac-filter list\r\n");
+	uint8_t show = 15;
+
+	if (fields_cnt >= 3) {
+		show &= (strcmp(fields[2], "reload")) ? ~1 : ~0;
+		show &= (strcmp(fields[2], "add")) ? ~2 : ~0;
+		show &= (strcmp(fields[2], "del")) ? ~4 : ~0;
+		show &= (strcmp(fields[2], "show")) ? ~8 : ~0;
+		if (show == 0) {
+			cli_sendv(client, "Invalid action \"%s\"\r\n",
+				  fields[2]);
+			show = 15;
+		}
+	}
+	if (show & 1)
+		cli_send(client, "pppoe mac-filter reload"
+			 " - reload mac-filter file\r\n");
+	if (show & 2)
+		cli_send(client,
+			 "pppoe mac-filter add <address>"
+			 " - add address to mac-filter list\r\n");
+	if (show & 4)
+		cli_send(client,
+			 "pppoe mac-filter del <address> -"
+			 " delete address from mac-filter list\r\n");
+	if (show & 8)
+		cli_send(client,
+			 "pppoe mac-filter show"
+			 " - show current mac-filter list\r\n");
 }
 
 static void init(void)
