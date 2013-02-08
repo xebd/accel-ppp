@@ -26,7 +26,10 @@ struct cli_regexp_cmd_t
 	const char *pattern;
 	int options;
 	int (*exec)(const char *cmd, void *client);
-	int (*help)(char * const *fields, int field_cnt, void *client);
+	pcre *h_re;
+	const char *h_pattern;
+	int h_options;
+	int (*help)(const char *cmd, void *client);
 };
 
 struct ap_session;

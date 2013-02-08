@@ -68,6 +68,16 @@ void __export cli_register_regexp_cmd(struct cli_regexp_cmd_t *cmd)
 	int erroffset;
 	const char *errptr;
 
+	if (cmd->exec == NULL) {
+		log_emerg("cli: impossible to register regexp command"
+			  " without an execution callback function\n");
+		_exit(EXIT_FAILURE);
+	}
+	if (cmd->pattern == NULL) {
+		log_emerg("cli: impossible to register regexp command"
+			  " without pattern\n");
+		_exit(EXIT_FAILURE);
+	}
 	cmd->re = pcre_compile2(cmd->pattern, cmd->options, &err,
 				&errptr, &erroffset, NULL);
 	if (!cmd->re) {
@@ -77,6 +87,23 @@ void __export cli_register_regexp_cmd(struct cli_regexp_cmd_t *cmd)
 			  cmd->pattern + erroffset);
 		_exit(EXIT_FAILURE);
 	}
+
+	if (cmd->h_pattern) {
+		cmd->h_re = pcre_compile2(cmd->h_pattern, cmd->h_options, &err,
+					  &errptr, &erroffset, NULL);
+		if (!cmd->h_re) {
+			log_emerg("cli: failed to compile help regexp \"%s\":"
+				  " %s (error %i) at position %i (unprocessed"
+				  " characters: \"%s\")\n",
+				  cmd->h_pattern, errptr, err, erroffset,
+				  cmd->h_pattern + erroffset);
+			_exit(EXIT_FAILURE);
+		}
+	} else {
+		cmd->h_re = NULL;
+		cmd->h_pattern = NULL;
+	}
+
 	list_add_tail(&cmd->entry, &regexp_cmd_list);
 }
 
@@ -153,10 +180,18 @@ static int cli_process_help_cmd(struct cli_client_t *cln)
 	if (!isblank(cmd[helpcmd_len]) && cmd[helpcmd_len] != '\0')
 		return 0;
 
+	cmd = skip_space(cmd + helpcmd_len);
+
+	list_for_each_entry(recmd, &regexp_cmd_list, entry) {
+		if (cmd[0] == '\0'
+		    || pcre_exec(recmd->h_re, NULL, cmd, strlen(cmd),
+				 0, 0, NULL, 0) >= 0) {
+			if (recmd->help)
+				recmd->help(cmd, cln);
+		}
+	}
+
 	nb_items = split(cmd, items);
-	list_for_each_entry(recmd, &regexp_cmd_list, entry)
-		if (recmd->help)
-			recmd->help(items, nb_items, cln);
 	list_for_each_entry(sicmd, &simple_cmd_list, entry)
 		if (sicmd->help)
 			sicmd->help(items, nb_items, cln);
