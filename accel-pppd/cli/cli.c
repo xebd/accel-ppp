@@ -61,12 +61,19 @@ void __export cli_register_simple_cmd2(
 void __export cli_register_regexp_cmd(struct cli_regexp_cmd_t *cmd)
 {
 	int err;
-	cmd->re = pcre_compile2(cmd->pattern, cmd->options, &err, NULL, NULL, NULL);
+	int erroffset;
+	const char *errptr;
+
+	cmd->re = pcre_compile2(cmd->pattern, cmd->options, &err,
+				&errptr, &erroffset, NULL);
 	if (!cmd->re) {
-		log_emerg("cli: failed to compile regexp %s: %i\n", cmd->pattern, err);
+		log_emerg("cli: failed to compile regexp \"%s\": %s (error %i)"
+			  " at positon %i (unprocessed characters: \"%s\")\n",
+			  cmd->pattern, errptr, err, erroffset,
+			  cmd->pattern + erroffset);
 		_exit(EXIT_FAILURE);
 	}
-	list_add_tail(&cmd->entry, &simple_cmd_list);
+	list_add_tail(&cmd->entry, &regexp_cmd_list);
 }
 
 int __export cli_send(void *client, const char *data)
@@ -146,7 +153,7 @@ int __export cli_process_cmd(struct cli_client_t *cln)
 
 		list_for_each_entry(cmd2, &regexp_cmd_list, entry)
 			if (cmd2->help)
-				cmd1->help(f, n, cln);
+				cmd2->help(f, n, cln);
 
 		return 0;
 	}
@@ -183,9 +190,12 @@ int __export cli_process_cmd(struct cli_client_t *cln)
 			case CLI_CMD_EXIT:
 				cln->disconnect(cln);
 			case CLI_CMD_FAILED:
-				return 0;
+				return -1;
 			case CLI_CMD_SYNTAX:
 				cli_send(cln, MSG_SYNTAX_ERROR);
+				return 0;
+			case CLI_CMD_INVAL:
+				cli_send(cln, MSG_INVAL_ERROR);
 				return 0;
 			case CLI_CMD_OK:
 				found = 1;
