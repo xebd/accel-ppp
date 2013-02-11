@@ -141,6 +141,30 @@ static inline void comp_chap_md5(uint8_t *md5, uint8_t ident,
 	MD5_Final(md5, &md5_ctx);
 }
 
+static inline int nsnr_cmp(uint16_t ns, uint16_t nr)
+{
+/*
+ * RFC 2661, section 5.8:
+ *
+ * The sequence number in the header of a received message is considered
+ * less than or equal to the last received number if its value lies in
+ * the range of the last received number and the preceding 32767 values,
+ * inclusive. For example, if the last received sequence number was 15,
+ * then messages with sequence numbers 0 through 15, as well as 32784
+ * through 65535, would be considered less than or equal.
+ */
+	uint16_t sub_nsnr = ns - nr;
+	uint16_t ref = -32767;        /* 32769 */
+
+	/* Compare Ns - Nr with -32767 (which equals 32769 for uint16_t):
+	 *
+	 * Ns == Nr  <==>  Ns - Nr == 0,
+	 * Ns > Nr   <==>  Ns - Nr in ]0, 32769[   <==>  0 < Ns - Nr < ref
+	 * Ns < Nr   <==>  Ns - Nr in [-32767, 0[  <==> (Ns - Nr) >= ref,
+	 */
+	return (sub_nsnr != 0 && sub_nsnr < ref) - (sub_nsnr >= ref);
+}
+
 static inline struct l2tp_conn_t *l2tp_tunnel_self(void)
 {
 	return container_of(triton_context_self(), struct l2tp_conn_t, ctx);
@@ -1031,7 +1055,7 @@ static void l2tp_retransmit(struct l2tp_conn_t *conn)
 	struct l2tp_packet_t *pack;
 
 	pack = list_entry(conn->send_queue.next, typeof(*pack), entry);
-	pack->hdr.Nr = htons(conn->Nr + 1);
+	pack->hdr.Nr = htons(conn->Nr);
 	if (conf_verbose) {
 		l2tp_conn_log(log_debug, conn);
 		log_debug("send ");
@@ -1049,7 +1073,7 @@ static void l2tp_rtimeout(struct triton_timer_t *t)
 		log_ppp_debug("l2tp: retransmit (%i)\n", conn->retransmit);
 		if (++conn->retransmit <= conf_retransmit) {
 			pack = list_entry(conn->send_queue.next, typeof(*pack), entry);
-			pack->hdr.Nr = htons(conn->Nr + 1);
+			pack->hdr.Nr = htons(conn->Nr);
 			if (conf_verbose) {
 				log_ppp_debug("send ");
 				l2tp_packet_print(pack, log_ppp_debug);
@@ -1074,7 +1098,7 @@ static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack, int d
 
 	pack->hdr.tid = htons(conn->peer_tid);
 	//pack->hdr.sid = htons(conn->peer_sid);
-	pack->hdr.Nr = htons(conn->Nr + 1);
+	pack->hdr.Nr = htons(conn->Nr);
 	pack->hdr.Ns = htons(conn->Ns);
 
 	if (!list_empty(&pack->attrs))
@@ -1341,6 +1365,7 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 		}
 
 		conn->peer_tid = assigned_tid->val.uint16;
+		conn->Nr = 1;
 
 		if (l2tp_tunnel_start(conn, (triton_event_func)l2tp_send_SCCRP, conn) < 0) {
 			l2tp_tunnel_free(conn);
@@ -1745,7 +1770,30 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 			continue;
 		}
 
-		if (ntohs(pack->hdr.Ns) == conn->Nr + 1) {
+		res = nsnr_cmp(ntohs(pack->hdr.Ns), conn->Nr);
+		if (res < 0) {
+			/* Duplicate message */
+			l2tp_conn_log(log_debug, conn);
+			log_debug("Duplicate message (packet Ns/Nr: %hu/%hu,"
+				  " tunnel Ns/Nr: %hu/%hu)\n",
+				  ntohs(pack->hdr.Ns), ntohs(pack->hdr.Nr),
+				  conn->Ns, conn->Nr);
+			if (!list_empty(&conn->send_queue))
+				l2tp_retransmit(conn);
+			else if (l2tp_send_ZLB(conn))
+				goto drop;
+			l2tp_packet_free(pack);
+			continue;
+		} else if (res > 0) {
+			/* Out of order message */
+			l2tp_conn_log(log_debug, conn);
+			log_debug("Reordered message (packet Ns/Nr: %hu/%hu,"
+				  " tunnel Ns/Nr: %hu/%hu)\n",
+				  ntohs(pack->hdr.Ns), ntohs(pack->hdr.Nr),
+				  conn->Ns, conn->Nr);
+			l2tp_packet_free(pack);
+			continue;
+		} else {
 			if (!list_empty(&pack->attrs))
 				conn->Nr++;
 			if (!list_empty(&conn->send_queue)) {
@@ -1762,20 +1810,6 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 				if (conn->state == STATE_FIN)
 					goto drop;
 			}
-		} else {
-			if (ntohs(pack->hdr.Ns) < conn->Nr + 1 || (ntohs(pack->hdr.Ns > 32767 && conn->Nr + 1 < 32767))) {
-				l2tp_conn_log(log_debug, conn);
-				log_debug("duplicate packet %i\n", ntohs(pack->hdr.Ns));
-				if (!list_empty(&conn->send_queue))
-					l2tp_retransmit(conn);
-				else if (l2tp_send_ZLB(conn))
-					goto drop;
-			} else {
-				l2tp_conn_log(log_debug, conn);
-				log_debug("reordered packet %i\n", ntohs(pack->hdr.Ns));
-			}
-			l2tp_packet_free(pack);
-			continue;
 		}
 
 		if (list_empty(&pack->attrs)) {
