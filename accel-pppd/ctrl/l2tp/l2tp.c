@@ -938,6 +938,25 @@ out_err:
 	return NULL;
 }
 
+static inline int l2tp_tunnel_update_peerport(struct l2tp_conn_t *conn,
+					      uint16_t port_nbo)
+{
+	in_port_t old_port = conn->peer_addr.sin_port;
+	int res;
+
+	conn->peer_addr.sin_port = port_nbo;
+	res = connect(conn->hnd.fd, &conn->peer_addr, sizeof(conn->peer_addr));
+	if (res < 0) {
+		l2tp_conn_log(log_error, conn);
+		log_error("l2tp: Impossible to update peer port from"
+			  " %hu to %hu: connect() failed: %s\n",
+			  ntohs(old_port), ntohs(port_nbo), strerror(errno));
+		conn->peer_addr.sin_port = old_port;
+	}
+
+	return res;
+}
+
 static int l2tp_session_connect(struct l2tp_sess_t *sess)
 {
 	struct sockaddr_pppol2tp pppox_addr;
@@ -1777,6 +1796,15 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 
 		if (!pack)
 			continue;
+
+		if (conn->peer_addr.sin_port == 0) {
+			/* Get peer's first reply source port and use it as
+			   destination port for further outgoing messages */
+			res = l2tp_tunnel_update_peerport(conn,
+							  pack->addr.sin_port);
+			if (res < 0)
+				goto drop;
+		}
 
 		if (ntohs(pack->hdr.tid) != conn->tid && (pack->hdr.tid || !conf_dir300_quirk)) {
 			if (conf_verbose) {
