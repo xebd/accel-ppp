@@ -39,7 +39,7 @@
 
 #define STATE_WAIT_SCCRP 1
 #define STATE_WAIT_SCCCN 2
-#define STATE_WAIT_ICRQ  3
+#define STATE_WAIT_ICRP  3
 #define STATE_WAIT_ICCN  4
 #define STATE_WAIT_OCRP  5
 #define STATE_WAIT_OCCN  6
@@ -1316,6 +1316,35 @@ err:
 	return -1;
 }
 
+static int l2tp_send_ICRQ(struct l2tp_sess_t *sess)
+{
+	struct l2tp_packet_t *pack;
+
+	pack = l2tp_packet_alloc(2, Message_Type_Incoming_Call_Request,
+				 &sess->paren_conn->peer_addr);
+	if (pack == NULL)
+		return -1;
+
+	if (l2tp_packet_add_int16(pack, Assigned_Session_ID, sess->sid, 1))
+		goto out_err;
+	if (l2tp_packet_add_int32(pack, Call_Serial_Number, 0, 1))
+		goto out_err;
+
+	if (l2tp_send(sess->paren_conn, pack, 0))
+		return -1;
+
+	if (!sess->timeout_timer.tpd)
+		triton_timer_add(&sess->sctx, &sess->timeout_timer, 0);
+	else
+		triton_timer_mod(&sess->timeout_timer, 0);
+
+	return 0;
+
+out_err:
+	l2tp_packet_free(pack);
+	return -1;
+}
+
 static int l2tp_send_ICRP(struct l2tp_sess_t *sess)
 {
 	struct l2tp_packet_t *pack;
@@ -1339,6 +1368,34 @@ static int l2tp_send_ICRP(struct l2tp_sess_t *sess)
 	
 	sess->state1 = STATE_WAIT_ICCN;
 	
+	return 0;
+
+out_err:
+	l2tp_packet_free(pack);
+	return -1;
+}
+
+static int l2tp_send_ICCN(struct l2tp_sess_t *sess)
+{
+	struct l2tp_packet_t *pack;
+
+	pack = l2tp_packet_alloc(2, Message_Type_Incoming_Call_Connected,
+				 &sess->paren_conn->peer_addr);
+	if (pack == 0)
+		return -1;
+
+	pack->hdr.sid = htons(sess->peer_sid);
+
+	if (l2tp_packet_add_int16(pack, Assigned_Session_ID, sess->sid, 1) < 0)
+		goto out_err;
+	if (l2tp_packet_add_int32(pack, TX_Speed, 1000, 1) < 0)
+		goto out_err;
+	if (l2tp_packet_add_int32(pack, Framing_Type, 3, 1) < 0)
+		goto out_err;
+
+	if (l2tp_send(sess->paren_conn, pack, 0) < 0)
+		return -1;
+
 	return 0;
 
 out_err:
@@ -1748,6 +1805,72 @@ out_reject:
 	return -1;
 }
 
+static int l2tp_recv_ICRP(struct l2tp_sess_t *sess, struct l2tp_packet_t *pack)
+{
+	struct l2tp_attr_t *assigned_sid = NULL;
+	struct l2tp_attr_t *unknown_attr = NULL;
+	struct l2tp_attr_t *attr = NULL;
+
+	if (sess->state1 != STATE_WAIT_ICRP) {
+		log_ppp_warn("l2tp: unexpected ICCN\n");
+		return -1;
+	}
+
+	triton_timer_del(&sess->timeout_timer);
+
+	list_for_each_entry(attr, &pack->attrs, entry) {
+		switch(attr->attr->id) {
+		case Message_Type:
+			break;
+		case Assigned_Session_ID:
+			assigned_sid = attr;
+			break;
+		default:
+			if (attr->M)
+				unknown_attr = attr;
+			else
+				log_ppp_warn("l2tp: ICRP:"
+					     " unknown attribute %i\n",
+					     attr->attr->id);
+			break;
+		}
+	}
+
+	if (assigned_sid == NULL) {
+		log_ppp_error("l2tp: ICRP: missing mandatory AVP:"
+			      " Assigned Session ID\n");
+		l2tp_session_disconnect(sess, 2, 6);
+		return -1;
+	}
+
+	/* Set peer_sid as soon as possible so that CDN
+	   will be sent to the right tunnel in case of error */
+	sess->peer_sid = assigned_sid->val.uint16;
+
+	if (unknown_attr) {
+		log_ppp_error("l2tp: ICRP: unknown mandatory attribute %i\n",
+			      unknown_attr->attr->id);
+		l2tp_session_disconnect(sess, 2, 8);
+		return -1;
+	}
+
+	if (l2tp_send_ICCN(sess) < 0) {
+		log_ppp_error("l2tp: ICRP: Error while sending ICCN\n");
+		l2tp_session_disconnect(sess, 2, 6);
+		return -1;
+	}
+
+	sess->state1 = STATE_ESTB;
+
+	if (l2tp_session_connect(sess) < 0) {
+		log_ppp_error("l2tp: ICRP: Error while connection session\n");
+		l2tp_session_disconnect(sess, 2, 6);
+		return -1;
+	}
+
+	return 0;
+}
+
 static int l2tp_recv_ICCN(struct l2tp_sess_t *sess, struct l2tp_packet_t *pack)
 {
 	if (sess->state1 != STATE_WAIT_ICCN) {
@@ -1891,6 +2014,18 @@ static int l2tp_recv_SLI(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 	return 0;
 }
 
+static void l2tp_session_incall(void *data)
+{
+	struct l2tp_sess_t *sess = data;
+
+	if (l2tp_send_ICRQ(sess) < 0) {
+		log_ppp_error("l2tp: impossible to place call:"
+			      " error while sending ICRQ\n");
+		return;
+	}
+	sess->state1 = STATE_WAIT_ICRP;
+}
+
 static void l2tp_session_outcall(void *data)
 {
 	struct l2tp_sess_t *sess = data;
@@ -1914,12 +2049,6 @@ static void l2tp_tunnel_create_session(void *data)
 		return;
 	}
 
-	if (!conn->lns_mode) {
-		log_ppp_error("l2tp: impossible to place call: feature not"
-			      " supported for tunnels operating as LAC\n");
-		return;
-	}
-
 	sess = l2tp_tunnel_alloc_session(conn);
 	if (sess == NULL) {
 		log_ppp_error("l2tp: impossible to place call:"
@@ -1932,7 +2061,10 @@ static void l2tp_tunnel_create_session(void *data)
 		l2tp_tunnel_cancel_session(sess);
 		return;
 	}
-	triton_context_call(&sess->sctx, l2tp_session_outcall, sess);
+	if (conn->lns_mode)
+		triton_context_call(&sess->sctx, l2tp_session_outcall, sess);
+	else
+		triton_context_call(&sess->sctx, l2tp_session_incall, sess);
 }
 
 static void l2tp_session_recv(void *data)
@@ -1947,6 +2079,9 @@ static void l2tp_session_recv(void *data)
 	switch (msg_type->val.uint16) {
 	case Message_Type_Incoming_Call_Connected:
 		l2tp_recv_ICCN(sess, pack);
+		break;
+	case Message_Type_Incoming_Call_Reply:
+		l2tp_recv_ICRP(sess, pack);
 		break;
 	case Message_Type_Outgoing_Call_Reply:
 		l2tp_recv_OCRP(sess, pack);
@@ -2100,6 +2235,7 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 					goto drop;
 				break;
 			case Message_Type_Incoming_Call_Connected:
+			case Message_Type_Incoming_Call_Reply:
 			case Message_Type_Outgoing_Call_Reply:
 			case Message_Type_Outgoing_Call_Connected:
 			case Message_Type_Call_Disconnect_Notify:
@@ -2114,7 +2250,6 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 				break;
 			case Message_Type_Start_Ctrl_Conn_Request:
 			case Message_Type_Outgoing_Call_Request:
-			case Message_Type_Incoming_Call_Reply:
 			case Message_Type_WAN_Error_Notify:
 				if (conf_verbose)
 					log_warn("l2tp: unexpected Message-Type %i\n", msg_type->val.uint16);
