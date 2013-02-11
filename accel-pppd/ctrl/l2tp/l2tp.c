@@ -588,7 +588,7 @@ out_err:
 }
 
 static struct l2tp_conn_t *l2tp_tunnel_alloc(struct l2tp_serv_t *serv,
-					     struct l2tp_packet_t *pack,
+					     const struct sockaddr_in *peer,
 					     const struct sockaddr_in *host,
 					     uint32_t framing_cap,
 					     struct l2tp_attr_t *challenge)
@@ -637,7 +637,7 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(struct l2tp_serv_t *serv,
 		goto out_err;
 	}
 
-	if (connect(conn->hnd.fd, (struct sockaddr *)&pack->addr, sizeof(pack->addr))) {
+	if (connect(conn->hnd.fd, (struct sockaddr *)peer, sizeof(*peer))) {
 		log_error("l2tp: connect: %s\n", strerror(errno));
 		goto out_err;
 	}
@@ -672,7 +672,7 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(struct l2tp_serv_t *serv,
 		goto out_err;
 	}
 
-	memcpy(&conn->lac_addr, &pack->addr, sizeof(pack->addr));
+	memcpy(&conn->lac_addr, peer, sizeof(*peer));
 	memcpy(&conn->lns_addr, host, sizeof(*host));
 	conn->framing_cap = framing_cap;
 
@@ -1131,7 +1131,7 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 		host_addr.sin_addr = pkt_info->ipi_addr;
 		host_addr.sin_port = 0;
 
-		conn = l2tp_tunnel_alloc(serv, pack, &host_addr,
+		conn = l2tp_tunnel_alloc(serv, &pack->addr, &host_addr,
 					 framing_cap->val.uint32, challenge);
 		if (conn == NULL)
 			return -1;
