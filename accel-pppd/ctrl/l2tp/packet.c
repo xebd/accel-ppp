@@ -374,8 +374,8 @@ int l2tp_packet_send(int sock, struct l2tp_packet_t *pack)
 	pack->hdr.length = htons(len);
 	memcpy(buf, &pack->hdr, sizeof(pack->hdr));
 
-	n = write(sock, buf, ntohs(pack->hdr.length));
-	
+	n = sendto(sock, buf, ntohs(pack->hdr.length), 0,
+		   &pack->addr, sizeof(pack->addr));
 	mempool_free(buf);
 
 	if (n < 0) {
