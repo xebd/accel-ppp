@@ -788,8 +788,7 @@ out_err:
 	return -1;
 }
 
-static struct l2tp_conn_t *l2tp_tunnel_alloc(struct l2tp_serv_t *serv,
-					     const struct sockaddr_in *peer,
+static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 					     const struct sockaddr_in *host,
 					     uint32_t framing_cap)
 {
@@ -1315,7 +1314,7 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 		host_addr.sin_addr = pkt_info->ipi_addr;
 		host_addr.sin_port = 0;
 
-		conn = l2tp_tunnel_alloc(serv, &pack->addr, &host_addr,
+		conn = l2tp_tunnel_alloc(&pack->addr, &host_addr,
 					 framing_cap->val.uint32);
 		if (conn == NULL)
 			return -1;
