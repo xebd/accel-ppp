@@ -228,6 +228,7 @@ static int cli_process_regexp_cmd(struct cli_client_t *cln, int *err)
 	int found = 0;
 	int res;
 
+	cmd = skip_space(cmd);
 	list_for_each_entry(recmd, &regexp_cmd_list, entry)
 		if (pcre_exec(recmd->re, NULL, cmd, strlen(cmd),
 			      0, 0, NULL, 0) >= 0) {
