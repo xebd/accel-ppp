@@ -590,7 +590,6 @@ out_err:
 static struct l2tp_conn_t *l2tp_tunnel_alloc(struct l2tp_serv_t *serv,
 					     struct l2tp_packet_t *pack,
 					     struct in_pktinfo *pkt_info,
-					     struct l2tp_attr_t *assigned_tid,
 					     struct l2tp_attr_t *framing_cap,
 					     struct l2tp_attr_t *challenge)
 {
@@ -681,7 +680,6 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(struct l2tp_serv_t *serv,
 
 	memcpy(&conn->lac_addr, &pack->addr, sizeof(pack->addr));
 	memcpy(&conn->lns_addr, &addr, sizeof(addr));
-	conn->peer_tid = assigned_tid->val.uint16;
 	conn->framing_cap = framing_cap->val.uint32;
 
 	/* If challenge set in SCCRQ, we need to calculate response for SCCRP */
@@ -1140,10 +1138,13 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 			return -1;
 		}
 
-		conn = l2tp_tunnel_alloc(serv, pack, pkt_info, assigned_tid,
+		conn = l2tp_tunnel_alloc(serv, pack, pkt_info,
 					 framing_cap, challenge);
 		if (conn == NULL)
 			return -1;
+
+		conn->peer_tid = assigned_tid->val.uint16;
+
 		if (l2tp_tunnel_start(conn, (triton_event_func)l2tp_send_SCCRP, conn) < 0) {
 			l2tp_tunnel_free(conn);
 			return -1;
