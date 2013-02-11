@@ -565,6 +565,28 @@ static void l2tp_conn_close(struct triton_context_t *ctx)
 	l2tp_tunnel_free(conn);
 }
 
+static int l2tp_tunnel_start(struct l2tp_conn_t *conn,
+			     triton_event_func start_func,
+			     void *start_param)
+{
+	if (triton_context_register(&conn->ctx, NULL) < 0)
+		return -1;
+	triton_md_register_handler(&conn->ctx, &conn->hnd);
+	if (triton_md_enable_handler(&conn->hnd, MD_MODE_READ) < 0)
+		goto out_err;
+	triton_context_wakeup(&conn->ctx);
+	if (triton_context_call(&conn->ctx, start_func, start_param) < 0)
+		goto out_err;
+
+	return 0;
+
+out_err:
+	triton_md_unregister_handler(&conn->hnd);
+	triton_context_unregister(&conn->ctx);
+
+	return -1;
+}
+
 static struct l2tp_conn_t *l2tp_tunnel_alloc(struct l2tp_serv_t *serv,
 					     struct l2tp_packet_t *pack,
 					     struct in_pktinfo *pkt_info,
@@ -691,15 +713,6 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(struct l2tp_serv_t *serv,
 
 	conn->tunnel_fd = -1;
 
-	if (triton_context_register(&conn->ctx, NULL) < 0) {
-		log_error("l2tp: tunnel allocation failed:"
-			  " can't register context\n");
-		goto out_err;
-	}
-	triton_md_register_handler(&conn->ctx, &conn->hnd);
-	triton_md_enable_handler(&conn->hnd, MD_MODE_READ);
-	triton_context_wakeup(&conn->ctx);
-
 	if (conf_verbose) {
 		log_switch(&conn->ctx, NULL);
 		log_ppp_info2("recv ");
@@ -708,7 +721,6 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(struct l2tp_serv_t *serv,
 
 	conn->sessions = NULL;
 	conn->sess_count = 0;
-	triton_context_call(&conn->ctx, (triton_event_func)l2tp_send_SCCRP, conn);
 
 	return conn;
 
@@ -1076,7 +1088,8 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 	struct l2tp_attr_t *framing_cap = NULL;
 	struct l2tp_attr_t *router_id = NULL;
 	struct l2tp_attr_t *challenge = NULL;
-	
+	struct l2tp_conn_t *conn = NULL;
+
 	if (ap_shutdown)
 		return 0;
 	
@@ -1126,9 +1139,15 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 				log_warn("l2tp: SCCRQ: no Framing-Capabilities present in message\n");
 			return -1;
 		}
-		
-		if (l2tp_tunnel_alloc(serv, pack, pkt_info, assigned_tid, framing_cap, challenge) == NULL)
+
+		conn = l2tp_tunnel_alloc(serv, pack, pkt_info, assigned_tid,
+					 framing_cap, challenge);
+		if (conn == NULL)
 			return -1;
+		if (l2tp_tunnel_start(conn, (triton_event_func)l2tp_send_SCCRP, conn) < 0) {
+			l2tp_tunnel_free(conn);
+			return -1;
+		}
 
 	} else if (assigned_cid) {
 		// not yet implemented
