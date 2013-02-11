@@ -37,14 +37,15 @@
 #define SOL_PPPOL2TP 273
 #endif
 
-#define STATE_WAIT_SCCCN 1
-#define STATE_WAIT_ICRQ  2
-#define STATE_WAIT_ICCN  3
-#define STATE_WAIT_OCRP  4
-#define STATE_WAIT_OCCN  5
-#define STATE_ESTB       6
-#define STATE_PPP        7
-#define STATE_FIN        8
+#define STATE_WAIT_SCCRP 1
+#define STATE_WAIT_SCCCN 2
+#define STATE_WAIT_ICRQ  3
+#define STATE_WAIT_ICCN  4
+#define STATE_WAIT_OCRP  5
+#define STATE_WAIT_OCCN  6
+#define STATE_ESTB       7
+#define STATE_PPP        8
+#define STATE_FIN        9
 #define STATE_CLOSE      0
 
 int conf_verbose = 0;
