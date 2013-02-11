@@ -1199,6 +1199,54 @@ static void l2tp_send_HELLO(struct triton_timer_t *t)
 		l2tp_tunnel_free(conn);
 }
 
+static void l2tp_send_SCCRQ(void *peer_addr)
+{
+	struct l2tp_conn_t *conn = l2tp_tunnel_self();
+	struct l2tp_packet_t *pack = NULL;
+
+	pack = l2tp_packet_alloc(2, Message_Type_Start_Ctrl_Conn_Request,
+				 &conn->peer_addr);
+	if (pack == NULL)
+		goto err;
+
+	if (l2tp_packet_add_int16(pack, Protocol_Version,
+				  L2TP_V2_PROTOCOL_VERSION, 1) < 0)
+		goto pack_err;
+	if (l2tp_packet_add_string(pack, Host_Name, conf_host_name, 1) < 0)
+		goto pack_err;
+	if (l2tp_packet_add_int32(pack, Framing_Capabilities,
+				  conn->framing_cap, 1) < 0)
+		goto pack_err;
+	if (l2tp_packet_add_int16(pack, Assigned_Tunnel_ID, conn->tid, 1) < 0)
+		goto pack_err;
+	if (l2tp_packet_add_string(pack, Vendor_Name, "accel-ppp", 0) < 0)
+		goto pack_err;
+
+	if (l2tp_tunnel_genchall(MD5_DIGEST_LENGTH, conn, pack) < 0)
+		goto pack_err;
+
+	/* Peer may reply with arbitrary source port */
+	if (l2tp_tunnel_update_peerport(conn, 0) < 0)
+		goto err;
+
+	if (l2tp_send(conn, pack, 0) < 0)
+		goto err;
+
+	if (!conn->timeout_timer.tpd)
+		triton_timer_add(&conn->ctx, &conn->timeout_timer, 0);
+	else
+		triton_timer_mod(&conn->timeout_timer, 0);
+
+	conn->state = STATE_WAIT_SCCRP;
+
+	return;
+
+pack_err:
+	l2tp_packet_free(pack);
+err:
+	l2tp_tunnel_free(conn);
+}
+
 static void l2tp_send_SCCRP(struct l2tp_conn_t *conn)
 {
 	struct l2tp_packet_t *pack;
@@ -1241,6 +1289,31 @@ out_err:
 	l2tp_packet_free(pack);
 out:
 	l2tp_tunnel_free(conn);
+}
+
+static int l2tp_send_SCCCN(struct l2tp_conn_t *conn)
+{
+	struct l2tp_packet_t *pack = NULL;
+
+	pack = l2tp_packet_alloc(2, Message_Type_Start_Ctrl_Conn_Connected,
+				 &conn->peer_addr);
+	if (pack == NULL)
+		goto err;
+
+	if (l2tp_tunnel_genchallresp(Message_Type_Start_Ctrl_Conn_Connected,
+				     conn, pack) < 0)
+		goto pack_err;
+	l2tp_tunnel_storechall(conn, NULL);
+
+	if (l2tp_send(conn, pack, 0) < 0)
+		goto err;
+
+	return 0;
+
+pack_err:
+	l2tp_packet_free(pack);
+err:
+	return -1;
 }
 
 static int l2tp_send_ICRP(struct l2tp_sess_t *sess)
@@ -1415,6 +1488,127 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 		if (conf_verbose)
 			log_warn("l2tp: SCCRQ: no Challenge present in message\n");
 	}
+
+	return 0;
+}
+
+static int l2tp_recv_SCCRP(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
+{
+	struct l2tp_attr_t *protocol_version = NULL;
+	struct l2tp_attr_t *assigned_tid = NULL;
+	struct l2tp_attr_t *framing_cap = NULL;
+	struct l2tp_attr_t *challenge = NULL;
+	struct l2tp_attr_t *challenge_resp = NULL;
+	struct l2tp_attr_t *unknown_attr = NULL;
+	struct l2tp_attr_t *attr = NULL;
+
+	if (conn->state != STATE_WAIT_SCCRP) {
+		l2tp_conn_log(log_warn, conn);
+		log_warn("l2tp: unexpected SCCRP\n");
+		return -1;
+	}
+
+	triton_timer_del(&conn->timeout_timer);
+
+	list_for_each_entry(attr, &pack->attrs, entry) {
+		switch (attr->attr->id) {
+		case Message_Type:
+		case Host_Name:
+		case Bearer_Capabilities:
+		case Firmware_Revision:
+		case Vendor_Name:
+		case Recv_Window_Size:
+			break;
+		case Protocol_Version:
+			protocol_version = attr;
+			break;
+		case Framing_Capabilities:
+			framing_cap = attr;
+			break;
+		case Assigned_Tunnel_ID:
+			assigned_tid = attr;
+			break;
+		case Challenge:
+			challenge = attr;
+			break;
+		case Challenge_Response:
+			challenge_resp = attr;
+			break;
+		default:
+			if (attr->M)
+				unknown_attr = attr;
+			else {
+				l2tp_conn_log(log_warn, conn);
+				log_warn("l2tp: SCCRP:"
+					 " unknown attribute %i\n",
+					 attr->attr->id);
+			}
+			break;
+		}
+	}
+
+	if (assigned_tid == NULL) {
+		l2tp_conn_log(log_error, conn);
+		log_error("l2tp: SCCRP: missing mandatory AVP:"
+			  " Assigned Tunnel ID\n");
+		l2tp_tunnel_disconnect(conn, 2, 0);
+		return -1;
+	}
+
+	/* Set peer_tid as soon as possible so that StopCCCN
+	   will be sent to the right tunnel in case of error */
+	conn->peer_tid = assigned_tid->val.uint16;
+
+	if (unknown_attr) {
+		l2tp_conn_log(log_error, conn);
+		log_error("l2tp: SCCRP: unknown mandatory attribute %i\n",
+			  unknown_attr->attr->id);
+		l2tp_tunnel_disconnect(conn, 2, 8);
+		return -1;
+	}
+	if (framing_cap == NULL) {
+		l2tp_conn_log(log_error, conn);
+		log_error("l2tp: SCCRP: missing mandatory AVP:"
+			  " Framing Capabilities\n");
+		l2tp_tunnel_disconnect(conn, 2, 0);
+		return -1;
+	}
+	if (protocol_version == NULL) {
+		l2tp_conn_log(log_error, conn);
+		log_error("l2tp: SCCRP: missing mandatory AVP:"
+			  " Protocol Version\n");
+		l2tp_tunnel_disconnect(conn, 2, 0);
+		return -1;
+	}
+	if (protocol_version->val.uint16 != L2TP_V2_PROTOCOL_VERSION) {
+		l2tp_conn_log(log_error, conn);
+		log_error("l2tp: SCCRP: unknown protocol version %hhu.%hhu\n",
+			  protocol_version->val.uint16 >> 8,
+			  protocol_version->val.uint16 & 0x00FF);
+		l2tp_tunnel_disconnect(conn, 5, 0);
+		return -1;
+	}
+
+	if (l2tp_tunnel_checkchallresp(Message_Type_Start_Ctrl_Conn_Reply,
+				       conn, challenge_resp) < 0) {
+		l2tp_tunnel_disconnect(conn, 4, 0);
+		return -1;
+	}
+	if (l2tp_tunnel_storechall(conn, challenge) < 0) {
+		l2tp_tunnel_disconnect(conn, 2, 4);
+		return -1;
+	}
+
+	if (l2tp_tunnel_connect(conn) < 0) {
+		l2tp_tunnel_disconnect(conn, 2, 0);
+		return -1;
+	}
+	if (l2tp_send_SCCCN(conn) < 0) {
+		l2tp_tunnel_disconnect(conn, 2, 0);
+		return -1;
+	}
+
+	conn->state = STATE_ESTB;
 
 	return 0;
 }
@@ -1885,6 +2079,10 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 		}
 
 		switch (msg_type->val.uint16) {
+			case Message_Type_Start_Ctrl_Conn_Reply:
+				if (l2tp_recv_SCCRP(conn, pack))
+					goto drop;
+				break;
 			case Message_Type_Start_Ctrl_Conn_Connected:
 				if (l2tp_recv_SCCCN(conn, pack))
 					goto drop;
@@ -1915,7 +2113,6 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 					goto drop;
 				break;
 			case Message_Type_Start_Ctrl_Conn_Request:
-			case Message_Type_Start_Ctrl_Conn_Reply:
 			case Message_Type_Outgoing_Call_Request:
 			case Message_Type_Incoming_Call_Reply:
 			case Message_Type_WAN_Error_Notify:
@@ -2073,6 +2270,68 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	return CLI_CMD_OK;
 }
 
+static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
+				   int fields_cnt, void *client)
+{
+	struct l2tp_conn_t *conn = NULL;
+	struct sockaddr_in peer = {
+		.sin_family = AF_UNSPEC
+	};
+	struct sockaddr_in host = {
+		.sin_family = AF_UNSPEC
+	};
+	char *opt = NULL;
+	int lns_mode = 0;
+	int indx;
+
+	opt = conf_get_opt("l2tp", "bind");
+	if (opt)
+		if (inet_aton(opt, &host.sin_addr) == 0) {
+			host.sin_family = AF_INET;
+			host.sin_port = 0;
+		}
+
+	for (indx = 3; indx + 1 < fields_cnt; ++indx) {
+		if (strcmp("mode", fields[indx]) == 0) {
+			++indx;
+			if (strcmp("lns", fields[indx]) == 0)
+				lns_mode = 1;
+			else if (strcmp("lac", fields[indx]) == 0)
+				lns_mode = 0;
+			else
+				return CLI_CMD_INVAL;
+		} else if (strcmp("peer-addr", fields[indx]) == 0) {
+			++indx;
+			peer.sin_family = AF_INET;
+			peer.sin_port = htons(L2TP_PORT);
+			if (inet_aton(fields[indx], &peer.sin_addr) == 0)
+				return CLI_CMD_INVAL;
+		} else if (strcmp("host-addr", fields[indx]) == 0) {
+			++indx;
+			host.sin_family = AF_INET;
+			host.sin_port = 0;
+			if (inet_aton(fields[indx], &host.sin_addr) == 0)
+				return CLI_CMD_INVAL;
+		} else
+			return CLI_CMD_SYNTAX;
+	}
+
+	if (indx != fields_cnt)
+		/* Missing argument for option */
+		return CLI_CMD_SYNTAX;
+
+	if (peer.sin_family == AF_UNSPEC)
+		return CLI_CMD_SYNTAX;
+
+	conn = l2tp_tunnel_alloc(&peer, &host, 3, lns_mode);
+	if (conn == NULL)
+		return CLI_CMD_FAILED;
+
+	l2tp_tunnel_start(conn, l2tp_send_SCCRQ, &peer);
+
+	return CLI_CMD_OK;
+}
+
 static int l2tp_create_session_exec(const char *cmd, char * const *fields,
 				    int fields_cnt, void *client)
 {
@@ -2100,6 +2359,15 @@ static int l2tp_create_session_exec(const char *cmd, char * const *fields,
 	pthread_mutex_unlock(&l2tp_lock);
 
 	return res;
+}
+
+static void l2tp_create_tunnel_help(char * const *fields, int fields_cnt,
+				    void *client)
+{
+	cli_send(client,
+		 "l2tp create tunnel peer-addr <ip_addr> [host-addr <ip_addr>]"
+		 " [mode <lac|lns>]"
+		 " - initiate new tunnel to peer\r\n");
 }
 
 static void l2tp_create_session_help(char * const *fields, int fields_cnt,
@@ -2188,6 +2456,9 @@ static void l2tp_init(void)
 	start_udp_server();
 
 	cli_register_simple_cmd2(&show_stat_exec, NULL, 2, "show", "stat");
+	cli_register_simple_cmd2(l2tp_create_tunnel_exec,
+				 l2tp_create_tunnel_help, 3,
+				 "l2tp", "create", "tunnel");
 	cli_register_simple_cmd2(l2tp_create_session_exec,
 				 l2tp_create_session_help, 3,
 				 "l2tp", "create", "session");
