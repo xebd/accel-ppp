@@ -226,6 +226,36 @@ err:
 	return -1;
 }
 
+static int l2tp_tunnel_genchallresp(uint8_t msgident,
+				    const struct l2tp_conn_t *conn,
+				    struct l2tp_packet_t *pack)
+{
+	uint8_t challresp[MD5_DIGEST_LENGTH];
+
+	if (conn->challenge == NULL) {
+		if (conf_secret || strlen(conf_secret) > 0) {
+			l2tp_conn_log(log_warn, conn);
+			log_warn("l2tp: No Challenge sent by peer\n");
+		}
+		return 0;
+	}
+
+	if (conf_secret == NULL || strlen(conf_secret) == 0) {
+		l2tp_conn_log(log_error, conn);
+		log_error("l2tp: Challenge Response generation failure:"
+			  " No secret set for this tunnel\n");
+		return -1;
+	}
+
+	comp_chap_md5(challresp, msgident, conf_secret, strlen(conf_secret),
+		      conn->challenge, conn->challenge_len);
+	if (l2tp_packet_add_octets(pack, Challenge_Response, challresp,
+				   MD5_DIGEST_LENGTH, 1) < 0)
+		return -1;
+
+	return 0;
+}
+
 static int l2tp_send_StopCCN(struct l2tp_conn_t *conn,
 			     uint16_t res, uint16_t err)
 {
@@ -1001,7 +1031,6 @@ static void l2tp_send_HELLO(struct triton_timer_t *t)
 static void l2tp_send_SCCRP(struct l2tp_conn_t *conn)
 {
 	struct l2tp_packet_t *pack;
-	uint8_t chall_resp[MD5_DIGEST_LENGTH];
 
 	pack = l2tp_packet_alloc(2, Message_Type_Start_Ctrl_Conn_Reply, &conn->lac_addr);
 	if (!pack)
@@ -1017,17 +1046,10 @@ static void l2tp_send_SCCRP(struct l2tp_conn_t *conn)
 		goto out_err;
 	if (l2tp_packet_add_string(pack, Vendor_Name, "accel-ppp", 0))
 		goto out_err;
-	/* If challenge response available */
-	if (conn->challenge_len && conn->challenge) {
-		if (conf_secret == NULL || strlen(conf_secret) == 0)
-			goto out_err;
-		comp_chap_md5(chall_resp, Message_Type_Start_Ctrl_Conn_Reply,
-			      conf_secret, strlen(conf_secret),
-			      conn->challenge, conn->challenge_len);
-		if (l2tp_packet_add_octets(pack, Challenge_Response,
-					   chall_resp, MD5_DIGEST_LENGTH, 1))
-			goto out_err;
-	}
+
+	if (l2tp_tunnel_genchallresp(Message_Type_Start_Ctrl_Conn_Reply,
+				     conn, pack) < 0)
+		goto out_err;
 
 	if (l2tp_send(conn, pack, 0))
 		goto out;
