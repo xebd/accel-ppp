@@ -567,8 +567,7 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 	struct l2tp_conn_t *conn;
 	struct sockaddr_in addr;
 	uint16_t tid;
-	//char *opt;
-	int flag = 1;
+	int flag;
 
 	conn = mempool_alloc(l2tp_conn_pool);
 	if (!conn) {
@@ -585,15 +584,31 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 		mempool_free(conn);
 		return -1;
 	}
-	
-	fcntl(conn->hnd.fd, F_SETFD, fcntl(conn->hnd.fd, F_GETFD) | FD_CLOEXEC);
+
+	flag = fcntl(conn->hnd.fd, F_GETFD);
+	if (flag < 0) {
+		log_error("l2tp: fcntl(F_GETFD): %s\n", strerror(errno));
+		goto out_err;
+	}
+	flag = fcntl(conn->hnd.fd, F_SETFD, flag | FD_CLOEXEC);
+	if (flag < 0) {
+		log_error("l2tp: failed to set close-on-exec flag:"
+			  " fcntl(F_SETFD): %s\n", strerror(errno));
+		goto out_err;
+	}
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
 	addr.sin_addr = pkt_info->ipi_addr;
 	addr.sin_port = htons(L2TP_PORT);
 
-  setsockopt(conn->hnd.fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof(flag));
+	flag = 1;
+	if (setsockopt(conn->hnd.fd, SOL_SOCKET, SO_REUSEADDR,
+		       &flag, sizeof(flag)) < 0) {
+		log_error("l2tp: setsockopt(SO_REUSEADDR): %s\n",
+			  strerror(errno));
+		goto out_err;
+	}
 	if (bind(conn->hnd.fd, &addr, sizeof(addr))) {
 		log_error("l2tp: bind: %s\n", strerror(errno));
 		goto out_err;
@@ -603,9 +618,16 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 		log_error("l2tp: connect: %s\n", strerror(errno));
 		goto out_err;
 	}
- 
-	if (fcntl(conn->hnd.fd, F_SETFL, O_NONBLOCK)) {
-    log_emerg("l2tp: failed to set nonblocking mode: %s\n", strerror(errno));
+
+	flag = fcntl(conn->hnd.fd, F_GETFL);
+	if (flag < 0) {
+		log_error("l2tp: fcntl(F_GETFL): %s\n", strerror(errno));
+		goto out_err;
+	}
+	flag = fcntl(conn->hnd.fd, F_SETFL, flag | O_NONBLOCK);
+	if (flag < 0) {
+		log_error("l2tp: failed to set nonblocking mode:"
+			  " fcntl(F_SETFL): %s\n", strerror(errno));
 		goto out_err;
 	}
 
@@ -661,7 +683,11 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 
 	conn->tunnel_fd = -1;
 
-	triton_context_register(&conn->ctx, NULL);
+	if (triton_context_register(&conn->ctx, NULL) < 0) {
+		log_error("l2tp: tunnel allocation failed:"
+			  " can't register context\n");
+		goto out_err;
+	}
 	triton_md_register_handler(&conn->ctx, &conn->hnd);
 	triton_md_enable_handler(&conn->hnd, MD_MODE_READ);
 	triton_context_wakeup(&conn->ctx);
