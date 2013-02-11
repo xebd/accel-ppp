@@ -561,8 +561,12 @@ static void l2tp_conn_close(struct triton_context_t *ctx)
 	l2tp_tunnel_free(conn);
 }
 
-static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack, struct in_pktinfo *pkt_info, struct l2tp_attr_t *assigned_tid, 
-    struct l2tp_attr_t *framing_cap, struct l2tp_attr_t *challenge)
+static struct l2tp_conn_t *l2tp_tunnel_alloc(struct l2tp_serv_t *serv,
+					     struct l2tp_packet_t *pack,
+					     struct in_pktinfo *pkt_info,
+					     struct l2tp_attr_t *assigned_tid,
+					     struct l2tp_attr_t *framing_cap,
+					     struct l2tp_attr_t *challenge)
 {
 	struct l2tp_conn_t *conn;
 	struct sockaddr_in addr;
@@ -572,7 +576,7 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 	conn = mempool_alloc(l2tp_conn_pool);
 	if (!conn) {
 		log_emerg("l2tp: out of memory\n");
-		return -1;
+		return NULL;
 	}
 
 	memset(conn, 0, sizeof(*conn));
@@ -582,7 +586,7 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 	if (conn->hnd.fd < 0) {
 		log_error("l2tp: socket: %s\n", strerror(errno));
 		mempool_free(conn);
-		return -1;
+		return NULL;
 	}
 
 	flag = fcntl(conn->hnd.fd, F_GETFD);
@@ -702,12 +706,12 @@ static int l2tp_tunnel_alloc(struct l2tp_serv_t *serv, struct l2tp_packet_t *pac
 	conn->sess_count = 0;
 	triton_context_call(&conn->ctx, (triton_event_func)l2tp_send_SCCRP, conn);
 
-	return 0;
+	return conn;
 
 out_err:
 	close(conn->hnd.fd);
 	mempool_free(conn);
-	return -1;
+	return NULL;
 }
 
 static int l2tp_session_connect(struct l2tp_sess_t *sess)
@@ -1119,7 +1123,7 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 			return -1;
 		}
 		
-		if (l2tp_tunnel_alloc(serv, pack, pkt_info, assigned_tid, framing_cap, challenge))
+		if (l2tp_tunnel_alloc(serv, pack, pkt_info, assigned_tid, framing_cap, challenge) == NULL)
 			return -1;
 
 	} else if (assigned_cid) {
