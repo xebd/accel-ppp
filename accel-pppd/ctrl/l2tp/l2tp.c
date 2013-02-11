@@ -793,6 +793,7 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 					     uint32_t framing_cap)
 {
 	struct l2tp_conn_t *conn;
+	socklen_t lnsaddrlen = sizeof(conn->lns_addr);
 	uint16_t tid;
 	int flag;
 
@@ -871,8 +872,17 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 		goto out_err;
 	}
 
+	if (getsockname(conn->hnd.fd, &conn->lns_addr, &lnsaddrlen) < 0) {
+		log_error("l2tp: getsockname: %s\n", strerror(errno));
+		goto out_err;
+	}
+	if (lnsaddrlen != sizeof(conn->lns_addr)) {
+		log_error("l2tp: getsockname: invalid address length: %i\n",
+			  lnsaddrlen);
+		goto out_err;
+	}
+
 	memcpy(&conn->lac_addr, peer, sizeof(*peer));
-	memcpy(&conn->lns_addr, host, sizeof(*host));
 	conn->framing_cap = framing_cap;
 
 	conn->ctx.before_switch = log_switch;
