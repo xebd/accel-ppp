@@ -589,12 +589,11 @@ out_err:
 
 static struct l2tp_conn_t *l2tp_tunnel_alloc(struct l2tp_serv_t *serv,
 					     struct l2tp_packet_t *pack,
-					     struct in_pktinfo *pkt_info,
+					     const struct sockaddr_in *host,
 					     uint32_t framing_cap,
 					     struct l2tp_attr_t *challenge)
 {
 	struct l2tp_conn_t *conn;
-	struct sockaddr_in addr;
 	uint16_t tid;
 	int flag;
 
@@ -626,11 +625,6 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(struct l2tp_serv_t *serv,
 		goto out_err;
 	}
 
-	memset(&addr, 0, sizeof(addr));
-	addr.sin_family = AF_INET;
-	addr.sin_addr = pkt_info->ipi_addr;
-	addr.sin_port = htons(L2TP_PORT);
-
 	flag = 1;
 	if (setsockopt(conn->hnd.fd, SOL_SOCKET, SO_REUSEADDR,
 		       &flag, sizeof(flag)) < 0) {
@@ -638,7 +632,7 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(struct l2tp_serv_t *serv,
 			  strerror(errno));
 		goto out_err;
 	}
-	if (bind(conn->hnd.fd, &addr, sizeof(addr))) {
+	if (bind(conn->hnd.fd, host, sizeof(*host))) {
 		log_error("l2tp: bind: %s\n", strerror(errno));
 		goto out_err;
 	}
@@ -679,7 +673,7 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(struct l2tp_serv_t *serv,
 	}
 
 	memcpy(&conn->lac_addr, &pack->addr, sizeof(pack->addr));
-	memcpy(&conn->lns_addr, &addr, sizeof(addr));
+	memcpy(&conn->lns_addr, host, sizeof(*host));
 	conn->framing_cap = framing_cap;
 
 	/* If challenge set in SCCRQ, we need to calculate response for SCCRP */
@@ -1087,6 +1081,7 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 	struct l2tp_attr_t *router_id = NULL;
 	struct l2tp_attr_t *challenge = NULL;
 	struct l2tp_conn_t *conn = NULL;
+	struct sockaddr_in host_addr = { 0 };
 
 	if (ap_shutdown)
 		return 0;
@@ -1138,9 +1133,12 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 			return -1;
 		}
 
-		conn = l2tp_tunnel_alloc(serv, pack, pkt_info,
-					 framing_cap->val.uint32, challenge);
+		host_addr.sin_family = AF_INET;
+		host_addr.sin_addr = pkt_info->ipi_addr;
+		host_addr.sin_port = 0;
 
+		conn = l2tp_tunnel_alloc(serv, pack, &host_addr,
+					 framing_cap->val.uint32, challenge);
 		if (conn == NULL)
 			return -1;
 
