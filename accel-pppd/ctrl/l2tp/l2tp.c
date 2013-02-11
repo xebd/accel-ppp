@@ -351,8 +351,11 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 		return;
 	}
 
-	triton_md_unregister_handler(&conn->hnd);
-	close(conn->hnd.fd);
+	if (conn->hnd.tpd)
+		triton_md_unregister_handler(&conn->hnd);
+
+	if (conn->hnd.fd >= 0)
+		close(conn->hnd.fd);
 
 	if (conn->timeout_timer.tpd)
 		triton_timer_del(&conn->timeout_timer);
@@ -370,7 +373,8 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 	if (conn->tunnel_fd != -1)
 		close(conn->tunnel_fd);
 
-	triton_context_unregister(&conn->ctx);
+	if (conn->ctx.tpd)
+		triton_context_unregister(&conn->ctx);
 
 	while (!list_empty(&conn->send_queue)) {
 		pack = list_entry(conn->send_queue.next, typeof(*pack), entry);
