@@ -180,6 +180,72 @@ static struct l2tp_sess_t *l2tp_tunnel_get_session(struct l2tp_conn_t *conn,
 	return (res) ? *res : NULL;
 }
 
+static int l2tp_tunnel_genchall(uint16_t chall_len,
+				struct l2tp_conn_t *conn,
+				struct l2tp_packet_t *pack)
+{
+	void *ptr = NULL;
+	size_t urandlen;
+	ssize_t rdlen;
+
+	if (chall_len == 0
+	    || conf_secret == NULL || strlen(conf_secret) == 0) {
+		if (conn->challenge) {
+			_free(conn->challenge);
+			conn->challenge = NULL;
+		}
+		conn->challenge_len = 0;
+		return 0;
+	}
+
+	if (conn->challenge_len != chall_len) {
+		ptr = _realloc(conn->challenge, chall_len);
+		if (ptr == NULL) {
+			l2tp_conn_log(log_error, conn);
+			log_error("l2tp: Challenge generation failure:"
+				  " Memory allocation failed\n");
+			goto err;
+		}
+		conn->challenge = ptr;
+		conn->challenge_len = chall_len;
+	}
+
+	for (urandlen = 0; urandlen < chall_len; urandlen += rdlen) {
+		rdlen = read(urandom_fd, conn->challenge + urandlen,
+			     chall_len - urandlen);
+		if (rdlen < 0) {
+			if (errno == EINTR)
+				rdlen = 0;
+			else {
+				l2tp_conn_log(log_error, conn);
+				log_error("l2tp: Challenge generation failure:"
+					  " Reading from urandom failed: %s\n",
+					  strerror(errno));
+				goto err;
+			}
+		} else if (rdlen == 0) {
+			l2tp_conn_log(log_error, conn);
+			log_error("l2tp: Challenge generation failure:"
+				  " EOF reached while reading from urandom\n");
+			goto err;
+		}
+	}
+
+	if (l2tp_packet_add_octets(pack, Challenge, conn->challenge,
+				   conn->challenge_len, 1) < 0)
+		goto err;
+
+	return 0;
+
+err:
+	if (conn->challenge) {
+		_free(conn->challenge);
+		conn->challenge = NULL;
+	}
+	conn->challenge_len = 0;
+	return -1;
+}
+
 static int l2tp_tunnel_storechall(struct l2tp_conn_t *conn,
 				  const struct l2tp_attr_t *chall)
 {
@@ -252,6 +318,49 @@ static int l2tp_tunnel_genchallresp(uint8_t msgident,
 	if (l2tp_packet_add_octets(pack, Challenge_Response, challresp,
 				   MD5_DIGEST_LENGTH, 1) < 0)
 		return -1;
+
+	return 0;
+}
+
+static int l2tp_tunnel_checkchallresp(uint8_t msgident,
+				      const struct l2tp_conn_t *conn,
+				      const struct l2tp_attr_t *challresp)
+{
+	uint8_t challref[MD5_DIGEST_LENGTH];
+
+	if (conf_secret == NULL || strlen(conf_secret) == 0) {
+		if (challresp) {
+			l2tp_conn_log(log_warn, conn);
+			log_warn("l2tp: Unexpected Challenge Response sent"
+				 " by peer\n");
+		}
+		return 0;
+	}
+
+	if (conn->challenge == NULL) {
+		l2tp_conn_log(log_error, conn);
+		log_error("l2tp: Challenge missing\n");
+		return -1;
+	}
+
+	if (challresp == NULL) {
+		l2tp_conn_log(log_error, conn);
+		log_error("l2tp: No Challenge Response sent by peer\n");
+		return -1;
+	} else if (challresp->length != MD5_DIGEST_LENGTH) {
+		l2tp_conn_log(log_error, conn);
+		log_error("l2tp: Inconsistent Challenge Response sent by"
+			  " peer (invalid length %i)\n", challresp->length);
+		return -1;
+	}
+
+	comp_chap_md5(challref, msgident, conf_secret, strlen(conf_secret),
+		      conn->challenge, conn->challenge_len);
+	if (memcmp(challref, challresp->val.octets, MD5_DIGEST_LENGTH) != 0) {
+		l2tp_conn_log(log_error, conn);
+		log_error("l2tp: Invalid Challenge Response sent by peer\n");
+		return -1;
+	}
 
 	return 0;
 }
@@ -1050,6 +1159,8 @@ static void l2tp_send_SCCRP(struct l2tp_conn_t *conn)
 	if (l2tp_tunnel_genchallresp(Message_Type_Start_Ctrl_Conn_Reply,
 				     conn, pack) < 0)
 		goto out_err;
+	if (l2tp_tunnel_genchall(MD5_DIGEST_LENGTH, conn, pack) < 0)
+		goto out_err;
 
 	if (l2tp_send(conn, pack, 0))
 		goto out;
@@ -1246,18 +1357,49 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 
 static int l2tp_recv_SCCCN(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 {
-	if (conn->state == STATE_WAIT_SCCCN) {
-		triton_timer_del(&conn->timeout_timer);
-		if (l2tp_tunnel_connect(conn) < 0) {
-			l2tp_tunnel_disconnect(conn, 2, 0);
-			return -1;
-		}
-		conn->state = STATE_ESTB;
-		l2tp_send_ZLB(conn);
-	}
-	else
+	struct l2tp_attr_t *attr = NULL;
+	struct l2tp_attr_t *challenge_resp = NULL;
+
+	if (conn->state != STATE_WAIT_SCCCN) {
 		log_ppp_warn("l2tp: unexpected SCCCN\n");
-	
+		return 0;
+	}
+
+	triton_timer_del(&conn->timeout_timer);
+
+	list_for_each_entry(attr, &pack->attrs, entry) {
+		switch (attr->attr->id) {
+		case Message_Type:
+			break;
+		case Challenge_Response:
+			challenge_resp = attr;
+			break;
+		default:
+			if (attr->M) {
+				l2tp_conn_log(log_error, conn);
+				log_error("l2tp: SCCCN:"
+					  " unknown attribute %i\n",
+					  attr->attr->id);
+				l2tp_tunnel_disconnect(conn, 2, 8);
+				return -1;
+			}
+		}
+	}
+
+	if (l2tp_tunnel_checkchallresp(Message_Type_Start_Ctrl_Conn_Connected,
+				       conn, challenge_resp) < 0) {
+		l2tp_tunnel_disconnect(conn, 4, 0);
+		return -1;
+	}
+	l2tp_tunnel_storechall(conn, NULL);
+
+	if (l2tp_tunnel_connect(conn) < 0) {
+		l2tp_tunnel_disconnect(conn, 2, 0);
+		return -1;
+	}
+	conn->state = STATE_ESTB;
+	l2tp_send_ZLB(conn);
+
 	return 0;
 }
 
