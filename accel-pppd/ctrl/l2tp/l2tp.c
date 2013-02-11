@@ -76,6 +76,7 @@ struct l2tp_sess_t
 	uint16_t peer_sid;
 
 	int state1;
+	uint16_t lns_mode:1;
 
 	struct triton_context_t sctx;
 	struct triton_timer_t timeout_timer;
@@ -98,6 +99,7 @@ struct l2tp_conn_t
 	uint16_t tid;
 	uint16_t peer_tid;
 	uint32_t framing_cap;
+	uint16_t lns_mode:1;
 	uint16_t challenge_len;
 	uint8_t *challenge;
 
@@ -729,6 +731,7 @@ static struct l2tp_sess_t *l2tp_tunnel_alloc_session(struct l2tp_conn_t *conn)
 	sess->paren_conn = conn;
 	sess->peer_sid = 0;
 	sess->state1 = STATE_CLOSE;
+	sess->lns_mode = conn->lns_mode;
 
 	sess->sctx.before_switch = log_switch;
 	sess->sctx.close = l2tp_sess_close;
@@ -815,7 +818,8 @@ out_err:
 
 static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 					     const struct sockaddr_in *host,
-					     uint32_t framing_cap)
+					     uint32_t framing_cap,
+					     int lns_mode)
 {
 	struct l2tp_conn_t *conn;
 	socklen_t lnsaddrlen = sizeof(conn->lns_addr);
@@ -924,6 +928,7 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 
 	conn->sessions = NULL;
 	conn->sess_count = 0;
+	conn->lns_mode = lns_mode;
 
 	return conn;
 
@@ -937,7 +942,7 @@ static int l2tp_session_connect(struct l2tp_sess_t *sess)
 {
 	struct sockaddr_pppol2tp pppox_addr;
 	struct l2tp_conn_t *conn = sess->paren_conn;
-	int arg = 1;
+	int lns_mode = sess->lns_mode;
 	int flg;
 	char addr[17];
 	char chan_name[64];
@@ -974,7 +979,8 @@ static int l2tp_session_connect(struct l2tp_sess_t *sess)
 		goto out_err;
 	}
 
-	if (setsockopt(sess->ppp.fd, SOL_PPPOL2TP, PPPOL2TP_SO_LNSMODE, &arg, sizeof(arg))) {
+	if (setsockopt(sess->ppp.fd, SOL_PPPOL2TP, PPPOL2TP_SO_LNSMODE,
+		       &lns_mode, sizeof(lns_mode))) {
 		log_ppp_error("l2tp: setsockopt: %s\n", strerror(errno));
 		goto out_err;
 	}
@@ -1350,7 +1356,7 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 		host_addr.sin_port = 0;
 
 		conn = l2tp_tunnel_alloc(&pack->addr, &host_addr,
-					 framing_cap->val.uint32);
+					 framing_cap->val.uint32, 1);
 		if (conn == NULL)
 			return -1;
 
@@ -1460,7 +1466,7 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 	uint16_t res = 0;
 	uint16_t err = 0;
 
-	if (conn->state != STATE_ESTB) {
+	if (conn->state != STATE_ESTB && conn->lns_mode) {
 		log_ppp_warn("l2tp: unexpected ICRQ\n");
 		return 0;
 	}
@@ -1688,6 +1694,12 @@ static void l2tp_tunnel_create_session(void *data)
 	if (conn->state != STATE_ESTB) {
 		log_ppp_error("l2tp: impossible to place call:"
 			      " tunnel is not connected\n");
+		return;
+	}
+
+	if (!conn->lns_mode) {
+		log_ppp_error("l2tp: impossible to place call: feature not"
+			      " supported for tunnels operating as LAC\n");
 		return;
 	}
 
