@@ -95,7 +95,7 @@ struct l2tp_conn_t
 	int tunnel_fd;
 
 	struct sockaddr_in peer_addr;
-	struct sockaddr_in lns_addr;
+	struct sockaddr_in host_addr;
 	uint16_t tid;
 	uint16_t peer_tid;
 	uint32_t framing_cap;
@@ -749,7 +749,7 @@ static struct l2tp_sess_t *l2tp_tunnel_alloc_session(struct l2tp_conn_t *conn)
 	sess->ctrl.called_station_id = _malloc(17);
 	u_inet_ntoa(conn->peer_addr.sin_addr.s_addr,
 		    sess->ctrl.calling_station_id);
-	u_inet_ntoa(conn->lns_addr.sin_addr.s_addr,
+	u_inet_ntoa(conn->host_addr.sin_addr.s_addr,
 		    sess->ctrl.called_station_id);
 	sess->timeout_timer.expire = l2tp_session_timeout;
 	sess->timeout_timer.period = conf_timeout * 1000;
@@ -822,7 +822,7 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 					     int lns_mode)
 {
 	struct l2tp_conn_t *conn;
-	socklen_t lnsaddrlen = sizeof(conn->lns_addr);
+	socklen_t hostaddrlen = sizeof(conn->host_addr);
 	uint16_t tid;
 	int flag;
 
@@ -901,13 +901,13 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 		goto out_err;
 	}
 
-	if (getsockname(conn->hnd.fd, &conn->lns_addr, &lnsaddrlen) < 0) {
+	if (getsockname(conn->hnd.fd, &conn->host_addr, &hostaddrlen) < 0) {
 		log_error("l2tp: getsockname: %s\n", strerror(errno));
 		goto out_err;
 	}
-	if (lnsaddrlen != sizeof(conn->lns_addr)) {
+	if (hostaddrlen != sizeof(conn->host_addr)) {
 		log_error("l2tp: getsockname: invalid address length: %i\n",
-			  lnsaddrlen);
+			  hostaddrlen);
 		goto out_err;
 	}
 
