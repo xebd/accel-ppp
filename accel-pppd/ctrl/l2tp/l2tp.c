@@ -590,7 +590,7 @@ out_err:
 static struct l2tp_conn_t *l2tp_tunnel_alloc(struct l2tp_serv_t *serv,
 					     struct l2tp_packet_t *pack,
 					     struct in_pktinfo *pkt_info,
-					     struct l2tp_attr_t *framing_cap,
+					     uint32_t framing_cap,
 					     struct l2tp_attr_t *challenge)
 {
 	struct l2tp_conn_t *conn;
@@ -680,7 +680,7 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(struct l2tp_serv_t *serv,
 
 	memcpy(&conn->lac_addr, &pack->addr, sizeof(pack->addr));
 	memcpy(&conn->lns_addr, &addr, sizeof(addr));
-	conn->framing_cap = framing_cap->val.uint32;
+	conn->framing_cap = framing_cap;
 
 	/* If challenge set in SCCRQ, we need to calculate response for SCCRP */
 	if (challenge && challenge->length <= 16) {
@@ -1139,7 +1139,8 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 		}
 
 		conn = l2tp_tunnel_alloc(serv, pack, pkt_info,
-					 framing_cap, challenge);
+					 framing_cap->val.uint32, challenge);
+
 		if (conn == NULL)
 			return -1;
 
