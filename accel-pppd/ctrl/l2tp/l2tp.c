@@ -254,7 +254,9 @@ static void __l2tp_session_free(void *data)
 		break;
 	}
 
-	triton_event_fire(EV_CTRL_FINISHED, &sess->ppp.ses);
+	if (sess->state1 == STATE_ESTB || sess->state1 == STATE_CLOSE)
+		/* Don't send event if session wasn't fully established */
+		triton_event_fire(EV_CTRL_FINISHED, &sess->ppp.ses);
 
 	log_ppp_info1("disconnected\n");
 
