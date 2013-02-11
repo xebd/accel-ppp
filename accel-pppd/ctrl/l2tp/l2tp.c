@@ -705,12 +705,6 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(struct l2tp_serv_t *serv,
 
 	conn->tunnel_fd = -1;
 
-	if (conf_verbose) {
-		log_switch(&conn->ctx, NULL);
-		log_ppp_info2("recv ");
-		l2tp_packet_print(pack, log_ppp_info2);
-	}
-
 	conn->sessions = NULL;
 	conn->sess_count = 0;
 
@@ -1141,6 +1135,12 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 					 framing_cap->val.uint32, challenge);
 		if (conn == NULL)
 			return -1;
+
+		if (conf_verbose) {
+			log_switch(&conn->ctx, NULL);
+			log_ppp_info2("recv ");
+			l2tp_packet_print(pack, log_ppp_info2);
+		}
 
 		conn->peer_tid = assigned_tid->val.uint16;
 
