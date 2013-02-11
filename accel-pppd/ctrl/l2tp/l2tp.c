@@ -98,7 +98,7 @@ struct l2tp_conn_t
 	uint16_t peer_tid;
 	uint32_t framing_cap;
 	uint16_t challenge_len;
-	l2tp_value_t challenge;
+	uint8_t *challenge;
 
 	int retransmit;
 	uint16_t Ns, Nr;
@@ -126,6 +126,21 @@ static int l2tp_conn_read(struct triton_md_handler_t *);
 static void l2tp_tunnel_session_freed(void *data);
 
 
+static inline void comp_chap_md5(uint8_t *md5, uint8_t ident,
+				 const void *secret, size_t secret_len,
+				 const void *chall, size_t chall_len)
+{
+	MD5_CTX md5_ctx;
+
+	memset(md5, 0, MD5_DIGEST_LENGTH);
+
+	MD5_Init(&md5_ctx);
+	MD5_Update(&md5_ctx, &ident, sizeof(ident));
+	MD5_Update(&md5_ctx, secret, secret_len);
+	MD5_Update(&md5_ctx, chall, chall_len);
+	MD5_Final(md5, &md5_ctx);
+}
+
 static inline struct l2tp_conn_t *l2tp_tunnel_self(void)
 {
 	return container_of(triton_context_self(), struct l2tp_conn_t, ctx);
@@ -136,7 +151,8 @@ static inline struct l2tp_sess_t *l2tp_session_self(void)
 	return container_of(triton_context_self(), struct l2tp_sess_t, sctx);
 }
 
-static void l2tp_conn_log(void (*print)(const char *fmt, ...), struct l2tp_conn_t *conn)
+static void l2tp_conn_log(void (*print)(const char *fmt, ...),
+			  const struct l2tp_conn_t *conn)
 {
 	char addr[17];
 
@@ -162,6 +178,52 @@ static struct l2tp_sess_t *l2tp_tunnel_get_session(struct l2tp_conn_t *conn,
 	res = tfind(&sess, &conn->sessions, sess_cmp);
 
 	return (res) ? *res : NULL;
+}
+
+static int l2tp_tunnel_storechall(struct l2tp_conn_t *conn,
+				  const struct l2tp_attr_t *chall)
+{
+	void *ptr = NULL;
+
+	if (chall == NULL) {
+		if (conn->challenge) {
+			_free(conn->challenge);
+			conn->challenge = NULL;
+		}
+		conn->challenge_len = 0;
+		return 0;
+	}
+
+	if (conf_secret == NULL || strlen(conf_secret) == 0) {
+		l2tp_conn_log(log_error, conn);
+		log_error("l2tp: Authentication required by peer,"
+			  " but no secret has been set for this tunnel\n");
+		goto err;
+	}
+
+	if (conn->challenge_len != chall->length) {
+		ptr = realloc(conn->challenge, chall->length);
+		if (ptr == NULL) {
+			l2tp_conn_log(log_error, conn);
+			log_error("l2tp: Impossible to store received"
+				  " challenge: Memory allocation failed\n");
+			goto err;
+		}
+		conn->challenge = ptr;
+		conn->challenge_len = chall->length;
+	}
+
+	memcpy(conn->challenge, chall->val.octets, chall->length);
+
+	return 0;
+
+err:
+	if (conn->challenge) {
+		_free(conn->challenge);
+		conn->challenge = NULL;
+	}
+	conn->challenge_len = 0;
+	return -1;
 }
 
 static int l2tp_send_StopCCN(struct l2tp_conn_t *conn,
@@ -382,8 +444,8 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 		l2tp_packet_free(pack);
 	}
 
-	if (conn->challenge_len)
-	    _free(conn->challenge.octets);
+	if (conn->challenge)
+		_free(conn->challenge);
 
 	mempool_free(conn);
 }
@@ -590,8 +652,7 @@ out_err:
 static struct l2tp_conn_t *l2tp_tunnel_alloc(struct l2tp_serv_t *serv,
 					     const struct sockaddr_in *peer,
 					     const struct sockaddr_in *host,
-					     uint32_t framing_cap,
-					     struct l2tp_attr_t *challenge)
+					     uint32_t framing_cap)
 {
 	struct l2tp_conn_t *conn;
 	uint16_t tid;
@@ -675,23 +736,6 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(struct l2tp_serv_t *serv,
 	memcpy(&conn->lac_addr, peer, sizeof(*peer));
 	memcpy(&conn->lns_addr, host, sizeof(*host));
 	conn->framing_cap = framing_cap;
-
-	/* If challenge set in SCCRQ, we need to calculate response for SCCRP */
-	if (challenge && challenge->length <= 16) {
-		char state = 2; /* SCCRP, TODO: define them in some .h? */
-		MD5_CTX md5_ctx;
-		uint8_t md5[MD5_DIGEST_LENGTH];
-
-		MD5_Init(&md5_ctx);
-		MD5_Update(&md5_ctx, &state, 1);
-		MD5_Update(&md5_ctx, conf_secret, strlen(conf_secret));
-		MD5_Update(&md5_ctx, challenge->val.octets, challenge->length);
-		MD5_Final(md5, &md5_ctx);
-
-		conn->challenge_len = MD5_DIGEST_LENGTH;
-		conn->challenge.octets = _malloc(MD5_DIGEST_LENGTH);
-		memcpy(conn->challenge.octets, &md5, MD5_DIGEST_LENGTH);
-	}
 
 	conn->ctx.before_switch = log_switch;
 	conn->ctx.close = l2tp_conn_close;
@@ -957,6 +1001,7 @@ static void l2tp_send_HELLO(struct triton_timer_t *t)
 static void l2tp_send_SCCRP(struct l2tp_conn_t *conn)
 {
 	struct l2tp_packet_t *pack;
+	uint8_t chall_resp[MD5_DIGEST_LENGTH];
 
 	pack = l2tp_packet_alloc(2, Message_Type_Start_Ctrl_Conn_Reply, &conn->lac_addr);
 	if (!pack)
@@ -973,9 +1018,15 @@ static void l2tp_send_SCCRP(struct l2tp_conn_t *conn)
 	if (l2tp_packet_add_string(pack, Vendor_Name, "accel-ppp", 0))
 		goto out_err;
 	/* If challenge response available */
-	if (conn->challenge_len) {
-	    if (l2tp_packet_add_octets(pack, Challenge_Response, conn->challenge.octets, 16, 1))
-		goto out_err;
+	if (conn->challenge_len && conn->challenge) {
+		if (conf_secret == NULL || strlen(conf_secret) == 0)
+			goto out_err;
+		comp_chap_md5(chall_resp, Message_Type_Start_Ctrl_Conn_Reply,
+			      conf_secret, strlen(conf_secret),
+			      conn->challenge, conn->challenge_len);
+		if (l2tp_packet_add_octets(pack, Challenge_Response,
+					   chall_resp, MD5_DIGEST_LENGTH, 1))
+			goto out_err;
 	}
 
 	if (l2tp_send(conn, pack, 0))
@@ -1132,7 +1183,7 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 		host_addr.sin_port = 0;
 
 		conn = l2tp_tunnel_alloc(serv, &pack->addr, &host_addr,
-					 framing_cap->val.uint32, challenge);
+					 framing_cap->val.uint32);
 		if (conn == NULL)
 			return -1;
 
@@ -1140,6 +1191,11 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 			log_switch(&conn->ctx, NULL);
 			log_ppp_info2("recv ");
 			l2tp_packet_print(pack, log_ppp_info2);
+		}
+
+		if (l2tp_tunnel_storechall(conn, challenge) < 0) {
+			l2tp_tunnel_free(conn);
+			return -1;
 		}
 
 		conn->peer_tid = assigned_tid->val.uint16;
@@ -1158,10 +1214,9 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 		return -1;
 	}
 
-	if (conf_secret && !challenge) {
+	if (conf_secret && strlen(conf_secret) > 0 && conn->challenge == NULL) {
 		if (conf_verbose)
 			log_warn("l2tp: SCCRQ: no Challenge present in message\n");
-		return -1;
 	}
 
 	return 0;
