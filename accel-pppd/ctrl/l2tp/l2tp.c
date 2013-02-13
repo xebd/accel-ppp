@@ -2463,8 +2463,14 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 		} else {
 			if (!list_empty(&pack->attrs))
 				conn->Nr++;
-			if (!list_empty(&conn->send_queue)) {
-				p = list_entry(conn->send_queue.next, typeof(*pack), entry);
+			while (!list_empty(&conn->send_queue)) {
+				/* Flush retransmission queue up
+				   to the last acknowledged message */
+				p = list_entry(conn->send_queue.next,
+					       typeof(*pack), entry);
+				if (nsnr_cmp(ntohs(p->hdr.Ns),
+					     ntohs(pack->hdr.Nr)) >= 0)
+					break;
 				list_del(&p->entry);
 				l2tp_packet_free(p);
 				conn->retransmit = 0;
