@@ -2085,7 +2085,7 @@ static void l2tp_session_recv(void *data)
 	struct triton_context_t *ctx = triton_context_self();
 	struct l2tp_sess_t *sess = container_of(ctx, typeof(*sess), sctx);
 	struct l2tp_packet_t *pack = data;
-	struct l2tp_attr_t *msg_type = NULL;
+	const struct l2tp_attr_t *msg_type = NULL;
 
 	msg_type = list_entry(pack->attrs.next, typeof(*msg_type), entry);
 
@@ -2124,7 +2124,7 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 	struct l2tp_conn_t *conn = container_of(h, typeof(*conn), hnd);
 	struct l2tp_sess_t *sess = NULL;
 	struct l2tp_packet_t *pack, *p;
-	struct l2tp_attr_t *msg_type;
+	const struct l2tp_attr_t *msg_type;
 	int res;
 
 	while (1) {
@@ -2289,7 +2289,7 @@ static int l2tp_udp_read(struct triton_md_handler_t *h)
 {
 	struct l2tp_serv_t *serv = container_of(h, typeof(*serv), hnd);
 	struct l2tp_packet_t *pack;
-	struct l2tp_attr_t *msg_type;
+	const struct l2tp_attr_t *msg_type;
 	struct in_pktinfo pkt_info;
 
 	while (1) {
