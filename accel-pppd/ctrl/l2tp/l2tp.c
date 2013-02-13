@@ -1446,13 +1446,13 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 			   const struct l2tp_packet_t *pack,
 			   const struct in_pktinfo *pkt_info)
 {
-	struct l2tp_attr_t *attr;
-	struct l2tp_attr_t *protocol_version = NULL;
-	struct l2tp_attr_t *assigned_tid = NULL;
-	struct l2tp_attr_t *assigned_cid = NULL;
-	struct l2tp_attr_t *framing_cap = NULL;
-	struct l2tp_attr_t *router_id = NULL;
-	struct l2tp_attr_t *challenge = NULL;
+	const struct l2tp_attr_t *attr;
+	const struct l2tp_attr_t *protocol_version = NULL;
+	const struct l2tp_attr_t *assigned_tid = NULL;
+	const struct l2tp_attr_t *assigned_cid = NULL;
+	const struct l2tp_attr_t *framing_cap = NULL;
+	const struct l2tp_attr_t *router_id = NULL;
+	const struct l2tp_attr_t *challenge = NULL;
 	struct l2tp_conn_t *conn = NULL;
 	struct sockaddr_in host_addr = { 0 };
 
@@ -1554,13 +1554,13 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 static int l2tp_recv_SCCRP(struct l2tp_conn_t *conn,
 			   const struct l2tp_packet_t *pack)
 {
-	struct l2tp_attr_t *protocol_version = NULL;
-	struct l2tp_attr_t *assigned_tid = NULL;
-	struct l2tp_attr_t *framing_cap = NULL;
-	struct l2tp_attr_t *challenge = NULL;
-	struct l2tp_attr_t *challenge_resp = NULL;
-	struct l2tp_attr_t *unknown_attr = NULL;
-	struct l2tp_attr_t *attr = NULL;
+	const struct l2tp_attr_t *protocol_version = NULL;
+	const struct l2tp_attr_t *assigned_tid = NULL;
+	const struct l2tp_attr_t *framing_cap = NULL;
+	const struct l2tp_attr_t *challenge = NULL;
+	const struct l2tp_attr_t *challenge_resp = NULL;
+	const struct l2tp_attr_t *unknown_attr = NULL;
+	const struct l2tp_attr_t *attr = NULL;
 
 	if (conn->state != STATE_WAIT_SCCRP) {
 		l2tp_conn_log(log_warn, conn);
@@ -1676,8 +1676,8 @@ static int l2tp_recv_SCCRP(struct l2tp_conn_t *conn,
 static int l2tp_recv_SCCCN(struct l2tp_conn_t *conn,
 			   const struct l2tp_packet_t *pack)
 {
-	struct l2tp_attr_t *attr = NULL;
-	struct l2tp_attr_t *challenge_resp = NULL;
+	const struct l2tp_attr_t *attr = NULL;
+	const struct l2tp_attr_t *challenge_resp = NULL;
 
 	if (conn->state != STATE_WAIT_SCCCN) {
 		log_ppp_warn("l2tp: unexpected SCCCN\n");
@@ -1741,8 +1741,8 @@ static int l2tp_recv_HELLO(struct l2tp_conn_t *conn,
 static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
 			  const struct l2tp_packet_t *pack)
 {
-	struct l2tp_attr_t *attr;
-	struct l2tp_attr_t *assigned_sid = NULL;
+	const struct l2tp_attr_t *attr;
+	const struct l2tp_attr_t *assigned_sid = NULL;
 	struct l2tp_sess_t *sess = NULL;
 	uint16_t res = 0;
 	uint16_t err = 0;
@@ -1815,9 +1815,9 @@ out_reject:
 static int l2tp_recv_ICRP(struct l2tp_sess_t *sess,
 			  const struct l2tp_packet_t *pack)
 {
-	struct l2tp_attr_t *assigned_sid = NULL;
-	struct l2tp_attr_t *unknown_attr = NULL;
-	struct l2tp_attr_t *attr = NULL;
+	const struct l2tp_attr_t *assigned_sid = NULL;
+	const struct l2tp_attr_t *unknown_attr = NULL;
+	const struct l2tp_attr_t *attr = NULL;
 
 	if (sess->state1 != STATE_WAIT_ICRP) {
 		log_ppp_warn("l2tp: unexpected ICCN\n");
@@ -1906,9 +1906,9 @@ static int l2tp_recv_ICCN(struct l2tp_sess_t *sess,
 static int l2tp_recv_OCRP(struct l2tp_sess_t *sess,
 			  const struct l2tp_packet_t *pack)
 {
-	struct l2tp_attr_t *assigned_sid = NULL;
-	struct l2tp_attr_t *unknown_attr = NULL;
-	struct l2tp_attr_t *attr = NULL;
+	const struct l2tp_attr_t *assigned_sid = NULL;
+	const struct l2tp_attr_t *unknown_attr = NULL;
+	const struct l2tp_attr_t *attr = NULL;
 
 	if (sess->state1 != STATE_WAIT_OCRP) {
 		log_ppp_warn("l2tp: unexpected OCRP\n");
@@ -1959,8 +1959,8 @@ static int l2tp_recv_OCRP(struct l2tp_sess_t *sess,
 static int l2tp_recv_OCCN(struct l2tp_sess_t *sess,
 			  const struct l2tp_packet_t *pack)
 {
-	struct l2tp_attr_t *unknown_attr = NULL;
-	struct l2tp_attr_t *attr = NULL;
+	const struct l2tp_attr_t *unknown_attr = NULL;
+	const struct l2tp_attr_t *attr = NULL;
 
 	if (sess->state1 != STATE_WAIT_OCCN) {
 		log_ppp_warn("l2tp: unexpected OCCN\n");
