@@ -260,7 +260,7 @@ static int l2tp_dict_load(const char *fname)
 
 static void dict_init(void)
 {
-	char *opt;
+	const char *opt;
 
 	opt = conf_get_opt("l2tp", "dictionary");
 	if (!opt)

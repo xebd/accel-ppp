@@ -2346,7 +2346,7 @@ static struct l2tp_serv_t udp_serv =
 static void start_udp_server(void)
 {
 	struct sockaddr_in addr;
-	char *opt;
+	const char *opt;
 	int flag = 1;
 
 	udp_serv.hnd.fd = socket(PF_INET, SOCK_DGRAM, 0);
@@ -2415,7 +2415,7 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 	struct sockaddr_in host = {
 		.sin_family = AF_UNSPEC
 	};
-	char *opt = NULL;
+	const char *opt = NULL;
 	int lns_mode = 0;
 	int indx;
 
