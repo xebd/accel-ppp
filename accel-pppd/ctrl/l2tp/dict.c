@@ -46,9 +46,10 @@ struct l2tp_dict_attr_t *l2tp_dict_find_attr_by_id(int id)
 	return NULL;
 }
 
-struct l2tp_dict_value_t *l2tp_dict_find_value(struct l2tp_dict_attr_t *attr, l2tp_value_t val)
+const struct l2tp_dict_value_t *l2tp_dict_find_value(const struct l2tp_dict_attr_t *attr,
+						     l2tp_value_t val)
 {
-	struct l2tp_dict_value_t *v;
+	const struct l2tp_dict_value_t *v;
 
 	list_for_each_entry(v, &attr->values, entry) {
 		switch (attr->type) {

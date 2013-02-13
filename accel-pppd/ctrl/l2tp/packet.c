@@ -19,10 +19,11 @@ static mempool_t attr_pool;
 static mempool_t pack_pool;
 static mempool_t buf_pool;
 
-void l2tp_packet_print(struct l2tp_packet_t *pack, void (*print)(const char *fmt, ...))
+void l2tp_packet_print(const struct l2tp_packet_t *pack,
+		       void (*print)(const char *fmt, ...))
 {
-	struct l2tp_attr_t *attr;
-	struct l2tp_dict_value_t *val;
+	const struct l2tp_attr_t *attr;
+	const struct l2tp_dict_value_t *val;
 
 	if (pack->hdr.ver == 2) {
 		print("[L2TP tid=%u sid=%u", ntohs(pack->hdr.tid), ntohs(pack->hdr.sid));
