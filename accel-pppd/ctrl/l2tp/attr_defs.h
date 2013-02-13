@@ -55,6 +55,7 @@
 #define Message_Type_WAN_Error_Notify 15
 #define Message_Type_Set_Link_Info 16
 #define Message_Digest 59
+#define Ctrl_Message_Auth_Nonce 73
 #define Router_ID 60
 #define Assigned_Connection_ID 61
 #define Pseudowire_Capabilities 62
@@ -66,8 +67,9 @@
 #define Pseudowire_Type 68
 #define L2_Specific_Sublayer 69
 #define Data_Sequencing 70
-#define TX_Connect_Speeed 74
-#define RX_Connect_Speeed 75
+#define TX_Connect_Speed 74
+#define RX_Connect_Speed 75
 #define Circuit_Status 71
+#define Message_Type_Explicit_Ack 20
 
 #endif

@@ -1,4 +1,5 @@
-ATTRIBUTE     Message-Digest               59      octets     M=1 H=0
+ATTRIBUTE     Message-Digest               59      octets     H=0
+ATTRIBUTE     Ctrl-Message-Auth-Nonce      73      octets     H=0
 ATTRIBUTE     Router-ID                    60      int32      H=0
 ATTRIBUTE     Assigned-Connection-ID       61      int32
 ATTRIBUTE     Pseudowire-Capabilities      62      octets
@@ -10,6 +11,8 @@ ATTRIBUTE     Remote-End-ID                66      octets
 ATTRIBUTE     Pseudowire-Type              68      int16
 ATTRIBUTE     L2-Specific-Sublayer         69      int16
 ATTRIBUTE     Data-Sequencing              70      int16
-ATTRIBUTE     TX-Connect-Speeed            74      int64
-ATTRIBUTE     RX-Connect-Speeed            75      int64
+ATTRIBUTE     TX-Connect-Speed             74      int64
+ATTRIBUTE     RX-Connect-Speed             75      int64
 ATTRIBUTE     Circuit-Status               71      int16
+
+VALUE     Message-Type     Explicit-Ack               20

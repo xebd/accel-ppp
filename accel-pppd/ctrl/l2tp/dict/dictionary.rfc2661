@@ -4,15 +4,15 @@ ATTRIBUTE     Result-Code                 1     octets    M=1 H=0
 ATTRIBUTE     Protocol-Version            2     int16     M=1 H=0
 ATTRIBUTE     Framing-Capabilities        3     int32     M=1
 ATTRIBUTE     Bearer-Capabilities         4     int32     M=1
-ATTRIBUTE     Tie-Breaker                 5     int64     M=0
+ATTRIBUTE     Tie-Breaker                 5     int64     M=0 H=0
 ATTRIBUTE     Firmware-Revision           6     int16     M=0
-ATTRIBUTE     Host-Name                   7     string    M=1
+ATTRIBUTE     Host-Name                   7     string    M=1 H=0
 ATTRIBUTE     Vendor-Name                 8     string    M=0
 ATTRIBUTE     Assigned-Tunnel-ID          9     int16     M=1
-ATTRIBUTE     Recv-Window-Size           10     int16     M=1
-ATTRIBUTE     Challenge                  11		  octets    M=1
+ATTRIBUTE     Recv-Window-Size           10     int16     M=1 H=0
+ATTRIBUTE     Challenge                  11     octets    M=1
 ATTRIBUTE     Challenge-Response         13     octets    M=1
-ATTRIBUTE     Cause-Code                 12     int32     M=1 H=0
+ATTRIBUTE     Cause-Code                 12     octets    M=1 H=0
 ATTRIBUTE     Assigned-Session-ID        14     int16     M=1
 ATTRIBUTE     Call-Serial-Number         15     int32     M=1
 ATTRIBUTE     Minimum-BPS                16     int32     M=1
@@ -23,9 +23,9 @@ ATTRIBUTE     Called-Number              21     string    M=1
 ATTRIBUTE     Calling-Number             22     string    M=1
 ATTRIBUTE     Sub-Address                23     string    M=1
 ATTRIBUTE     TX-Speed                   24     int32     M=1
-ATTRIBUTE     RX-Speed                   38     int32     M=1
+ATTRIBUTE     RX-Speed                   38     int32     M=0
 ATTRIBUTE     Physical-Channel-ID        25     int32     M=0
-ATTRIBUTE     Private-Group-ID           37     int32     M=0
+ATTRIBUTE     Private-Group-ID           37     octets    M=0
 ATTRIBUTE     Sequencing-Required        39     none      M=1 H=0
 ATTRIBUTE     Init-Recv-LCP              26     octets    M=0
 ATTRIBUTE     Last-Sent-LCP              27     octets    M=0
@@ -52,4 +52,3 @@ VALUE     Message-Type     Incoming-Call-Connected    12
 VALUE     Message-Type     Call-Disconnect-Notify     14
 VALUE     Message-Type     WAN-Error-Notify           15
 VALUE     Message-Type     Set-Link-Info              16
-
