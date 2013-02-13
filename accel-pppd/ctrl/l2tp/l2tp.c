@@ -326,7 +326,7 @@ static int l2tp_tunnel_genchallresp(uint8_t msgident,
 	uint8_t challresp[MD5_DIGEST_LENGTH];
 
 	if (conn->challenge == NULL) {
-		if (conf_secret || strlen(conf_secret) > 0) {
+		if (conf_secret && strlen(conf_secret) > 0) {
 			l2tp_conn_log(log_warn, conn);
 			log_warn("l2tp: No Challenge sent by peer\n");
 		}
