@@ -1442,7 +1442,9 @@ out_err:
 	return -1;
 }
 
-static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack, struct in_pktinfo *pkt_info)
+static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
+			   const struct l2tp_packet_t *pack,
+			   const struct in_pktinfo *pkt_info)
 {
 	struct l2tp_attr_t *attr;
 	struct l2tp_attr_t *protocol_version = NULL;
@@ -1549,7 +1551,8 @@ static int l2tp_recv_SCCRQ(struct l2tp_serv_t *serv, struct l2tp_packet_t *pack,
 	return 0;
 }
 
-static int l2tp_recv_SCCRP(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
+static int l2tp_recv_SCCRP(struct l2tp_conn_t *conn,
+			   const struct l2tp_packet_t *pack)
 {
 	struct l2tp_attr_t *protocol_version = NULL;
 	struct l2tp_attr_t *assigned_tid = NULL;
@@ -1670,7 +1673,8 @@ static int l2tp_recv_SCCRP(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 	return 0;
 }
 
-static int l2tp_recv_SCCCN(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
+static int l2tp_recv_SCCCN(struct l2tp_conn_t *conn,
+			   const struct l2tp_packet_t *pack)
 {
 	struct l2tp_attr_t *attr = NULL;
 	struct l2tp_attr_t *challenge_resp = NULL;
@@ -1718,13 +1722,15 @@ static int l2tp_recv_SCCCN(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 	return 0;
 }
 
-static int l2tp_recv_StopCCN(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
+static int l2tp_recv_StopCCN(struct l2tp_conn_t *conn,
+			     const struct l2tp_packet_t *pack)
 {
 	l2tp_send_ZLB(conn);
 	return -1;
 }
 
-static int l2tp_recv_HELLO(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
+static int l2tp_recv_HELLO(struct l2tp_conn_t *conn,
+			   const struct l2tp_packet_t *pack)
 {
 	if (l2tp_send_ZLB(conn))
 		return -1;
@@ -1732,7 +1738,8 @@ static int l2tp_recv_HELLO(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
 	return 0;
 }
 
-static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
+static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
+			  const struct l2tp_packet_t *pack)
 {
 	struct l2tp_attr_t *attr;
 	struct l2tp_attr_t *assigned_sid = NULL;
@@ -1805,7 +1812,8 @@ out_reject:
 	return -1;
 }
 
-static int l2tp_recv_ICRP(struct l2tp_sess_t *sess, struct l2tp_packet_t *pack)
+static int l2tp_recv_ICRP(struct l2tp_sess_t *sess,
+			  const struct l2tp_packet_t *pack)
 {
 	struct l2tp_attr_t *assigned_sid = NULL;
 	struct l2tp_attr_t *unknown_attr = NULL;
@@ -1871,7 +1879,8 @@ static int l2tp_recv_ICRP(struct l2tp_sess_t *sess, struct l2tp_packet_t *pack)
 	return 0;
 }
 
-static int l2tp_recv_ICCN(struct l2tp_sess_t *sess, struct l2tp_packet_t *pack)
+static int l2tp_recv_ICCN(struct l2tp_sess_t *sess,
+			  const struct l2tp_packet_t *pack)
 {
 	if (sess->state1 != STATE_WAIT_ICCN) {
 		log_ppp_warn("l2tp: unexpected ICCN\n");
@@ -1894,7 +1903,8 @@ static int l2tp_recv_ICCN(struct l2tp_sess_t *sess, struct l2tp_packet_t *pack)
 	return 0;
 }
 
-static int l2tp_recv_OCRP(struct l2tp_sess_t *sess, struct l2tp_packet_t *pack)
+static int l2tp_recv_OCRP(struct l2tp_sess_t *sess,
+			  const struct l2tp_packet_t *pack)
 {
 	struct l2tp_attr_t *assigned_sid = NULL;
 	struct l2tp_attr_t *unknown_attr = NULL;
@@ -1946,7 +1956,8 @@ static int l2tp_recv_OCRP(struct l2tp_sess_t *sess, struct l2tp_packet_t *pack)
 	return 0;
 }
 
-static int l2tp_recv_OCCN(struct l2tp_sess_t *sess, struct l2tp_packet_t *pack)
+static int l2tp_recv_OCCN(struct l2tp_sess_t *sess,
+			  const struct l2tp_packet_t *pack)
 {
 	struct l2tp_attr_t *unknown_attr = NULL;
 	struct l2tp_attr_t *attr = NULL;
@@ -1995,7 +2006,8 @@ static int l2tp_recv_OCCN(struct l2tp_sess_t *sess, struct l2tp_packet_t *pack)
 	return 0;
 }
 
-static int l2tp_recv_CDN(struct l2tp_sess_t *sess, struct l2tp_packet_t *pack)
+static int l2tp_recv_CDN(struct l2tp_sess_t *sess,
+			 const struct l2tp_packet_t *pack)
 {
 	if (ntohs(pack->hdr.sid) != sess->sid) {
 		if (conf_verbose)
@@ -2009,7 +2021,8 @@ static int l2tp_recv_CDN(struct l2tp_sess_t *sess, struct l2tp_packet_t *pack)
 	return 0;
 }
 
-static int l2tp_recv_SLI(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack)
+static int l2tp_recv_SLI(struct l2tp_conn_t *conn,
+			 const struct l2tp_packet_t *pack)
 {
 	return 0;
 }
