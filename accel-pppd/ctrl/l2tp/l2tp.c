@@ -1442,6 +1442,56 @@ out_err:
 	return -1;
 }
 
+static int l2tp_send_OCRP(struct l2tp_sess_t *sess)
+{
+	struct l2tp_packet_t *pack = NULL;
+
+	pack = l2tp_packet_alloc(2, Message_Type_Outgoing_Call_Reply,
+				 &sess->paren_conn->peer_addr);
+	if (pack == NULL)
+		return -1;
+
+	pack->hdr.sid = htons(sess->peer_sid);
+
+	if (l2tp_packet_add_int16(pack, Assigned_Session_ID, sess->sid, 1) < 0)
+		goto out_err;
+
+	if (l2tp_send(sess->paren_conn, pack, 0) < 0)
+		return -1;
+
+	return 0;
+
+out_err:
+	l2tp_packet_free(pack);
+	return -1;
+}
+
+static int l2tp_send_OCCN(struct l2tp_sess_t *sess)
+{
+	struct l2tp_packet_t *pack = NULL;
+
+	pack = l2tp_packet_alloc(2, Message_Type_Outgoing_Call_Connected,
+				 &sess->paren_conn->peer_addr);
+	if (pack == NULL)
+		return -1;
+
+	pack->hdr.sid = htons(sess->peer_sid);
+
+	if (l2tp_packet_add_int32(pack, TX_Speed, 1000, 1) < 0)
+		goto out_err;
+	if (l2tp_packet_add_int32(pack, Framing_Type, 3, 1) < 0)
+		goto out_err;
+
+	if (l2tp_send(sess->paren_conn, pack, 0) < 0)
+		return -1;
+
+	return 0;
+
+out_err:
+	l2tp_packet_free(pack);
+	return -1;
+}
+
 static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 			   const struct l2tp_packet_t *pack,
 			   const struct in_pktinfo *pkt_info)
@@ -2000,6 +2050,132 @@ static int l2tp_recv_ICCN(struct l2tp_sess_t *sess,
 	return 0;
 }
 
+static void l2tp_session_outcall_reply(void *data)
+{
+	struct l2tp_sess_t *sess = data;
+
+	if (l2tp_send_OCRP(sess) < 0) {
+		log_ppp_error("l2tp: impossible to handle outgoing call:"
+			      " error while sending OCRP\n");
+		goto out_err;
+	}
+	if (l2tp_send_OCCN(sess) < 0) {
+		log_ppp_error("l2tp: impossible to handle outgoing call:"
+			      " error while sending OCCN\n");
+		goto out_err;
+	}
+
+	sess->state1 = STATE_ESTB;
+
+	if (l2tp_session_connect(sess) < 0) {
+		log_ppp_error("l2tp: impossible to handle outgoing call:"
+			      " error while connecting session\n");
+		goto out_err;
+	}
+
+	return;
+
+out_err:
+	l2tp_send_CDN(sess, 2, 6);
+	l2tp_session_free(sess);
+}
+
+static int l2tp_recv_OCRQ(struct l2tp_conn_t *conn,
+			  const struct l2tp_packet_t *pack)
+{
+	const struct l2tp_attr_t *assigned_sid = NULL;
+	const struct l2tp_attr_t *unknown_attr = NULL;
+	const struct l2tp_attr_t *attr = NULL;
+	struct l2tp_sess_t *sess = NULL;
+	uint16_t res;
+	uint16_t err;
+
+	if (conn->state != STATE_ESTB && !conn->lns_mode) {
+		l2tp_conn_log(log_warn, conn);
+		log_warn("l2tp: unexpected OCRQ\n");
+		return 0;
+	}
+
+	sess = l2tp_tunnel_alloc_session(conn);
+	if (sess == NULL) {
+		l2tp_conn_log(log_warn, conn);
+		log_warn("l2tp: OCRQ: no more session available\n");
+		return 0;
+	}
+
+	list_for_each_entry(attr, &pack->attrs, entry) {
+		switch (attr->attr->id) {
+		case Message_Type:
+		case Call_Serial_Number:
+		case Minimum_BPS:
+		case Maximum_BPS:
+		case Bearer_Type:
+		case Framing_Type:
+		case Called_Number:
+		case Sub_Address:
+			break;
+		case Assigned_Session_ID:
+			assigned_sid = attr;
+			break;
+		default:
+			if (attr->M)
+				unknown_attr = attr;
+			else {
+				l2tp_conn_log(log_warn, conn);
+				log_warn("l2tp: OCRQ: unknown attribute %i\n",
+					 attr->attr->id);
+			}
+			break;
+		}
+	}
+
+	if (assigned_sid == NULL) {
+		l2tp_conn_log(log_error, conn);
+		log_error("l2tp: OCRQ: missing mandatory AVP:"
+			  " Assigned Session ID\n");
+		res = 2;
+		err = 6;
+		goto out_cancel;
+	}
+
+	sess->peer_sid = assigned_sid->val.uint16;
+
+	if (unknown_attr) {
+		l2tp_conn_log(log_error, conn);
+		log_error("l2tp: OCRQ: unknown mandatory attribute %i\n",
+			  unknown_attr->attr->id);
+		res = 2;
+		err = 6;
+		goto out_cancel;
+	}
+
+	if (l2tp_tunnel_confirm_session(sess) < 0) {
+		l2tp_conn_log(log_error, conn);
+		log_error("l2tp: OCRQ: impossible to register new session:"
+			  " insufficient resources\n");
+		res = 2;
+		err = 4;
+		goto out_cancel;
+	}
+
+	if (triton_context_call(&sess->sctx,
+				l2tp_session_outcall_reply, sess) < 0) {
+		l2tp_conn_log(log_error, conn);
+		log_error("l2tp: OCRQ: impossible to start new session:"
+			  " insufficient resources\n");
+		l2tp_send_CDN(sess, 2, 4);
+		l2tp_tunnel_free_session(sess);
+		return -1;
+	}
+
+	return 0;
+
+out_cancel:
+	l2tp_send_CDN(sess, res, err);
+	l2tp_tunnel_cancel_session(sess);
+	return -1;
+}
+
 static int l2tp_recv_OCRP(struct l2tp_sess_t *sess,
 			  const struct l2tp_packet_t *pack)
 {
@@ -2351,6 +2527,10 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 				if (l2tp_recv_ICRQ(conn, pack))
 					goto drop;
 				break;
+			case Message_Type_Outgoing_Call_Request:
+				if (l2tp_recv_OCRQ(conn, pack))
+					goto drop;
+				break;
 			case Message_Type_Incoming_Call_Connected:
 			case Message_Type_Incoming_Call_Reply:
 			case Message_Type_Outgoing_Call_Reply:
@@ -2366,7 +2546,6 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 					goto drop;
 				break;
 			case Message_Type_Start_Ctrl_Conn_Request:
-			case Message_Type_Outgoing_Call_Request:
 			case Message_Type_WAN_Error_Notify:
 				if (conf_verbose)
 					log_warn("l2tp: unexpected Message-Type %i\n", msg_type->val.uint16);
