@@ -77,7 +77,8 @@ int l2tp_recv(int fd, struct l2tp_packet_t **, struct in_pktinfo *);
 void l2tp_packet_free(struct l2tp_packet_t *);
 void l2tp_packet_print(const struct l2tp_packet_t *,
 		       void (*print)(const char *fmt, ...));
-struct l2tp_packet_t *l2tp_packet_alloc(int ver, int msg_type, struct sockaddr_in *addr);
+struct l2tp_packet_t *l2tp_packet_alloc(int ver, int msg_type,
+					const struct sockaddr_in *addr);
 int l2tp_packet_send(int sock, struct l2tp_packet_t *);
 int l2tp_packet_add_int16(struct l2tp_packet_t *pack, int id, int16_t val, int M);
 int l2tp_packet_add_int32(struct l2tp_packet_t *pack, int id, int32_t val, int M);

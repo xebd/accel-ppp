@@ -57,7 +57,8 @@ void l2tp_packet_print(const struct l2tp_packet_t *pack,
 	print("]\n");
 }
 
-struct l2tp_packet_t *l2tp_packet_alloc(int ver, int msg_type, struct sockaddr_in *addr)
+struct l2tp_packet_t *l2tp_packet_alloc(int ver, int msg_type,
+					const struct sockaddr_in *addr)
 {
 	struct l2tp_packet_t *pack = mempool_alloc(pack_pool);
 	if (!pack)
