@@ -396,7 +396,7 @@ static int l2tp_send_StopCCN(struct l2tp_conn_t *conn,
 			     uint16_t res, uint16_t err)
 {
 	struct l2tp_packet_t *pack = NULL;
-	struct l2tp_avp_result_code rc = {res, err};
+	struct l2tp_avp_result_code rc = {htons(res), htons(err)};
 
 	pack = l2tp_packet_alloc(2, Message_Type_Stop_Ctrl_Conn_Notify,
 				 &conn->peer_addr);
@@ -419,7 +419,7 @@ out_err:
 static int l2tp_send_CDN(struct l2tp_sess_t *sess, uint16_t res, uint16_t err)
 {
 	struct l2tp_packet_t *pack = NULL;
-	struct l2tp_avp_result_code rc = {res, err};
+	struct l2tp_avp_result_code rc = {htons(res), htons(err)};
 
 	pack = l2tp_packet_alloc(2, Message_Type_Call_Disconnect_Notify,
 				 &sess->paren_conn->peer_addr);
