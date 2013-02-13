@@ -49,6 +49,7 @@ struct l2tp_avp_result_code
 {
 	uint16_t result_code;
 	uint16_t error_code;
+	char error_msg[0];
 } __attribute__((packed));
 
 #endif

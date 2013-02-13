@@ -1722,10 +1722,107 @@ static int l2tp_recv_SCCCN(struct l2tp_conn_t *conn,
 	return 0;
 }
 
+static int rescode_get_data(const struct l2tp_attr_t *result_attr,
+			    uint16_t *res, uint16_t *err, char **err_msg)
+{
+	struct l2tp_avp_result_code *resavp = NULL;
+	int msglen;
+
+	if (result_attr->length != 2 && result_attr->length < sizeof(*resavp))
+		return -1;
+
+	if (result_attr->length == 2) {
+		/* No Error Code */
+		*res = ntohs(*(const uint16_t *)result_attr->val.octets);
+		return 1;
+	}
+
+	resavp = (struct l2tp_avp_result_code *)result_attr->val.octets;
+	*res = ntohs(resavp->result_code);
+	*err = ntohs(resavp->error_code);
+	msglen = result_attr->length - sizeof(*resavp);
+	if (msglen <= 0)
+		return 2;
+
+	*err_msg = _malloc(msglen + 1);
+	if (err_msg) {
+		memcpy(*err_msg, resavp->error_msg, msglen);
+		(*err_msg)[msglen] = '\0';
+	}
+
+	return 3;
+}
+
 static int l2tp_recv_StopCCN(struct l2tp_conn_t *conn,
 			     const struct l2tp_packet_t *pack)
 {
+	const struct l2tp_attr_t *assigned_tid = NULL;
+	const struct l2tp_attr_t *result_code = NULL;
+	const struct l2tp_attr_t *attr = NULL;
+	char *err_msg = NULL;
+	uint16_t res = 0;
+	uint16_t err = 0;
+
+	list_for_each_entry(attr, &pack->attrs, entry) {
+		switch(attr->attr->id) {
+		case Message_Type:
+			break;
+		case Assigned_Tunnel_ID:
+			assigned_tid = attr;
+			break;
+		case Result_Code:
+			result_code = attr;
+			break;
+		default:
+			if (attr->M) {
+				l2tp_conn_log(log_error, conn);
+				log_error("StopCCN: unknown attribute %i\n",
+					  attr->attr->id);
+			}
+			break;
+		}
+	}
+
+	if (assigned_tid) {
+		if (conn->peer_tid == 0)
+			conn->peer_tid = assigned_tid->val.uint16;
+		else if (conn->peer_tid != assigned_tid->val.uint16) {
+			l2tp_conn_log(log_error, conn);
+			log_error("StopCCN: invalid Assigned Tunnel ID %hu"
+				  " (tid: %hu, peer tid: %hu)\n",
+				  assigned_tid->val.uint16,
+				  conn->tid,  conn->peer_tid);
+		}
+	} else {
+		l2tp_conn_log(log_error, conn);
+		log_error("StopCCN: missing mandatory AVP:"
+			  " Assigned Tunnel ID\n");
+	}
+
+	if (result_code) {
+		if (rescode_get_data(result_code, &res, &err, &err_msg) < 0) {
+			l2tp_conn_log(log_error, conn);
+			log_error("StopCCN: invalid Result Code\n");
+		}
+	} else {
+		l2tp_conn_log(log_error, conn);
+		log_error("StopCCN: missing mandatory AVP:"
+			  " Result Code\n");
+	}
+
+	l2tp_conn_log(log_info2, conn);
+	log_info2("Tunnel %hu/%hu closed by peer"
+		  " (result: %hu, error: %hu%s%s%s\n)\n",
+		  conn->tid, conn->peer_tid, res, err,
+		  (err_msg) ? ", message: \"" : "",
+		  (err_msg) ? err_msg : "",
+		  (err_msg) ? "\"": "");
+
+	if (err_msg)
+		_free(err_msg);
+
 	l2tp_send_ZLB(conn);
+
 	return -1;
 }
 
