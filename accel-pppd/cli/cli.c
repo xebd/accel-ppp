@@ -14,6 +14,7 @@
 #include "memdebug.h"
 
 #define MAX_CMD_ITEMS 100
+#define MSG_FAILURE_ERROR "command failed\r\n"
 #define MSG_SYNTAX_ERROR "syntax error\r\n"
 #define MSG_INVAL_ERROR "invalid argument\r\n"
 #define MSG_UNKNOWN_CMD "command unknown\r\n"
@@ -299,8 +300,10 @@ out_found:
 	switch (err) {
 	case CLI_CMD_EXIT:
 		cln->disconnect(cln);
-	case CLI_CMD_FAILED:
 		return -1;
+	case CLI_CMD_FAILED:
+		cli_send(cln, MSG_FAILURE_ERROR);
+		return 0;
 	case CLI_CMD_SYNTAX:
 		cli_send(cln, MSG_SYNTAX_ERROR);
 		return 0;
