@@ -2024,6 +2024,13 @@ static int l2tp_recv_CDN(struct l2tp_sess_t *sess,
 static int l2tp_recv_SLI(struct l2tp_conn_t *conn,
 			 const struct l2tp_packet_t *pack)
 {
+	if (conn->lns_mode) {
+		l2tp_conn_log(log_warn, conn);
+		log_warn("l2tp: unexpected SLI\n");
+	}
+
+	l2tp_send_ZLB(conn);
+
 	return 0;
 }
 
