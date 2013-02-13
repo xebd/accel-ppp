@@ -2458,6 +2458,13 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 	if (peer.sin_family == AF_UNSPEC)
 		return CLI_CMD_SYNTAX;
 
+	if (iprange_client_check(peer.sin_addr.s_addr) < 0) {
+		char addr[17];
+		u_inet_ntoa(peer.sin_addr.s_addr, addr);
+		cli_sendv(client, "Peer address %s out of IP range\r\n", addr);
+		return CLI_CMD_INVAL;
+	}
+
 	conn = l2tp_tunnel_alloc(&peer, &host, 3, lns_mode);
 	if (conn == NULL)
 		return CLI_CMD_FAILED;
