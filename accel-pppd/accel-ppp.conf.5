@@ -708,3 +708,35 @@ Specifies downstream rate limiting method.
 .BI "leaf-qdisc=" "qdisc parameters"
 In case if htb is used as up-limiter or down-limiter specified leaf qdisc can be attached automaticaly.
 At present only sfq qdisc is implemented. Parameters are same as for tc: [ limit NUMBER ] [ perturn SECS ] [ quantum BYTES ].
+.SH [cli]
+.br
+Configuration of the command line interface.
+.TP
+.BI "tcp=" host:port
+Defines on which IP address and port the TCP module will listen for incoming
+connections. When \fIhost\fR is empty, the TCP module listens on all local
+interfaces. It isn't loaded if this option isn't defined.
+.TP
+.BI "telnet=" host:port
+Defines on which IP address and port the Telnet module will listen for incoming
+connections. When \fIhost\fR is empty, the Telnet module listens on all local
+interfaces. It isn't loaded if this option isn't defined.
+.TP
+.BI "password=" passwd
+Defines the password to be used by the TCP and Telnet modules for
+authenticating clients. No authentication is performed if this option
+isn't defined.
+.TP
+.BI "prompt=" prompt
+Defines the prompt string used by the Telnet module (defaults
+to \fIaccel-ppp\fR).
+.TP
+.BI "history-file=" filename
+Defines the file used by the Telnet module for loading and storing its
+command history (defaults to \fI/var/run/accel-ppp/history\fR).
+.TP
+.BI "sessions-columns=" column_list
+Defines the default set of columns to be displayed by the "show sessions"
+command (defaults to
+\fIifname,username,calling-sid,ip,rate-limit,type,comp,state,uptime\fR).
+Invalid column names are silently discarded.
