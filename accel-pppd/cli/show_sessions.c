@@ -49,6 +49,7 @@ struct cell_t
 };
 
 static LIST_HEAD(col_list);
+static char *conf_def_columns = NULL;
 
 void __export cli_show_ses_register(const char *name, const char *desc, void (*print)(const struct ap_session *ses, char *buf))
 {
@@ -171,10 +172,10 @@ static int show_ses_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 	}
 
 	if (!columns) {
-		columns = DEF_COLUMNS;
+		columns = (conf_def_columns) ? conf_def_columns : DEF_COLUMNS;
 		def_columns = 1;
 	}
-	
+
 	columns = _strdup(columns);
 	ptr1 = columns;
 	while (1) {
@@ -463,10 +464,33 @@ static void print_comp(const struct ap_session *ses, char *buf)
 		buf[0] = 0;
 }
 
+static void load_config(void *data)
+{
+	const char *opt = NULL;
+	char *ptr = NULL;
+
+	opt = conf_get_opt("cli", "sessions-columns");
+	if (opt && strlen(opt) > 0) {
+		ptr = _realloc(conf_def_columns, strlen(opt) + 1);
+		if (ptr) {
+			memcpy(ptr, opt, strlen(opt) + 1);
+			conf_def_columns = ptr;
+		} else
+			log_error("cli: Discard option sessions-columns:"
+				  " memory allocation error\n");
+	}
+	if (ptr == NULL && conf_def_columns) {
+		_free(conf_def_columns);
+		conf_def_columns = NULL;
+	}
+}
+
 static void init(void)
 {
+	load_config(NULL);
+
 	cli_register_simple_cmd2(show_ses_exec, show_ses_help, 2, "show", "sessions");
-	
+
 	cli_show_ses_register("ifname", "interface name", print_ifname);
 	cli_show_ses_register("username", "user name", print_username);
 	cli_show_ses_register("ip", "IP address", print_ip);
@@ -477,6 +501,8 @@ static void init(void)
 	cli_show_ses_register("called-sid", "called station id", print_called_sid);
 	cli_show_ses_register("sid", "session id", print_sid);
 	cli_show_ses_register("comp", "compression/ecnryption method", print_comp);
+
+	triton_event_register_handler(EV_CONFIG_RELOAD, load_config);
 }
 
 DEFINE_INIT(12, init);
