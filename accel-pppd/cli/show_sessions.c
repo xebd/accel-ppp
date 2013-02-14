@@ -273,11 +273,15 @@ static int show_ses_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 			continue;
 		total_width += col->width + 3;
 	}
-	
+
+	if (total_width < 0)
+		/* No column to print */
+		goto early_out;
+
 	buf = _malloc(total_width + 3);
 	if (!buf)
 		goto oom;
-	
+
 	ptr1 = buf;
 	list_for_each_entry(col, &c_list, entry) {
 		if (col->hidden)
@@ -356,6 +360,8 @@ out:
 	return CLI_CMD_OK;
 
 oom:
+	cli_send(cli, "out of memory");
+early_out:
 	if (buf)
 		_free(buf);
 
@@ -364,7 +370,6 @@ oom:
 		list_del(&row->entry);
 		free_row(row);
 	}
-	cli_send(cli, "out of memory");
 	goto out;
 }
 
