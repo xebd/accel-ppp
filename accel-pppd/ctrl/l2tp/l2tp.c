@@ -597,7 +597,7 @@ static void l2tp_tunnel_free_sessionid(void *data)
 		l2tp_tunnel_free_session(sess);
 }
 
-static void l2tp_session_free(struct l2tp_sess_t *sess)
+static int l2tp_session_free(struct l2tp_sess_t *sess)
 {
 	intptr_t sid = sess->sid;
 
@@ -605,7 +605,10 @@ static void l2tp_session_free(struct l2tp_sess_t *sess)
 				l2tp_tunnel_free_sessionid, (void *)sid) < 0) {
 		log_session(log_error, sess, "impossible to free session:"
 			    " call to parent tunnel failed\n");
+		return -1;
 	}
+
+	return 0;
 }
 
 static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
@@ -706,7 +709,11 @@ static int l2tp_session_disconnect(struct l2tp_sess_t *sess,
 			    "impossible to notify peer of session"
 			    " disconnection, disconnecting anyway\n");
 
-	l2tp_session_free(sess);
+	if (l2tp_session_free(sess) < 0) {
+		log_session(log_error, sess, "impossible to free session,"
+			    " session data have been kept\n");
+		return -1;
+	}
 
 	return 0;
 }
@@ -723,7 +730,10 @@ static void l2tp_ppp_finished(struct ap_session *ses)
 			log_session(log_error, sess,
 				    "impossible to notify peer of session"
 				    " disconnection, disconnecting anyway\n");
-		l2tp_session_free(sess);
+		if (l2tp_session_free(sess) < 0)
+			log_session(log_error, sess,
+				    "impossible to free session,"
+				    " session data have been kept\n");
 	} else {
 		/* Called by __l2tp_session_free() via ap_session_terminate().
 		   Now, call __l2tp_session_free() again to finish cleanup. */
@@ -856,7 +866,7 @@ static int l2tp_tunnel_confirm_session(struct l2tp_sess_t *sess)
 	return 0;
 }
 
-static int l2tp_tunnel_cancel_session(struct l2tp_sess_t *sess)
+static void l2tp_tunnel_cancel_session(struct l2tp_sess_t *sess)
 {
 	tdelete(sess, &sess->paren_conn->sessions, sess_cmp);
 	if (sess->ctrl.calling_station_id)
@@ -864,8 +874,6 @@ static int l2tp_tunnel_cancel_session(struct l2tp_sess_t *sess)
 	if (sess->ctrl.called_station_id)
 		_free(sess->ctrl.called_station_id);
 	mempool_free(sess);
-
-	return 0;
 }
 
 static void l2tp_conn_close(struct triton_context_t *ctx)
