@@ -3088,20 +3088,31 @@ static struct l2tp_serv_t udp_serv =
 	.ctx.close=l2tp_ip_close,
 };*/
 
-static void start_udp_server(void)
+static int start_udp_server(void)
 {
 	struct sockaddr_in addr;
 	const char *opt;
-	int flag = 1;
+	int flag;
 
 	udp_serv.hnd.fd = socket(PF_INET, SOCK_DGRAM, 0);
 	if (udp_serv.hnd.fd < 0) {
 		log_error("l2tp: impossible to start L2TP server:"
 			  " socket(PF_INET) failed: %s\n", strerror(errno));
-		return;
+		return -1;
 	}
-	
-	fcntl(udp_serv.hnd.fd, F_SETFD, fcntl(udp_serv.hnd.fd, F_GETFD) | FD_CLOEXEC);
+
+	flag = fcntl(udp_serv.hnd.fd, F_GETFD);
+	if (flag < 0) {
+		log_error("l2tp: impossible to start L2TP server:"
+			  " fcntl(F_GETFD) failed: %s\n", strerror(errno));
+		goto err_fd;
+	}
+	flag = fcntl(udp_serv.hnd.fd, F_SETFD, flag | FD_CLOEXEC);
+	if (flag < 0) {
+		log_error("l2tp: impossible to start L2TP server:"
+			  " fcntl(F_SETFD) failed: %s\n", strerror(errno));
+		goto err_fd;
+	}
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
@@ -3113,25 +3124,51 @@ static void start_udp_server(void)
 	else
 		addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-	setsockopt(udp_serv.hnd.fd, SOL_SOCKET, SO_REUSEADDR, &udp_serv.hnd.fd, sizeof(udp_serv.hnd.fd));
-	setsockopt(udp_serv.hnd.fd, SOL_SOCKET, SO_NO_CHECK, &udp_serv.hnd.fd, sizeof(udp_serv.hnd.fd));
-
-	if (bind (udp_serv.hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
-		log_emerg("l2tp: bind: %s\n", strerror(errno));
-		close(udp_serv.hnd.fd);
-		return;
+	if (setsockopt(udp_serv.hnd.fd, SOL_SOCKET, SO_REUSEADDR,
+		       &udp_serv.hnd.fd, sizeof(udp_serv.hnd.fd)) < 0) {
+		log_error("l2tp: impossible to start L2TP server:"
+			  " setsockopt(SO_REUSEADDR) failed: %s\n",
+			  strerror(errno));
+		goto err_fd;
+	}
+	if (setsockopt(udp_serv.hnd.fd, SOL_SOCKET, SO_NO_CHECK,
+		       &udp_serv.hnd.fd, sizeof(udp_serv.hnd.fd)) < 0) {
+		log_error("l2tp: impossible to start L2TP server:"
+			  " setsockopt(SO_NO_CHECK) failed: %s\n",
+			  strerror(errno));
+		goto err_fd;
 	}
 
-	if (fcntl(udp_serv.hnd.fd, F_SETFL, O_NONBLOCK)) {
-		log_emerg("l2tp: failed to set nonblocking mode: %s\n", strerror(errno));
-		close(udp_serv.hnd.fd);
-		return;
+	if (bind(udp_serv.hnd.fd,
+		 (struct sockaddr *) &addr, sizeof (addr)) < 0) {
+		log_error("l2tp: impossible to start L2TP server:"
+			  " bind() failed: %s\n",
+			  strerror(errno));
+		goto err_fd;
 	}
 
-	if (setsockopt(udp_serv.hnd.fd, IPPROTO_IP, IP_PKTINFO, &flag, sizeof(flag))) {
-		log_emerg("l2tp: setsockopt(IP_PKTINFO): %s\n", strerror(errno));
-		close(udp_serv.hnd.fd);
-		return;
+	flag = fcntl(udp_serv.hnd.fd, F_GETFL);
+	if (flag < 0) {
+		log_error("l2tp: impossible to start L2TP server:"
+			  " fcntl(F_GETFL) failed: %s\n",
+			  strerror(errno));
+		goto err_fd;
+	}
+	flag = fcntl(udp_serv.hnd.fd, F_SETFL, flag | O_NONBLOCK);
+	if (flag < 0) {
+		log_error("l2tp: impossible to start L2TP server:"
+			  " fcntl(F_SETFL) failed: %s\n",
+			  strerror(errno));
+		goto err_fd;
+	}
+
+	flag = 1;
+	if (setsockopt(udp_serv.hnd.fd, IPPROTO_IP,
+		       IP_PKTINFO, &flag, sizeof(flag)) < 0) {
+		log_error("l2tp: impossible to start L2TP server:"
+			  " setsockopt(IP_PKTINFO) failed: %s\n",
+			  strerror(errno));
+		goto err_fd;
 	}
 
 	memcpy(&udp_serv.addr, &addr, sizeof(addr));
@@ -3139,13 +3176,26 @@ static void start_udp_server(void)
 	if (triton_context_register(&udp_serv.ctx, NULL) < 0) {
 		log_error("l2tp: impossible to start L2TP server:"
 			  " context registration failed\n");
+		goto err_fd;
 	}
 	triton_md_register_handler(&udp_serv.ctx, &udp_serv.hnd);
 	if (triton_md_enable_handler(&udp_serv.hnd, MD_MODE_READ) < 0) {
 		log_error("l2tp: impossible to start L2TP server:"
 			  " enabling handler failed\n");
+		goto err_hnd;
 	}
 	triton_context_wakeup(&udp_serv.ctx);
+
+	return 0;
+
+err_hnd:
+	triton_md_unregister_handler(&udp_serv.hnd);
+	triton_context_unregister(&udp_serv.ctx);
+err_fd:
+	close(udp_serv.hnd.fd);
+	udp_serv.hnd.fd = -1;
+
+	return -1;
 }
 
 static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
