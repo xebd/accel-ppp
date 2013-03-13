@@ -3283,24 +3283,38 @@ static int l2tp_create_session_exec(const char *cmd, char * const *fields,
 	long int tid;
 	int res;
 
-	if (fields_cnt != 5)
+	if (fields_cnt != 5) {
+		cli_send(client, "invalid number of arguments\r\n");
 		return CLI_CMD_SYNTAX;
+	}
 
-	if (strcmp("tid", fields[3]) != 0)
+	if (strcmp("tid", fields[3]) != 0) {
+		cli_sendv(client, "invalid option: \"%s\"\r\n", fields[3]);
 		return CLI_CMD_SYNTAX;
+	}
 
-	if (u_readlong(&tid, fields[4], 1, L2TP_MAX_TID - 1) < 0)
+	if (u_readlong(&tid, fields[4], 1, L2TP_MAX_TID - 1) < 0) {
+		cli_sendv(client, "invalid Tunnel ID: \"%s\"\r\n", fields[4]);
 		return CLI_CMD_INVAL;
+	}
 
 	pthread_mutex_lock(&l2tp_lock);
 	conn = l2tp_conn[tid];
 	if (conn) {
-		triton_context_call(&conn->ctx,
-				    l2tp_tunnel_create_session, conn);
-		res = CLI_CMD_OK;
-	} else
+		if (triton_context_call(&conn->ctx, l2tp_tunnel_create_session,
+					conn) < 0)
+			res = CLI_CMD_FAILED;
+		else
+			res = CLI_CMD_OK;
+	} else {
 		res = CLI_CMD_INVAL;
+	}
 	pthread_mutex_unlock(&l2tp_lock);
+
+	if (res == CLI_CMD_FAILED)
+		cli_send(client, "session creation failed\r\n");
+	else if (res == CLI_CMD_INVAL)
+		cli_sendv(client, "tunnel %li not found\r\n", tid);
 
 	return res;
 }
