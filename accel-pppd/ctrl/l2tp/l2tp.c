@@ -3218,6 +3218,7 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 		.sin_family = AF_UNSPEC
 	};
 	const char *opt = NULL;
+	int peer_indx = -1;
 	int lns_mode = 0;
 	int indx;
 
@@ -3235,43 +3236,64 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 				lns_mode = 1;
 			else if (strcmp("lac", fields[indx]) == 0)
 				lns_mode = 0;
-			else
+			else {
+				cli_sendv(client, "invalid mode: \"%s\"\r\n",
+					  fields[indx]);
 				return CLI_CMD_INVAL;
+			}
 		} else if (strcmp("peer-addr", fields[indx]) == 0) {
-			++indx;
+			peer_indx = ++indx;
 			peer.sin_family = AF_INET;
 			peer.sin_port = htons(L2TP_PORT);
-			if (inet_aton(fields[indx], &peer.sin_addr) == 0)
+			if (inet_aton(fields[indx], &peer.sin_addr) == 0) {
+				cli_sendv(client,
+					  "invalid peer address: \"%s\"\r\n",
+					  fields[indx]);
 				return CLI_CMD_INVAL;
+			}
 		} else if (strcmp("host-addr", fields[indx]) == 0) {
 			++indx;
 			host.sin_family = AF_INET;
 			host.sin_port = 0;
-			if (inet_aton(fields[indx], &host.sin_addr) == 0)
+			if (inet_aton(fields[indx], &host.sin_addr) == 0) {
+				cli_sendv(client,
+					  "invalid host address: \"%s\"\r\n",
+					  fields[indx]);
 				return CLI_CMD_INVAL;
-		} else
+			}
+		} else {
+			cli_sendv(client, "invalid option: \"%s\"\r\n",
+				  fields[indx]);
 			return CLI_CMD_SYNTAX;
+		}
 	}
 
-	if (indx != fields_cnt)
-		/* Missing argument for option */
+	if (indx != fields_cnt) {
+		cli_sendv(client, "argument missing for last option\r\n");
 		return CLI_CMD_SYNTAX;
+	}
 
-	if (peer.sin_family == AF_UNSPEC)
+	if (peer_indx < 0) {
+		cli_sendv(client, "missing option \"peer-addr\"\r\n");
 		return CLI_CMD_SYNTAX;
+	}
 
 	if (iprange_client_check(peer.sin_addr.s_addr) < 0) {
-		char addr[17];
-		u_inet_ntoa(peer.sin_addr.s_addr, addr);
-		cli_sendv(client, "Peer address %s out of IP range\r\n", addr);
+		cli_sendv(client, "peer address %s out of IP range\r\n",
+			  fields[peer_indx]);
 		return CLI_CMD_INVAL;
 	}
 
 	conn = l2tp_tunnel_alloc(&peer, &host, 3, lns_mode);
-	if (conn == NULL)
+	if (conn == NULL) {
+		cli_send(client, "tunnel allocation failed\r\n");
 		return CLI_CMD_FAILED;
+	}
 
-	l2tp_tunnel_start(conn, l2tp_send_SCCRQ, &peer);
+	if (l2tp_tunnel_start(conn, l2tp_send_SCCRQ, &peer) < 0) {
+		cli_send(client, "starting tunnel failed\r\n");
+		return CLI_CMD_FAILED;
+	}
 
 	return CLI_CMD_OK;
 }
