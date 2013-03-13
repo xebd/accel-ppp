@@ -317,7 +317,7 @@ static int l2tp_tunnel_storechall(struct l2tp_conn_t *conn,
 	}
 
 	if (conn->challenge_len != chall->length) {
-		ptr = realloc(conn->challenge, chall->length);
+		ptr = _realloc(conn->challenge, chall->length);
 		if (ptr == NULL) {
 			log_tunnel(log_error, conn,
 				   "impossible to store received"
@@ -3338,8 +3338,8 @@ static void l2tp_init(void)
 {
 	if (system("modprobe -q pppol2tp || modprobe -q l2tp_ppp"))
 		log_warn("unable to load l2tp kernel module\n");
-	
-	l2tp_conn = malloc(L2TP_MAX_TID * sizeof(void *));
+
+	l2tp_conn = _malloc(L2TP_MAX_TID * sizeof(void *));
 	memset(l2tp_conn, 0, L2TP_MAX_TID * sizeof(void *));
 
 	l2tp_conn_pool = mempool_create(sizeof(struct l2tp_conn_t));
