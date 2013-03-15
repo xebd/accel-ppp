@@ -543,20 +543,16 @@ out_err:
 	return -1;
 }
 
-static int l2tp_tunnel_disconnect(struct l2tp_conn_t *conn, int res, int err)
+static void l2tp_tunnel_disconnect(struct l2tp_conn_t *conn, int res, int err)
 {
 	log_ppp_debug("l2tp: terminate (%i, %i)\n", res, err);
 
-	if (l2tp_send_StopCCN(conn, res, err) < 0) {
+	if (l2tp_send_StopCCN(conn, res, err) < 0)
 		log_tunnel(log_error, conn,
 			   "impossible to notify peer of tunnel disconnection,"
 			   " disconnecting anyway\n");
-		return -1;
-	}
 
 	conn->state = STATE_FIN;
-
-	return 0;
 }
 
 static void __l2tp_session_free(void *data)
@@ -3079,9 +3075,17 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 				if (conf_verbose)
 					log_warn("l2tp: unknown Message-Type %i\n", msg_type->val.uint16);
 				if (msg_type->M) {
-					if (l2tp_tunnel_disconnect(conn, 2, 8))
-						goto drop;
-				}
+					log_tunnel(log_error, conn,
+						   "impossible to handle unknown message type"
+						   " %i, disconnecting tunnel\n",
+						   msg_type->val.uint16);
+					l2tp_tunnel_disconnect(conn, 2, 8);
+					goto drop;
+				} else
+					log_tunnel(log_warn, conn,
+						   "discarding unknown message type %i\n",
+						   msg_type->val.uint16);
+				break;
 		}
 
 		l2tp_packet_free(pack);
