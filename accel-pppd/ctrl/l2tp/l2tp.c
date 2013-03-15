@@ -895,7 +895,9 @@ static struct l2tp_sess_t *l2tp_tunnel_alloc_session(struct l2tp_conn_t *conn)
 	return sess;
 }
 
-static int l2tp_tunnel_confirm_session(struct l2tp_sess_t *sess)
+static int l2tp_tunnel_start_session(struct l2tp_sess_t *sess,
+				     triton_event_func start_func,
+				     void *start_param)
 {
 	struct l2tp_conn_t *conn = l2tp_tunnel_self();
 
@@ -905,10 +907,20 @@ static int l2tp_tunnel_confirm_session(struct l2tp_sess_t *sess)
 		return -1;
 	}
 	triton_context_wakeup(&sess->sctx);
+	if (triton_context_call(&sess->sctx, start_func, start_param) < 0) {
+		log_tunnel(log_error, conn, "impossible to start new session:"
+			   " call to session context failed\n");
+		goto out_err;
+	}
+
 	__sync_add_and_fetch(&stat_starting, 1);
 	++conn->sess_count;
 
 	return 0;
+
+out_err:
+	triton_context_unregister(&sess->sctx);
+	return -1;
 }
 
 static void l2tp_tunnel_cancel_session(struct l2tp_sess_t *sess)
@@ -2375,7 +2387,7 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
 		goto out_reject;
 	}
 
-	if (l2tp_tunnel_confirm_session(sess) < 0) {
+	if (l2tp_tunnel_start_session(sess, l2tp_send_ICRP, sess) < 0) {
 		log_tunnel(log_error, conn, "impossible to handle ICRQ:"
 			   " starting session failed,"
 			   " disconnecting session\n");
@@ -2383,8 +2395,6 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
 		err = 4;
 		goto out_reject;
 	}
-	if (l2tp_send_ICRP(sess))
-		return -1;
 
 	return 0;
 
@@ -2626,22 +2636,14 @@ static int l2tp_recv_OCRQ(struct l2tp_conn_t *conn,
 		goto out_cancel;
 	}
 
-	if (l2tp_tunnel_confirm_session(sess) < 0) {
-		l2tp_conn_log(log_error, conn);
-		log_error("l2tp: OCRQ: impossible to register new session:"
-			  " insufficient resources\n");
+	if (l2tp_tunnel_start_session(sess, l2tp_session_outcall_reply,
+				      sess) < 0) {
+		log_tunnel(log_error, conn, "impossible to handle OCRQ:"
+			   " starting session failed,"
+			   " disconnecting session\n");
 		res = 2;
 		err = 4;
 		goto out_cancel;
-	}
-	if (triton_context_call(&sess->sctx,
-				l2tp_session_outcall_reply, sess) < 0) {
-		l2tp_conn_log(log_error, conn);
-		log_error("l2tp: OCRQ: impossible to start new session:"
-			  " insufficient resources\n");
-		l2tp_tunnel_send_CDN(sid, peer_sid, 2, 4);
-		l2tp_tunnel_free_session(sess);
-		return -1;
 	}
 
 	return 0;
@@ -2848,16 +2850,14 @@ static void l2tp_tunnel_create_session(void *data)
 			   " session allocation failed");
 		return;
 	}
-	if (l2tp_tunnel_confirm_session(sess) < 0) {
+
+	if (l2tp_tunnel_start_session(sess,
+				      conn->lns_mode ? l2tp_session_outcall : l2tp_session_incall, sess) < 0) {
 		log_tunnel(log_error, conn, "impossible to create session:"
 			   " starting session failed\n");
 		l2tp_tunnel_cancel_session(sess);
 		return;
 	}
-	if (conn->lns_mode)
-		triton_context_call(&sess->sctx, l2tp_session_outcall, sess);
-	else
-		triton_context_call(&sess->sctx, l2tp_session_incall, sess);
 }
 
 static void l2tp_session_recv(void *data)
