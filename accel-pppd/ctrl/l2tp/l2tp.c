@@ -794,7 +794,8 @@ static void l2tp_session_timeout(struct triton_timer_t *t)
 						timeout_timer);
 
 	log_ppp_debug("l2tp: session timeout\n");
-	l2tp_session_free(sess);
+	if (l2tp_session_disconnect(sess, 10, 0) < 0)
+		log_session(log_error, sess, "session disconnection failed\n");
 }
 
 static struct l2tp_sess_t *l2tp_tunnel_new_session(struct l2tp_conn_t *conn)
@@ -1337,8 +1338,11 @@ static void l2tp_rtimeout(struct triton_timer_t *t)
 
 static void l2tp_timeout(struct triton_timer_t *t)
 {
-	struct l2tp_conn_t *conn = container_of(t, typeof(*conn), timeout_timer);
+	struct l2tp_conn_t *conn = container_of(t, typeof(*conn),
+						timeout_timer);
+
 	log_ppp_debug("l2tp: timeout\n");
+	l2tp_tunnel_disconnect(conn, 1, 0);
 	l2tp_tunnel_free(conn);
 }
 
