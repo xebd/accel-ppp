@@ -122,9 +122,10 @@ static mempool_t l2tp_sess_pool;
 static void l2tp_timeout(struct triton_timer_t *t);
 static void l2tp_rtimeout(struct triton_timer_t *t);
 static void l2tp_send_HELLO(struct triton_timer_t *t);
-static void l2tp_send_SCCRP(struct l2tp_conn_t *conn);
-static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack, int log_debug);
-static void __l2tp_send(struct l2tp_packet_t *pack);
+static int l2tp_tunnel_send(struct l2tp_conn_t *conn,
+			    struct l2tp_packet_t *pack);
+static int l2tp_session_send(struct l2tp_sess_t *sess,
+			     struct l2tp_packet_t *pack);
 static int l2tp_conn_read(struct triton_md_handler_t *);
 static void l2tp_tunnel_session_freed(void *data);
 
@@ -446,7 +447,7 @@ static int l2tp_send_StopCCN(struct l2tp_conn_t *conn,
 		goto out_err;
 	}
 
-	if (l2tp_send(conn, pack, 0) < 0) {
+	if (l2tp_tunnel_send(conn, pack) < 0) {
 		log_tunnel(log_error, conn, "impossible to send StopCCN:"
 			   " sending packet failed\n");
 		return -1;
@@ -485,9 +486,11 @@ static int l2tp_send_CDN(struct l2tp_sess_t *sess, uint16_t res, uint16_t err)
 		goto out_err;
 	}
 
-	pack->hdr.sid = htons(sess->peer_sid);
-
-	triton_context_call(&sess->paren_conn->ctx, (triton_event_func)__l2tp_send, pack);
+	if (l2tp_session_send(sess, pack) < 0) {
+		log_session(log_error, sess, "impossible to send CDN:"
+			    " sending packet failed\n");
+		return -1;
+	}
 
 	return 0;
 
@@ -1254,28 +1257,31 @@ static void l2tp_timeout(struct triton_timer_t *t)
 	l2tp_tunnel_free(conn);
 }
 
-static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack, int debug)
+static int l2tp_tunnel_send(struct l2tp_conn_t *conn,
+			    struct l2tp_packet_t *pack)
 {
+	const struct l2tp_attr_t *msg_type = NULL;
+	void (*log_func)(const char *fmt, ...) = NULL;
+
 	conn->retransmit = 0;
 
 	pack->hdr.tid = htons(conn->peer_tid);
-	//pack->hdr.sid = htons(conn->peer_sid);
 	pack->hdr.Nr = htons(conn->Nr);
 	pack->hdr.Ns = htons(conn->Ns);
 
-	if (!list_empty(&pack->attrs))
-		conn->Ns++;
-
 	if (conf_verbose) {
-		if (debug) {
-			l2tp_conn_log(log_debug, conn);
-			log_debug("send ");
-			l2tp_packet_print(pack, log_debug);
-		} else {
-			l2tp_conn_log(log_info2, conn);
-			log_info2("send ");
-			l2tp_packet_print(pack, log_info2);
+		if (list_empty(&pack->attrs))
+			log_func = log_debug;
+		else {
+			msg_type = list_entry(pack->attrs.next,
+					      typeof(*msg_type), entry);
+			if (msg_type->val.uint16 == Message_Type_Hello)
+				log_func = log_debug;
+			else
+				log_func = log_info2;
 		}
+		log_tunnel(log_func, conn, "send ");
+		l2tp_packet_print(pack, log_func);
 	}
 
 	if (l2tp_packet_send(conn->hnd.fd, pack)) {
@@ -1284,6 +1290,7 @@ static int l2tp_send(struct l2tp_conn_t *conn, struct l2tp_packet_t *pack, int d
 	}
 
 	if (!list_empty(&pack->attrs)) {
+		conn->Ns++;
 		list_add_tail(&pack->entry, &conn->send_queue);
 		if (!conn->rtimeout_timer.tpd)
 			if (triton_timer_add(&conn->ctx,
@@ -1302,12 +1309,27 @@ out_err:
 	return -1;
 }
 
-static void __l2tp_send(struct l2tp_packet_t *pack)
+static void __l2tp_tunnel_send(void *pack)
 {
-	struct l2tp_conn_t *conn = container_of(triton_context_self(), typeof(*conn), ctx);
+	l2tp_tunnel_send(l2tp_tunnel_self(), pack);
+}
 
-	if (l2tp_send(conn, pack, 0))
-		l2tp_tunnel_free(conn);
+static int l2tp_session_send(struct l2tp_sess_t *sess,
+			     struct l2tp_packet_t *pack)
+{
+	pack->hdr.sid = htons(sess->peer_sid);
+	if (triton_context_call(&sess->paren_conn->ctx,
+				__l2tp_tunnel_send, pack) < 0) {
+		log_session(log_error, sess, "impossible to send packet:"
+			    " call to parent tunnel failed\n");
+		goto out_err;
+	}
+
+	return 0;
+
+out_err:
+	l2tp_packet_free(pack);
+	return -1;
 }
 
 static int l2tp_send_ZLB(struct l2tp_conn_t *conn)
@@ -1321,7 +1343,7 @@ static int l2tp_send_ZLB(struct l2tp_conn_t *conn)
 		return -1;
 	}
 
-	if (l2tp_send(conn, pack, 1) < 0) {
+	if (l2tp_tunnel_send(conn, pack) < 0) {
 		log_tunnel(log_error, conn, "impossible to send ZLB:"
 			   " sending packet failed\n");
 		return -1;
@@ -1343,7 +1365,7 @@ static void l2tp_send_HELLO(struct triton_timer_t *t)
 		return;
 	}
 
-	if (l2tp_send(conn, pack, 1))
+	if (l2tp_tunnel_send(conn, pack) < 0)
 		l2tp_tunnel_free(conn);
 }
 
@@ -1402,7 +1424,7 @@ static void l2tp_send_SCCRQ(void *peer_addr)
 		goto err;
 	}
 
-	if (l2tp_send(conn, pack, 0) < 0) {
+	if (l2tp_tunnel_send(conn, pack) < 0) {
 		log_tunnel(log_error, conn, "impossible to send SCCRQ:"
 			   " sending packet failed\n");
 		goto err;
@@ -1481,7 +1503,7 @@ static void l2tp_send_SCCRP(struct l2tp_conn_t *conn)
 		goto out_err;
 	}
 
-	if (l2tp_send(conn, pack, 0) < 0) {
+	if (l2tp_tunnel_send(conn, pack) < 0) {
 		log_tunnel(log_error, conn, "impossible to send SCCRP:"
 			   " sending packet failed\n");
 		goto out;
@@ -1527,7 +1549,7 @@ static int l2tp_send_SCCCN(struct l2tp_conn_t *conn)
 	}
 	l2tp_tunnel_storechall(conn, NULL);
 
-	if (l2tp_send(conn, pack, 0) < 0) {
+	if (l2tp_tunnel_send(conn, pack) < 0) {
 		log_tunnel(log_error, conn, "impossible to send SCCCN:"
 			   " sending packet failed\n");
 		goto err;
@@ -1565,7 +1587,7 @@ static int l2tp_send_ICRQ(struct l2tp_sess_t *sess)
 		goto out_err;
 	}
 
-	if (l2tp_send(sess->paren_conn, pack, 0) < 0) {
+	if (l2tp_session_send(sess, pack) < 0) {
 		log_session(log_error, sess, "impossible to send ICRQ:"
 			    " sending packet failed\n");
 		return -1;
@@ -1600,8 +1622,6 @@ static int l2tp_send_ICRP(struct l2tp_sess_t *sess)
 		return -1;
 	}
 
-	pack->hdr.sid = htons(sess->peer_sid);
-	
 	if (l2tp_packet_add_int16(pack, Assigned_Session_ID,
 				  sess->sid, 1) < 0) {
 		log_session(log_error, sess, "impossible to send ICRP:"
@@ -1609,7 +1629,7 @@ static int l2tp_send_ICRP(struct l2tp_sess_t *sess)
 		goto out_err;
 	}
 
-	if (l2tp_send(sess->paren_conn, pack, 0) < 0) {
+	if (l2tp_session_send(sess, pack) < 0) {
 		log_session(log_error, sess, "impossible to send ICRP:"
 			    " sending packet failed\n");
 	}
@@ -1640,8 +1660,6 @@ static int l2tp_send_ICCN(struct l2tp_sess_t *sess)
 		return -1;
 	}
 
-	pack->hdr.sid = htons(sess->peer_sid);
-
 	if (l2tp_packet_add_int16(pack, Assigned_Session_ID,
 				  sess->sid, 1) < 0) {
 		log_session(log_error, sess, "impossible to send ICCN:"
@@ -1659,7 +1677,7 @@ static int l2tp_send_ICCN(struct l2tp_sess_t *sess)
 		goto out_err;
 	}
 
-	if (l2tp_send(sess->paren_conn, pack, 0) < 0) {
+	if (l2tp_session_send(sess, pack) < 0) {
 		log_session(log_error, sess, "impossible to send ICCN:"
 			    " sending packet failed\n");
 		return -1;
@@ -1721,7 +1739,7 @@ static int l2tp_send_OCRQ(struct l2tp_sess_t *sess)
 		goto out_err;
 	}
 
-	if (l2tp_send(sess->paren_conn, pack, 0) < 0) {
+	if (l2tp_session_send(sess, pack) < 0) {
 		log_session(log_error, sess, "impossible to send OCRQ:"
 			    " sending packet failed\n");
 		return -1;
@@ -1756,8 +1774,6 @@ static int l2tp_send_OCRP(struct l2tp_sess_t *sess)
 		return -1;
 	}
 
-	pack->hdr.sid = htons(sess->peer_sid);
-
 	if (l2tp_packet_add_int16(pack, Assigned_Session_ID,
 				  sess->sid, 1) < 0) {
 		log_session(log_error, sess, "impossible to send OCRP:"
@@ -1765,7 +1781,7 @@ static int l2tp_send_OCRP(struct l2tp_sess_t *sess)
 		goto out_err;
 	}
 
-	if (l2tp_send(sess->paren_conn, pack, 0) < 0) {
+	if (l2tp_session_send(sess, pack) < 0) {
 		log_session(log_error, sess, "impossible to send OCRP:"
 			    " sending packet failed\n");
 		return -1;
@@ -1790,8 +1806,6 @@ static int l2tp_send_OCCN(struct l2tp_sess_t *sess)
 		return -1;
 	}
 
-	pack->hdr.sid = htons(sess->peer_sid);
-
 	if (l2tp_packet_add_int32(pack, TX_Speed, 1000, 1) < 0) {
 		log_session(log_error, sess, "impossible to send OCCN:"
 			    " adding data to packet failed\n");
@@ -1803,7 +1817,7 @@ static int l2tp_send_OCCN(struct l2tp_sess_t *sess)
 		goto out_err;
 	}
 
-	if (l2tp_send(sess->paren_conn, pack, 0) < 0) {
+	if (l2tp_session_send(sess, pack) < 0) {
 		log_session(log_error, sess, "impossible to send OCCN:"
 			    " sending packet failed\n");
 		return -1;
