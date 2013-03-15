@@ -1693,8 +1693,6 @@ static int l2tp_send_ICRP(struct l2tp_sess_t *sess)
 	else
 		triton_timer_mod(&sess->timeout_timer, 0);
 	
-	sess->state1 = STATE_WAIT_ICCN;
-	
 	return 0;
 
 out_err:
@@ -2311,6 +2309,23 @@ static int l2tp_recv_HELLO(struct l2tp_conn_t *conn,
 	return 0;
 }
 
+static void l2tp_session_incall_reply(void *data)
+{
+	struct l2tp_sess_t *sess = data;
+
+	if (l2tp_send_ICRP(sess) < 0) {
+		log_session(log_error, sess,
+			    "impossible to reply to incoming call:"
+			    " sending ICRP failed, disconnecting session\n");
+		if (l2tp_session_disconnect(sess, 2, 6) < 0)
+			log_session(log_error, sess,
+				    "session disconnection failed\n");
+		return;
+	}
+
+	sess->state1 = STATE_WAIT_ICCN;
+}
+
 static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
 			  const struct l2tp_packet_t *pack)
 {
@@ -2387,7 +2402,8 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
 		goto out_reject;
 	}
 
-	if (l2tp_tunnel_start_session(sess, l2tp_send_ICRP, sess) < 0) {
+	if (l2tp_tunnel_start_session(sess, l2tp_session_incall_reply,
+				      sess) < 0) {
 		log_tunnel(log_error, conn, "impossible to handle ICRQ:"
 			   " starting session failed,"
 			   " disconnecting session\n");
