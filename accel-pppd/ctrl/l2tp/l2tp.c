@@ -500,6 +500,48 @@ out_err:
 	return -1;
 }
 
+static int l2tp_tunnel_send_CDN(uint16_t sid, uint16_t peer_sid,
+				uint16_t res, uint16_t err)
+{
+	struct l2tp_packet_t *pack = NULL;
+	struct l2tp_avp_result_code rc = {htons(res), htons(err)};
+	struct l2tp_conn_t *conn = l2tp_tunnel_self();
+
+	pack = l2tp_packet_alloc(2, Message_Type_Call_Disconnect_Notify,
+				 &conn->peer_addr);
+	if (pack == NULL) {
+		log_tunnel(log_error, conn, "impossible to send CDN:"
+			   " packet allocation failed\n");
+		goto out_err;
+	}
+	if (l2tp_packet_add_int16(pack, Assigned_Session_ID, sid, 1) < 0) {
+		log_tunnel(log_error, conn, "impossible to send CDN:"
+			   " adding data to packet failed\n");
+		goto out_err;
+	}
+	if (l2tp_packet_add_octets(pack, Result_Code, (uint8_t *)&rc,
+				   sizeof(rc), 1) < 0) {
+		log_tunnel(log_error, conn, "impossible to send CDN:"
+			   " adding data to packet failed\n");
+		goto out_err;
+	}
+
+	pack->hdr.sid = htons(peer_sid);
+
+	if (l2tp_tunnel_send(conn, pack) < 0) {
+		log_tunnel(log_error, conn, "impossible to send CDN:"
+			   " sending packet failed\n");
+		return -1;
+	}
+
+	return 0;
+
+out_err:
+	if (pack)
+		l2tp_packet_free(pack);
+	return -1;
+}
+
 static int l2tp_tunnel_disconnect(struct l2tp_conn_t *conn, int res, int err)
 {
 	log_ppp_debug("l2tp: terminate (%i, %i)\n", res, err);
@@ -2262,7 +2304,10 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
 {
 	const struct l2tp_attr_t *attr;
 	const struct l2tp_attr_t *assigned_sid = NULL;
+	const struct l2tp_attr_t *unknown_attr = NULL;
 	struct l2tp_sess_t *sess = NULL;
+	uint16_t peer_sid = 0;
+	uint16_t sid = 0;
 	uint16_t res = 0;
 	uint16_t err = 0;
 
@@ -2271,11 +2316,6 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
 		return 0;
 	}
 
-	sess = l2tp_tunnel_alloc_session(conn);
-	if (sess == NULL) {
-		log_ppp_warn("l2tp: no more session available\n");
-		return 0;
-	}
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch(attr->attr->id) {
@@ -2291,13 +2331,12 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
 			case Physical_Channel_ID:
 				break;
 			default:
-				if (attr->M) {
-					if (conf_verbose) {
-						log_ppp_warn("l2tp: ICRQ: unknown attribute %i\n", attr->attr->id);
-					}
-					res = 2;
-					err = 8;
-				}
+				if (attr->M)
+					unknown_attr = attr;
+				else
+					log_tunnel(log_warn, conn,
+						   "discarding unknown attribute type"
+						   " %i in ICRQ\n", attr->attr->id);
 				break;
 		}
 	}
@@ -2311,10 +2350,30 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
 		goto out_reject;
 	}
 
-	sess->peer_sid = assigned_sid->val.uint16;
+	peer_sid = assigned_sid->val.uint16;
 
-	if (err)
+	sess = l2tp_tunnel_alloc_session(conn);
+	if (sess == NULL) {
+		log_tunnel(log_error, conn, "impossible to handle ICRQ:"
+			   " session allocation failed,"
+			   " disconnecting session\n");
+		res = 2;
+		err = 4;
 		goto out_reject;
+	}
+
+	sess->peer_sid = peer_sid;
+	sid = sess->sid;
+
+	if (unknown_attr) {
+		log_tunnel(log_error, conn, "impossible to handle ICRQ:"
+			   " unknown mandatory attribute type %i,"
+			   " disconnecting session\n",
+			   unknown_attr->attr->id);
+		res = 2;
+		err = 8;
+		goto out_reject;
+	}
 
 	if (l2tp_tunnel_confirm_session(sess) < 0) {
 		log_tunnel(log_error, conn, "impossible to handle ICRQ:"
@@ -2330,8 +2389,12 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
 	return 0;
 
 out_reject:
-	l2tp_send_CDN(sess, res, err);
-	l2tp_tunnel_cancel_session(sess);
+	if (l2tp_tunnel_send_CDN(sid, peer_sid, res, err) < 0)
+		log_tunnel(log_warn, conn,
+			   "impossible to reject ICRQ:"
+			   " sending CDN failed\n");
+	if (sess)
+		l2tp_tunnel_cancel_session(sess);
 	return -1;
 }
 
@@ -2491,6 +2554,8 @@ static int l2tp_recv_OCRQ(struct l2tp_conn_t *conn,
 	const struct l2tp_attr_t *unknown_attr = NULL;
 	const struct l2tp_attr_t *attr = NULL;
 	struct l2tp_sess_t *sess = NULL;
+	uint16_t peer_sid = 0;
+	uint16_t sid = 0;
 	uint16_t res;
 	uint16_t err;
 
@@ -2500,12 +2565,6 @@ static int l2tp_recv_OCRQ(struct l2tp_conn_t *conn,
 		return 0;
 	}
 
-	sess = l2tp_tunnel_alloc_session(conn);
-	if (sess == NULL) {
-		l2tp_conn_log(log_warn, conn);
-		log_warn("l2tp: OCRQ: no more session available\n");
-		return 0;
-	}
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch (attr->attr->id) {
@@ -2542,14 +2601,28 @@ static int l2tp_recv_OCRQ(struct l2tp_conn_t *conn,
 		goto out_cancel;
 	}
 
-	sess->peer_sid = assigned_sid->val.uint16;
+	peer_sid = assigned_sid->val.uint16;
+
+	sess = l2tp_tunnel_alloc_session(conn);
+	if (sess == NULL) {
+		log_tunnel(log_error, conn, "impossible to handle OCRQ:"
+			   " session allocation failed,"
+			   " disconnecting session\n");
+		res = 2;
+		err = 4;
+		goto out_cancel;
+	}
+
+	sess->peer_sid = peer_sid;
+	sid = sess->sid;
 
 	if (unknown_attr) {
-		l2tp_conn_log(log_error, conn);
-		log_error("l2tp: OCRQ: unknown mandatory attribute %i\n",
-			  unknown_attr->attr->id);
+		log_tunnel(log_error, conn, "impossible to handle OCRQ:"
+			   " unknown mandatory attribute type %i,"
+			   " disconnecting session\n",
+			   unknown_attr->attr->id);
 		res = 2;
-		err = 6;
+		err = 8;
 		goto out_cancel;
 	}
 
@@ -2561,13 +2634,12 @@ static int l2tp_recv_OCRQ(struct l2tp_conn_t *conn,
 		err = 4;
 		goto out_cancel;
 	}
-
 	if (triton_context_call(&sess->sctx,
 				l2tp_session_outcall_reply, sess) < 0) {
 		l2tp_conn_log(log_error, conn);
 		log_error("l2tp: OCRQ: impossible to start new session:"
 			  " insufficient resources\n");
-		l2tp_send_CDN(sess, 2, 4);
+		l2tp_tunnel_send_CDN(sid, peer_sid, 2, 4);
 		l2tp_tunnel_free_session(sess);
 		return -1;
 	}
@@ -2575,11 +2647,12 @@ static int l2tp_recv_OCRQ(struct l2tp_conn_t *conn,
 	return 0;
 
 out_cancel:
-	if (l2tp_send_CDN(sess, res, err) < 0)
+	if (l2tp_tunnel_send_CDN(sid, peer_sid, res, err) < 0)
 		log_tunnel(log_warn, conn,
 			   "impossible to reject OCRQ:"
 			   " sending CDN failed\n");
-	l2tp_tunnel_cancel_session(sess);
+	if (sess)
+		l2tp_tunnel_cancel_session(sess);
 	return -1;
 }
 
