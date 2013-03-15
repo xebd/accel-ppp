@@ -956,27 +956,35 @@ static int l2tp_tunnel_start(struct l2tp_conn_t *conn,
 	if (triton_context_register(&conn->ctx, NULL) < 0) {
 		log_error("l2tp: impossible to start new tunnel:"
 			  " context registration failed\n");
-		return -1;
+		goto err;
 	}
 	triton_md_register_handler(&conn->ctx, &conn->hnd);
 	if (triton_md_enable_handler(&conn->hnd, MD_MODE_READ) < 0) {
 		log_error("l2tp: impossible to start new tunnel:"
 			  " enabling handler failed\n");
-		goto out_err;
+		goto err_ctx;
 	}
 	triton_context_wakeup(&conn->ctx);
+	if (triton_timer_add(&conn->ctx, &conn->timeout_timer, 0) < 0) {
+		log_error("l2tp: impossible to start new tunnel:"
+			  " setting tunnel establishment timer failed\n");
+		goto err_ctx_md;
+	}
 	if (triton_context_call(&conn->ctx, start_func, start_param) < 0) {
 		log_error("l2tp: impossible to start new tunnel:"
 			  " call to tunnel context failed\n");
-		goto out_err;
+		goto err_ctx_md_timer;
 	}
 
 	return 0;
 
-out_err:
+err_ctx_md_timer:
+	triton_timer_del(&conn->timeout_timer);
+err_ctx_md:
 	triton_md_unregister_handler(&conn->hnd);
+err_ctx:
 	triton_context_unregister(&conn->ctx);
-
+err:
 	return -1;
 }
 
@@ -1264,7 +1272,11 @@ static int l2tp_tunnel_connect(struct l2tp_conn_t *conn)
 			log_tunnel(log_error, conn,
 				   "impossible to connect tunnel:"
 				   " setting HELLO timer failed\n");
+			goto out_err;
 		}
+
+	if (conn->timeout_timer.tpd)
+		triton_timer_del(&conn->timeout_timer);
 
 	return 0;
 
@@ -1495,16 +1507,6 @@ static void l2tp_send_SCCRQ(void *peer_addr)
 		goto err;
 	}
 
-	if (!conn->timeout_timer.tpd) {
-		if (triton_timer_add(&conn->ctx, &conn->timeout_timer, 0) < 0)
-			log_tunnel(log_warn, conn, "SCCRQ: setting tunnel"
-				   " establishment timer failed\n");
-	} else {
-		if (triton_timer_mod(&conn->timeout_timer, 0) < 0)
-			log_tunnel(log_warn, conn, "SCCRQ: resetting tunnel"
-				   " establishment timer failed\n");
-	}
-
 	conn->state = STATE_WAIT_SCCRP;
 
 	return;
@@ -1572,16 +1574,6 @@ static void l2tp_send_SCCRP(struct l2tp_conn_t *conn)
 		log_tunnel(log_error, conn, "impossible to send SCCRP:"
 			   " sending packet failed\n");
 		goto out;
-	}
-
-	if (!conn->timeout_timer.tpd) {
-		if (triton_timer_add(&conn->ctx, &conn->timeout_timer, 0) < 0)
-			log_tunnel(log_warn, conn, "SCCRP: setting tunnel"
-				   " establishment timer failed\n");
-	} else {
-		if (triton_timer_mod(&conn->timeout_timer, 0) < 0)
-			log_tunnel(log_warn, conn, "SCCRP: resetting tunnel"
-				   " establishment timer failed\n");
 	}
 
 	conn->state = STATE_WAIT_SCCCN;
@@ -2010,8 +2002,6 @@ static int l2tp_recv_SCCRP(struct l2tp_conn_t *conn,
 		return -1;
 	}
 
-	triton_timer_del(&conn->timeout_timer);
-
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch (attr->attr->id) {
 		case Message_Type:
@@ -2137,8 +2127,6 @@ static int l2tp_recv_SCCCN(struct l2tp_conn_t *conn,
 		log_ppp_warn("l2tp: unexpected SCCCN\n");
 		return 0;
 	}
-
-	triton_timer_del(&conn->timeout_timer);
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch (attr->attr->id) {
