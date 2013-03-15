@@ -1297,7 +1297,7 @@ out_err:
 	return -1;
 }
 
-static void l2tp_retransmit(struct l2tp_conn_t *conn)
+static int l2tp_retransmit(struct l2tp_conn_t *conn)
 {
 	struct l2tp_packet_t *pack;
 
@@ -1311,7 +1311,10 @@ static void l2tp_retransmit(struct l2tp_conn_t *conn)
 	if (l2tp_packet_send(conn->hnd.fd, pack) < 0) {
 		log_tunnel(log_error, conn,
 			   "packet retransmission failure\n");
+		return -1;
 	}
+
+	return 0;
 }
 
 static void l2tp_rtimeout(struct triton_timer_t *t)
@@ -2953,9 +2956,13 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 				  ntohs(pack->hdr.Ns), ntohs(pack->hdr.Nr),
 				  conn->Ns, conn->Nr);
 			if (!list_empty(&conn->send_queue))
-				l2tp_retransmit(conn);
-			else if (l2tp_send_ZLB(conn))
-				goto drop;
+				res = l2tp_retransmit(conn);
+			else
+				res = l2tp_send_ZLB(conn);
+			if (res < 0)
+				log_tunnel(log_warn, conn,
+					   "replying to duplicate message"
+					   " failed, continuing anyway\n");
 			l2tp_packet_free(pack);
 			continue;
 		} else if (res > 0) {
