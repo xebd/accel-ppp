@@ -3374,6 +3374,7 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 
 	if (l2tp_tunnel_start(conn, l2tp_send_SCCRQ, &peer) < 0) {
 		cli_send(client, "starting tunnel failed\r\n");
+		l2tp_tunnel_free(conn);
 		return CLI_CMD_FAILED;
 	}
 
