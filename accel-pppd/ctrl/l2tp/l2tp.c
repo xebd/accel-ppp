@@ -904,13 +904,18 @@ static int l2tp_tunnel_start_session(struct l2tp_sess_t *sess,
 	if (triton_context_register(&sess->sctx, &sess->ppp.ses) < 0) {
 		log_tunnel(log_error, conn, "impossible to start new session:"
 			   " context registration failed\n");
-		return -1;
+		goto err;
 	}
 	triton_context_wakeup(&sess->sctx);
+	if (triton_timer_add(&sess->sctx, &sess->timeout_timer, 0) < 0) {
+		log_tunnel(log_error, conn, "impossible to start new session:"
+			   " setting session establishment timer failed\n");
+		goto err_ctx;
+	}
 	if (triton_context_call(&sess->sctx, start_func, start_param) < 0) {
 		log_tunnel(log_error, conn, "impossible to start new session:"
 			   " call to session context failed\n");
-		goto out_err;
+		goto err_ctx_timer;
 	}
 
 	__sync_add_and_fetch(&stat_starting, 1);
@@ -918,8 +923,11 @@ static int l2tp_tunnel_start_session(struct l2tp_sess_t *sess,
 
 	return 0;
 
-out_err:
+err_ctx_timer:
+	triton_timer_del(&sess->timeout_timer);
+err_ctx:
 	triton_context_unregister(&sess->sctx);
+err:
 	return -1;
 }
 
@@ -1185,6 +1193,9 @@ static int l2tp_session_connect(struct l2tp_sess_t *sess)
 	sess->ppp.ses.chan_name = _strdup(chan_name);
 
 	triton_event_fire(EV_CTRL_STARTED, &sess->ppp.ses);
+
+	if (sess->timeout_timer.tpd)
+		triton_timer_del(&sess->timeout_timer);
 
 	if (establish_ppp(&sess->ppp)) {
 		log_session(log_error, sess, "impossible to connect session:"
@@ -1647,16 +1658,6 @@ static int l2tp_send_ICRQ(struct l2tp_sess_t *sess)
 		return -1;
 	}
 
-	if (!sess->timeout_timer.tpd) {
-		if (triton_timer_add(&sess->sctx, &sess->timeout_timer, 0) < 0)
-			log_session(log_warn, sess, "ICRQ: setting session"
-				    " establishment timer failed\n");
-	} else {
-		if (triton_timer_mod(&sess->timeout_timer, 0) < 0)
-			log_session(log_warn, sess, "ICRQ: resetting session"
-				    " establishment timer failed\n");
-	}
-
 	return 0;
 
 out_err:
@@ -1688,11 +1689,6 @@ static int l2tp_send_ICRP(struct l2tp_sess_t *sess)
 			    " sending packet failed\n");
 	}
 
-	if (!sess->timeout_timer.tpd)
-		triton_timer_add(&sess->sctx, &sess->timeout_timer, 0);
-	else
-		triton_timer_mod(&sess->timeout_timer, 0);
-	
 	return 0;
 
 out_err:
@@ -1795,16 +1791,6 @@ static int l2tp_send_OCRQ(struct l2tp_sess_t *sess)
 		log_session(log_error, sess, "impossible to send OCRQ:"
 			    " sending packet failed\n");
 		return -1;
-	}
-
-	if (!sess->timeout_timer.tpd) {
-		if (triton_timer_add(&sess->sctx, &sess->timeout_timer, 0) < 0)
-			log_session(log_warn, sess, "OCRQ: setting session"
-				    " establishment timer failed\n");
-	} else {
-		if (triton_timer_mod(&sess->timeout_timer, 0) < 0)
-			log_session(log_warn, sess, "OCRQ: resetting session"
-				    " establishment timer failed\n");
 	}
 
 	return 0;
@@ -2436,7 +2422,6 @@ static int l2tp_recv_ICRP(struct l2tp_sess_t *sess,
 		return -1;
 	}
 
-	triton_timer_del(&sess->timeout_timer);
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch(attr->attr->id) {
@@ -2533,8 +2518,6 @@ static int l2tp_recv_ICCN(struct l2tp_sess_t *sess,
 			    " sending ZLB failed\n");
 		return -1;
 	}
-
-	triton_timer_del(&sess->timeout_timer);
 
 	return 0;
 }
@@ -2745,7 +2728,6 @@ static int l2tp_recv_OCCN(struct l2tp_sess_t *sess,
 		return 0;
 	}
 
-	triton_timer_del(&sess->timeout_timer);
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch (attr->attr->id) {
