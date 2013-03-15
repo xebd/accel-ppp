@@ -1450,12 +1450,12 @@ static void l2tp_send_HELLO(struct triton_timer_t *t)
 	if (!pack) {
 		log_tunnel(log_error, conn, "impossible to send HELLO:"
 			   " packet allocation failed\n");
-		l2tp_tunnel_free(conn);
 		return;
 	}
 
 	if (l2tp_tunnel_send(conn, pack) < 0)
-		l2tp_tunnel_free(conn);
+		log_tunnel(log_error, conn, "impossible to send HELLO:"
+			   " sending packet failed\n");
 }
 
 static void l2tp_send_SCCRQ(void *peer_addr)
@@ -2282,7 +2282,8 @@ static int l2tp_recv_HELLO(struct l2tp_conn_t *conn,
 			   const struct l2tp_packet_t *pack)
 {
 	if (l2tp_send_ZLB(conn) < 0) {
-		log_tunnel(log_error, conn, "acknowledging HELLO failed\n");
+		log_tunnel(log_error, conn, "impossible to handle HELLO:"
+			   " sending ZLB failed\n");
 		return -1;
 	}
 
