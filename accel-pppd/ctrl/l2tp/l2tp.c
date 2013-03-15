@@ -2799,9 +2799,12 @@ static int l2tp_recv_SLI(struct l2tp_conn_t *conn,
 			 const struct l2tp_packet_t *pack)
 {
 	if (conn->lns_mode) {
-		l2tp_conn_log(log_warn, conn);
-		log_warn("l2tp: unexpected SLI\n");
+		log_tunnel(log_warn, conn, "discarding unexpected SLI\n");
+		return 0;
 	}
+
+	if (conf_verbose)
+		log_tunnel(log_info1, conn, "handling SLI\n");
 
 	if (l2tp_send_ZLB(conn) < 0)
 		log_tunnel(log_error, conn, "acknowledging SLI failed\n");
@@ -2809,28 +2812,30 @@ static int l2tp_recv_SLI(struct l2tp_conn_t *conn,
 	return 0;
 }
 
-static void l2tp_session_incall(void *data)
+static void l2tp_session_place_call(void *data)
 {
 	struct l2tp_sess_t *sess = data;
+	int res;
 
-	if (l2tp_send_ICRQ(sess) < 0) {
-		log_ppp_error("l2tp: impossible to place call:"
-			      " error while sending ICRQ\n");
+	if (sess->lns_mode)
+		res = l2tp_send_OCRQ(sess);
+	else
+		res = l2tp_send_ICRQ(sess);
+
+	if (res < 0) {
+		log_session(log_error, sess,
+			    "impossible to place %s call:"
+			    " sending %cCRQ failed, freeing session\n",
+			    sess->lns_mode ? "outgoing" : "incoming",
+			    sess->lns_mode ? 'O' : 'I');
+		if (l2tp_session_free(sess) < 0)
+			log_session(log_error, sess,
+				    "impossible to free session,"
+				    " session data have been kept\n");
 		return;
 	}
-	sess->state1 = STATE_WAIT_ICRP;
-}
 
-static void l2tp_session_outcall(void *data)
-{
-	struct l2tp_sess_t *sess = data;
-
-	if (l2tp_send_OCRQ(sess) < 0) {
-		log_ppp_error("l2tp: impossible to place call:"
-			      " error while sending OCRQ\n");
-		return;
-	}
-	sess->state1 = STATE_WAIT_OCRP;
+	sess->state1 = sess->lns_mode ? STATE_WAIT_OCRP : STATE_WAIT_ICRP;
 }
 
 static void l2tp_tunnel_create_session(void *data)
@@ -2852,7 +2857,7 @@ static void l2tp_tunnel_create_session(void *data)
 	}
 
 	if (l2tp_tunnel_start_session(sess,
-				      conn->lns_mode ? l2tp_session_outcall : l2tp_session_incall, sess) < 0) {
+				      l2tp_session_place_call, sess) < 0) {
 		log_tunnel(log_error, conn, "impossible to create session:"
 			   " starting session failed\n");
 		l2tp_tunnel_cancel_session(sess);
