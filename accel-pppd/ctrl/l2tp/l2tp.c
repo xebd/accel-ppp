@@ -100,6 +100,7 @@ struct l2tp_conn_t
 	uint16_t peer_tid;
 	uint32_t framing_cap;
 	uint16_t lns_mode:1;
+	uint16_t port_set:1;
 	uint16_t challenge_len;
 	uint8_t *challenge;
 
@@ -991,7 +992,7 @@ err:
 static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 					     const struct sockaddr_in *host,
 					     uint32_t framing_cap,
-					     int lns_mode)
+					     int lns_mode, int port_set)
 {
 	struct l2tp_conn_t *conn;
 	socklen_t hostaddrlen = sizeof(conn->host_addr);
@@ -1044,11 +1045,19 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 		goto out_err;
 	}
 
-	if (connect(conn->hnd.fd, (struct sockaddr *)peer, sizeof(*peer))) {
+	memcpy(&conn->peer_addr, peer, sizeof(*peer));
+	if (!port_set)
+		/* 'peer.sin_port' is set to a default destination port but the
+		   source port that will be used by the peer isn't known yet */
+		conn->peer_addr.sin_port = 0;
+	if (connect(conn->hnd.fd, (struct sockaddr *)&conn->peer_addr,
+		    sizeof(conn->peer_addr))) {
 		log_error("l2tp: impossible to allocate new tunnel:"
 			  " connect() failed: %s\n", strerror(errno));
 		goto out_err;
 	}
+	if (!port_set)
+		conn->peer_addr.sin_port = peer->sin_port;
 
 	flag = fcntl(conn->hnd.fd, F_GETFL);
 	if (flag < 0) {
@@ -1094,7 +1103,6 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 		goto out_err;
 	}
 
-	memcpy(&conn->peer_addr, peer, sizeof(*peer));
 	conn->framing_cap = framing_cap;
 
 	conn->ctx.before_switch = log_switch;
@@ -1112,6 +1120,7 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 	conn->sessions = NULL;
 	conn->sess_count = 0;
 	conn->lns_mode = lns_mode;
+	conn->port_set = port_set;
 
 	return conn;
 
@@ -1492,13 +1501,6 @@ static void l2tp_send_SCCRQ(void *peer_addr)
 		log_tunnel(log_error, conn, "impossible to send SCCRQ:"
 			   " Challenge generation failed\n");
 		goto pack_err;
-	}
-
-	/* Peer may reply with arbitrary source port */
-	if (l2tp_tunnel_update_peerport(conn, 0) < 0) {
-		log_tunnel(log_error, conn, "impossible to send SCCRQ:"
-			   " resetting peer port failed\n");
-		goto err;
 	}
 
 	if (l2tp_tunnel_send(conn, pack) < 0) {
@@ -1937,7 +1939,7 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 		host_addr.sin_port = 0;
 
 		conn = l2tp_tunnel_alloc(&pack->addr, &host_addr,
-					 framing_cap->val.uint32, 1);
+					 framing_cap->val.uint32, 1, 1);
 		if (conn == NULL) {
 			log_error("l2tp: impossible to handle SCCRQ from %s:"
 				  " tunnel allocation failed\n", src_addr);
@@ -1958,6 +1960,7 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 		}
 
 		conn->peer_tid = assigned_tid->val.uint16;
+		conn->port_set = 1;
 		conn->Nr = 1;
 
 		if (l2tp_tunnel_start(conn, (triton_event_func)l2tp_send_SCCRP, conn) < 0) {
@@ -2919,7 +2922,7 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 		if (!pack)
 			continue;
 
-		if (conn->peer_addr.sin_port == 0) {
+		if (conn->port_set == 0) {
 			/* Get peer's first reply source port and use it as
 			   destination port for further outgoing messages */
 			res = l2tp_tunnel_update_peerport(conn,
@@ -2930,6 +2933,7 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 					   " closing tunnel\n");
 				goto drop;
 			}
+			conn->port_set = 1;
 		}
 
 		if (ntohs(pack->hdr.tid) != conn->tid && (pack->hdr.tid || !conf_dir300_quirk)) {
@@ -3362,7 +3366,7 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 		return CLI_CMD_INVAL;
 	}
 
-	conn = l2tp_tunnel_alloc(&peer, &host, 3, lns_mode);
+	conn = l2tp_tunnel_alloc(&peer, &host, 3, lns_mode, 0);
 	if (conn == NULL) {
 		cli_send(client, "tunnel allocation failed\r\n");
 		return CLI_CMD_FAILED;
