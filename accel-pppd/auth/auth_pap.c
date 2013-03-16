@@ -246,7 +246,7 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
 
 	_free(passwd);
 
-	return 0;
+	return ret;
 		
 failed:
 	pap_send_nak(p, hdr->id);

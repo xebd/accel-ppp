@@ -122,6 +122,7 @@ static struct triton_context_t l4_redirect_ctx;
 static void ipoe_session_finished(struct ap_session *s);
 static void ipoe_drop_sessions(struct ipoe_serv *serv, struct ipoe_session *skip);
 static void ipoe_serv_close(struct triton_context_t *ctx);
+static void __ipoe_session_activate(struct ipoe_session *ses);
 
 static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct dhcpv4_packet *pack)
 {
@@ -329,42 +330,6 @@ static void ipoe_session_start(struct ipoe_session *ses)
 	struct ifreq ifr;
 	struct unit_cache *uc;
 
-	if (ses->serv->opt_shared == 0 && (!ses->ses.ipv4 || ses->ses.ipv4->peer_addr == ses->yiaddr)) {
-		strncpy(ses->ses.ifname, ses->serv->ifname, AP_IFNAME_LEN);
-		ses->ses.ifindex = ses->serv->ifindex;
-		ses->ctrl.dont_ifcfg = 1;
-	} else if (ses->ifindex == -1) {
-		pthread_mutex_lock(&uc_lock);
-		if (!list_empty(&uc_list)) {
-			uc = list_entry(uc_list.next, typeof(*uc), entry);
-			ses->ifindex = uc->ifindex;
-			list_del(&uc->entry);
-			--uc_size;
-			pthread_mutex_unlock(&uc_lock);
-			mempool_free(uc);
-		} else {
-			pthread_mutex_unlock(&uc_lock);
-			ses->ifindex = ipoe_nl_create(0, 0, ses->serv->opt_mode == MODE_L2 ? ses->serv->ifname : NULL, ses->hwaddr);
-			if (ses->ifindex == -1) {
-				log_ppp_error("ipoe: failed to create interface\n");
-				ipoe_session_finished(&ses->ses);
-				return;
-			}
-		}
-
-		memset(&ifr, 0, sizeof(ifr));
-		ifr.ifr_ifindex = ses->ifindex;
-		if (ioctl(sock_fd, SIOCGIFNAME, &ifr, sizeof(ifr))) {
-			log_ppp_error("ipoe: failed to get interface name\n");
-			ses->ifindex = -1;
-			ipoe_session_finished(&ses->ses);
-			return;
-		}
-
-		strncpy(ses->ses.ifname, ifr.ifr_name, AP_IFNAME_LEN);
-		ses->ses.ifindex = ses->ifindex;
-	}
-	
 	if (!ses->ses.username) {
 		ipoe_session_set_username(ses);
 
@@ -402,6 +367,46 @@ static void ipoe_session_start(struct ipoe_session *ses)
 			return;
 		}
 	}
+	
+	ses->ses.ipv4 = ipdb_get_ipv4(&ses->ses);
+	
+	if (ses->serv->opt_shared == 0 && (!ses->ses.ipv4 || ses->ses.ipv4->peer_addr == ses->yiaddr)) {
+		strncpy(ses->ses.ifname, ses->serv->ifname, AP_IFNAME_LEN);
+		ses->ses.ifindex = ses->serv->ifindex;
+		ses->ctrl.dont_ifcfg = 1;
+	} else if (ses->ifindex == -1) {
+		pthread_mutex_lock(&uc_lock);
+		if (!list_empty(&uc_list)) {
+			uc = list_entry(uc_list.next, typeof(*uc), entry);
+			ses->ifindex = uc->ifindex;
+			list_del(&uc->entry);
+			--uc_size;
+			pthread_mutex_unlock(&uc_lock);
+			mempool_free(uc);
+		} else {
+			pthread_mutex_unlock(&uc_lock);
+			ses->ifindex = ipoe_nl_create(0, 0, ses->serv->opt_mode == MODE_L2 ? ses->serv->ifname : NULL, ses->hwaddr);
+			if (ses->ifindex == -1) {
+				log_ppp_error("ipoe: failed to create interface\n");
+				ipoe_session_finished(&ses->ses);
+				return;
+			}
+		}
+
+		memset(&ifr, 0, sizeof(ifr));
+		ifr.ifr_ifindex = ses->ifindex;
+		if (ioctl(sock_fd, SIOCGIFNAME, &ifr, sizeof(ifr))) {
+			log_ppp_error("ipoe: failed to get interface name\n");
+			ses->ifindex = -1;
+			ipoe_session_finished(&ses->ses);
+			return;
+		}
+
+		strncpy(ses->ses.ifname, ifr.ifr_name, AP_IFNAME_LEN);
+		ses->ses.ifindex = ses->ifindex;
+	}
+
+	ap_session_set_ifindex(&ses->ses);
 
 	if (ses->dhcpv4_request && ses->serv->dhcpv4_relay) {
 		dhcpv4_relay_send(ses->serv->dhcpv4_relay, ses->dhcpv4_request, ses->relay_server_id, ses->serv->ifname, conf_agent_remote_id);
@@ -421,13 +426,6 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 			ses->dhcp_addr = 1;
 	}
 
-	ses->ses.ipv4 = ipdb_get_ipv4(&ses->ses);
-	/*if (!ses->ses.ipv4) {
-		log_ppp_warn("no free IPv4 address\n");
-		ap_session_terminate(&ses->ses, TERM_AUTH_ERROR, 0);
-		return;
-	}*/
-
 	if (ses->ses.ipv4) {
 		if (conf_gw_address)
 			ses->ses.ipv4->addr = conf_gw_address;
@@ -442,36 +440,36 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 	
 		if (!ses->router)
 			ses->router = ses->ses.ipv4->addr;
-	} else if (ses->yiaddr) {
+	} /*else if (ses->yiaddr) {
 		ses->ses.ipv4 = &ses->ipv4;
 		ses->ipv4.addr = ses->siaddr;
 		ses->ipv4.peer_addr = ses->yiaddr;
 		ses->ipv4.mask = ses->mask;
 		ses->ipv4.owner = NULL;
-	}
+	}*/
 
-	if (!ses->yiaddr) {
-		log_ppp_error("no free IPv4 address\n");
-		ap_session_terminate(&ses->ses, TERM_NAS_REQUEST, 0);
-		return;
-	}
-		
-	if (!ses->siaddr && ses->router != ses->yiaddr)
-		ses->siaddr = ses->router;
-	
-	if (!ses->siaddr && ses->serv->dhcpv4_relay)
-		ses->siaddr = ses->serv->dhcpv4_relay->giaddr;
-
-	if (!ses->siaddr) {
-		log_ppp_error("can't determine Server-ID\n");
-		ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 0);
-		return;
-	}
-			
-	if (!ses->mask)
-		ses->mask = 32;
-	
 	if (ses->dhcpv4_request) {
+		if (!ses->yiaddr) {
+			log_ppp_error("no free IPv4 address\n");
+			ap_session_terminate(&ses->ses, TERM_NAS_REQUEST, 0);
+			return;
+		}
+			
+		if (!ses->siaddr && ses->router != ses->yiaddr)
+			ses->siaddr = ses->router;
+		
+		if (!ses->siaddr && ses->serv->dhcpv4_relay)
+			ses->siaddr = ses->serv->dhcpv4_relay->giaddr;
+
+		if (!ses->siaddr) {
+			log_ppp_error("can't determine Server-ID\n");
+			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 0);
+			return;
+		}
+				
+		if (!ses->mask)
+			ses->mask = 32;
+	
 		dhcpv4_send_reply(DHCPOFFER, ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
 
 		dhcpv4_packet_free(ses->dhcpv4_request);
@@ -480,17 +478,8 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 		ses->timer.expire = ipoe_session_timeout;
 		ses->timer.expire_tv.tv_sec = conf_offer_timeout;
 		triton_timer_add(&ses->ctx, &ses->timer, 0);
-	} else {
-		if (ipoe_nl_modify(ses->ifindex, ses->yiaddr, ses->ses.ipv4 ? ses->ses.ipv4->peer_addr : 1, NULL, NULL))
-			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 0);
-		else {
-			ap_session_activate(&ses->ses);
-			ses->timer.expire = ipoe_session_timeout;
-			ses->timer.expire_tv.tv_sec = conf_lease_timeout ? conf_lease_timeout : ses->lease_time;
-			if (ses->timer.tpd)
-				triton_timer_mod(&ses->timer, 0);
-		}
-	}
+	} else
+		__ipoe_session_activate(ses);
 }
 
 static void ipoe_serv_add_addr(struct ipoe_serv *serv, in_addr_t addr)
@@ -544,7 +533,7 @@ static void ipoe_ifcfg_add(struct ipoe_session *ses)
 {
 	struct ipoe_serv *serv = ses->serv;
 
-	if (ses->serv->opt_shared || ses->serv->opt_ifcfg) {
+	if (ses->serv->opt_ifcfg) {
 		if (ses->serv->opt_shared)
 			ipoe_serv_add_addr(ses->serv, ses->siaddr);
 		else {
@@ -564,8 +553,11 @@ static void ipoe_ifcfg_add(struct ipoe_session *ses)
 static void ipoe_ifcfg_del(struct ipoe_session *ses)
 {
 	struct ipoe_serv *serv = ses->serv;
+	
+	if (iproute_del(serv->ifindex, ses->yiaddr))
+		log_ppp_warn("ipoe: failed to delete route from interface '%s'\n", serv->ifname);
 
-	if (ses->serv->opt_shared || ses->serv->opt_ifcfg) {
+	if (ses->serv->opt_ifcfg) {
 		if (iproute_del(serv->ifindex, ses->yiaddr))
 			log_ppp_warn("ipoe: failed to delete route from interface '%s'\n", serv->ifname);
 			
@@ -577,8 +569,7 @@ static void ipoe_ifcfg_del(struct ipoe_session *ses)
 				log_ppp_warn("ipoe: failed to remove addess from interface '%s'\n", serv->ifname);
 			pthread_mutex_unlock(&serv->lock);
 		}
-	} else if (iproute_del(serv->ifindex, ses->yiaddr))
-		log_ppp_warn("ipoe: failed to delete route from interface '%s'\n", serv->ifname);
+	}
 }
 
 static void __ipoe_session_activate(struct ipoe_session *ses)
@@ -586,19 +577,19 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 	uint32_t addr;
 
 	if (ses->ifindex != -1) {
+		addr = 0;
 		if (!ses->ses.ipv4)
 			addr = 1;
 		else if (ses->ses.ipv4->peer_addr != ses->yiaddr)
 			addr = ses->ses.ipv4->peer_addr;
-		else
-			addr = 0;
+		
 		if (ipoe_nl_modify(ses->ifindex, ses->yiaddr, addr, NULL, NULL)) {
 			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 0);
 			return;
 		}
 	}
 	
-	if (ses->serv->opt_ifcfg || ses->serv->opt_mode == MODE_L2)
+	if (ses->serv->opt_ifcfg || (ses->serv->opt_mode == MODE_L2))
 		ipoe_ifcfg_add(ses);
 	
 	if (ses->l4_redirect)

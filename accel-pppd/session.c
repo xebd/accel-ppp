@@ -57,15 +57,28 @@ void __export ap_session_init(struct ap_session *ses)
 	ses->ifindex = -1;
 }
 
+void __export ap_session_set_ifindex(struct ap_session *ses)
+{
+	struct rtnl_link_stats stats;
+
+	if (iplink_get_stats(ses->ifindex, &stats))
+		log_ppp_warn("failed to get interface statistics\n");
+	else {
+		ses->acct_rx_packets_i = stats.rx_packets;
+		ses->acct_tx_packets_i = stats.tx_packets;
+		ses->acct_rx_bytes_i = stats.rx_bytes;
+		ses->acct_tx_bytes_i = stats.tx_bytes;
+	}
+}
+
 int __export ap_session_starting(struct ap_session *ses)
 {
 	struct ifreq ifr;
-	struct rtnl_link_stats stats;
 
 	if (ap_shutdown)
 		return -1;
 
-	if (ses->ifindex == -1) {
+	if (ses->ifindex == -1 && ses->ifname[0]) {
 		memset(&ifr, 0, sizeof(ifr));
 		strcpy(ifr.ifr_name, ses->ifname);
 
@@ -75,15 +88,9 @@ int __export ap_session_starting(struct ap_session *ses)
 		}
 		ses->ifindex = ifr.ifr_ifindex;
 	}
-			
-	if (iplink_get_stats(ses->ifindex, &stats))
-		log_ppp_warn("failed to get interface statistics\n");
-	else {
-		ses->acct_rx_packets_i = stats.rx_packets;
-		ses->acct_tx_packets_i = stats.tx_packets;
-		ses->acct_rx_bytes_i = stats.rx_bytes;
-		ses->acct_tx_bytes_i = stats.tx_bytes;
-	}
+	
+	if (ses->ifindex != -1)
+		ap_session_set_ifindex(ses);
 
 	if (ses->state != AP_STATE_RESTORE) {
 		ses->start_time = time(NULL);

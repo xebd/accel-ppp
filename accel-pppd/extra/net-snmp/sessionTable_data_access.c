@@ -241,7 +241,7 @@ sessionTable_container_load(netsnmp_container *container)
 		pthread_rwlock_unlock(&ses_lock);
 
     DEBUGMSGT(("verbose:sessionTable:sessionTable_container_load",
-               "inserted %d records\n", count));
+               "inserted %d records\n", (int)count));
 
     return MFD_SUCCESS;
 } /* sessionTable_container_load */
