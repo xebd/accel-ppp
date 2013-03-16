@@ -867,6 +867,10 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 	if (pack->msg_type == DHCPDISCOVER) {
 		ses = ipoe_session_lookup(serv, pack);
 		if (!ses) {
+			
+			if (serv->opt_shared == 0)
+				ipoe_drop_sessions(serv, NULL);
+
 			ses = ipoe_session_create_dhcpv4(serv, pack);
 			if (ses) {
 				dhcpv4_packet_ref(pack);
@@ -901,6 +905,9 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 				log_info2("recv ");
 				dhcpv4_print_packet(pack, 0, log_info2);
 			}
+				
+			if (serv->opt_shared == 0)
+				ipoe_drop_sessions(serv, NULL);
 
 			dhcpv4_send_nak(dhcpv4, pack);
 		} else {
