@@ -56,6 +56,7 @@ struct ipoe_session
 	int ifindex;
 	struct ipv4db_item_t ipv4;
 	int ifcfg:1;
+	int terminating:1;
 	int dhcp_addr:1;
 	int relay_addr:1;
 	int l4_redirect:1;
