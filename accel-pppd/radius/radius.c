@@ -88,7 +88,7 @@ int rad_proc_attrs(struct rad_req_t *req)
 
 		switch(attr->attr->id) {
 			case Framed_IP_Address:
-				if (!conf_gw_ip_address)
+				if (!conf_gw_ip_address && req->rpd->ses->ctrl->ppp)
 					log_ppp_warn("radius: gw-ip-address not specified, cann't assign IP address...\n");
 				else {
 					req->rpd->ipv4_addr.peer_addr = attr->val.ipaddr;
