@@ -576,9 +576,6 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 {
 	uint32_t addr;
 
-	if (ses->terminating)
-		return;
-
 	if (ses->ifindex != -1) {
 		addr = 0;
 		if (!ses->ses.ipv4)
@@ -1295,24 +1292,15 @@ static void ipoe_drop_sessions(struct ipoe_serv *serv, struct ipoe_session *skip
 {
 	struct ipoe_session *ses;
 
-	pthread_mutex_lock(&serv->lock);
 	list_for_each_entry(ses, &serv->sessions, entry) {
 		if (ses == skip)
 			continue;
-
-		ses->terminating = 1;
-		if (ses->ifcfg) {
-			ipoe_ifcfg_del(ses);
-			ses->ifcfg = 0;
-		}
 
 		if (ses->ses.state == AP_STATE_ACTIVE)
 			ap_session_ifdown(&ses->ses);
 
 		triton_context_call(&ses->ctx, (triton_event_func)__terminate, &ses->ses);
 	}
-	pthread_mutex_unlock(&serv->lock);
-
 }
 
 struct ipoe_serv *ipoe_find_serv(const char *ifname)
