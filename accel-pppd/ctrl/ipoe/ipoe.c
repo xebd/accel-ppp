@@ -331,6 +331,9 @@ static void ipoe_session_start(struct ipoe_session *ses)
 	struct unit_cache *uc;
 
 	if (!ses->ses.username) {
+		if (!ses->serv->opt_shared)
+			strncpy(ses->ses.ifname, ses->serv->ifname, AP_IFNAME_LEN);
+		
 		ipoe_session_set_username(ses);
 
 		if (!ses->ses.username) {

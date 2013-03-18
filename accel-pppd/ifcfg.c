@@ -184,7 +184,7 @@ void __export ap_session_ifdown(struct ap_session *ses)
 	struct in6_ifreq ifr6;
 	struct ipv6db_addr_t *a;
 
-	if (ses->ctrl->dont_ifcfg)
+	if (ses->ctrl->dont_ifcfg || ses->ifindex == -1)
 		return;
 
 	memset(&ifr, 0, sizeof(ifr));
