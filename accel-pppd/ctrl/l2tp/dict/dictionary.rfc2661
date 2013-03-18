@@ -10,7 +10,7 @@ ATTRIBUTE     Host-Name                   7     string    M=1
 ATTRIBUTE     Vendor-Name                 8     string    M=0
 ATTRIBUTE     Assigned-Tunnel-ID          9     int16     M=1
 ATTRIBUTE     Recv-Window-Size           10     int16     M=1
-ATTRIBUTE     Challenge                  11		  octets    M=1
+ATTRIBUTE     Challenge                  11     octets    M=1
 ATTRIBUTE     Challenge-Response         13     octets    M=1
 ATTRIBUTE     Cause-Code                 12     int32     M=1 H=0
 ATTRIBUTE     Assigned-Session-ID        14     int16     M=1

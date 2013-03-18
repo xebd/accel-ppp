@@ -3,11 +3,14 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <string.h>
+#include <errno.h>
 #include <arpa/inet.h>
 
 #include "events.h"
 #include "ipdb.h"
+#include "log.h"
 #include "list.h"
+#include "utils.h"
 #include "spinlock.h"
 
 #ifdef RADIUS
@@ -30,6 +33,7 @@ struct ippool_item_t
 {
 	struct list_head entry;
 	struct ippool_t *pool;
+	char *username;
 	struct ipv4db_item_t it;
 };
 
@@ -48,6 +52,10 @@ static int conf_attr = 88; // Framed-Pool
 static int cnt;
 static LIST_HEAD(pool_list);
 static struct ippool_t *def_pool;
+
+static struct ippool_t *persist_pool;
+static FILE *persist_file;
+static pthread_mutex_t persist_file_lock = PTHREAD_MUTEX_INITIALIZER;
 
 struct ippool_t *create_pool(const char *name)
 {
@@ -163,6 +171,34 @@ static void add_range(struct list_head *list, const char *name)
 	}
 }
 
+static struct ippool_item_t *find_persist_item(const char *username)
+{
+	struct ippool_item_t *it;
+	
+	spin_lock(&persist_pool->lock);
+	list_for_each_entry(it, &persist_pool->items, entry) {
+		if (strcmp(it->username, username) == 0) {
+			spin_unlock(&persist_pool->lock);
+			return it;
+		}
+	}
+	spin_unlock(&persist_pool->lock);
+
+	return NULL;
+}
+
+static struct ippool_item_t *find_persist_item2(in_addr_t peer_addr)
+{
+	struct ippool_item_t *it;
+	
+	list_for_each_entry(it, &persist_pool->items, entry) {
+		if (it->it.peer_addr == peer_addr)
+			return it;
+	}
+
+	return NULL;
+}
+
 static void generate_pool(struct ippool_t *p)
 {
 	struct ippool_item_t *it;
@@ -186,22 +222,25 @@ static void generate_pool(struct ippool_t *p)
 			}
 		}
 
-		it = malloc(sizeof(*it));
+		it = find_persist_item2(peer_addr->addr);
 		if (!it) {
-			fprintf(stderr, "ippool: out of memory\n");
-			break;
-		}
+			it = malloc(sizeof(*it));
+			if (!it) {
+				fprintf(stderr, "ippool: out of memory\n");
+				break;
+			}
 
+			it->it.owner = &ipdb;
+			it->it.peer_addr = peer_addr->addr;
+
+			list_add_tail(&it->entry, &p->items);
+		}
+			
 		it->pool = p;
-		it->it.owner = &ipdb;
 		if (conf_gw_ip_address)
 			it->it.addr = conf_gw_ip_address;
 		else
 			it->it.addr = addr->addr;
-
-		it->it.peer_addr = peer_addr->addr;
-
-		list_add_tail(&it->entry, &p->items);
 	}
 }
 
@@ -210,6 +249,10 @@ static struct ipv4db_item_t *get_ip(struct ppp_t *ppp)
 	struct ippool_item_t *it;
 	struct ippool_t *p;
 	const char *pool_name = NULL;
+
+	it = find_persist_item(ppp->username);
+	if (it)
+		return &it->it;
 
 	if (ppp->ipv4_pool_name)
 		pool_name = ppp->ipv4_pool_name;
@@ -232,6 +275,20 @@ static struct ipv4db_item_t *get_ip(struct ppp_t *ppp)
 		it = NULL;
 	spin_unlock(&p->lock);
 
+	if (it && persist_file) {
+		char addr[17];
+		u_inet_ntoa(it->it.peer_addr, addr);
+		pthread_mutex_lock(&persist_file_lock);
+		fprintf(persist_file, "%s %s\n", ppp->username, addr);
+		fflush(persist_file);
+		pthread_mutex_unlock(&persist_file_lock);
+		it->username = strdup(ppp->username);
+		
+		spin_lock(&persist_pool->lock);
+		list_add_tail(&it->entry, &persist_pool->items);
+		spin_unlock(&persist_pool->lock);
+	}
+
 	return it ? &it->it : NULL;
 }
 
@@ -239,9 +296,11 @@ static void put_ip(struct ppp_t *ppp, struct ipv4db_item_t *it)
 {
 	struct ippool_item_t *pit = container_of(it, typeof(*pit), it);
 
-	spin_lock(&pit->pool->lock);
-	list_add_tail(&pit->entry, &pit->pool->items);
-	spin_unlock(&pit->pool->lock);
+	if (!pit->username) {
+		spin_lock(&pit->pool->lock);
+		list_add_tail(&pit->entry, &pit->pool->items);
+		spin_unlock(&pit->pool->lock);
+	}
 }
 
 static struct ipdb_t ipdb = {
@@ -317,6 +376,81 @@ static int parse_vendor_opt(const char *opt)
 }
 #endif
 
+static void load_persist_pool(void)
+{
+	const char *opt;
+	FILE *f = NULL;;
+	LIST_HEAD(tmp);
+	char str[1024];
+	char *ptr, *ptr1;
+	struct ippool_item_t *it;
+
+	list_splice_init(&persist_pool->items, &tmp);
+	
+	opt = conf_get_opt("ip-pool", "persist");
+	if (opt)
+		f = fopen(opt, "r");
+	
+	if (f) {
+		while (fgets(str, 1024, f)) {
+			if (*str == '#' || *str == '\n')
+				continue;
+
+			ptr1 = NULL;
+			for (ptr = str; *ptr; ptr++) {
+				if (*ptr == ' ') {
+					*ptr = 0;
+					ptr1 = ptr + 1;
+				} else if (*ptr == '\n') {
+					*ptr = 0;
+					break;
+				}
+			}
+
+			if (!ptr1)
+				continue;
+
+			list_for_each_entry(it, &tmp, entry) {
+				if (strcmp(it->username, str) == 0) {
+					list_move(&it->entry, &persist_pool->items);
+					goto found;
+				}
+			}
+
+			it = malloc(sizeof(*it));
+			it->it.owner = &ipdb;
+			it->it.addr = conf_gw_ip_address;
+			it->it.peer_addr = inet_addr(ptr1);
+			it->pool = NULL;
+			it->username = strdup(str);
+			list_add_tail(&it->entry, &persist_pool->items);
+found:
+			{}
+		}
+
+		fclose(f);
+	}
+		
+	if (persist_file)
+		fclose(persist_file);
+
+	persist_file = fopen(opt, "a");
+	if (!persist_file)
+		log_error("ippool: open %s: %s\n", opt, strerror(errno));
+
+	while (!list_empty(&tmp)) {
+		it = list_entry(tmp.next, typeof(*it), entry);
+		free(it->username);
+		it->username = NULL;
+		if (it->pool)
+			list_move(&it->entry, &it->pool->items);
+		else {
+			list_del(&it->entry);
+			free(it);
+		}
+	}
+}
+
 static void ippool_init1(void)
 {
 	ipdb_register(&ipdb);
@@ -333,6 +467,9 @@ static void ippool_init2(void)
 		return;
 
 	def_pool = create_pool(NULL);
+	persist_pool = create_pool(NULL);
+
+	load_persist_pool();
 
 	list_for_each_entry(opt, &s->items, entry) {
 #ifdef RADIUS
@@ -376,6 +513,8 @@ static void ippool_init2(void)
 	if (triton_module_loaded("radius"))
 		triton_event_register_handler(EV_RADIUS_ACCESS_ACCEPT, (triton_event_func)ev_radius_access_accept);
 #endif
+	
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_persist_pool);
 }
 
 DEFINE_INIT(51, ippool_init1);
