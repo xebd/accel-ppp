@@ -1187,8 +1187,16 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 		else if (attr->attr->id == conf_attr_dhcp_router_ip)
 			ses->router = attr->val.ipaddr;
 		else if (attr->attr->id == conf_attr_dhcp_mask) {
-			if (attr->val.integer > 0 && attr->val.integer < 31)
-				ses->mask = attr->val.integer;
+			if (attr->attr->type == ATTR_TYPE_INTEGER) {
+				if (attr->val.integer > 0 && attr->val.integer < 31)
+					ses->mask = attr->val.integer;
+			} else if (attr->attr->type == ATTR_TYPE_IPADDR) {
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+				ses->mask = ffs(~attr->val.ipaddr) - 1;
+#else
+				ses->mask = ffs(~htole32(attr->val.ipaddr)) - 1;
+#endif
+			}
 		} else if (attr->attr->id == conf_attr_l4_redirect) {
 			if (attr->attr->type == ATTR_TYPE_STRING) {
 				if (attr->len && attr->val.string[0] != '0')
