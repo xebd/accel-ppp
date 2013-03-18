@@ -576,6 +576,9 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 {
 	uint32_t addr;
 
+	if (ses->terminating)
+		return;
+
 	if (ses->ifindex != -1) {
 		addr = 0;
 		if (!ses->ses.ipv4)
@@ -1295,6 +1298,12 @@ static void ipoe_drop_sessions(struct ipoe_serv *serv, struct ipoe_session *skip
 	list_for_each_entry(ses, &serv->sessions, entry) {
 		if (ses == skip)
 			continue;
+
+		ses->terminating = 1;
+		if (ses->ifcfg) {
+			ipoe_ifcfg_del(ses);
+			ses->ifcfg = 0;
+		}
 
 		if (ses->ses.state == AP_STATE_ACTIVE)
 			ap_session_ifdown(&ses->ses);
