@@ -1982,11 +1982,6 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 		return -1;
 	}
 
-	if (conf_secret && strlen(conf_secret) > 0 && conn->challenge == NULL) {
-		if (conf_verbose)
-			log_warn("l2tp: SCCRQ: no Challenge present in message\n");
-	}
-
 	return 0;
 }
 
@@ -2882,10 +2877,6 @@ static void l2tp_session_recv(void *data)
 		l2tp_recv_CDN(sess, pack);
 		break;
 	default:
-		if (conf_verbose) {
-			log_warn("l2tp: unexpected Message-Type %hu\n",
-				 msg_type->val.uint16);
-		}
 		if (msg_type->M) {
 			log_session(log_error, sess,
 				    "impossible to handle unknown message type"
