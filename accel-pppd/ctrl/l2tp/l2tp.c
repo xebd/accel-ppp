@@ -1683,6 +1683,7 @@ static int l2tp_send_ICRP(struct l2tp_sess_t *sess)
 	if (l2tp_session_send(sess, pack) < 0) {
 		log_session(log_error, sess, "impossible to send ICRP:"
 			    " sending packet failed\n");
+		return -1;
 	}
 
 	return 0;
@@ -1971,10 +1972,10 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 			l2tp_tunnel_free(conn);
 			return -1;
 		}
-
-	} else if (assigned_cid) {
-		// not yet implemented
-		return 0;
+	} else if (assigned_cid || router_id) {
+		log_error("l2tp: impossible to handle SCCRQ from %s:"
+			  " no support for L2TPv3 attributes\n", src_addr);
+		return -1;
 	} else {
 		log_error("l2tp: impossible to handle SCCRQ from %s:"
 			  " no Assigned-Tunnel-ID or Assigned-Connection-ID present in message\n",
@@ -1999,7 +2000,7 @@ static int l2tp_recv_SCCRP(struct l2tp_conn_t *conn,
 	if (conn->state != STATE_WAIT_SCCRP) {
 		l2tp_conn_log(log_warn, conn);
 		log_warn("l2tp: unexpected SCCRP\n");
-		return -1;
+		return 0;
 	}
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
@@ -2165,8 +2166,16 @@ static int l2tp_recv_SCCCN(struct l2tp_conn_t *conn,
 		l2tp_tunnel_disconnect(conn, 2, 0);
 		return -1;
 	}
+
+	if (l2tp_send_ZLB(conn) < 0) {
+		log_tunnel(log_error, conn, "impossible to handle SCCCN:"
+			   " sending ZLB failed,"
+			   " disconnecting tunnel\n");
+		l2tp_tunnel_disconnect(conn, 2, 0);
+		return -1;
+	}
+
 	conn->state = STATE_ESTB;
-	l2tp_send_ZLB(conn);
 
 	return 0;
 }
@@ -2408,7 +2417,7 @@ static int l2tp_recv_ICRP(struct l2tp_sess_t *sess,
 
 	if (sess->state1 != STATE_WAIT_ICRP) {
 		log_ppp_warn("l2tp: unexpected ICCN\n");
-		return -1;
+		return 0;
 	}
 
 
@@ -2494,17 +2503,18 @@ static int l2tp_recv_ICCN(struct l2tp_sess_t *sess,
 		log_session(log_error, sess, "impossible to handle ICCN:"
 			    " connecting session failed,"
 			    " disconnecting session\n");
-		if (l2tp_session_disconnect(sess, 2, 4) < 0) {
+		if (l2tp_session_disconnect(sess, 2, 6) < 0)
 			log_session(log_error, sess,
 				    "session disconnection failed\n");
-			return -1;
-		}
-		return 0;
+		return -1;
 	}
 
 	if (l2tp_send_ZLB(sess->paren_conn) < 0) {
 		log_session(log_error, sess, "impossible to handle ICCN:"
-			    " sending ZLB failed\n");
+			    " sending ZLB failed, disconnecting session\n");
+		if (l2tp_session_disconnect(sess, 2, 6) < 0)
+			log_session(log_error, sess,
+				    "session disconnection failed\n");
 		return -1;
 	}
 
@@ -2655,7 +2665,7 @@ static int l2tp_recv_OCRP(struct l2tp_sess_t *sess,
 
 	if (sess->state1 != STATE_WAIT_OCRP) {
 		log_ppp_warn("l2tp: unexpected OCRP\n");
-		return -1;
+		return 0;
 	}
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
@@ -2752,7 +2762,7 @@ static int l2tp_recv_OCCN(struct l2tp_sess_t *sess,
 		log_session(log_error, sess, "impossible to handle OCCN:"
 			    " connecting session failed,"
 			    " disconnecting session\n");
-		if (l2tp_session_disconnect(sess, 2, 4) < 0)
+		if (l2tp_session_disconnect(sess, 2, 6) < 0)
 			log_session(log_error, sess,
 				    "session disconnection failed\n");
 		return -1;
@@ -2760,7 +2770,10 @@ static int l2tp_recv_OCCN(struct l2tp_sess_t *sess,
 
 	if (l2tp_send_ZLB(sess->paren_conn) < 0) {
 		log_session(log_error, sess, "impossible to handle OCCN:"
-			    " sending ZLB failed\n");
+			    " sending ZLB failed, disconnecting session\n");
+		if (l2tp_session_disconnect(sess, 2, 6) < 0)
+			log_session(log_error, sess,
+				    "session disconnection failed\n");
 		return -1;
 	}
 
@@ -2793,8 +2806,11 @@ static int l2tp_recv_SLI(struct l2tp_conn_t *conn,
 	if (conf_verbose)
 		log_tunnel(log_info1, conn, "handling SLI\n");
 
-	if (l2tp_send_ZLB(conn) < 0)
-		log_tunnel(log_error, conn, "acknowledging SLI failed\n");
+	if (l2tp_send_ZLB(conn) < 0) {
+		log_tunnel(log_error, conn, "impossible to handle SLI:"
+			   " sending ZLB failed\n");
+		return -1;
+	}
 
 	return 0;
 }
