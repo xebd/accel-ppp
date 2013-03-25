@@ -583,8 +583,6 @@ static void __l2tp_session_free(void *data)
 		/* Don't send event if session wasn't fully established */
 		triton_event_fire(EV_CTRL_FINISHED, &sess->ppp.ses);
 
-	log_ppp_info1("disconnected\n");
-
 	if (sess->timeout_timer.tpd)
 		triton_timer_del(&sess->timeout_timer);
 	triton_context_unregister(&sess->sctx);
@@ -603,6 +601,8 @@ static void __l2tp_session_free(void *data)
 		log_session(log_error, sess,
 			    "impossible to notify parent tunnel that"
 			    " session has been freed\n");
+
+	log_session(log_info2, sess, "destroyed\n");
 
 	mempool_free(sess);
 }
@@ -634,6 +634,9 @@ static void l2tp_tunnel_free_sessionid(void *data)
 
 	if (sess)
 		l2tp_tunnel_free_session(sess);
+	else
+		log_tunnel(log_info2, conn, "avoid freeing session %hu:"
+			   " session already removed from tunnel\n", sid);
 }
 
 static int l2tp_session_free(struct l2tp_sess_t *sess)
@@ -761,9 +764,12 @@ static void l2tp_ppp_finished(struct ap_session *ses)
 {
 	struct l2tp_sess_t *sess = l2tp_session_self();
 
-	log_ppp_debug("l2tp: ppp finished\n");
 	__sync_sub_and_fetch(&stat_active, 1);
 	if (sess->state1 != STATE_CLOSE) {
+		log_session(log_info1, sess,
+			    "PPP session finished (%s:%s),"
+			    " disconnecting session\n",
+			    ses->ifname, ses->username ? ses->username : "");
 		sess->state1 = STATE_CLOSE;
 		if (l2tp_send_CDN(sess, 2, 0) < 0)
 			log_session(log_error, sess,
@@ -782,7 +788,9 @@ static void l2tp_ppp_finished(struct ap_session *ses)
 
 static void l2tp_ppp_started(struct ap_session *ses)
 {
-	log_ppp_debug("l2tp: ppp started\n");
+	log_session(log_info1, l2tp_session_self(),
+		    "PPP session started (%s:%s)\n",
+		    ses->ifname, ses->username ? ses->username : "");
 }
 
 static void l2tp_session_timeout(struct triton_timer_t *t)
@@ -790,7 +798,8 @@ static void l2tp_session_timeout(struct triton_timer_t *t)
 	struct l2tp_sess_t *sess = container_of(t, typeof(*sess),
 						timeout_timer);
 
-	log_ppp_debug("l2tp: session timeout\n");
+	log_session(log_info1, sess, "session establishment timeout,"
+		    " disconnecting session\n");
 	if (l2tp_session_disconnect(sess, 10, 0) < 0)
 		log_session(log_error, sess, "session disconnection failed\n");
 }
@@ -845,6 +854,8 @@ static void l2tp_sess_close(struct triton_context_t *ctx)
 {
 	struct l2tp_sess_t *sess = container_of(ctx, typeof(*sess), sctx);
 
+	log_session(log_info1, sess, "context thread is closing,"
+		    " disconnecting session\n");
 	if (l2tp_session_disconnect(sess, 3, 0) < 0)
 		log_session(log_error, sess, "session disconnection failed\n");
 }
@@ -2434,6 +2445,9 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
 		goto out_reject;
 	}
 
+	log_tunnel(log_info1, conn, "new session %hu-%hu created following"
+		   " reception of ICRQ\n", sid, peer_sid);
+
 	return 0;
 
 out_reject:
@@ -2489,6 +2503,8 @@ static int l2tp_recv_ICRP(struct l2tp_sess_t *sess,
 
 	/* Set peer_sid as soon as possible so that CDN
 	   will be sent to the right tunnel in case of error */
+	log_session(log_info2, sess, "peer-sid set to %hu by ICRP\n",
+		    assigned_sid->val.uint16);
 	sess->peer_sid = assigned_sid->val.uint16;
 
 	if (unknown_attr) {
@@ -2682,6 +2698,9 @@ static int l2tp_recv_OCRQ(struct l2tp_conn_t *conn,
 		goto out_cancel;
 	}
 
+	log_tunnel(log_info1, conn, "new session %hu-%hu created following"
+		   " reception of OCRQ\n", sid, peer_sid);
+
 	return 0;
 
 out_cancel:
@@ -2736,6 +2755,8 @@ static int l2tp_recv_OCRP(struct l2tp_sess_t *sess,
 
 	/* Set peer_sid as soon as possible so that CDN
 	   will be sent to the right tunnel in case of error */
+	log_session(log_info2, sess, "peer-sid set to %hu by OCRP\n",
+		    assigned_sid->val.uint16);
 	sess->peer_sid = assigned_sid->val.uint16;
 
 	if (unknown_attr) {
@@ -2850,6 +2871,9 @@ static int l2tp_recv_CDN(struct l2tp_sess_t *sess,
 
 	if (assigned_sid) {
 		if (sess->peer_sid == 0) {
+			log_session(log_info2, sess,
+				    "peer-sid set to %hu by CDN\n",
+				    assigned_sid->val.uint16);
 			sess->peer_sid = assigned_sid->val.uint16;
 		} else if (sess->peer_sid != assigned_sid->val.uint16) {
 			log_session(log_warn, sess,
@@ -2870,6 +2894,11 @@ static int l2tp_recv_CDN(struct l2tp_sess_t *sess,
 		log_session(log_warn, sess,
 			    "no Result Code present in CDN\n");
 	}
+
+	log_session(log_info1, sess, "CDN received from peer (result: %hu,"
+		    " error: %hu%s%s%s), disconnecting session\n",
+		    res, err, err_msg ? ", message: \"" : "",
+		    err_msg ? err_msg : "", err_msg ? "\"" : "");
 
 	if (err_msg)
 		_free(err_msg);
@@ -2956,6 +2985,7 @@ static void l2tp_tunnel_create_session(void *data)
 {
 	struct l2tp_conn_t *conn = data;
 	struct l2tp_sess_t *sess = NULL;
+	uint16_t sid;
 
 	if (conn->state != STATE_ESTB) {
 		log_tunnel(log_error, conn, "impossible to create session:"
@@ -2969,6 +2999,7 @@ static void l2tp_tunnel_create_session(void *data)
 			   " session allocation failed");
 		return;
 	}
+	sid = sess->sid;
 
 	if (l2tp_tunnel_start_session(sess,
 				      l2tp_session_place_call, sess) < 0) {
@@ -2977,6 +3008,9 @@ static void l2tp_tunnel_create_session(void *data)
 		l2tp_tunnel_cancel_session(sess);
 		return;
 	}
+
+	log_tunnel(log_info1, conn, "new session %hu created following"
+		   " request from command line interface\n", sid);
 }
 
 static void l2tp_session_recv(void *data)
