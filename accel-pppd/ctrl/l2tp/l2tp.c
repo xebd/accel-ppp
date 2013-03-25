@@ -545,8 +545,6 @@ out_err:
 
 static void l2tp_tunnel_disconnect(struct l2tp_conn_t *conn, int res, int err)
 {
-	log_ppp_debug("l2tp: terminate (%i, %i)\n", res, err);
-
 	if (l2tp_send_StopCCN(conn, res, err) < 0)
 		log_tunnel(log_error, conn,
 			   "impossible to notify peer of tunnel disconnection,"
@@ -656,11 +654,8 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 {
 	struct l2tp_packet_t *pack;
 
-	if (conn->state != STATE_CLOSE) {
-		l2tp_conn_log(log_debug, conn);
-		log_debug("tunnel_free\n");
+	if (conn->state != STATE_CLOSE)
 		conn->state = STATE_CLOSE;
-	}
 
 	if (conn->sess_count != 0) {
 		/*
@@ -724,6 +719,8 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 	if (conn->challenge)
 		_free(conn->challenge);
 
+	log_tunnel(log_info2, conn, "destroyed\n");
+
 	mempool_free(conn);
 }
 
@@ -734,6 +731,7 @@ static void l2tp_tunnel_session_freed(void *data)
 	if (--conn->sess_count != 0)
 		return;
 
+	log_tunnel(log_info1, conn, "no more session, disconnecting tunnel\n");
 	if (conn->state != STATE_CLOSE)
 		if (l2tp_send_StopCCN(conn, 1, 0) < 0)
 			log_tunnel(log_error, conn,
@@ -942,6 +940,8 @@ static void l2tp_conn_close(struct triton_context_t *ctx)
 {
 	struct l2tp_conn_t *conn = container_of(ctx, typeof(*conn), ctx);
 
+	log_tunnel(log_info1, conn, "context thread is closing,"
+		   " disconnecting tunnel\n");
 	l2tp_tunnel_disconnect(conn, 0, 0);
 	l2tp_tunnel_free(conn);
 }
@@ -1352,8 +1352,11 @@ static void l2tp_rtimeout(struct triton_timer_t *t)
 			if (l2tp_packet_send(conn->hnd.fd, pack) < 0)
 				log_tunnel(log_error, conn,
 					   "packet retransmission failure\n");
-		} else
+		} else {
+			log_tunnel(log_info1, conn, "too many retransmissions,"
+				   " disconnecting tunnel\n");
 			l2tp_tunnel_free(conn);
+		}
 	}
 }
 
@@ -1362,7 +1365,8 @@ static void l2tp_timeout(struct triton_timer_t *t)
 	struct l2tp_conn_t *conn = container_of(t, typeof(*conn),
 						timeout_timer);
 
-	log_ppp_debug("l2tp: timeout\n");
+	log_tunnel(log_info1, conn, "tunnel establishment timeout,"
+		   " disconnecting tunnel\n");
 	l2tp_tunnel_disconnect(conn, 1, 0);
 	l2tp_tunnel_free(conn);
 }
@@ -1900,6 +1904,7 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 	const struct l2tp_attr_t *challenge = NULL;
 	struct l2tp_conn_t *conn = NULL;
 	struct sockaddr_in host_addr = { 0 };
+	uint16_t tid;
 	char src_addr[17];
 
 	u_inet_ntoa(pack->addr.sin_addr.s_addr, src_addr);
@@ -1970,6 +1975,7 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 				  " tunnel allocation failed\n", src_addr);
 			return -1;
 		}
+		tid = conn->tid;
 
 		if (l2tp_tunnel_storechall(conn, challenge) < 0) {
 			log_error("l2tp: impossible to handle SCCRQ from %s:"
@@ -1988,6 +1994,10 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 			l2tp_tunnel_free(conn);
 			return -1;
 		}
+		log_info1("l2tp: new tunnel %hu-%hu created following"
+			  " reception of SCCRQ from %s:%hu\n", tid,
+			  assigned_tid->val.uint16, src_addr,
+			  ntohs(pack->addr.sin_port));
 	} else if (assigned_cid || router_id) {
 		log_error("l2tp: impossible to handle SCCRQ from %s:"
 			  " no support for L2TPv3 attributes\n", src_addr);
@@ -2012,6 +2022,7 @@ static int l2tp_recv_SCCRP(struct l2tp_conn_t *conn,
 	const struct l2tp_attr_t *challenge_resp = NULL;
 	const struct l2tp_attr_t *unknown_attr = NULL;
 	const struct l2tp_attr_t *attr = NULL;
+	char host_addr[17];
 
 	if (conn->state != STATE_WAIT_SCCRP) {
 		l2tp_conn_log(log_warn, conn);
@@ -2064,6 +2075,8 @@ static int l2tp_recv_SCCRP(struct l2tp_conn_t *conn,
 
 	/* Set peer_tid as soon as possible so that StopCCCN
 	   will be sent to the right tunnel in case of error */
+	log_tunnel(log_info2, conn, "peer-tid set to %hu by SCCRP\n",
+		   assigned_tid->val.uint16);
 	conn->peer_tid = assigned_tid->val.uint16;
 
 	if (unknown_attr) {
@@ -2129,6 +2142,10 @@ static int l2tp_recv_SCCRP(struct l2tp_conn_t *conn,
 		return -1;
 	}
 
+	u_inet_ntoa(conn->host_addr.sin_addr.s_addr, host_addr);
+	log_tunnel(log_info1, conn, "established at %s:%hu\n",
+		   host_addr, ntohs(conn->host_addr.sin_port));
+
 	conn->state = STATE_ESTB;
 
 	return 0;
@@ -2139,6 +2156,7 @@ static int l2tp_recv_SCCCN(struct l2tp_conn_t *conn,
 {
 	const struct l2tp_attr_t *attr = NULL;
 	const struct l2tp_attr_t *challenge_resp = NULL;
+	char host_addr[17];
 
 	if (conn->state != STATE_WAIT_SCCCN) {
 		log_ppp_warn("l2tp: unexpected SCCCN\n");
@@ -2190,6 +2208,10 @@ static int l2tp_recv_SCCCN(struct l2tp_conn_t *conn,
 		l2tp_tunnel_disconnect(conn, 2, 0);
 		return -1;
 	}
+
+	u_inet_ntoa(conn->host_addr.sin_addr.s_addr, host_addr);
+	log_tunnel(log_info1, conn, "established at %s:%hu\n",
+		   host_addr, ntohs(conn->host_addr.sin_port));
 
 	conn->state = STATE_ESTB;
 
@@ -2258,9 +2280,12 @@ static int l2tp_recv_StopCCN(struct l2tp_conn_t *conn,
 	}
 
 	if (assigned_tid) {
-		if (conn->peer_tid == 0)
+		if (conn->peer_tid == 0) {
+			log_tunnel(log_info2, conn,
+				   "peer-tid set to %hu by StopCCN\n",
+				   assigned_tid->val.uint16);
 			conn->peer_tid = assigned_tid->val.uint16;
-		else if (conn->peer_tid != assigned_tid->val.uint16) {
+		} else if (conn->peer_tid != assigned_tid->val.uint16) {
 			log_tunnel(log_warn, conn,
 				   "discarding invalid Assigned Tunnel ID %hu"
 				   " in StopCCN\n", assigned_tid->val.uint16);
@@ -2280,13 +2305,10 @@ static int l2tp_recv_StopCCN(struct l2tp_conn_t *conn,
 			   "no Result Code present in StopCCN\n");
 	}
 
-	l2tp_conn_log(log_info2, conn);
-	log_info2("Tunnel %hu/%hu closed by peer"
-		  " (result: %hu, error: %hu%s%s%s\n)\n",
-		  conn->tid, conn->peer_tid, res, err,
-		  (err_msg) ? ", message: \"" : "",
-		  (err_msg) ? err_msg : "",
-		  (err_msg) ? "\"": "");
+	log_tunnel(log_info1, conn, "StopCCN received from peer (result: %hu,"
+		   " error: %hu%s%s%s), disconnecting tunnel\n",
+		   res, err, err_msg ? ", message: \"" : "",
+		   err_msg ? err_msg : "", err_msg ? "\"" : "");
 
 	if (err_msg)
 		_free(err_msg);
@@ -3011,9 +3033,12 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 	while (1) {
 		res = l2tp_recv(h->fd, &pack, NULL);
 		if (res) {
-			if (res == -2)
-				/* No peer listening, tear down connection */
+			if (res == -2) {
+				log_tunnel(log_info1, conn,
+					   "peer is unreachable,"
+					   " disconnecting tunnel\n");
 				l2tp_tunnel_free(conn);
+			}
 			return 0;
 		}
 
@@ -3023,12 +3048,15 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 		if (conn->port_set == 0) {
 			/* Get peer's first reply source port and use it as
 			   destination port for further outgoing messages */
+			log_tunnel(log_info2, conn,
+				   "setting peer port to %hu\n",
+				   ntohs(pack->addr.sin_port));
 			res = l2tp_tunnel_update_peerport(conn,
 							  pack->addr.sin_port);
 			if (res < 0) {
 				log_tunnel(log_error, conn,
 					   "peer port update failed,"
-					   " closing tunnel\n");
+					   " disconnecting tunnel\n");
 				goto drop;
 			}
 			conn->port_set = 1;
@@ -3415,7 +3443,9 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 	};
 	const char *opt = NULL;
 	int peer_indx = -1;
+	int host_indx = -1;
 	int lns_mode = 0;
+	uint16_t tid;
 	int indx;
 
 	opt = conf_get_opt("l2tp", "bind");
@@ -3448,7 +3478,7 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 				return CLI_CMD_INVAL;
 			}
 		} else if (strcmp("host-addr", fields[indx]) == 0) {
-			++indx;
+			host_indx = ++indx;
 			host.sin_family = AF_INET;
 			host.sin_port = 0;
 			if (inet_aton(fields[indx], &host.sin_addr) == 0) {
@@ -3485,12 +3515,19 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 		cli_send(client, "tunnel allocation failed\r\n");
 		return CLI_CMD_FAILED;
 	}
+	tid = conn->tid;
 
 	if (l2tp_tunnel_start(conn, l2tp_send_SCCRQ, &peer) < 0) {
 		cli_send(client, "starting tunnel failed\r\n");
 		l2tp_tunnel_free(conn);
 		return CLI_CMD_FAILED;
 	}
+
+	log_info1("l2tp: new tunnel %hu created following request"
+		  " from command line interface (peer-addr: %s,"
+		  " host-addr: %s, mode: %s)\n", tid, fields[peer_indx],
+		  host_indx < 0 ? "default" : fields[host_indx],
+		  lns_mode ? "lns" : "lac");
 
 	return CLI_CMD_OK;
 }
