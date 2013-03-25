@@ -198,16 +198,6 @@ static inline struct l2tp_sess_t *l2tp_session_self(void)
 	return container_of(triton_context_self(), struct l2tp_sess_t, sctx);
 }
 
-static void l2tp_conn_log(void (*print)(const char *fmt, ...),
-			  const struct l2tp_conn_t *conn)
-{
-	char addr[17];
-
-	u_inet_ntoa(conn->peer_addr.sin_addr.s_addr, addr);
-
-	print("%s:%i: ", addr, ntohs(conn->peer_addr.sin_port));
-}
-
 static int sess_cmp(const void *a, const void *b)
 {
 	const struct l2tp_sess_t *sess_a = a;
@@ -1332,6 +1322,8 @@ static int l2tp_retransmit(struct l2tp_conn_t *conn)
 
 	pack = list_entry(conn->send_queue.next, typeof(*pack), entry);
 	pack->hdr.Nr = htons(conn->Nr);
+	log_tunnel(log_info2, conn, "retransmitting packet %hu\n",
+		   ntohs(pack->hdr.Ns));
 	if (conf_verbose) {
 		log_tunnel(log_info2, conn, "retransmit (duplicate) ");
 		l2tp_packet_print(pack, log_info2);
@@ -1351,10 +1343,12 @@ static void l2tp_rtimeout(struct triton_timer_t *t)
 	struct l2tp_packet_t *pack;
 
 	if (!list_empty(&conn->send_queue)) {
-		log_ppp_debug("l2tp: retransmit (%i)\n", conn->retransmit);
 		if (++conn->retransmit <= conf_retransmit) {
 			pack = list_entry(conn->send_queue.next, typeof(*pack), entry);
 			pack->hdr.Nr = htons(conn->Nr);
+			log_tunnel(log_info2, conn,
+				   "retransmission %i (packet %hu)\n",
+				   conn->retransmit, ntohs(pack->hdr.Ns));
 			if (conf_verbose) {
 				log_tunnel(log_info2, conn,
 					   "retransmit (timeout) ");
@@ -3112,11 +3106,11 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 		res = nsnr_cmp(ntohs(pack->hdr.Ns), conn->Nr);
 		if (res < 0) {
 			/* Duplicate message */
-			l2tp_conn_log(log_debug, conn);
-			log_debug("Duplicate message (packet Ns/Nr: %hu/%hu,"
-				  " tunnel Ns/Nr: %hu/%hu)\n",
-				  ntohs(pack->hdr.Ns), ntohs(pack->hdr.Nr),
-				  conn->Ns, conn->Nr);
+			log_tunnel(log_info2, conn,
+				   "handling duplicate message (packet Ns/Nr:"
+				   " %hu/%hu, tunnel Ns/Nr: %hu/%hu)\n",
+				   ntohs(pack->hdr.Ns), ntohs(pack->hdr.Nr),
+				   conn->Ns, conn->Nr);
 			if (!list_empty(&conn->send_queue))
 				res = l2tp_retransmit(conn);
 			else
@@ -3129,11 +3123,11 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 			continue;
 		} else if (res > 0) {
 			/* Out of order message */
-			l2tp_conn_log(log_debug, conn);
-			log_debug("Reordered message (packet Ns/Nr: %hu/%hu,"
-				  " tunnel Ns/Nr: %hu/%hu)\n",
-				  ntohs(pack->hdr.Ns), ntohs(pack->hdr.Nr),
-				  conn->Ns, conn->Nr);
+			log_tunnel(log_info2, conn,
+				   "discarding reordered message (packet Ns/Nr:"
+				   " %hu/%hu, tunnel Ns/Nr: %hu/%hu)\n",
+				   ntohs(pack->hdr.Ns), ntohs(pack->hdr.Nr),
+				   conn->Ns, conn->Nr);
 			l2tp_packet_free(pack);
 			continue;
 		} else {
