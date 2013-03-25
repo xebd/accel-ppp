@@ -2805,14 +2805,67 @@ static int l2tp_recv_OCCN(struct l2tp_sess_t *sess,
 static int l2tp_recv_CDN(struct l2tp_sess_t *sess,
 			 const struct l2tp_packet_t *pack)
 {
-	if (ntohs(pack->hdr.sid) != sess->sid) {
-		if (conf_verbose)
-			log_warn("l2tp: sid %i is incorrect\n", ntohs(pack->hdr.sid));
-		return 0;
+	const struct l2tp_attr_t *assigned_sid = NULL;
+	const struct l2tp_attr_t *result_code = NULL;
+	const struct l2tp_attr_t *attr = NULL;
+	char *err_msg = NULL;
+	uint16_t res = 0;
+	uint16_t err = 0;
+
+	list_for_each_entry(attr, &pack->attrs, entry) {
+		switch(attr->attr->id) {
+		case Message_Type:
+			break;
+		case Assigned_Session_ID:
+			assigned_sid = attr;
+			break;
+		case Result_Code:
+			result_code = attr;
+			break;
+		default:
+			if (attr->M) {
+				log_session(log_warn, sess,
+					    "discarding unknown attribute type"
+					    " %i in CDN\n", attr->attr->id);
+			}
+			break;
+		}
 	}
 
-	l2tp_send_ZLB(sess->paren_conn);
-	l2tp_session_free(sess);
+	if (assigned_sid) {
+		if (sess->peer_sid == 0) {
+			sess->peer_sid = assigned_sid->val.uint16;
+		} else if (sess->peer_sid != assigned_sid->val.uint16) {
+			log_session(log_warn, sess,
+				    "discarding invalid Assigned Session ID"
+				    " %hu in CDN\n", assigned_sid->val.uint16);
+		}
+	} else {
+		log_session(log_warn, sess,
+			    "no Assigned Session ID present in CDN\n");
+	}
+
+	if (result_code) {
+		if (rescode_get_data(result_code, &res, &err, &err_msg) < 0) {
+			log_session(log_warn, sess,
+				    "invalid Result Code in CDN\n");
+		}
+	} else {
+		log_session(log_warn, sess,
+			    "no Result Code present in CDN\n");
+	}
+
+	if (err_msg)
+		_free(err_msg);
+
+	if (l2tp_send_ZLB(sess->paren_conn) < 0)
+		log_session(log_warn, sess, "acknowledging CDN failed\n");
+
+	if (l2tp_session_free(sess) < 0) {
+		log_session(log_error, sess, "impossible to free session,"
+			    " session data have been kept\n");
+		return -1;
+	}
 
 	return 0;
 }
