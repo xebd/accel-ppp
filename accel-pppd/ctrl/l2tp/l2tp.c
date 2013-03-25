@@ -1151,8 +1151,9 @@ static int l2tp_session_connect(struct l2tp_sess_t *sess)
 	struct l2tp_conn_t *conn = sess->paren_conn;
 	int lns_mode = sess->lns_mode;
 	int flg;
+	int chan_sz;
+	uint16_t peer_port;
 	char addr[17];
-	char chan_name[64];
 
 	sess->ppp.fd = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
 	if (sess->ppp.fd < 0) {
@@ -1201,9 +1202,26 @@ static int l2tp_session_connect(struct l2tp_sess_t *sess)
 	}
 
 	u_inet_ntoa(conn->peer_addr.sin_addr.s_addr, addr);
-	sprintf(chan_name, "%s:%i session %i",
-		addr, ntohs(conn->peer_addr.sin_port), sess->peer_sid);
-	sess->ppp.ses.chan_name = _strdup(chan_name);
+	peer_port = ntohs(conn->peer_addr.sin_port);
+	chan_sz = snprintf(NULL, 0, "%s:%i session %i",
+		       addr, peer_port, sess->peer_sid);
+	if (chan_sz < 0) {
+		log_session(log_error, sess, "impossible to connect session:"
+			    " snprintf() failed: %s\n", strerror(errno));
+		goto out_err;
+	}
+	sess->ppp.ses.chan_name = _malloc(chan_sz);
+	if (sess->ppp.ses.chan_name == NULL) {
+		log_session(log_error, sess, "impossible to connect session:"
+			    " memory allocation failed\n");
+		goto out_err;
+	}
+	if (snprintf(sess->ppp.ses.chan_name, chan_sz, "%s:%i session %i",
+		     addr, peer_port, sess->peer_sid) < 0) {
+		log_session(log_error, sess, "impossible to connect session:"
+			    " snprintf(%i) failed\n", chan_sz);
+		goto out_err;
+	}
 
 	triton_event_fire(EV_CTRL_STARTED, &sess->ppp.ses);
 
@@ -1224,6 +1242,10 @@ static int l2tp_session_connect(struct l2tp_sess_t *sess)
 	return 0;
 
 out_err:
+	if (sess->ppp.ses.chan_name) {
+		_free(sess->ppp.ses.chan_name);
+		sess->ppp.ses.chan_name = NULL;
+	}
 	if (sess->ppp.fd >= 0) {
 		close(sess->ppp.fd);
 		sess->ppp.fd = -1;
