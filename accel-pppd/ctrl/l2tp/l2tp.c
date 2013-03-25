@@ -1322,9 +1322,8 @@ static int l2tp_retransmit(struct l2tp_conn_t *conn)
 	pack = list_entry(conn->send_queue.next, typeof(*pack), entry);
 	pack->hdr.Nr = htons(conn->Nr);
 	if (conf_verbose) {
-		l2tp_conn_log(log_debug, conn);
-		log_debug("send ");
-		l2tp_packet_print(pack, log_debug);
+		log_tunnel(log_info2, conn, "retransmit (duplicate) ");
+		l2tp_packet_print(pack, log_info2);
 	}
 	if (l2tp_packet_send(conn->hnd.fd, pack) < 0) {
 		log_tunnel(log_error, conn,
@@ -1346,8 +1345,9 @@ static void l2tp_rtimeout(struct triton_timer_t *t)
 			pack = list_entry(conn->send_queue.next, typeof(*pack), entry);
 			pack->hdr.Nr = htons(conn->Nr);
 			if (conf_verbose) {
-				log_ppp_debug("send ");
-				l2tp_packet_print(pack, log_ppp_debug);
+				log_tunnel(log_info2, conn,
+					   "retransmit (timeout) ");
+				l2tp_packet_print(pack, log_info2);
 			}
 			if (l2tp_packet_send(conn->hnd.fd, pack) < 0)
 				log_tunnel(log_error, conn,
@@ -1969,12 +1969,6 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 			log_error("l2tp: impossible to handle SCCRQ from %s:"
 				  " tunnel allocation failed\n", src_addr);
 			return -1;
-		}
-
-		if (conf_verbose) {
-			log_switch(&conn->ctx, NULL);
-			log_ppp_info2("recv ");
-			l2tp_packet_print(pack, log_ppp_info2);
 		}
 
 		if (l2tp_tunnel_storechall(conn, challenge) < 0) {
@@ -3101,6 +3095,10 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 		}
 
 		if (list_empty(&pack->attrs)) {
+			if (conf_verbose) {
+				log_tunnel(log_debug, conn, "recv ");
+				l2tp_packet_print(pack, log_debug);
+			}
 			l2tp_packet_free(pack);
 			continue;
 		}
@@ -3117,12 +3115,10 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 
 		if (conf_verbose) {
 			if (msg_type->val.uint16 == Message_Type_Hello) {
-				l2tp_conn_log(log_debug, conn);
-				log_debug("recv ");
+				log_tunnel(log_debug, conn, "recv ");
 				l2tp_packet_print(pack, log_debug);
 			} else {
-				l2tp_conn_log(log_info2, conn);
-				log_info2("recv ");
+				log_tunnel(log_info2, conn, "recv ");
 				l2tp_packet_print(pack, log_info2);
 			}
 		}
@@ -3249,13 +3245,13 @@ static int l2tp_udp_read(struct triton_md_handler_t *h)
 			goto skip;
 		}
 
+		if (conf_verbose) {
+			log_info2("l2tp: recv ");
+			l2tp_packet_print(pack, log_info2);
+		}
 		if (msg_type->val.uint16 == Message_Type_Start_Ctrl_Conn_Request)
 			l2tp_recv_SCCRQ(serv, pack, &pkt_info);
 		else {
-			if (conf_verbose) {
-				log_warn("recv (unexpected) ");
-				l2tp_packet_print(pack, log_ppp_warn);
-			}
 			log_warn("l2tp: discarding unexpected message from %s:"
 				 " invalid Message Type %i\n",
 				 src_addr, msg_type->val.uint16);
