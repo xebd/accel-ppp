@@ -2870,6 +2870,26 @@ static int l2tp_recv_CDN(struct l2tp_sess_t *sess,
 	return 0;
 }
 
+static int l2tp_recv_WEN(struct l2tp_conn_t *conn,
+			 const struct l2tp_packet_t *pack)
+{
+	if (!conn->lns_mode) {
+		log_tunnel(log_warn, conn, "discarding unexpected WEN\n");
+		return 0;
+	}
+
+	if (conf_verbose)
+		log_tunnel(log_info1, conn, "handling WEN\n");
+
+	if (l2tp_send_ZLB(conn) < 0) {
+		log_tunnel(log_error, conn, "impossible to handle WEN:"
+			   " sending ZLB failed\n");
+		return -1;
+	}
+
+	return 0;
+}
+
 static int l2tp_recv_SLI(struct l2tp_conn_t *conn,
 			 const struct l2tp_packet_t *pack)
 {
@@ -3150,13 +3170,15 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 					l2tp_packet_free(pack);
 				}
 				continue;
+			case Message_Type_WAN_Error_Notify:
+				l2tp_recv_WEN(conn, pack);
+				break;
 			case Message_Type_Set_Link_Info:
 				l2tp_recv_SLI(conn, pack);
 				break;
 			case Message_Type_Start_Ctrl_Conn_Request:
-			case Message_Type_WAN_Error_Notify:
-				if (conf_verbose)
-					log_warn("l2tp: unexpected Message-Type %i\n", msg_type->val.uint16);
+				log_tunnel(log_warn, conn,
+					   "discarding unexpected SCCRQ\n");
 				break;
 			default:
 				if (msg_type->M) {
