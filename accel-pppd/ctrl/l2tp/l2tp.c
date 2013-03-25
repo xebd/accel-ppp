@@ -3088,11 +3088,11 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 		msg_type = list_entry(pack->attrs.next, typeof(*msg_type), entry);
 
 		if (msg_type->attr->id != Message_Type) {
-			if (conf_verbose) {
-				l2tp_conn_log(log_error, conn);
-				log_error("first attribute is not Message-Type, dropping connection...\n");
-			}
-			goto drop;
+			log_tunnel(log_warn, conn,
+				   "discarding message with invalid first"
+				   " attribute type %i\n", msg_type->attr->id);
+			l2tp_packet_free(pack);
+			continue;
 		}
 
 		if (conf_verbose) {
@@ -3117,20 +3117,16 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 					goto drop;
 				break;
 			case Message_Type_Stop_Ctrl_Conn_Notify:
-				if (l2tp_recv_StopCCN(conn, pack))
-					goto drop;
-				break;
+				l2tp_recv_StopCCN(conn, pack);
+				goto drop;
 			case Message_Type_Hello:
-				if (l2tp_recv_HELLO(conn, pack))
-					goto drop;
+				l2tp_recv_HELLO(conn, pack);
 				break;
 			case Message_Type_Incoming_Call_Request:
-				if (l2tp_recv_ICRQ(conn, pack))
-					goto drop;
+				l2tp_recv_ICRQ(conn, pack);
 				break;
 			case Message_Type_Outgoing_Call_Request:
-				if (l2tp_recv_OCRQ(conn, pack))
-					goto drop;
+				l2tp_recv_OCRQ(conn, pack);
 				break;
 			case Message_Type_Incoming_Call_Connected:
 			case Message_Type_Incoming_Call_Reply:
@@ -3138,18 +3134,24 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 			case Message_Type_Outgoing_Call_Connected:
 			case Message_Type_Call_Disconnect_Notify:
 				sess = l2tp_tunnel_get_session(conn, ntohs(pack->hdr.sid));
-				if (sess == NULL)
-					goto drop;
+				if (sess == NULL) {
+					log_tunnel(log_warn, conn,
+						   "discarding message with"
+						   " invalid sid %hu\n",
+						   ntohs(pack->hdr.sid));
+					l2tp_packet_free(pack);
+					continue;
+				}
 				if (triton_context_call(&sess->sctx, l2tp_session_recv, pack) < 0) {
 					log_tunnel(log_warn, conn,
 						   "impossible to handle message for session %hu:"
 						   " call to child session failed\n",
 						   sess->sid);
+					l2tp_packet_free(pack);
 				}
 				continue;
 			case Message_Type_Set_Link_Info:
-				if (l2tp_recv_SLI(conn, pack))
-					goto drop;
+				l2tp_recv_SLI(conn, pack);
 				break;
 			case Message_Type_Start_Ctrl_Conn_Request:
 			case Message_Type_WAN_Error_Notify:
@@ -3157,8 +3159,6 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 					log_warn("l2tp: unexpected Message-Type %i\n", msg_type->val.uint16);
 				break;
 			default:
-				if (conf_verbose)
-					log_warn("l2tp: unknown Message-Type %i\n", msg_type->val.uint16);
 				if (msg_type->M) {
 					log_tunnel(log_error, conn,
 						   "impossible to handle unknown message type"
