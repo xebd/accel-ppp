@@ -418,6 +418,9 @@ static int l2tp_send_StopCCN(struct l2tp_conn_t *conn,
 	struct l2tp_packet_t *pack = NULL;
 	struct l2tp_avp_result_code rc = {htons(res), htons(err)};
 
+	log_tunnel(log_info2, conn, "sending StopCCN (res: %hu, err:%hu)\n",
+		   res, err);
+
 	pack = l2tp_packet_alloc(2, Message_Type_Stop_Ctrl_Conn_Notify,
 				 &conn->peer_addr);
 	if (pack == NULL) {
@@ -456,6 +459,9 @@ static int l2tp_send_CDN(struct l2tp_sess_t *sess, uint16_t res, uint16_t err)
 {
 	struct l2tp_packet_t *pack = NULL;
 	struct l2tp_avp_result_code rc = {htons(res), htons(err)};
+
+	log_session(log_info2, sess, "sending CDN (res: %hu, err: %hu)\n",
+		    res, err);
 
 	pack = l2tp_packet_alloc(2, Message_Type_Call_Disconnect_Notify,
 				 &sess->paren_conn->peer_addr);
@@ -497,6 +503,9 @@ static int l2tp_tunnel_send_CDN(uint16_t sid, uint16_t peer_sid,
 	struct l2tp_packet_t *pack = NULL;
 	struct l2tp_avp_result_code rc = {htons(res), htons(err)};
 	struct l2tp_conn_t *conn = l2tp_tunnel_self();
+
+	log_tunnel(log_info2, conn, "sending CDN (res: %hu, err: %hu)\n",
+		   res, err);
 
 	pack = l2tp_packet_alloc(2, Message_Type_Call_Disconnect_Notify,
 				 &conn->peer_addr);
@@ -1455,6 +1464,8 @@ static int l2tp_send_ZLB(struct l2tp_conn_t *conn)
 {
 	struct l2tp_packet_t *pack;
 
+	log_tunnel(log_debug, conn, "sending ZLB\n");
+
 	pack = l2tp_packet_alloc(2, 0, &conn->peer_addr);
 	if (!pack) {
 		log_tunnel(log_error, conn, "impossible to send ZLB:"
@@ -1476,6 +1487,8 @@ static void l2tp_send_HELLO(struct triton_timer_t *t)
 	struct l2tp_conn_t *conn = container_of(t, typeof(*conn), hello_timer);
 	struct l2tp_packet_t *pack;
 
+	log_tunnel(log_debug, conn, "sending HELLO\n");
+
 	pack = l2tp_packet_alloc(2, Message_Type_Hello, &conn->peer_addr);
 	if (!pack) {
 		log_tunnel(log_error, conn, "impossible to send HELLO:"
@@ -1492,6 +1505,8 @@ static void l2tp_send_SCCRQ(void *peer_addr)
 {
 	struct l2tp_conn_t *conn = l2tp_tunnel_self();
 	struct l2tp_packet_t *pack = NULL;
+
+	log_tunnel(log_info2, conn, "sending SCCRQ\n");
 
 	pack = l2tp_packet_alloc(2, Message_Type_Start_Ctrl_Conn_Request,
 				 &conn->peer_addr);
@@ -1555,6 +1570,8 @@ err:
 static void l2tp_send_SCCRP(struct l2tp_conn_t *conn)
 {
 	struct l2tp_packet_t *pack;
+
+	log_tunnel(log_info2, conn, "sending SCCRP\n");
 
 	pack = l2tp_packet_alloc(2, Message_Type_Start_Ctrl_Conn_Reply,
 				 &conn->peer_addr);
@@ -1625,6 +1642,8 @@ static int l2tp_send_SCCCN(struct l2tp_conn_t *conn)
 {
 	struct l2tp_packet_t *pack = NULL;
 
+	log_tunnel(log_info2, conn, "sending SCCCN\n");
+
 	pack = l2tp_packet_alloc(2, Message_Type_Start_Ctrl_Conn_Connected,
 				 &conn->peer_addr);
 	if (pack == NULL) {
@@ -1658,6 +1677,8 @@ err:
 static int l2tp_send_ICRQ(struct l2tp_sess_t *sess)
 {
 	struct l2tp_packet_t *pack;
+
+	log_session(log_info2, sess, "sending ICRQ\n");
 
 	pack = l2tp_packet_alloc(2, Message_Type_Incoming_Call_Request,
 				 &sess->paren_conn->peer_addr);
@@ -1696,6 +1717,8 @@ static int l2tp_send_ICRP(struct l2tp_sess_t *sess)
 {
 	struct l2tp_packet_t *pack;
 
+	log_session(log_info2, sess, "sending ICRP\n");
+
 	pack = l2tp_packet_alloc(2, Message_Type_Incoming_Call_Reply,
 				 &sess->paren_conn->peer_addr);
 	if (!pack) {
@@ -1727,6 +1750,8 @@ out_err:
 static int l2tp_send_ICCN(struct l2tp_sess_t *sess)
 {
 	struct l2tp_packet_t *pack;
+
+	log_session(log_info2, sess, "sending ICCN\n");
 
 	pack = l2tp_packet_alloc(2, Message_Type_Incoming_Call_Connected,
 				 &sess->paren_conn->peer_addr);
@@ -1769,6 +1794,8 @@ out_err:
 static int l2tp_send_OCRQ(struct l2tp_sess_t *sess)
 {
 	struct l2tp_packet_t *pack;
+
+	log_session(log_info2, sess, "sending OCRQ\n");
 
 	pack = l2tp_packet_alloc(2, Message_Type_Outgoing_Call_Request,
 				 &sess->paren_conn->peer_addr);
@@ -1832,6 +1859,8 @@ static int l2tp_send_OCRP(struct l2tp_sess_t *sess)
 {
 	struct l2tp_packet_t *pack = NULL;
 
+	log_session(log_info2, sess, "sending OCRP\n");
+
 	pack = l2tp_packet_alloc(2, Message_Type_Outgoing_Call_Reply,
 				 &sess->paren_conn->peer_addr);
 	if (pack == NULL) {
@@ -1863,6 +1892,8 @@ out_err:
 static int l2tp_send_OCCN(struct l2tp_sess_t *sess)
 {
 	struct l2tp_packet_t *pack = NULL;
+
+	log_session(log_info2, sess, "sending OCCN\n");
 
 	pack = l2tp_packet_alloc(2, Message_Type_Outgoing_Call_Connected,
 				 &sess->paren_conn->peer_addr);
@@ -1926,6 +1957,8 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 			 " discarding SCCRQ from %s\n", src_addr);
 		return 0;
 	}
+
+	log_info2("l2tp: handling SCCRQ from %s\n", src_addr);
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch (attr->attr->id) {
@@ -2040,6 +2073,8 @@ static int l2tp_recv_SCCRP(struct l2tp_conn_t *conn,
 		log_tunnel(log_warn, conn, "discarding unexpected SCCRP\n");
 		return 0;
 	}
+
+	log_tunnel(log_info2, conn, "handling SCCRP\n");
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch (attr->attr->id) {
@@ -2174,6 +2209,8 @@ static int l2tp_recv_SCCCN(struct l2tp_conn_t *conn,
 		return 0;
 	}
 
+	log_tunnel(log_info2, conn, "handling SCCCN\n");
+
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch (attr->attr->id) {
 		case Message_Type:
@@ -2270,6 +2307,8 @@ static int l2tp_recv_StopCCN(struct l2tp_conn_t *conn,
 	uint16_t res = 0;
 	uint16_t err = 0;
 
+	log_tunnel(log_info2, conn, "handling StopCCN\n");
+
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch(attr->attr->id) {
 		case Message_Type:
@@ -2333,6 +2372,8 @@ static int l2tp_recv_StopCCN(struct l2tp_conn_t *conn,
 static int l2tp_recv_HELLO(struct l2tp_conn_t *conn,
 			   const struct l2tp_packet_t *pack)
 {
+	log_tunnel(log_debug, conn, "handling HELLO\n");
+
 	if (l2tp_send_ZLB(conn) < 0) {
 		log_tunnel(log_error, conn, "impossible to handle HELLO:"
 			   " sending ZLB failed\n");
@@ -2376,6 +2417,7 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
 		return 0;
 	}
 
+	log_tunnel(log_info2, conn, "handling ICRQ\n");
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch(attr->attr->id) {
@@ -2472,6 +2514,7 @@ static int l2tp_recv_ICRP(struct l2tp_sess_t *sess,
 		return 0;
 	}
 
+	log_session(log_info2, sess, "handling ICRP\n");
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch(attr->attr->id) {
@@ -2551,6 +2594,8 @@ static int l2tp_recv_ICCN(struct l2tp_sess_t *sess,
 		return 0;
 	}
 
+	log_session(log_info2, sess, "handling ICCN\n");
+
 	sess->state1 = STATE_ESTB;
 
 	if (l2tp_session_connect(sess)) {
@@ -2626,6 +2671,7 @@ static int l2tp_recv_OCRQ(struct l2tp_conn_t *conn,
 		return 0;
 	}
 
+	log_tunnel(log_info2, conn, "handling OCRQ\n");
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch (attr->attr->id) {
@@ -2724,6 +2770,8 @@ static int l2tp_recv_OCRP(struct l2tp_sess_t *sess,
 		return 0;
 	}
 
+	log_session(log_info2, sess, "handling OCRP\n");
+
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch(attr->attr->id) {
 		case Message_Type:
@@ -2785,6 +2833,7 @@ static int l2tp_recv_OCCN(struct l2tp_sess_t *sess,
 		return 0;
 	}
 
+	log_session(log_info2, sess, "handling OCCN\n");
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch (attr->attr->id) {
@@ -2847,6 +2896,8 @@ static int l2tp_recv_CDN(struct l2tp_sess_t *sess,
 	char *err_msg = NULL;
 	uint16_t res = 0;
 	uint16_t err = 0;
+
+	log_session(log_info2, sess, "handling CDN\n");
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch(attr->attr->id) {
@@ -2922,8 +2973,7 @@ static int l2tp_recv_WEN(struct l2tp_conn_t *conn,
 		return 0;
 	}
 
-	if (conf_verbose)
-		log_tunnel(log_info1, conn, "handling WEN\n");
+	log_tunnel(log_info2, conn, "handling WEN\n");
 
 	if (l2tp_send_ZLB(conn) < 0) {
 		log_tunnel(log_error, conn, "impossible to handle WEN:"
@@ -2942,8 +2992,7 @@ static int l2tp_recv_SLI(struct l2tp_conn_t *conn,
 		return 0;
 	}
 
-	if (conf_verbose)
-		log_tunnel(log_info1, conn, "handling SLI\n");
+	log_tunnel(log_info2, conn, "handling SLI\n");
 
 	if (l2tp_send_ZLB(conn) < 0) {
 		log_tunnel(log_error, conn, "impossible to handle SLI:"
@@ -3156,6 +3205,7 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 		}
 
 		if (list_empty(&pack->attrs)) {
+			log_tunnel(log_debug, conn, "handling ZLB\n");
 			if (conf_verbose) {
 				log_tunnel(log_debug, conn, "recv ");
 				l2tp_packet_print(pack, log_debug);
