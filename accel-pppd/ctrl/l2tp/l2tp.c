@@ -622,8 +622,7 @@ static void __l2tp_tunnel_free_session(void *data)
 
 static void l2tp_tunnel_free_session(void *sess)
 {
-	struct triton_context_t *ctx = triton_context_self();
-	struct l2tp_conn_t *conn = container_of(ctx, typeof(*conn), ctx);
+	struct l2tp_conn_t *conn = l2tp_tunnel_self();
 
 	tdelete(sess, &conn->sessions, sess_cmp);
 	__l2tp_tunnel_free_session(sess);
@@ -2547,8 +2546,8 @@ static void l2tp_session_outcall_reply(void *data)
 	return;
 
 out_err:
-	l2tp_send_CDN(sess, 2, 6);
-	l2tp_session_free(sess);
+	if (l2tp_session_disconnect(sess, 2, 6) < 0)
+		log_session(log_error, sess, "session disconnection failed\n");
 }
 
 static int l2tp_recv_OCRQ(struct l2tp_conn_t *conn,
@@ -2860,8 +2859,7 @@ static void l2tp_tunnel_create_session(void *data)
 
 static void l2tp_session_recv(void *data)
 {
-	struct triton_context_t *ctx = triton_context_self();
-	struct l2tp_sess_t *sess = container_of(ctx, typeof(*sess), sctx);
+	struct l2tp_sess_t *sess = l2tp_session_self();
 	struct l2tp_packet_t *pack = data;
 	const struct l2tp_attr_t *msg_type = NULL;
 
