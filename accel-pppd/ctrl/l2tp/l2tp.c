@@ -1920,11 +1920,18 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 
 	u_inet_ntoa(pack->addr.sin_addr.s_addr, src_addr);
 
-	if (ap_shutdown)
+	if (ap_shutdown) {
+		log_warn("l2tp: shutdown in progress,"
+			 " discarding SCCRQ from %s\n", src_addr);
 		return 0;
-	
-	if (triton_module_loaded("connlimit") && connlimit_check(cl_key_from_ipv4(pack->addr.sin_addr.s_addr)))
+	}
+
+	if (triton_module_loaded("connlimit")
+	    && connlimit_check(cl_key_from_ipv4(pack->addr.sin_addr.s_addr))) {
+		log_warn("l2tp: connection limits reached,"
+			 " discarding SCCRQ from %s\n", src_addr);
 		return 0;
+	}
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch (attr->attr->id) {
@@ -2036,8 +2043,7 @@ static int l2tp_recv_SCCRP(struct l2tp_conn_t *conn,
 	char host_addr[17];
 
 	if (conn->state != STATE_WAIT_SCCRP) {
-		l2tp_conn_log(log_warn, conn);
-		log_warn("l2tp: unexpected SCCRP\n");
+		log_tunnel(log_warn, conn, "discarding unexpected SCCRP\n");
 		return 0;
 	}
 
@@ -2170,7 +2176,7 @@ static int l2tp_recv_SCCCN(struct l2tp_conn_t *conn,
 	char host_addr[17];
 
 	if (conn->state != STATE_WAIT_SCCCN) {
-		log_ppp_warn("l2tp: unexpected SCCCN\n");
+		log_tunnel(log_warn, conn, "discarding unexpected SCCCN\n");
 		return 0;
 	}
 
@@ -2372,7 +2378,7 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
 	uint16_t err = 0;
 
 	if (conn->state != STATE_ESTB && conn->lns_mode) {
-		log_ppp_warn("l2tp: unexpected ICRQ\n");
+		log_tunnel(log_warn, conn, "discarding unexpected ICRQ\n");
 		return 0;
 	}
 
@@ -2468,7 +2474,7 @@ static int l2tp_recv_ICRP(struct l2tp_sess_t *sess,
 	const struct l2tp_attr_t *attr = NULL;
 
 	if (sess->state1 != STATE_WAIT_ICRP) {
-		log_ppp_warn("l2tp: unexpected ICCN\n");
+		log_session(log_warn, sess, "discarding unexpected ICRP\n");
 		return 0;
 	}
 
@@ -2547,7 +2553,7 @@ static int l2tp_recv_ICCN(struct l2tp_sess_t *sess,
 			  const struct l2tp_packet_t *pack)
 {
 	if (sess->state1 != STATE_WAIT_ICCN) {
-		log_ppp_warn("l2tp: unexpected ICCN\n");
+		log_session(log_warn, sess, "discarding unexpected ICCN\n");
 		return 0;
 	}
 
@@ -2622,8 +2628,7 @@ static int l2tp_recv_OCRQ(struct l2tp_conn_t *conn,
 	uint16_t err;
 
 	if (conn->state != STATE_ESTB && !conn->lns_mode) {
-		l2tp_conn_log(log_warn, conn);
-		log_warn("l2tp: unexpected OCRQ\n");
+		log_tunnel(log_warn, conn, "discarding unexpected OCRQ\n");
 		return 0;
 	}
 
@@ -2721,7 +2726,7 @@ static int l2tp_recv_OCRP(struct l2tp_sess_t *sess,
 	const struct l2tp_attr_t *attr = NULL;
 
 	if (sess->state1 != STATE_WAIT_OCRP) {
-		log_ppp_warn("l2tp: unexpected OCRP\n");
+		log_session(log_warn, sess, "discarding unexpected OCRP\n");
 		return 0;
 	}
 
@@ -2782,7 +2787,7 @@ static int l2tp_recv_OCCN(struct l2tp_sess_t *sess,
 	const struct l2tp_attr_t *attr = NULL;
 
 	if (sess->state1 != STATE_WAIT_OCCN) {
-		log_ppp_warn("l2tp: unexpected OCCN\n");
+		log_session(log_warn, sess, "discarding unexpected OCCN\n");
 		return 0;
 	}
 
