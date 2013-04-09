@@ -223,8 +223,7 @@ static int l2tp_tunnel_genchall(uint16_t chall_len,
 				struct l2tp_packet_t *pack)
 {
 	void *ptr = NULL;
-	size_t urandlen;
-	ssize_t rdlen;
+	int err;
 
 	if (chall_len == 0
 	    || conf_secret == NULL || conf_secret_len == 0) {
@@ -248,26 +247,18 @@ static int l2tp_tunnel_genchall(uint16_t chall_len,
 		conn->challenge_len = chall_len;
 	}
 
-	for (urandlen = 0; urandlen < chall_len; urandlen += rdlen) {
-		rdlen = read(urandom_fd, conn->challenge + urandlen,
-			     chall_len - urandlen);
-		if (rdlen < 0) {
-			if (errno == EINTR)
-				rdlen = 0;
-			else {
-				log_tunnel(log_error, conn,
-					   "impossible to generate Challenge:"
-					   " reading from urandom failed: %s\n",
-					   strerror(errno));
-				goto err;
-			}
-		} else if (rdlen == 0) {
+	if (u_randbuf(conn->challenge, chall_len, &err) < 0) {
+		if (err)
+			log_tunnel(log_error, conn,
+				   "impossible to generate Challenge:"
+				   " reading from urandom failed: %s\n",
+				   strerror(err));
+		else
 			log_tunnel(log_error, conn,
 				   "impossible to generate Challenge:"
 				   " end of file reached while reading"
 				   " from urandom\n");
-			goto err;
-		}
+		goto err;
 	}
 
 	if (l2tp_packet_add_octets(pack, Challenge, conn->challenge,
