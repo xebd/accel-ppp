@@ -8,6 +8,7 @@
 #include <fcntl.h>
 #include <arpa/inet.h>
 
+#include "crypto.h"
 #include "triton.h"
 #include "log.h"
 #include "mempool.h"
@@ -98,7 +99,126 @@ void l2tp_packet_free(struct l2tp_packet_t *pack)
 	mempool_free(pack);
 }
 
-int l2tp_recv(int fd, struct l2tp_packet_t **p, struct in_pktinfo *pkt_info)
+static void memxor(uint8_t *dst, const uint8_t *src, size_t sz)
+{
+	const uintmax_t *umax_src = (const uintmax_t *)src;
+	uintmax_t *umax_dst = (uintmax_t *)dst;
+	size_t left = sz % sizeof(uintmax_t);
+	size_t indx;
+
+	for (indx = 0; indx < sz / sizeof(uintmax_t); ++indx)
+		umax_dst[indx] ^= umax_src[indx];
+
+	src += sz - left;
+	dst += sz - left;
+	while (left) {
+		if (left >= sizeof(uint32_t)) {
+			*(uint32_t *)dst ^= *(uint32_t *)src;
+			src += sizeof(uint32_t);
+			dst += sizeof(uint32_t);
+			left -= sizeof(uint32_t);
+		} else if (left >= sizeof(uint16_t)) {
+			*(uint16_t *)dst ^= *(uint16_t *)src;
+			src += sizeof(uint16_t);
+			dst += sizeof(uint16_t);
+			left -= sizeof(uint16_t);
+		} else {
+			*dst ^= *src;
+			src += sizeof(uint8_t);
+			dst += sizeof(uint8_t);
+			left -= sizeof(uint8_t);
+		}
+	}
+}
+
+/*
+ * Decipher hidden AVPs, keeping the Hidden AVP Subformat (i.e. the attribute
+ * value is prefixed by 2 bytes indicating its length in network byte order).
+ */
+static int decode_avp(struct l2tp_avp_t *avp, const struct l2tp_attr_t *RV,
+		      const char *secret, size_t secret_len)
+{
+	MD5_CTX md5_ctx;
+	uint8_t md5[MD5_DIGEST_LENGTH];
+	uint8_t p1[MD5_DIGEST_LENGTH];
+	uint8_t *prev_block = NULL;
+	uint16_t attr_len;
+	uint16_t orig_attr_len;
+	uint16_t bytes_left;
+	uint16_t blocks_left;
+	uint16_t last_block_len;
+
+	if (avp->length < sizeof(struct l2tp_avp_t) + 2) {
+		/* Hidden AVPs must contain at least two bytes
+		   for storing original attribute length */
+		log_warn("l2tp: incorrect hidden avp received (type %hu):"
+			 " length too small (%hu bytes)\n",
+			 ntohs(avp->type), avp->length);
+		return -1;
+	}
+	attr_len = avp->length - sizeof(struct l2tp_avp_t);
+
+	/* Decode first block */
+	MD5_Init(&md5_ctx);
+	MD5_Update(&md5_ctx, &avp->type, sizeof(avp->type));
+	MD5_Update(&md5_ctx, secret, secret_len);
+	MD5_Update(&md5_ctx, RV->val.octets, RV->length);
+	MD5_Final(p1, &md5_ctx);
+
+	if (attr_len <= MD5_DIGEST_LENGTH) {
+		memxor(avp->val, p1, attr_len);
+		return 0;
+	}
+
+	memxor(p1, avp->val, MD5_DIGEST_LENGTH);
+	orig_attr_len = ntohs(*(uint16_t *)p1);
+
+	if (orig_attr_len <= MD5_DIGEST_LENGTH - 2) {
+		/* Enough bytes decoded already, no need to decode padding */
+		memcpy(avp->val, p1, MD5_DIGEST_LENGTH);
+		return 0;
+	}
+
+	if (orig_attr_len > attr_len - 2) {
+		log_warn("l2tp: incorrect hidden avp received (type %hu):"
+			 " original attribute length too big (ciphered"
+			 " attribute length: %hu bytes, advertised original"
+			 " attribute length: %hu bytes)\n",
+			 ntohs(avp->type), attr_len, orig_attr_len);
+		return -1;
+	}
+
+	/* Decode remaining blocks. Start from the last block as
+	   preceding blocks must be kept hidden for computing MD5s */
+	bytes_left = orig_attr_len + 2 - MD5_DIGEST_LENGTH;
+	last_block_len = bytes_left % MD5_DIGEST_LENGTH;
+	blocks_left = bytes_left / MD5_DIGEST_LENGTH;
+	if (last_block_len) {
+		prev_block = avp->val + blocks_left * MD5_DIGEST_LENGTH;
+		MD5_Init(&md5_ctx);
+		MD5_Update(&md5_ctx, secret, secret_len);
+		MD5_Update(&md5_ctx, prev_block, MD5_DIGEST_LENGTH);
+		MD5_Final(md5, &md5_ctx);
+		memxor(prev_block + MD5_DIGEST_LENGTH, md5, last_block_len);
+		prev_block -= MD5_DIGEST_LENGTH;
+	} else
+		prev_block = avp->val + (blocks_left - 1) * MD5_DIGEST_LENGTH;
+
+	while (prev_block >= avp->val) {
+		MD5_Init(&md5_ctx);
+		MD5_Update(&md5_ctx, secret, secret_len);
+		MD5_Update(&md5_ctx, prev_block, MD5_DIGEST_LENGTH);
+		MD5_Final(md5, &md5_ctx);
+		memxor(prev_block + MD5_DIGEST_LENGTH, md5, MD5_DIGEST_LENGTH);
+		prev_block -= MD5_DIGEST_LENGTH;
+	}
+	memcpy(avp->val, p1, MD5_DIGEST_LENGTH);
+
+	return 0;
+}
+
+int l2tp_recv(int fd, struct l2tp_packet_t **p, struct in_pktinfo *pkt_info,
+	      const char *secret, size_t secret_len)
 {
 	int n, length;
 	uint8_t *buf;
@@ -113,6 +233,8 @@ int l2tp_recv(int fd, struct l2tp_packet_t **p, struct in_pktinfo *pkt_info)
 	struct msghdr msg;
 	char msg_control[128];
 	struct cmsghdr *cmsg;
+	uint16_t orig_avp_len;
+	void *orig_avp_val;
 
   *p = NULL;
 
@@ -253,51 +375,65 @@ int l2tp_recv(int fd, struct l2tp_packet_t **p, struct in_pktinfo *pkt_info)
 					if (conf_verbose)
 						log_warn("l2tp: incorrect avp received (type=%i, H=1, but Random-Vector is not received)\n", ntohs(avp->type));
 					goto out_err;
-				} else {
-					if (conf_verbose)
-						log_warn("l2tp: hidden avp received (type=%i)\n", ntohs(avp->type));
 				}
+				if (secret == NULL || secret_len == 0) {
+					log_error("l2tp: impossible to decode"
+						  " hidden avp (type %hu): no"
+						  " secret set)\n",
+						  ntohs(avp->type));
+					goto out_err;
+				}
+				if (decode_avp(avp, RV, secret, secret_len) < 0)
+					goto out_err;
 			}
 
 			attr = mempool_alloc(attr_pool);
 			memset(attr, 0, sizeof(*attr));
 			list_add_tail(&attr->entry, &pack->attrs);
 
+			if (avp->H) {
+				orig_avp_len = ntohs(*(uint16_t *)avp->val) + sizeof(*avp);
+				orig_avp_val = avp->val + sizeof(uint16_t);
+			} else {
+				orig_avp_len = avp->length;
+				orig_avp_val = avp->val;
+			}
+
 			attr->attr = da;
 			attr->M = avp->M;
-			attr->H = avp->H;
-			attr->length = avp->length - sizeof(*avp);
-			
+			attr->H = 0;
+			attr->length = orig_avp_len - sizeof(*avp);
+
 			if (attr->attr->id == Random_Vector)
 				RV = attr;
 
 			switch (da->type) {
 				case ATTR_TYPE_INT16:
-					if (avp->length != sizeof(*avp) + 2)
+					if (orig_avp_len != sizeof(*avp) + 2)
 						goto out_err_len;
-					attr->val.uint16 = ntohs(*(uint16_t *)avp->val);
+					attr->val.uint16 = ntohs(*(uint16_t *)orig_avp_val);
 					break;
 				case ATTR_TYPE_INT32:
-					if (avp->length != sizeof(*avp) + 4)
+					if (orig_avp_len != sizeof(*avp) + 4)
 						goto out_err_len;
-					attr->val.uint32 = ntohl(*(uint32_t *)avp->val);
+					attr->val.uint32 = ntohl(*(uint32_t *)orig_avp_val);
 					break;
 				case ATTR_TYPE_INT64:
-					if (avp->length != sizeof(*avp) + 8)
+					if (orig_avp_len != sizeof(*avp) + 8)
 						goto out_err_len;
-					attr->val.uint64 = be64toh(*(uint64_t *)avp->val);
+					attr->val.uint64 = be64toh(*(uint64_t *)orig_avp_val);
 					break;
 				case ATTR_TYPE_OCTETS:
 					attr->val.octets = _malloc(attr->length);
 					if (!attr->val.octets)
 						goto out_err_mem;
-					memcpy(attr->val.octets, avp->val, attr->length);
+					memcpy(attr->val.octets, orig_avp_val, attr->length);
 					break;
 				case ATTR_TYPE_STRING:
 					attr->val.string = _malloc(attr->length + 1);
 					if (!attr->val.string)
 						goto out_err_mem;
-					memcpy(attr->val.string, avp->val, attr->length);
+					memcpy(attr->val.string, orig_avp_val, attr->length);
 					attr->val.string[attr->length] = 0;
 					break;
 			}
@@ -320,7 +456,7 @@ out_err_hdr:
 	return 0;
 out_err_len:
 	if (conf_verbose)
-		log_warn("l2tp: incorrect avp received (type=%i, incorrect length %i)\n", ntohs(avp->type), avp->length);
+		log_warn("l2tp: incorrect avp received (type=%i, incorrect length %i)\n", ntohs(avp->type), orig_avp_len);
 	goto out_err;
 out_err_mem:
 	log_emerg("l2tp: out of memory\n");

@@ -73,7 +73,8 @@ struct l2tp_dict_attr_t *l2tp_dict_find_attr_by_id(int id);
 const struct l2tp_dict_value_t *l2tp_dict_find_value(const struct l2tp_dict_attr_t *attr,
 						     l2tp_value_t val);
 
-int l2tp_recv(int fd, struct l2tp_packet_t **, struct in_pktinfo *);
+int l2tp_recv(int fd, struct l2tp_packet_t **, struct in_pktinfo *,
+	      const char *secret, size_t secret_len);
 void l2tp_packet_free(struct l2tp_packet_t *);
 void l2tp_packet_print(const struct l2tp_packet_t *,
 		       void (*print)(const char *fmt, ...));

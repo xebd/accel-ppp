@@ -1963,6 +1963,8 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch (attr->attr->id) {
+			case Random_Vector:
+				break;
 			case Protocol_Version:
 				protocol_version = attr;
 				break;
@@ -2080,6 +2082,7 @@ static int l2tp_recv_SCCRP(struct l2tp_conn_t *conn,
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch (attr->attr->id) {
 		case Message_Type:
+		case Random_Vector:
 		case Host_Name:
 		case Bearer_Capabilities:
 		case Firmware_Revision:
@@ -2215,6 +2218,7 @@ static int l2tp_recv_SCCCN(struct l2tp_conn_t *conn,
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch (attr->attr->id) {
 		case Message_Type:
+		case Random_Vector:
 			break;
 		case Challenge_Response:
 			challenge_resp = attr;
@@ -2313,6 +2317,7 @@ static int l2tp_recv_StopCCN(struct l2tp_conn_t *conn,
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch(attr->attr->id) {
 		case Message_Type:
+		case Random_Vector:
 			break;
 		case Assigned_Tunnel_ID:
 			assigned_tid = attr;
@@ -2426,6 +2431,7 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
 				assigned_sid = attr;
 				break;
 			case Message_Type:
+			case Random_Vector:
 			case Call_Serial_Number:
 			case Bearer_Type:
 			case Calling_Number:
@@ -2520,6 +2526,7 @@ static int l2tp_recv_ICRP(struct l2tp_sess_t *sess,
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch(attr->attr->id) {
 		case Message_Type:
+		case Random_Vector:
 			break;
 		case Assigned_Session_ID:
 			assigned_sid = attr;
@@ -2677,6 +2684,7 @@ static int l2tp_recv_OCRQ(struct l2tp_conn_t *conn,
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch (attr->attr->id) {
 		case Message_Type:
+		case Random_Vector:
 		case Call_Serial_Number:
 		case Minimum_BPS:
 		case Maximum_BPS:
@@ -2776,6 +2784,7 @@ static int l2tp_recv_OCRP(struct l2tp_sess_t *sess,
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch(attr->attr->id) {
 		case Message_Type:
+		case Random_Vector:
 			break;
 		case Assigned_Session_ID:
 			assigned_sid = attr;
@@ -2839,6 +2848,7 @@ static int l2tp_recv_OCCN(struct l2tp_sess_t *sess,
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch (attr->attr->id) {
 		case Message_Type:
+		case Random_Vector:
 		case TX_Speed:
 		case Framing_Type:
 			break;
@@ -2903,6 +2913,7 @@ static int l2tp_recv_CDN(struct l2tp_sess_t *sess,
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch(attr->attr->id) {
 		case Message_Type:
+		case Random_Vector:
 			break;
 		case Assigned_Session_ID:
 			assigned_sid = attr;
@@ -3114,7 +3125,8 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 	int res;
 
 	while (1) {
-		res = l2tp_recv(h->fd, &pack, NULL);
+		res = l2tp_recv(h->fd, &pack, NULL,
+				conf_secret, conf_secret_len);
 		if (res) {
 			if (res == -2) {
 				log_tunnel(log_info1, conn,
@@ -3321,7 +3333,8 @@ static int l2tp_udp_read(struct triton_md_handler_t *h)
 	char src_addr[17];
 
 	while (1) {
-		if (l2tp_recv(h->fd, &pack, &pkt_info))
+		if (l2tp_recv(h->fd, &pack, &pkt_info,
+			      conf_secret, conf_secret_len) < 0)
 			break;
 
 		if (!pack)
