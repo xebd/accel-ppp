@@ -1507,6 +1507,8 @@ static void l2tp_send_SCCRQ(void *peer_addr)
 {
 	struct l2tp_conn_t *conn = l2tp_tunnel_self();
 	struct l2tp_packet_t *pack = NULL;
+	uint16_t chall_len;
+	int err;
 
 	log_tunnel(log_info2, conn, "sending SCCRQ\n");
 
@@ -1548,7 +1550,19 @@ static void l2tp_send_SCCRQ(void *peer_addr)
 		goto pack_err;
 	}
 
-	if (l2tp_tunnel_genchall(MD5_DIGEST_LENGTH, conn, pack) < 0) {
+	if (u_randbuf(&chall_len, sizeof(chall_len), &err) < 0) {
+		if (err)
+			log_tunnel(log_error, conn, "impossible to send SCCRQ:"
+				   " reading from urandom failed: %s\n",
+				   strerror(err));
+		else
+			log_tunnel(log_error, conn, "impossible to send SCCRQ:"
+				   " end of file reached while reading"
+				   " from urandom\n");
+		goto pack_err;
+	}
+	chall_len = (chall_len & 0x007F) + MD5_DIGEST_LENGTH;
+	if (l2tp_tunnel_genchall(chall_len, conn, pack) < 0) {
 		log_tunnel(log_error, conn, "impossible to send SCCRQ:"
 			   " Challenge generation failed\n");
 		goto pack_err;
@@ -1573,6 +1587,8 @@ err:
 static void l2tp_send_SCCRP(struct l2tp_conn_t *conn)
 {
 	struct l2tp_packet_t *pack;
+	uint16_t chall_len;
+	int err;
 
 	log_tunnel(log_info2, conn, "sending SCCRP\n");
 
@@ -1620,7 +1636,20 @@ static void l2tp_send_SCCRP(struct l2tp_conn_t *conn)
 			   " Challenge Response generation failed\n");
 		goto out_err;
 	}
-	if (l2tp_tunnel_genchall(MD5_DIGEST_LENGTH, conn, pack) < 0) {
+
+	if (u_randbuf(&chall_len, sizeof(chall_len), &err) < 0) {
+		if (err)
+			log_tunnel(log_error, conn, "impossible to send SCCRP:"
+				   " reading from urandom failed: %s\n",
+				   strerror(err));
+		else
+			log_tunnel(log_error, conn, "impossible to send SCCRP:"
+				   " end of file reached while reading"
+				   " from urandom\n");
+		goto out_err;
+	}
+	chall_len = (chall_len & 0x007F) + MD5_DIGEST_LENGTH;
+	if (l2tp_tunnel_genchall(chall_len, conn, pack) < 0) {
 		log_tunnel(log_error, conn, "impossible to send SCCRP:"
 			   " Challenge generation failed\n");
 		goto out_err;
