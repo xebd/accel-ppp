@@ -469,7 +469,6 @@ int l2tp_packet_add_string(struct l2tp_packet_t *pack, int id, const char *val, 
 		mempool_free(attr);
 		return -1;
 	}
-	memcpy(attr->val.string, val, attr->length);
 	list_add_tail(&attr->entry, &pack->attrs);
 
 	return 0;
