@@ -63,6 +63,10 @@ struct l2tp_packet_t
 	struct sockaddr_in addr;
 	struct l2tp_hdr_t hdr;
 	struct list_head attrs;
+	struct l2tp_attr_t *last_RV;
+	const char *secret;
+	size_t secret_len;
+	int hide_avps;
 };
 
 extern int conf_verbose;
@@ -79,7 +83,8 @@ void l2tp_packet_free(struct l2tp_packet_t *);
 void l2tp_packet_print(const struct l2tp_packet_t *,
 		       void (*print)(const char *fmt, ...));
 struct l2tp_packet_t *l2tp_packet_alloc(int ver, int msg_type,
-					const struct sockaddr_in *addr);
+					const struct sockaddr_in *addr, int H,
+					const char *secret, size_t secret_len);
 int l2tp_packet_send(int sock, struct l2tp_packet_t *);
 int l2tp_packet_add_int16(struct l2tp_packet_t *pack, int id, int16_t val, int M);
 int l2tp_packet_add_int32(struct l2tp_packet_t *pack, int id, int32_t val, int M);

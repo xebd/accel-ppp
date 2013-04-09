@@ -13,6 +13,7 @@
 #include "log.h"
 #include "mempool.h"
 #include "memdebug.h"
+#include "utils.h"
 
 #include "l2tp.h"
 #include "attr_defs.h"
@@ -40,6 +41,8 @@ void l2tp_packet_print(const struct l2tp_packet_t *pack,
 		val = l2tp_dict_find_value(attr->attr, attr->val);
 		if (val)
 			print(" %s", val->name);
+		else if (attr->H)
+			print(" (hidden, %hu bytes)", attr->length);
 		else {
 			switch (attr->attr->type) {
 				case ATTR_TYPE_INT16:
@@ -60,7 +63,8 @@ void l2tp_packet_print(const struct l2tp_packet_t *pack,
 }
 
 struct l2tp_packet_t *l2tp_packet_alloc(int ver, int msg_type,
-					const struct sockaddr_in *addr)
+					const struct sockaddr_in *addr, int H,
+					const char *secret, size_t secret_len)
 {
 	struct l2tp_packet_t *pack = mempool_alloc(pack_pool);
 	if (!pack)
@@ -73,6 +77,9 @@ struct l2tp_packet_t *l2tp_packet_alloc(int ver, int msg_type,
 	pack->hdr.L = 1;
 	pack->hdr.S = 1;
 	memcpy(&pack->addr, addr, sizeof(*addr));
+	pack->hide_avps = H;
+	pack->secret = secret;
+	pack->secret_len = secret_len;
 
 	if (msg_type) {
 		if (l2tp_packet_add_int16(pack, Message_Type, msg_type, 1)) {
@@ -90,7 +97,8 @@ void l2tp_packet_free(struct l2tp_packet_t *pack)
 
 	while (!list_empty(&pack->attrs)) {
 		attr = list_entry(pack->attrs.next, typeof(*attr), entry);
-		if (attr->attr->type == ATTR_TYPE_OCTETS || attr->attr->type == ATTR_TYPE_STRING)
+		if (attr->H || attr->attr->type == ATTR_TYPE_OCTETS
+		    || attr->attr->type == ATTR_TYPE_STRING)
 			_free(attr->val.octets);
 		list_del(&attr->entry);
 		mempool_free(attr);
@@ -493,7 +501,10 @@ int l2tp_packet_send(int sock, struct l2tp_packet_t *pack)
 		avp->H = attr->H;
 		avp->length = sizeof(*avp) + attr->length;
 		*(uint16_t *)ptr = htons(*(uint16_t *)ptr);
-		switch (attr->attr->type) {
+		if (attr->H)
+			memcpy(avp->val, attr->val.octets, attr->length);
+		else
+			switch (attr->attr->type) {
 			case ATTR_TYPE_INT16:
 				*(int16_t *)avp->val = htons(attr->val.int16);
 				break;
@@ -504,8 +515,7 @@ int l2tp_packet_send(int sock, struct l2tp_packet_t *pack)
 			case ATTR_TYPE_OCTETS:
 				memcpy(avp->val, attr->val.string, attr->length);
 				break;
-		}
-
+			}
 		ptr += sizeof(*avp) + attr->length;
 		len += sizeof(*avp) + attr->length;
 	}
@@ -536,7 +546,120 @@ int l2tp_packet_send(int sock, struct l2tp_packet_t *pack)
 	return 0;
 }
 
-static struct l2tp_attr_t *attr_alloc(int id, int M)
+int encode_attr(const struct l2tp_packet_t *pack, struct l2tp_attr_t *attr,
+		const void *val, uint16_t val_len)
+{
+	uint8_t *u8_ptr = NULL;
+	uint8_t md5[MD5_DIGEST_LENGTH];
+	MD5_CTX md5_ctx;
+	uint16_t pad_len;
+	uint16_t attr_type;
+	uint16_t blocks_left;
+	uint16_t last_block_len;
+	int err;
+
+	if (pack->secret == NULL || pack->secret_len == 0) {
+		log_error("l2tp: impossible to hide AVP: no secret\n");
+		goto err;
+	}
+	if (pack->last_RV == NULL) {
+		log_error("l2tp: impossible to hide AVP: no random vector\n");
+		goto err;
+	}
+
+	if (u_randbuf(&pad_len, sizeof(pad_len), &err) < 0) {
+		if (err)
+			log_error("l2tp: impossible to hide AVP:"
+				  " reading from urandom failed: %s\n",
+				  strerror(err));
+		else
+			log_error("l2tp: impossible to hide AVP:"
+				  " end of file reached while reading"
+				  " from urandom\n");
+		goto err;
+	}
+	/* Use at least 16 bytes of padding */
+	pad_len = (pad_len & 0x007F) + 16;
+
+	/* Generate Hidden AVP Subformat:
+	 *   -original AVP size (2 bytes, network byte order)
+	 *   -original AVP value ('val_len' bytes)
+	 *   -padding ('pad_len' bytes of random values)
+	 */
+	attr->length = sizeof(val_len) + val_len + pad_len;
+	attr->val.octets = _malloc(attr->length);
+	if (attr->val.octets == NULL) {
+		log_error("l2tp: impossible to hide AVP:"
+			  " memory allocation failed\n");
+		goto err;
+	}
+
+	*(uint16_t *)attr->val.octets = htons(val_len);
+	memcpy(attr->val.octets + sizeof(val_len), val, val_len);
+
+	if (u_randbuf(attr->val.octets + sizeof(val_len) + val_len,
+		      pad_len, &err) < 0) {
+		if (err)
+			log_error("l2tp: impossible to hide AVP:"
+				  " reading from urandom failed: %s\n",
+				  strerror(err));
+		else
+			log_error("l2tp: impossible to hide AVP:"
+				  " end of file reached while reading"
+				  " from urandom\n");
+		goto err_free;
+	}
+
+	/* Hidden AVP cipher:
+	 * ciphered[0] = clear[0] xor MD5(attr_type, secret, RV)
+	 * ciphered[1] = clear[1] xor MD5(secret, ciphered[0])
+	 * ...
+	 * ciphered[n] = clear[n] xor MD5(secret, ciphered[n-1])
+	 */
+	attr_type = htons(attr->attr->id);
+	MD5_Init(&md5_ctx);
+	MD5_Update(&md5_ctx, &attr_type, sizeof(attr_type));
+	MD5_Update(&md5_ctx, pack->secret, pack->secret_len);
+	MD5_Update(&md5_ctx, pack->last_RV->val.octets, pack->last_RV->length);
+	MD5_Final(md5, &md5_ctx);
+
+	if (attr->length <= MD5_DIGEST_LENGTH) {
+		memxor(attr->val.octets, md5, attr->length);
+		return 0;
+	}
+
+	memxor(attr->val.octets, md5, MD5_DIGEST_LENGTH);
+
+	blocks_left = attr->length / MD5_DIGEST_LENGTH - 1;
+	last_block_len = attr->length % MD5_DIGEST_LENGTH;
+
+	for (u8_ptr = attr->val.octets; blocks_left; --blocks_left) {
+		MD5_Init(&md5_ctx);
+		MD5_Update(&md5_ctx, pack->secret, pack->secret_len);
+		MD5_Update(&md5_ctx, u8_ptr, MD5_DIGEST_LENGTH);
+		MD5_Final(md5, &md5_ctx);
+		u8_ptr += MD5_DIGEST_LENGTH;
+		memxor(u8_ptr, md5, MD5_DIGEST_LENGTH);
+	}
+
+	if (last_block_len) {
+		MD5_Init(&md5_ctx);
+		MD5_Update(&md5_ctx, pack->secret, pack->secret_len);
+		MD5_Update(&md5_ctx, u8_ptr, MD5_DIGEST_LENGTH);
+		MD5_Final(md5, &md5_ctx);
+		memxor(u8_ptr + MD5_DIGEST_LENGTH, md5, last_block_len);
+	}
+
+	return 0;
+
+err_free:
+	_free(attr->val.octets);
+	attr->val.octets = NULL;
+err:
+	return -1;
+}
+
+static struct l2tp_attr_t *attr_alloc(int id, int M, int H)
 {
 	struct l2tp_attr_t *attr;
 	struct l2tp_dict_attr_t *da;
@@ -560,75 +683,183 @@ static struct l2tp_attr_t *attr_alloc(int id, int M)
 	else
 		attr->M = M;
 
-	//if (da->H != -1)
-	//attr->H = da->H;
+	if (da->H != -1)
+		attr->H = da->H;
+	else
+		attr->H = H;
 
 	return attr;
 }
 
+static int l2tp_packet_add_random_vector(struct l2tp_packet_t *pack)
+{
+	struct l2tp_attr_t *attr = attr_alloc(Random_Vector, 1, 0);
+	uint16_t ranvec_len;
+	int err;
+
+	if (!attr)
+		goto err;
+
+	if (u_randbuf(&ranvec_len, sizeof(ranvec_len), &err) < 0) {
+		if (err)
+			log_error("l2tp: impossible to build Random Vector:"
+				  " reading from urandom failed: %s\n",
+				  strerror(err));
+		else
+			log_error("l2tp: impossible to build Random Vector:"
+				  " end of file reached while reading"
+				  " from urandom\n");
+		goto err_attr;
+	}
+	/* RFC 2661 recommends that Random Vector be least 16 bytes long */
+	ranvec_len = (ranvec_len & 0x007F) + 16;
+
+	attr->length = ranvec_len;
+	attr->val.octets = _malloc(ranvec_len);
+	if (!attr->val.octets) {
+		log_emerg("l2tp: out of memory\n");
+		goto err_attr;
+	}
+
+	if (u_randbuf(attr->val.octets, ranvec_len, &err) < 0) {
+		if (err)
+			log_error("l2tp: impossible to build Random Vector:"
+				  " reading from urandom failed: %s\n",
+				  strerror(err));
+		else
+			log_error("l2tp: impossible to build Random Vector:"
+				  " end of file reached while reading"
+				  " from urandom\n");
+		goto err_attr_val;
+	}
+
+	list_add_tail(&attr->entry, &pack->attrs);
+	pack->last_RV = attr;
+
+	return 0;
+
+err_attr_val:
+	_free(attr->val.octets);
+err_attr:
+	mempool_free(attr);
+err:
+	return -1;
+}
+
 int l2tp_packet_add_int16(struct l2tp_packet_t *pack, int id, int16_t val, int M)
 {
-	struct l2tp_attr_t *attr = attr_alloc(id, M);
+	struct l2tp_attr_t *attr = attr_alloc(id, M, pack->hide_avps);
 
 	if (!attr)
 		return -1;
 
-	attr->length = 2;
-	attr->val.int16 = val;
-	list_add_tail(&attr->entry, &pack->attrs);
-
-	return 0;
-}
-int l2tp_packet_add_int32(struct l2tp_packet_t *pack, int id, int32_t val, int M)
-{
-	struct l2tp_attr_t *attr = attr_alloc(id, M);
-
-	if (!attr)
-		return -1;
-
-	attr->length = 4;
-	attr->val.int32 = val;
-	list_add_tail(&attr->entry, &pack->attrs);
-
-	return 0;
-}
-int l2tp_packet_add_string(struct l2tp_packet_t *pack, int id, const char *val, int M)
-{
-	struct l2tp_attr_t *attr = attr_alloc(id, M);
-
-	if (!attr)
-		return -1;
-
-	attr->length = strlen(val);
-	attr->val.string = _strdup(val);
-	if (!attr->val.string) {
-		log_emerg("l2tp: out of memory\n");
-		mempool_free(attr);
-		return -1;
+	if (attr->H) {
+		if (pack->last_RV == NULL)
+			if (l2tp_packet_add_random_vector(pack) < 0)
+				goto err;
+		val = htons(val);
+		if (encode_attr(pack, attr, &val, sizeof(val)) < 0)
+			goto err;
+	} else {
+		attr->length = sizeof(val);
+		attr->val.int16 = val;
 	}
 	list_add_tail(&attr->entry, &pack->attrs);
 
 	return 0;
+
+err:
+	mempool_free(attr);
+	return -1;
+}
+
+int l2tp_packet_add_int32(struct l2tp_packet_t *pack, int id, int32_t val, int M)
+{
+	struct l2tp_attr_t *attr = attr_alloc(id, M, pack->hide_avps);
+
+	if (!attr)
+		return -1;
+
+	if (attr->H) {
+		if (pack->last_RV == NULL)
+			if (l2tp_packet_add_random_vector(pack) < 0)
+				goto err;
+		val = htonl(val);
+		if (encode_attr(pack, attr, &val, sizeof(val)) < 0)
+			goto err;
+	} else {
+		attr->length = sizeof(val);
+		attr->val.int32 = val;
+	}
+	list_add_tail(&attr->entry, &pack->attrs);
+
+	return 0;
+
+err:
+	mempool_free(attr);
+	return -1;
+}
+
+int l2tp_packet_add_string(struct l2tp_packet_t *pack, int id, const char *val, int M)
+{
+	struct l2tp_attr_t *attr = attr_alloc(id, M, pack->hide_avps);
+	size_t val_len = strlen(val);
+
+	if (!attr)
+		return -1;
+
+	if (attr->H) {
+		if (pack->last_RV == NULL)
+			if (l2tp_packet_add_random_vector(pack) < 0)
+				goto err;
+		if (encode_attr(pack, attr, val, val_len) < 0)
+			goto err;
+	} else {
+		attr->length = val_len;
+		attr->val.string = _strdup(val);
+		if (!attr->val.string) {
+			log_emerg("l2tp: out of memory\n");
+			goto err;
+		}
+	}
+	list_add_tail(&attr->entry, &pack->attrs);
+
+	return 0;
+
+err:
+	mempool_free(attr);
+	return -1;
 }
 
 int l2tp_packet_add_octets(struct l2tp_packet_t *pack, int id, const uint8_t *val, int size, int M)
 {
-	struct l2tp_attr_t *attr = attr_alloc(id, M);
+	struct l2tp_attr_t *attr = attr_alloc(id, M, pack->hide_avps);
 
 	if (!attr)
 		return -1;
 
-	attr->length = size;
-	attr->val.octets = _malloc(size);
-	if (!attr->val.octets) {
-		log_emerg("l2tp: out of memory\n");
-		mempool_free(attr);
-		return -1;
+	if (attr->H) {
+		if (pack->last_RV == NULL)
+			if (l2tp_packet_add_random_vector(pack) < 0)
+				goto err;
+		if (encode_attr(pack, attr, val, size) < 0)
+			goto err;
+	} else {
+		attr->length = size;
+		attr->val.octets = _malloc(size);
+		if (!attr->val.octets) {
+			log_emerg("l2tp: out of memory\n");
+			goto err;
+		}
+		memcpy(attr->val.octets, val, attr->length);
 	}
-	memcpy(attr->val.octets, val, attr->length);
 	list_add_tail(&attr->entry, &pack->attrs);
 
 	return 0;
+
+err:
+	mempool_free(attr);
+	return -1;
 }
 
 static void init(void)

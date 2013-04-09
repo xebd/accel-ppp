@@ -424,6 +424,12 @@ is greater of zero then l2tp module will produce verbose logging.
 .TP
 .BI "secret=" string
 Specifies secret to connect to server.
+.TP
+.BI "hide-avps=" n
+If this option is given and
+.B n
+is greater than 0, then attributes sent in L2TP packets will be hidden (for
+AVPs that support it).
 .SH [radius]
 .br
 Configuration of RADIUS module.
