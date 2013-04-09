@@ -57,6 +57,7 @@ static int conf_hello_interval = 60;
 static int conf_dir300_quirk = 0;
 static const char *conf_host_name = "accel-ppp";
 static const char *conf_secret = NULL;
+static size_t conf_secret_len = 0;
 static int conf_mppe = MPPE_UNSET;
 
 static unsigned int stat_active;
@@ -226,7 +227,7 @@ static int l2tp_tunnel_genchall(uint16_t chall_len,
 	ssize_t rdlen;
 
 	if (chall_len == 0
-	    || conf_secret == NULL || strlen(conf_secret) == 0) {
+	    || conf_secret == NULL || conf_secret_len == 0) {
 		if (conn->challenge) {
 			_free(conn->challenge);
 			conn->challenge = NULL;
@@ -302,7 +303,7 @@ static int l2tp_tunnel_storechall(struct l2tp_conn_t *conn,
 		return 0;
 	}
 
-	if (conf_secret == NULL || strlen(conf_secret) == 0) {
+	if (conf_secret == NULL || conf_secret_len == 0) {
 		log_tunnel(log_error, conn, "authentication required by peer,"
 			   " but no secret has been set for this tunnel\n");
 		goto err;
@@ -340,21 +341,21 @@ static int l2tp_tunnel_genchallresp(uint8_t msgident,
 	uint8_t challresp[MD5_DIGEST_LENGTH];
 
 	if (conn->challenge == NULL) {
-		if (conf_secret && strlen(conf_secret) > 0) {
+		if (conf_secret && conf_secret_len > 0) {
 			log_tunnel(log_warn, conn,
 				   "no Challenge sent by peer\n");
 		}
 		return 0;
 	}
 
-	if (conf_secret == NULL || strlen(conf_secret) == 0) {
+	if (conf_secret == NULL || conf_secret_len == 0) {
 		log_tunnel(log_error, conn,
 			   "impossible to generate Challenge Response:"
 			   " no secret set for this tunnel\n");
 		return -1;
 	}
 
-	comp_chap_md5(challresp, msgident, conf_secret, strlen(conf_secret),
+	comp_chap_md5(challresp, msgident, conf_secret, conf_secret_len,
 		      conn->challenge, conn->challenge_len);
 	if (l2tp_packet_add_octets(pack, Challenge_Response, challresp,
 				   MD5_DIGEST_LENGTH, 1) < 0) {
@@ -373,7 +374,7 @@ static int l2tp_tunnel_checkchallresp(uint8_t msgident,
 {
 	uint8_t challref[MD5_DIGEST_LENGTH];
 
-	if (conf_secret == NULL || strlen(conf_secret) == 0) {
+	if (conf_secret == NULL || conf_secret_len == 0) {
 		if (challresp) {
 			log_tunnel(log_warn, conn,
 				   "discarding unexpected Challenge Response"
@@ -400,7 +401,7 @@ static int l2tp_tunnel_checkchallresp(uint8_t msgident,
 		return -1;
 	}
 
-	comp_chap_md5(challref, msgident, conf_secret, strlen(conf_secret),
+	comp_chap_md5(challref, msgident, conf_secret, conf_secret_len,
 		      conn->challenge, conn->challenge_len);
 	if (memcmp(challref, challresp->val.octets, MD5_DIGEST_LENGTH) != 0) {
 		log_tunnel(log_error, conn, "impossible to authenticate peer:"
@@ -3716,8 +3717,10 @@ static void load_config(void)
 		conf_host_name = "accel-ppp";
 
 	opt = conf_get_opt("l2tp", "secret");
-	if (opt)
+	if (opt) {
 		conf_secret = opt;
+		conf_secret_len = strlen(opt);
+	}
 
 	opt = conf_get_opt("l2tp", "dir300_quirk");
 	if (opt)
