@@ -511,6 +511,9 @@ int l2tp_packet_send(int sock, struct l2tp_packet_t *pack)
 			case ATTR_TYPE_INT32:
 				*(int32_t *)avp->val = htonl(attr->val.int32);
 				break;
+			case ATTR_TYPE_INT64:
+				*(uint64_t *)avp->val = htobe64(attr->val.uint64);
+				break;
 			case ATTR_TYPE_STRING:
 			case ATTR_TYPE_OCTETS:
 				memcpy(avp->val, attr->val.string, attr->length);
@@ -790,6 +793,33 @@ int l2tp_packet_add_int32(struct l2tp_packet_t *pack, int id, int32_t val, int M
 	} else {
 		attr->length = sizeof(val);
 		attr->val.int32 = val;
+	}
+	list_add_tail(&attr->entry, &pack->attrs);
+
+	return 0;
+
+err:
+	mempool_free(attr);
+	return -1;
+}
+
+int l2tp_packet_add_int64(struct l2tp_packet_t *pack, int id, int64_t val, int M)
+{
+	struct l2tp_attr_t *attr = attr_alloc(id, M, pack->hide_avps);
+
+	if (!attr)
+		return -1;
+
+	if (attr->H) {
+		if (pack->last_RV == NULL)
+			if (l2tp_packet_add_random_vector(pack) < 0)
+				goto err;
+		val = htobe64(val);
+		if (encode_attr(pack, attr, &val, sizeof(val)) < 0)
+			goto err;
+	} else {
+		attr->length = sizeof(val);
+		attr->val.uint64 = val;
 	}
 	list_add_tail(&attr->entry, &pack->attrs);
 
