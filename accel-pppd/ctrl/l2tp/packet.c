@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <endian.h>
 #include <errno.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -284,7 +285,7 @@ int l2tp_recv(int fd, struct l2tp_packet_t **p, struct in_pktinfo *pkt_info)
 				case ATTR_TYPE_INT64:
 					if (avp->length != sizeof(*avp) + 8)
 						goto out_err_len;
-					attr->val.uint64 = *(uint64_t *)avp->val;
+					attr->val.uint64 = be64toh(*(uint64_t *)avp->val);
 					break;
 				case ATTR_TYPE_OCTETS:
 					attr->val.octets = _malloc(attr->length);
