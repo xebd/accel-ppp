@@ -816,6 +816,7 @@ static struct ipoe_session *ipoe_session_create_dhcpv4(struct ipoe_serv *serv, s
 	if (pack->client_id) {
 		ses->client_id = (struct dhcpv4_option *)ptr;
 		ses->client_id->len = pack->client_id->len;
+		ses->client_id->data = (uint8_t *)(ses->client_id + 1);
 		memcpy(ses->client_id->data, pack->client_id->data, pack->client_id->len);
 		ptr += sizeof(struct dhcpv4_option) + pack->client_id->len;
 	}
@@ -823,6 +824,7 @@ static struct ipoe_session *ipoe_session_create_dhcpv4(struct ipoe_serv *serv, s
 	if (pack->relay_agent) {
 		ses->relay_agent = (struct dhcpv4_option *)ptr;
 		ses->relay_agent->len = pack->relay_agent->len;
+		ses->relay_agent->data = (uint8_t *)(ses->relay_agent + 1);
 		memcpy(ses->relay_agent->data, pack->relay_agent->data, pack->relay_agent->len);
 		ptr += sizeof(struct dhcpv4_option) + pack->relay_agent->len;
 		if (dhcpv4_parse_opt82(ses->relay_agent, &ses->agent_circuit_id, &ses->agent_remote_id))
