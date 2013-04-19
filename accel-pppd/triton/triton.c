@@ -617,6 +617,14 @@ void __export triton_run()
 	opt = conf_get_opt("core", "thread-count");
 	if (opt && atoi(opt) > 0)
 		thread_count = atoi(opt);
+	else {
+		thread_count = sysconf(_SC_NPROCESSORS_ONLN);
+		if (thread_count < 0) {
+			triton_log_error("sysconf(_SC_NPROCESSORS_ONLN)"
+					 " failed: %s\n", strerror(errno));
+			thread_count = 2;
+		}
+	}
 
 	opt = conf_get_opt("core", "thread-count-max");
 	if (opt && atoi(opt) > 0)
