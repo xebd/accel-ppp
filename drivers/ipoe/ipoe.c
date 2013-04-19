@@ -415,35 +415,35 @@ static netdev_tx_t ipoe_xmit(struct sk_buff *skb, struct net_device *dev)
 
 			if (ipoe_do_nat(skb, ses->peer_addr, 1))
 				goto drop;
+		}
 
-			if (!ses->link_dev) {
-				iph = ip_hdr(skb);
-				
-				ip_send_check(iph);
-				
-				if (ipoe_route4(skb))
-					goto drop;
+		if (!ses->link_dev) {
+			iph = ip_hdr(skb);
+			
+			ip_send_check(iph);
+			
+			if (ipoe_route4(skb))
+				goto drop;
 
-				pskb_pull(skb, ETH_HLEN);
-				skb_reset_network_header(skb);
+			pskb_pull(skb, ETH_HLEN);
+			skb_reset_network_header(skb);
 
-				cb_ptr = skb->cb + sizeof(skb->cb) - 2;
-				*(__u16 *)cb_ptr = IPOE_MAGIC;
+			cb_ptr = skb->cb + sizeof(skb->cb) - 2;
+			*(__u16 *)cb_ptr = IPOE_MAGIC;
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,32)
-				skb->skb_iif = dev->ifindex;
+			skb->skb_iif = dev->ifindex;
 #else
-				skb->iif = dev->ifindex;
+			skb->iif = dev->ifindex;
 #endif
 
-				ip_local_out(skb);
+			ip_local_out(skb);
 
-				return NETDEV_TX_OK;
-			} else {
-				eth = (struct ethhdr *)skb->data;
-
-				memcpy(eth->h_dest, ses->hwaddr, ETH_ALEN);
-				memcpy(eth->h_source, ses->link_dev->dev_addr, ETH_ALEN);
-			}
+			return NETDEV_TX_OK;
+		} else {
+			eth = (struct ethhdr *)skb->data;
+			
+			memcpy(eth->h_dest, ses->hwaddr, ETH_ALEN);
+			memcpy(eth->h_source, ses->link_dev->dev_addr, ETH_ALEN);
 		}
 	} /*else if (skb->protocol == htons(ETH_P_ARP)) {
 		if (!pskb_may_pull(skb, arp_hdr_len(dev) + noff))
@@ -706,16 +706,17 @@ static unsigned int ipt_in_hook(unsigned int hook, struct sk_buff *skb, const st
 	if (!iph->saddr)
 		return NF_ACCEPT;
 
-	if (!ipoe_check_network(iph->saddr))
-		return NF_ACCEPT;
-	
 	//pr_info("ipoe: recv %08x %08x\n", iph->saddr, iph->daddr);
 	
 	ses = ipoe_lookup(iph->saddr);
 	
 	if (!ses) {
+		if (!ipoe_check_network(iph->saddr))
+			return NF_ACCEPT;
+	
 		if (!ipoe_check_interface(in->ifindex))
 			return NF_ACCEPT;
+
 		ipoe_queue_u(skb, iph->saddr);
 		return NF_DROP;
 	}

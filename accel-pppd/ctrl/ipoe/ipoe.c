@@ -582,12 +582,6 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 	if (ses->terminating)
 		return;
 	
-	if (!ses->ses.ipv4) {
-		ses->ses.ipv4 = &ses->ipv4;
-		ses->ipv4.owner = NULL;
-		ses->ipv4.peer_addr = ses->yiaddr;
-	}
-
 	if (ses->ifindex != -1) {
 		addr = 0;
 		if (!ses->ses.ipv4)
@@ -601,7 +595,14 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 		}
 	}
 	
-	if (ses->serv->opt_ifcfg || (ses->serv->opt_mode == MODE_L2))
+	if (!ses->ses.ipv4) {
+		ses->ses.ipv4 = &ses->ipv4;
+		ses->ipv4.owner = NULL;
+		ses->ipv4.peer_addr = ses->yiaddr;
+		ses->ipv4.addr = ses->siaddr;
+	}
+	
+	if (ses->ifindex == -1 && (ses->serv->opt_ifcfg || (ses->serv->opt_mode == MODE_L2)))
 		ipoe_ifcfg_add(ses);
 	
 	if (ses->l4_redirect)
