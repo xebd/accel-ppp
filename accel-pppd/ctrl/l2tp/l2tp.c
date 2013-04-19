@@ -2463,6 +2463,19 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
 		return 0;
 	}
 
+	if (ap_shutdown) {
+		log_tunnel(log_warn, conn, "shutdown in progress,"
+			   " discarding ICRQ\n");
+		return 0;
+	}
+
+	if (triton_module_loaded("connlimit")
+	    && connlimit_check(cl_key_from_ipv4(conn->peer_addr.sin_addr.s_addr))) {
+		log_tunnel(log_warn, conn, "connection limits reached,"
+			   " discarding ICRQ\n");
+		return 0;
+	}
+
 	log_tunnel(log_info2, conn, "handling ICRQ\n");
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
@@ -2716,6 +2729,19 @@ static int l2tp_recv_OCRQ(struct l2tp_conn_t *conn,
 
 	if (conn->state != STATE_ESTB && !conn->lns_mode) {
 		log_tunnel(log_warn, conn, "discarding unexpected OCRQ\n");
+		return 0;
+	}
+
+	if (ap_shutdown) {
+		log_tunnel(log_warn, conn, "shutdown in progress,"
+			   " discarding OCRQ\n");
+		return 0;
+	}
+
+	if (triton_module_loaded("connlimit")
+	    && connlimit_check(cl_key_from_ipv4(conn->peer_addr.sin_addr.s_addr))) {
+		log_tunnel(log_warn, conn, "connection limits reached,"
+			   " discarding OCRQ\n");
 		return 0;
 	}
 
