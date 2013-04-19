@@ -49,6 +49,7 @@
 #define STATE_CLOSE      0
 
 int conf_verbose = 0;
+int conf_hide_avps = 0;
 int conf_avp_permissive = 0;
 static int conf_timeout = 60;
 static int conf_rtimeout = 5;
@@ -57,6 +58,7 @@ static int conf_hello_interval = 60;
 static int conf_dir300_quirk = 0;
 static const char *conf_host_name = "accel-ppp";
 static const char *conf_secret = NULL;
+static size_t conf_secret_len = 0;
 static int conf_mppe = MPPE_UNSET;
 
 static unsigned int stat_active;
@@ -77,6 +79,7 @@ struct l2tp_sess_t
 
 	int state1;
 	uint16_t lns_mode:1;
+	uint16_t hide_avps:1;
 
 	struct triton_context_t sctx;
 	struct triton_timer_t timeout_timer;
@@ -100,6 +103,7 @@ struct l2tp_conn_t
 	uint16_t peer_tid;
 	uint32_t framing_cap;
 	uint16_t lns_mode:1;
+	uint16_t hide_avps:1;
 	uint16_t port_set:1;
 	uint16_t challenge_len;
 	uint8_t *challenge;
@@ -222,11 +226,10 @@ static int l2tp_tunnel_genchall(uint16_t chall_len,
 				struct l2tp_packet_t *pack)
 {
 	void *ptr = NULL;
-	size_t urandlen;
-	ssize_t rdlen;
+	int err;
 
 	if (chall_len == 0
-	    || conf_secret == NULL || strlen(conf_secret) == 0) {
+	    || conf_secret == NULL || conf_secret_len == 0) {
 		if (conn->challenge) {
 			_free(conn->challenge);
 			conn->challenge = NULL;
@@ -247,26 +250,18 @@ static int l2tp_tunnel_genchall(uint16_t chall_len,
 		conn->challenge_len = chall_len;
 	}
 
-	for (urandlen = 0; urandlen < chall_len; urandlen += rdlen) {
-		rdlen = read(urandom_fd, conn->challenge + urandlen,
-			     chall_len - urandlen);
-		if (rdlen < 0) {
-			if (errno == EINTR)
-				rdlen = 0;
-			else {
-				log_tunnel(log_error, conn,
-					   "impossible to generate Challenge:"
-					   " reading from urandom failed: %s\n",
-					   strerror(errno));
-				goto err;
-			}
-		} else if (rdlen == 0) {
+	if (u_randbuf(conn->challenge, chall_len, &err) < 0) {
+		if (err)
+			log_tunnel(log_error, conn,
+				   "impossible to generate Challenge:"
+				   " reading from urandom failed: %s\n",
+				   strerror(err));
+		else
 			log_tunnel(log_error, conn,
 				   "impossible to generate Challenge:"
 				   " end of file reached while reading"
 				   " from urandom\n");
-			goto err;
-		}
+		goto err;
 	}
 
 	if (l2tp_packet_add_octets(pack, Challenge, conn->challenge,
@@ -302,7 +297,7 @@ static int l2tp_tunnel_storechall(struct l2tp_conn_t *conn,
 		return 0;
 	}
 
-	if (conf_secret == NULL || strlen(conf_secret) == 0) {
+	if (conf_secret == NULL || conf_secret_len == 0) {
 		log_tunnel(log_error, conn, "authentication required by peer,"
 			   " but no secret has been set for this tunnel\n");
 		goto err;
@@ -340,21 +335,21 @@ static int l2tp_tunnel_genchallresp(uint8_t msgident,
 	uint8_t challresp[MD5_DIGEST_LENGTH];
 
 	if (conn->challenge == NULL) {
-		if (conf_secret && strlen(conf_secret) > 0) {
+		if (conf_secret && conf_secret_len > 0) {
 			log_tunnel(log_warn, conn,
 				   "no Challenge sent by peer\n");
 		}
 		return 0;
 	}
 
-	if (conf_secret == NULL || strlen(conf_secret) == 0) {
+	if (conf_secret == NULL || conf_secret_len == 0) {
 		log_tunnel(log_error, conn,
 			   "impossible to generate Challenge Response:"
 			   " no secret set for this tunnel\n");
 		return -1;
 	}
 
-	comp_chap_md5(challresp, msgident, conf_secret, strlen(conf_secret),
+	comp_chap_md5(challresp, msgident, conf_secret, conf_secret_len,
 		      conn->challenge, conn->challenge_len);
 	if (l2tp_packet_add_octets(pack, Challenge_Response, challresp,
 				   MD5_DIGEST_LENGTH, 1) < 0) {
@@ -373,7 +368,7 @@ static int l2tp_tunnel_checkchallresp(uint8_t msgident,
 {
 	uint8_t challref[MD5_DIGEST_LENGTH];
 
-	if (conf_secret == NULL || strlen(conf_secret) == 0) {
+	if (conf_secret == NULL || conf_secret_len == 0) {
 		if (challresp) {
 			log_tunnel(log_warn, conn,
 				   "discarding unexpected Challenge Response"
@@ -400,7 +395,7 @@ static int l2tp_tunnel_checkchallresp(uint8_t msgident,
 		return -1;
 	}
 
-	comp_chap_md5(challref, msgident, conf_secret, strlen(conf_secret),
+	comp_chap_md5(challref, msgident, conf_secret, conf_secret_len,
 		      conn->challenge, conn->challenge_len);
 	if (memcmp(challref, challresp->val.octets, MD5_DIGEST_LENGTH) != 0) {
 		log_tunnel(log_error, conn, "impossible to authenticate peer:"
@@ -422,7 +417,8 @@ static int l2tp_send_StopCCN(struct l2tp_conn_t *conn,
 		   res, err);
 
 	pack = l2tp_packet_alloc(2, Message_Type_Stop_Ctrl_Conn_Notify,
-				 &conn->peer_addr);
+				 &conn->peer_addr, conn->hide_avps,
+				 conf_secret, conf_secret_len);
 	if (pack == NULL) {
 		log_tunnel(log_error, conn, "impossible to send StopCCN:"
 			   " packet allocation failed\n");
@@ -464,7 +460,8 @@ static int l2tp_send_CDN(struct l2tp_sess_t *sess, uint16_t res, uint16_t err)
 		    res, err);
 
 	pack = l2tp_packet_alloc(2, Message_Type_Call_Disconnect_Notify,
-				 &sess->paren_conn->peer_addr);
+				 &sess->paren_conn->peer_addr, sess->hide_avps,
+				 conf_secret, conf_secret_len);
 	if (pack == NULL) {
 		log_session(log_error, sess, "impossible to send CDN:"
 			    " packet allocation failed\n");
@@ -508,7 +505,8 @@ static int l2tp_tunnel_send_CDN(uint16_t sid, uint16_t peer_sid,
 		   res, err);
 
 	pack = l2tp_packet_alloc(2, Message_Type_Call_Disconnect_Notify,
-				 &conn->peer_addr);
+				 &conn->peer_addr, conn->hide_avps,
+				 conf_secret, conf_secret_len);
 	if (pack == NULL) {
 		log_tunnel(log_error, conn, "impossible to send CDN:"
 			   " packet allocation failed\n");
@@ -871,6 +869,7 @@ static struct l2tp_sess_t *l2tp_tunnel_alloc_session(struct l2tp_conn_t *conn)
 	sess->peer_sid = 0;
 	sess->state1 = STATE_CLOSE;
 	sess->lns_mode = conn->lns_mode;
+	sess->hide_avps = conn->hide_avps;
 
 	sess->sctx.before_switch = log_switch;
 	sess->sctx.close = l2tp_sess_close;
@@ -998,7 +997,8 @@ err:
 static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 					     const struct sockaddr_in *host,
 					     uint32_t framing_cap,
-					     int lns_mode, int port_set)
+					     int lns_mode, int port_set,
+					     int hide_avps)
 {
 	struct l2tp_conn_t *conn;
 	socklen_t hostaddrlen = sizeof(conn->host_addr);
@@ -1127,6 +1127,7 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 	conn->sess_count = 0;
 	conn->lns_mode = lns_mode;
 	conn->port_set = port_set;
+	conn->hide_avps = hide_avps;
 
 	return conn;
 
@@ -1466,7 +1467,7 @@ static int l2tp_send_ZLB(struct l2tp_conn_t *conn)
 
 	log_tunnel(log_debug, conn, "sending ZLB\n");
 
-	pack = l2tp_packet_alloc(2, 0, &conn->peer_addr);
+	pack = l2tp_packet_alloc(2, 0, &conn->peer_addr, 0, NULL, 0);
 	if (!pack) {
 		log_tunnel(log_error, conn, "impossible to send ZLB:"
 			   " packet allocation failed\n");
@@ -1489,7 +1490,8 @@ static void l2tp_send_HELLO(struct triton_timer_t *t)
 
 	log_tunnel(log_debug, conn, "sending HELLO\n");
 
-	pack = l2tp_packet_alloc(2, Message_Type_Hello, &conn->peer_addr);
+	pack = l2tp_packet_alloc(2, Message_Type_Hello, &conn->peer_addr,
+				 conn->hide_avps, conf_secret, conf_secret_len);
 	if (!pack) {
 		log_tunnel(log_error, conn, "impossible to send HELLO:"
 			   " packet allocation failed\n");
@@ -1505,11 +1507,14 @@ static void l2tp_send_SCCRQ(void *peer_addr)
 {
 	struct l2tp_conn_t *conn = l2tp_tunnel_self();
 	struct l2tp_packet_t *pack = NULL;
+	uint16_t chall_len;
+	int err;
 
 	log_tunnel(log_info2, conn, "sending SCCRQ\n");
 
 	pack = l2tp_packet_alloc(2, Message_Type_Start_Ctrl_Conn_Request,
-				 &conn->peer_addr);
+				 &conn->peer_addr, conn->hide_avps,
+				 conf_secret, conf_secret_len);
 	if (pack == NULL) {
 		log_tunnel(log_error, conn, "impossible to send SCCRQ:"
 			   " packet allocation failed\n");
@@ -1545,7 +1550,19 @@ static void l2tp_send_SCCRQ(void *peer_addr)
 		goto pack_err;
 	}
 
-	if (l2tp_tunnel_genchall(MD5_DIGEST_LENGTH, conn, pack) < 0) {
+	if (u_randbuf(&chall_len, sizeof(chall_len), &err) < 0) {
+		if (err)
+			log_tunnel(log_error, conn, "impossible to send SCCRQ:"
+				   " reading from urandom failed: %s\n",
+				   strerror(err));
+		else
+			log_tunnel(log_error, conn, "impossible to send SCCRQ:"
+				   " end of file reached while reading"
+				   " from urandom\n");
+		goto pack_err;
+	}
+	chall_len = (chall_len & 0x007F) + MD5_DIGEST_LENGTH;
+	if (l2tp_tunnel_genchall(chall_len, conn, pack) < 0) {
 		log_tunnel(log_error, conn, "impossible to send SCCRQ:"
 			   " Challenge generation failed\n");
 		goto pack_err;
@@ -1570,11 +1587,14 @@ err:
 static void l2tp_send_SCCRP(struct l2tp_conn_t *conn)
 {
 	struct l2tp_packet_t *pack;
+	uint16_t chall_len;
+	int err;
 
 	log_tunnel(log_info2, conn, "sending SCCRP\n");
 
 	pack = l2tp_packet_alloc(2, Message_Type_Start_Ctrl_Conn_Reply,
-				 &conn->peer_addr);
+				 &conn->peer_addr, conn->hide_avps,
+				 conf_secret, conf_secret_len);
 	if (!pack) {
 		log_tunnel(log_error, conn, "impossible to send SCCRP:"
 			   " packet allocation failed\n");
@@ -1616,7 +1636,20 @@ static void l2tp_send_SCCRP(struct l2tp_conn_t *conn)
 			   " Challenge Response generation failed\n");
 		goto out_err;
 	}
-	if (l2tp_tunnel_genchall(MD5_DIGEST_LENGTH, conn, pack) < 0) {
+
+	if (u_randbuf(&chall_len, sizeof(chall_len), &err) < 0) {
+		if (err)
+			log_tunnel(log_error, conn, "impossible to send SCCRP:"
+				   " reading from urandom failed: %s\n",
+				   strerror(err));
+		else
+			log_tunnel(log_error, conn, "impossible to send SCCRP:"
+				   " end of file reached while reading"
+				   " from urandom\n");
+		goto out_err;
+	}
+	chall_len = (chall_len & 0x007F) + MD5_DIGEST_LENGTH;
+	if (l2tp_tunnel_genchall(chall_len, conn, pack) < 0) {
 		log_tunnel(log_error, conn, "impossible to send SCCRP:"
 			   " Challenge generation failed\n");
 		goto out_err;
@@ -1645,7 +1678,8 @@ static int l2tp_send_SCCCN(struct l2tp_conn_t *conn)
 	log_tunnel(log_info2, conn, "sending SCCCN\n");
 
 	pack = l2tp_packet_alloc(2, Message_Type_Start_Ctrl_Conn_Connected,
-				 &conn->peer_addr);
+				 &conn->peer_addr, conn->hide_avps,
+				 conf_secret, conf_secret_len);
 	if (pack == NULL) {
 		log_tunnel(log_error, conn, "impossible to send SCCCN:"
 			   " packet allocation failed\n");
@@ -1681,7 +1715,8 @@ static int l2tp_send_ICRQ(struct l2tp_sess_t *sess)
 	log_session(log_info2, sess, "sending ICRQ\n");
 
 	pack = l2tp_packet_alloc(2, Message_Type_Incoming_Call_Request,
-				 &sess->paren_conn->peer_addr);
+				 &sess->paren_conn->peer_addr, sess->hide_avps,
+				 conf_secret, conf_secret_len);
 	if (pack == NULL) {
 		log_session(log_error, sess, "impossible to send ICRQ:"
 			    " packet allocation failed\n");
@@ -1720,7 +1755,8 @@ static int l2tp_send_ICRP(struct l2tp_sess_t *sess)
 	log_session(log_info2, sess, "sending ICRP\n");
 
 	pack = l2tp_packet_alloc(2, Message_Type_Incoming_Call_Reply,
-				 &sess->paren_conn->peer_addr);
+				 &sess->paren_conn->peer_addr, sess->hide_avps,
+				 conf_secret, conf_secret_len);
 	if (!pack) {
 		log_session(log_error, sess, "impossible to send ICRP:"
 			    " packet allocation failed\n");
@@ -1754,7 +1790,8 @@ static int l2tp_send_ICCN(struct l2tp_sess_t *sess)
 	log_session(log_info2, sess, "sending ICCN\n");
 
 	pack = l2tp_packet_alloc(2, Message_Type_Incoming_Call_Connected,
-				 &sess->paren_conn->peer_addr);
+				 &sess->paren_conn->peer_addr, sess->hide_avps,
+				 conf_secret, conf_secret_len);
 	if (pack == 0) {
 		log_session(log_error, sess, "impossible to send ICCN:"
 			    " packet allocation failed\n");
@@ -1798,7 +1835,8 @@ static int l2tp_send_OCRQ(struct l2tp_sess_t *sess)
 	log_session(log_info2, sess, "sending OCRQ\n");
 
 	pack = l2tp_packet_alloc(2, Message_Type_Outgoing_Call_Request,
-				 &sess->paren_conn->peer_addr);
+				 &sess->paren_conn->peer_addr, sess->hide_avps,
+				 conf_secret, conf_secret_len);
 	if (!pack) {
 		log_session(log_error, sess, "impossible to send OCRQ:"
 			    " packet allocation failed\n");
@@ -1862,7 +1900,8 @@ static int l2tp_send_OCRP(struct l2tp_sess_t *sess)
 	log_session(log_info2, sess, "sending OCRP\n");
 
 	pack = l2tp_packet_alloc(2, Message_Type_Outgoing_Call_Reply,
-				 &sess->paren_conn->peer_addr);
+				 &sess->paren_conn->peer_addr, sess->hide_avps,
+				 conf_secret, conf_secret_len);
 	if (pack == NULL) {
 		log_session(log_error, sess, "impossible to send OCRP:"
 			    " packet allocation failed\n");
@@ -1896,7 +1935,8 @@ static int l2tp_send_OCCN(struct l2tp_sess_t *sess)
 	log_session(log_info2, sess, "sending OCCN\n");
 
 	pack = l2tp_packet_alloc(2, Message_Type_Outgoing_Call_Connected,
-				 &sess->paren_conn->peer_addr);
+				 &sess->paren_conn->peer_addr, sess->hide_avps,
+				 conf_secret, conf_secret_len);
 	if (pack == NULL) {
 		log_session(log_error, sess, "impossible to send OCCN:"
 			    " packet allocation failed\n");
@@ -1962,6 +2002,8 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch (attr->attr->id) {
+			case Random_Vector:
+				break;
 			case Protocol_Version:
 				protocol_version = attr;
 				break;
@@ -2014,7 +2056,8 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 		host_addr.sin_port = 0;
 
 		conn = l2tp_tunnel_alloc(&pack->addr, &host_addr,
-					 framing_cap->val.uint32, 1, 1);
+					 framing_cap->val.uint32, 1, 1,
+					 conf_hide_avps);
 		if (conn == NULL) {
 			log_error("l2tp: impossible to handle SCCRQ from %s:"
 				  " tunnel allocation failed\n", src_addr);
@@ -2079,6 +2122,7 @@ static int l2tp_recv_SCCRP(struct l2tp_conn_t *conn,
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch (attr->attr->id) {
 		case Message_Type:
+		case Random_Vector:
 		case Host_Name:
 		case Bearer_Capabilities:
 		case Firmware_Revision:
@@ -2214,6 +2258,7 @@ static int l2tp_recv_SCCCN(struct l2tp_conn_t *conn,
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch (attr->attr->id) {
 		case Message_Type:
+		case Random_Vector:
 			break;
 		case Challenge_Response:
 			challenge_resp = attr;
@@ -2312,6 +2357,7 @@ static int l2tp_recv_StopCCN(struct l2tp_conn_t *conn,
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch(attr->attr->id) {
 		case Message_Type:
+		case Random_Vector:
 			break;
 		case Assigned_Tunnel_ID:
 			assigned_tid = attr;
@@ -2425,6 +2471,7 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
 				assigned_sid = attr;
 				break;
 			case Message_Type:
+			case Random_Vector:
 			case Call_Serial_Number:
 			case Bearer_Type:
 			case Calling_Number:
@@ -2519,6 +2566,7 @@ static int l2tp_recv_ICRP(struct l2tp_sess_t *sess,
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch(attr->attr->id) {
 		case Message_Type:
+		case Random_Vector:
 			break;
 		case Assigned_Session_ID:
 			assigned_sid = attr;
@@ -2676,6 +2724,7 @@ static int l2tp_recv_OCRQ(struct l2tp_conn_t *conn,
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch (attr->attr->id) {
 		case Message_Type:
+		case Random_Vector:
 		case Call_Serial_Number:
 		case Minimum_BPS:
 		case Maximum_BPS:
@@ -2775,6 +2824,7 @@ static int l2tp_recv_OCRP(struct l2tp_sess_t *sess,
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch(attr->attr->id) {
 		case Message_Type:
+		case Random_Vector:
 			break;
 		case Assigned_Session_ID:
 			assigned_sid = attr;
@@ -2838,6 +2888,7 @@ static int l2tp_recv_OCCN(struct l2tp_sess_t *sess,
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch (attr->attr->id) {
 		case Message_Type:
+		case Random_Vector:
 		case TX_Speed:
 		case Framing_Type:
 			break;
@@ -2902,6 +2953,7 @@ static int l2tp_recv_CDN(struct l2tp_sess_t *sess,
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch(attr->attr->id) {
 		case Message_Type:
+		case Random_Vector:
 			break;
 		case Assigned_Session_ID:
 			assigned_sid = attr;
@@ -3113,7 +3165,8 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 	int res;
 
 	while (1) {
-		res = l2tp_recv(h->fd, &pack, NULL);
+		res = l2tp_recv(h->fd, &pack, NULL,
+				conf_secret, conf_secret_len);
 		if (res) {
 			if (res == -2) {
 				log_tunnel(log_info1, conn,
@@ -3320,7 +3373,8 @@ static int l2tp_udp_read(struct triton_md_handler_t *h)
 	char src_addr[17];
 
 	while (1) {
-		if (l2tp_recv(h->fd, &pack, &pkt_info))
+		if (l2tp_recv(h->fd, &pack, &pkt_info,
+			      conf_secret, conf_secret_len) < 0)
 			break;
 
 		if (!pack)
@@ -3528,6 +3582,7 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 	int peer_indx = -1;
 	int host_indx = -1;
 	int lns_mode = 0;
+	int hide_avps = conf_hide_avps;
 	uint16_t tid;
 	int indx;
 
@@ -3570,6 +3625,9 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 					  fields[indx]);
 				return CLI_CMD_INVAL;
 			}
+		} else if (strcmp("hide-avps", fields[indx]) == 0) {
+			++indx;
+			hide_avps = atoi(fields[indx]) > 0;
 		} else {
 			cli_sendv(client, "invalid option: \"%s\"\r\n",
 				  fields[indx]);
@@ -3593,7 +3651,7 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 		return CLI_CMD_INVAL;
 	}
 
-	conn = l2tp_tunnel_alloc(&peer, &host, 3, lns_mode, 0);
+	conn = l2tp_tunnel_alloc(&peer, &host, 3, lns_mode, 0, hide_avps);
 	if (conn == NULL) {
 		cli_send(client, "tunnel allocation failed\r\n");
 		return CLI_CMD_FAILED;
@@ -3663,7 +3721,7 @@ static void l2tp_create_tunnel_help(char * const *fields, int fields_cnt,
 {
 	cli_send(client,
 		 "l2tp create tunnel peer-addr <ip_addr> [host-addr <ip_addr>]"
-		 " [mode <lac|lns>]"
+		 " [hide-avps <0|1>] [mode <lac|lns>]"
 		 " - initiate new tunnel to peer\r\n");
 }
 
@@ -3688,6 +3746,10 @@ static void load_config(void)
 	opt = conf_get_opt("l2tp", "verbose");
 	if (opt && atoi(opt) >= 0)
 		conf_verbose = atoi(opt) > 0;
+
+	opt = conf_get_opt("l2tp", "hide-avps");
+	if (opt && atoi(opt) >= 0)
+		conf_hide_avps = atoi(opt) > 0;
 
 	opt = conf_get_opt("l2tp", "avp_permissive");
 	if (opt && atoi(opt) >= 0)
@@ -3716,8 +3778,10 @@ static void load_config(void)
 		conf_host_name = "accel-ppp";
 
 	opt = conf_get_opt("l2tp", "secret");
-	if (opt)
+	if (opt) {
 		conf_secret = opt;
+		conf_secret_len = strlen(opt);
+	}
 
 	opt = conf_get_opt("l2tp", "dir300_quirk");
 	if (opt)
