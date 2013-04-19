@@ -1627,7 +1627,12 @@ static void parse_local_net(const char *opt)
 	if (mask == 32)
 		mask = 0xffffffff;
 	else
-		mask = (1 << mask) - 1;
+		mask = (1 << (32-mask)) - 1;
+
+	addr = ntohl(addr);
+	mask = ~mask;
+
+	//printf("%x/%x %x\n", htonl(addr), ~mask, htonl(addr)&(~mask));
 
 	ipoe_nl_add_net(addr & mask, mask);
 

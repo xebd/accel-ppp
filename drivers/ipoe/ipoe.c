@@ -155,7 +155,7 @@ static int ipoe_check_network(__be32 addr)
 	rcu_read_lock();
 
 	list_for_each_entry_rcu(n, &ipoe_networks, entry) {
-		if ((addr & n->mask) == n->addr) {
+		if ((ntohl(addr) & n->mask) == n->addr) {
 			r = 1;
 			break;
 		}
