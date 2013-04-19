@@ -82,6 +82,59 @@ void ipoe_nl_add_net(uint32_t addr, int mask)
 		log_error("ipoe: nl_add_net: error talking to kernel\n");
 }
 
+void ipoe_nl_delete_interfaces(void)
+{
+	struct nlmsghdr *nlh;
+	struct genlmsghdr *ghdr;
+	struct {
+		struct nlmsghdr n;
+		char buf[1024];
+	} req;
+
+	if (rth.fd == -1)
+		return;
+
+	nlh = &req.n;
+	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
+	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+	nlh->nlmsg_type = ipoe_genl_id;
+
+	ghdr = NLMSG_DATA(&req.n);
+	ghdr->cmd = IPOE_CMD_DEL_IF;
+
+	addattr32(nlh, 1024, IPOE_ATTR_IFINDEX, -1);
+
+	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 )
+		log_error("ipoe: nl_del_iface: error talking to kernel\n");
+}
+
+void ipoe_nl_add_interface(int ifindex)
+{
+	struct nlmsghdr *nlh;
+	struct genlmsghdr *ghdr;
+	struct {
+		struct nlmsghdr n;
+		char buf[1024];
+	} req;
+	
+	if (rth.fd == -1)
+		return;
+
+	nlh = &req.n;
+	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
+	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+	nlh->nlmsg_type = ipoe_genl_id;
+
+	ghdr = NLMSG_DATA(&req.n);
+	ghdr->cmd = IPOE_CMD_ADD_IF;
+
+	addattr32(nlh, 1024, IPOE_ATTR_IFINDEX, ifindex);
+
+	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 )
+		log_error("ipoe: nl_add_iface: error talking to kernel\n");
+}
+
+
 int ipoe_nl_create(uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_t *hwaddr)
 {
 	struct rtnl_handle rth;

@@ -49,16 +49,14 @@
 #endif
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
-struct ipoe_stats 
-{
+struct ipoe_stats {
 	struct u64_stats_sync sync;
 	u64 packets;
 	u64 bytes;
 };
 #endif
 
-struct ipoe_session 
-{
+struct ipoe_session {
 	struct list_head entry;
 	struct list_head entry2;
 
@@ -78,8 +76,7 @@ struct ipoe_session
 #endif
 };
 
-struct ipoe_network
-{
+struct ipoe_network {
 	struct rcu_head rcu_head;
 	struct list_head entry;
 	
@@ -87,8 +84,14 @@ struct ipoe_network
 	__be32 mask;
 };
 
-struct ipoe_entry_u
-{
+struct ipoe_iface {
+	struct rcu_head rcu_head;
+	struct list_head entry;
+	
+	int ifindex;
+};
+
+struct ipoe_entry_u {
 	struct rcu_head rcu_head;
 	struct list_head entry1;
 	struct list_head entry2;
@@ -103,6 +106,7 @@ static LIST_HEAD(ipoe_list2);
 static LIST_HEAD(ipoe_list2_u);
 static DEFINE_SEMAPHORE(ipoe_wlock);
 static LIST_HEAD(ipoe_networks);
+static LIST_HEAD(ipoe_interfaces);
 static struct work_struct ipoe_queue_work;
 static struct sk_buff_head ipoe_queue;
 
@@ -165,6 +169,26 @@ static int ipoe_check_network(__be32 addr)
 
 	return r;
 }
+
+static int ipoe_check_interface(int ifindex)
+{
+	struct ipoe_iface *i;
+	int r = 0;
+
+	rcu_read_lock();
+
+	list_for_each_entry_rcu(i, &ipoe_interfaces, entry) {
+		if (i->ifindex == ifindex) {
+			r = 1;
+			break;
+		}
+	}
+
+	rcu_read_unlock();
+
+	return r;
+}
+
 
 static int ipoe_do_nat(struct sk_buff *skb, __be32 new_addr, int to_peer)
 {
@@ -690,6 +714,8 @@ static unsigned int ipt_in_hook(unsigned int hook, struct sk_buff *skb, const st
 	ses = ipoe_lookup(iph->saddr);
 	
 	if (!ses) {
+		if (!ipoe_check_interface(in->ifindex))
+			return NF_ACCEPT;
 		ipoe_queue_u(skb, iph->saddr);
 		return NF_DROP;
 	}
@@ -1369,6 +1395,56 @@ static int ipoe_nl_cmd_del_net(struct sk_buff *skb, struct genl_info *info)
 	return 0;
 }
 
+static int ipoe_nl_cmd_add_interface(struct sk_buff *skb, struct genl_info *info)
+{
+	struct ipoe_iface *i;
+
+	if (!info->attrs[IPOE_ATTR_IFINDEX])
+		return -EINVAL;
+	
+	i = kmalloc(sizeof(*i), GFP_KERNEL);
+	if (!i)
+		return -ENOMEM;
+
+	i->ifindex = nla_get_u32(info->attrs[IPOE_ATTR_IFINDEX]);
+
+	down(&ipoe_wlock);
+	list_add_tail_rcu(&i->entry, &ipoe_interfaces);
+	up(&ipoe_wlock);
+
+	return 0;
+}
+
+static int ipoe_nl_cmd_del_interface(struct sk_buff *skb, struct genl_info *info)
+{
+	struct ipoe_iface *i;
+	int ifindex;
+
+	if (!info->attrs[IPOE_ATTR_IFINDEX])
+		return -EINVAL;
+
+	ifindex = nla_get_u32(info->attrs[IPOE_ATTR_IFINDEX]);
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(i, &ipoe_interfaces, entry) {
+		if (ifindex == -1 || ifindex == i->ifindex) {
+			//pr_info("del net %08x/%08x\n", n->addr, n->mask);
+			list_del_rcu(&i->entry);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
+			kfree_rcu(i, rcu_head);
+#else
+			call_rcu(&i->rcu_head, __kfree_rcu);
+#endif
+		}
+	}
+	rcu_read_unlock();
+
+	synchronize_rcu();
+
+	return 0;
+}
+
+
 
 static struct nla_policy ipoe_nl_policy[IPOE_ATTR_MAX + 1] = {
 	[IPOE_ATTR_NONE]		    = { .type = NLA_UNSPEC,                     },
@@ -1419,6 +1495,18 @@ static struct genl_ops ipoe_nl_ops[] = {
 	{
 		.cmd = IPOE_CMD_DEL_NET,
 		.doit = ipoe_nl_cmd_del_net,
+		.policy = ipoe_nl_policy,
+		.flags = GENL_ADMIN_PERM,
+	},
+	{
+		.cmd = IPOE_CMD_ADD_IF,
+		.doit = ipoe_nl_cmd_add_interface,
+		.policy = ipoe_nl_policy,
+		.flags = GENL_ADMIN_PERM,
+	},
+	{
+		.cmd = IPOE_CMD_DEL_IF,
+		.doit = ipoe_nl_cmd_del_interface,
 		.policy = ipoe_nl_policy,
 		.flags = GENL_ADMIN_PERM,
 	},

@@ -85,6 +85,8 @@ struct ipoe_serv *ipoe_find_serv(const char *ifname);
 
 void ipoe_nl_add_net(uint32_t addr, int mask);
 void ipoe_nl_delete_nets(void);
+void ipoe_nl_add_interface(int ifindex);
+void ipoe_nl_delete_interfaces(void);
 int ipoe_nl_create(uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_t *hwaddr);
 void ipoe_nl_delete(int ifindex);
 int ipoe_nl_modify(int ifindex, uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_t *hwaddr);

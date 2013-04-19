@@ -1417,6 +1417,9 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 		opt_dhcpv4 = conf_dhcpv4;
 	}
 
+	if (opt_up)
+		ipoe_nl_add_interface(ifindex);
+
 	list_for_each_entry(serv, &serv_list, entry) {
 		if (strcmp(ifname, serv->ifname))
 			continue;
@@ -1573,6 +1576,8 @@ static void load_interfaces(struct conf_sect_t *sect)
 	struct ipoe_serv *serv;
 	struct conf_option_t *opt;
 	struct list_head *pos, *n;
+
+	ipoe_nl_delete_interfaces();
 
 	list_for_each_entry(serv, &serv_list, entry)
 		serv->active = 0;
