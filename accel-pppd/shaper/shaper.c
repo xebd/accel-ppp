@@ -277,41 +277,12 @@ static void check_radius_attrs(struct shaper_pd_t *pd, struct rad_packet_t *pack
 
 static void ev_radius_access_accept(struct ev_radius_t *ev)
 {
-	int down_speed, down_burst;
-	int up_speed, up_burst;
 	struct shaper_pd_t *pd = find_pd(ev->ses, 1);
 
 	if (!pd)
 		return;
 
 	check_radius_attrs(pd, ev->reply);
-
-	if (temp_down_speed || temp_up_speed) {
-		pd->temp_down_speed = temp_down_speed;
-		pd->temp_up_speed = temp_up_speed;
-		pd->down_speed = temp_down_speed;
-		pd->up_speed = temp_up_speed;
-		down_speed = temp_down_speed;
-		up_speed = temp_up_speed;
-		down_burst = 0;
-		up_burst = 0;
-	} else {
-		if (!pd->cur_tr)
-			return;
-		pd->down_speed = pd->cur_tr->down_speed;
-		pd->up_speed = pd->cur_tr->up_speed;
-		down_speed = pd->cur_tr->down_speed;
-		up_speed = pd->cur_tr->up_speed;
-		down_burst = pd->cur_tr->down_burst;
-		up_burst = pd->cur_tr->up_burst;
-	}
-
-	if (down_speed > 0 && up_speed > 0) {
-		if (!install_limiter(ev->ses, down_speed, down_burst, up_speed, up_burst)) {
-			if (conf_verbose)
-				log_ppp_info2("shaper: installed shaper %i/%i (Kbit)\n", down_speed, up_speed);
-		}
-	}
 }
 
 static void ev_radius_coa(struct ev_radius_t *ev)
@@ -411,7 +382,10 @@ static void ev_shaper(struct ev_shaper_t *ev)
 
 static void ev_ppp_pre_up(struct ap_session *ses)
 {
+	int down_speed, down_burst;
+	int up_speed, up_burst;
 	struct shaper_pd_t *pd = find_pd(ses, 1);
+	
 	if (!pd)
 		return;
 	
@@ -420,9 +394,25 @@ static void ev_ppp_pre_up(struct ap_session *ses)
 		pd->temp_up_speed = temp_up_speed;
 		pd->down_speed = temp_down_speed;
 		pd->up_speed = temp_up_speed;
-		if (!install_limiter(ses, temp_down_speed, 0, temp_up_speed, 0)) {
+		down_speed = temp_down_speed;
+		up_speed = temp_up_speed;
+		down_burst = 0;
+		up_burst = 0;
+	} else {
+		if (!pd->cur_tr)
+			return;
+		pd->down_speed = pd->cur_tr->down_speed;
+		pd->up_speed = pd->cur_tr->up_speed;
+		down_speed = pd->cur_tr->down_speed;
+		up_speed = pd->cur_tr->up_speed;
+		down_burst = pd->cur_tr->down_burst;
+		up_burst = pd->cur_tr->up_burst;
+	}
+
+	if (down_speed > 0 && up_speed > 0) {
+		if (!install_limiter(ses, down_speed, down_burst, up_speed, up_burst)) {
 			if (conf_verbose)
-				log_ppp_info2("shaper: installed shaper %i/%i (Kbit)\n", temp_down_speed, temp_up_speed);
+				log_ppp_info2("shaper: installed shaper %i/%i (Kbit)\n", down_speed, up_speed);
 		}
 	}
 }
