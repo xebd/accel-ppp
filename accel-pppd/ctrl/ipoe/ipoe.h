@@ -35,6 +35,7 @@ struct ipoe_session
 	struct triton_context_t ctx;
 	struct triton_timer_t timer;
 	struct ipoe_serv *serv;
+	struct dhcpv4_serv *dhcpv4;
 	struct ap_ctrl ctrl;
 	struct ap_session ses;
 	uint8_t hwaddr[6];

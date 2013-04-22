@@ -123,6 +123,7 @@ static void ipoe_session_finished(struct ap_session *s);
 static void ipoe_drop_sessions(struct ipoe_serv *serv, struct ipoe_session *skip);
 static void ipoe_serv_close(struct triton_context_t *ctx);
 static void __ipoe_session_activate(struct ipoe_session *ses);
+static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *pack);
 
 static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct dhcpv4_packet *pack)
 {
@@ -331,8 +332,7 @@ static void ipoe_session_start(struct ipoe_session *ses)
 	struct unit_cache *uc;
 
 	if (!ses->ses.username) {
-		if (!ses->serv->opt_shared)
-			strncpy(ses->ses.ifname, ses->serv->ifname, AP_IFNAME_LEN);
+		strncpy(ses->ses.ifname, ses->serv->ifname, AP_IFNAME_LEN);
 		
 		ipoe_session_set_username(ses);
 
@@ -584,9 +584,12 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 	
 	if (ses->ifindex != -1) {
 		addr = 0;
-		if (!ses->ses.ipv4)
-			addr = 1;
-		else if (ses->ses.ipv4->peer_addr != ses->yiaddr)
+		if (!ses->ses.ipv4) {
+			if (ses->serv->opt_mode == MODE_L3) {
+				addr = 1;
+				ses->ctrl.dont_ifcfg = 1;
+			}
+		} else if (ses->ses.ipv4->peer_addr != ses->yiaddr)
 			addr = ses->ses.ipv4->peer_addr;
 		
 		if (ipoe_nl_modify(ses->ifindex, ses->yiaddr, addr, NULL, NULL)) {
@@ -687,6 +690,15 @@ static void ipoe_session_started(struct ap_session *s)
 
 	if (ses->timer.tpd)
 		triton_timer_mod(&ses->timer, 0);
+	
+	if (ses->ifindex != -1 && ses->xid) {
+		ses->dhcpv4 = dhcpv4_create(ses->ctrl.ctx, ses->ses.ifname, "");
+		if (!ses->dhcpv4) {
+			//terminate
+			return;
+		}
+		ses->dhcpv4->recv = ipoe_ses_recv_dhcpv4;
+	}
 }
 
 static void ipoe_session_free(struct ipoe_session *ses)
@@ -748,6 +760,9 @@ static void ipoe_session_finished(struct ap_session *s)
 
 	if (serv_close)
 		ipoe_serv_close(&ses->serv->ctx);
+	
+	if (ses->dhcpv4)
+		dhcpv4_free(ses->dhcpv4);
 
 	triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_free, ses);
 }
@@ -869,6 +884,48 @@ static void __ipoe_session_terminate(struct ap_session *ses)
 	ap_session_terminate(ses, TERM_USER_REQUEST, 0);
 }
 
+static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *pack)
+{
+	struct ipoe_session *ses = container_of(dhcpv4->ctx, typeof(*ses), ctx);
+
+	if (ap_shutdown)
+		return;
+			
+	if (conf_verbose) {
+		log_ppp_info2("recv ");
+		dhcpv4_print_packet(pack, 0, log_info2);
+	}
+			
+	if (pack->msg_type == DHCPDISCOVER) {
+		if (ses->yiaddr) {
+			if (ses->serv->dhcpv4_relay) {
+				dhcpv4_packet_ref(pack);
+				triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_keepalive, pack);
+			} else
+				dhcpv4_send_reply(DHCPOFFER, dhcpv4, pack, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
+		}
+	} else if (pack->msg_type == DHCPREQUEST) {
+		if (pack->hdr->ciaddr == ses->yiaddr && pack->hdr->xid != ses->xid)
+			ses->xid = pack->hdr->xid;
+		if ((pack->server_id && (pack->server_id != ses->siaddr || pack->request_ip != ses->yiaddr)) ||
+			(pack->hdr->ciaddr && (pack->hdr->xid != ses->xid || pack->hdr->ciaddr != ses->yiaddr))) {
+
+			if (pack->server_id == ses->siaddr)
+				dhcpv4_send_nak(dhcpv4, pack);
+			else if (ses->serv->dhcpv4_relay)
+				dhcpv4_relay_send(ses->serv->dhcpv4_relay, pack, 0, ses->serv->ifname, conf_agent_remote_id);
+			
+			ap_session_terminate(&ses->ses, TERM_USER_REQUEST, 0);
+		} else {
+			dhcpv4_packet_ref(pack);
+			ipoe_session_keepalive(pack);
+		}
+	} else if (pack->msg_type == DHCPDECLINE || pack->msg_type == DHCPRELEASE) {
+		dhcpv4_packet_ref(pack);
+		ipoe_session_decline(pack);
+	}
+}
+
 static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *pack)
 {
 	struct ipoe_serv *serv = container_of(dhcpv4->ctx, typeof(*serv), ctx);
@@ -882,7 +939,6 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 	if (pack->msg_type == DHCPDISCOVER) {
 		ses = ipoe_session_lookup(serv, pack);
 		if (!ses) {
-			
 			if (serv->opt_shared == 0)
 				ipoe_drop_sessions(serv, NULL);
 

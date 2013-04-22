@@ -1274,7 +1274,7 @@ static int ipoe_nl_cmd_modify(struct sk_buff *skb, struct genl_info *info)
 
 	if (info->attrs[IPOE_ATTR_ADDR]) {
 		ses->addr = nla_get_be32(info->attrs[IPOE_ATTR_ADDR]);
-		if (ses->addr)
+		if (ses->addr && !ses->link_dev)
 			dev->flags |= IFF_NOARP;
 		else
 			dev->flags &= ~IFF_NOARP;

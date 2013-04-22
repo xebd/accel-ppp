@@ -70,11 +70,21 @@ void ap_session_ifup(struct ap_session *ses)
 	triton_event_fire(EV_SES_PRE_UP, ses);
 	if (ses->stop_time)
 		return;
+		
+	memset(&ifr, 0, sizeof(ifr));
+	strcpy(ifr.ifr_name, ses->ifname);
 
-	if (!ses->ctrl->dont_ifcfg) {
-		memset(&ifr, 0, sizeof(ifr));
-		strcpy(ifr.ifr_name, ses->ifname);
+	if (ses->ctrl->dont_ifcfg) {
+		if (ioctl(sock_fd, SIOCGIFFLAGS, &ifr))
+			log_ppp_error("failed to get interface flags: %s\n", strerror(errno));
 
+		if (!(ifr.ifr_flags & IFF_UP)) {
+			ifr.ifr_flags |= IFF_UP;
+
+			if (ioctl(sock_fd, SIOCSIFFLAGS, &ifr))
+				log_ppp_error("failed to set interface flags: %s\n", strerror(errno));
+		}
+	} else {
 #ifdef USE_BACKUP
 		if (!ses->backup || !ses->backup->internal) {
 #endif
