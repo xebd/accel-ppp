@@ -792,8 +792,10 @@ out_err:
 
 struct dhcpv4_relay *dhcpv4_relay_create(const char *_addr, const char *_giaddr, struct triton_context_t *ctx, triton_event_func recv)
 {
+	char str[17], *ptr;
 	struct dhcpv4_relay *r;
-	in_addr_t addr = inet_addr(_addr);
+	in_addr_t addr;// = inet_addr(_addr);
+	int port = DHCP_SERV_PORT;
 	in_addr_t giaddr = inet_addr(_giaddr);
 	struct sockaddr_in raddr;
 	struct sockaddr_in laddr;
@@ -801,6 +803,15 @@ struct dhcpv4_relay *dhcpv4_relay_create(const char *_addr, const char *_giaddr,
 	int f = 1;
 	struct dhcpv4_relay_ctx *c;
 	
+	ptr = strchr(_addr, ':');
+	if (ptr) {
+		memcpy(str, _addr, ptr - _addr);
+		str[ptr - _addr] = 0;
+		addr = inet_addr(str);
+		port = atoi(ptr + 1);
+	} else
+		addr = inet_addr(_addr);
+
 	list_for_each_entry(r, &relay_list, entry) {
 		if (r->addr == addr && r->giaddr == giaddr)
 			goto found;
@@ -815,7 +826,7 @@ struct dhcpv4_relay *dhcpv4_relay_create(const char *_addr, const char *_giaddr,
 	memset(&raddr, 0, sizeof(raddr));
 	raddr.sin_family = AF_INET;
 	raddr.sin_addr.s_addr = addr;
-	raddr.sin_port = htons(DHCP_SERV_PORT);
+	raddr.sin_port = htons(port);
 
 	memset(&laddr, 0, sizeof(laddr));
 	laddr.sin_family = AF_INET;
