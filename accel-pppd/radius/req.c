@@ -66,16 +66,17 @@ static struct rad_req_t *__rad_req_alloc(struct radius_pd_t *rpd, int code, cons
 
 	if (rad_packet_add_str(req->pack, NULL, "User-Name", username))
 		goto out_err;
+	
 	if (conf_nas_identifier)
 		if (rad_packet_add_str(req->pack, NULL, "NAS-Identifier", conf_nas_identifier))
 			goto out_err;
+
 	if (conf_nas_ip_address)
 		if (rad_packet_add_ipaddr(req->pack, NULL, "NAS-IP-Address", conf_nas_ip_address))
 			goto out_err;
-	if (ppp) {
-		if (rad_packet_add_int(req->pack, NULL, "NAS-Port", ppp->ses.unit_idx))
-			goto out_err;
-	}
+
+	if (rad_packet_add_int(req->pack, NULL, "NAS-Port", rpd->ses->unit_idx))
+		goto out_err;
 	
 	if (req->rpd->ses->ctrl->type == CTRL_TYPE_IPOE) {
 		if (rad_packet_add_val(req->pack, NULL, "NAS-Port-Type", "Ethernet"))
@@ -94,9 +95,11 @@ static struct rad_req_t *__rad_req_alloc(struct radius_pd_t *rpd, int code, cons
 	if (rpd->ses->ctrl->calling_station_id)
 		if (rad_packet_add_str(req->pack, NULL, "Calling-Station-Id", rpd->ses->ctrl->calling_station_id))
 			goto out_err;
+	
 	if (rpd->ses->ctrl->called_station_id)
 		if (rad_packet_add_str(req->pack, NULL, "Called-Station-Id", rpd->ses->ctrl->called_station_id))
 			goto out_err;
+	
 	if (rpd->attr_class)
 		if (rad_packet_add_octets(req->pack, NULL, "Class", rpd->attr_class, rpd->attr_class_len))
 			goto out_err;

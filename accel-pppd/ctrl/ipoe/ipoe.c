@@ -341,6 +341,8 @@ static void ipoe_session_start(struct ipoe_session *ses)
 			return;
 		}
 	}
+
+	ses->ses.unit_idx = ses->serv->ifindex;
 	
 	triton_event_fire(EV_CTRL_STARTING, &ses->ses);
 	triton_event_fire(EV_CTRL_STARTED, &ses->ses);
@@ -407,6 +409,7 @@ static void ipoe_session_start(struct ipoe_session *ses)
 
 		strncpy(ses->ses.ifname, ifr.ifr_name, AP_IFNAME_LEN);
 		ses->ses.ifindex = ses->ifindex;
+		ses->ses.unit_idx = ses->ifindex;
 	}
 
 	ap_session_set_ifindex(&ses->ses);
