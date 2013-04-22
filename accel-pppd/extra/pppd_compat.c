@@ -31,12 +31,12 @@ static char *conf_ip_up = "/etc/ppp/ip-up";
 static char *conf_ip_pre_up;
 static char *conf_ip_down = "/etc/ppp/ip-down";
 static char *conf_ip_change;
-static char *conf_radattr_prefix = "/var/run/radattr.";
+static char *conf_radattr_prefix = "/var/run/radattr";
 static int conf_verbose = 0;
 
 static void *pd_key;
 
-struct pppd_compat_pd_t
+struct pppd_compat_pd
 {
 	struct ap_private pd;
 	struct ap_session *ses;
@@ -45,6 +45,7 @@ struct pppd_compat_pd_t
 	struct sigchld_handler_t ip_change_hnd;
 	struct sigchld_handler_t ip_down_hnd;
 #ifdef RADIUS
+	char *tmp_fname;
 	int radattr_saved:1;
 #endif
 	int started:1;
@@ -53,17 +54,17 @@ struct pppd_compat_pd_t
 	in_addr_t ipv4_peer_addr;
 };
 
-static struct pppd_compat_pd_t *find_pd(struct ap_session *ses);
-static void fill_argv(char **argv, struct pppd_compat_pd_t *pd, char *path);
-static void fill_env(char **env, struct pppd_compat_pd_t *pd);
+static struct pppd_compat_pd *find_pd(struct ap_session *ses);
+static void fill_argv(char **argv, struct pppd_compat_pd *pd, char *path);
+static void fill_env(char **env, struct pppd_compat_pd *pd);
 #ifdef RADIUS
-static void remove_radattr(struct ap_session *ses);
-static void write_radattr(struct ap_session *ses, struct rad_packet_t *pack, int save_old);
+static void remove_radattr(struct pppd_compat_pd *);
+static void write_radattr(struct pppd_compat_pd *, struct rad_packet_t *pack);
 #endif
 
 static void ip_pre_up_handler(struct sigchld_handler_t *h, int status)
 {
-	struct pppd_compat_pd_t *pd = container_of(h, typeof(*pd), ip_pre_up_hnd);
+	struct pppd_compat_pd *pd = container_of(h, typeof(*pd), ip_pre_up_hnd);
 	if (conf_verbose) {
 		log_switch(NULL, pd->ses);
 		log_ppp_info2("pppd_compat: ip-pre-up finished (%i)\n", status);
@@ -75,7 +76,7 @@ static void ip_pre_up_handler(struct sigchld_handler_t *h, int status)
 
 static void ip_up_handler(struct sigchld_handler_t *h, int status)
 {
-	struct pppd_compat_pd_t *pd = container_of(h, typeof(*pd), ip_up_hnd);
+	struct pppd_compat_pd *pd = container_of(h, typeof(*pd), ip_up_hnd);
 	if (conf_verbose) {
 		log_switch(NULL, pd->ses);
 		log_ppp_info2("pppd_compat: ip-up finished (%i)\n", status);
@@ -84,7 +85,7 @@ static void ip_up_handler(struct sigchld_handler_t *h, int status)
 
 static void ip_down_handler(struct sigchld_handler_t *h, int status)
 {
-	struct pppd_compat_pd_t *pd = container_of(h, typeof(*pd), ip_down_hnd);
+	struct pppd_compat_pd *pd = container_of(h, typeof(*pd), ip_down_hnd);
 	if (conf_verbose) {
 		log_switch(NULL, pd->ses);
 		log_ppp_info2("pppd_compat: ip-down finished (%i)\n", status);
@@ -95,7 +96,7 @@ static void ip_down_handler(struct sigchld_handler_t *h, int status)
 
 static void ip_change_handler(struct sigchld_handler_t *h, int status)
 {
-	struct pppd_compat_pd_t *pd = container_of(h, typeof(*pd), ip_change_hnd);
+	struct pppd_compat_pd *pd = container_of(h, typeof(*pd), ip_change_hnd);
 	if (conf_verbose) {
 		log_switch(NULL, pd->ses);
 		log_ppp_info2("pppd_compat: ip-change finished (%i)\n", status);
@@ -107,7 +108,7 @@ static void ip_change_handler(struct sigchld_handler_t *h, int status)
 
 static void ev_ses_starting(struct ap_session *ses)
 {
-	struct pppd_compat_pd_t *pd;
+	struct pppd_compat_pd *pd;
 	
 	pd = _malloc(sizeof(*pd));
 	if (!pd) {
@@ -135,10 +136,29 @@ static void ev_ses_pre_up(struct ap_session *ses)
 	char peername[64];
 	char calling_sid[64];
 	char called_sid[64];
-	struct pppd_compat_pd_t *pd = find_pd(ses);
+	struct pppd_compat_pd *pd = find_pd(ses);
 	
 	if (!pd)
 		return;
+	
+#ifdef RADIUS
+	{
+	char *fname = _malloc(PATH_MAX);
+	if (!fname) {
+		log_emerg("pppd_compat: out of memory\n");
+		return;
+	}
+	
+	sprintf(fname, "%s.%s", conf_radattr_prefix, ses->ifname);
+
+	rename(pd->tmp_fname, fname);
+	
+	_free(fname);
+	_free(pd->tmp_fname);
+	pd->tmp_fname = NULL;
+	}
+#endif
+	
 
 	if (ses->ipv4) {
 		pd->ipv4_addr = ses->ipv4->addr;
@@ -194,7 +214,7 @@ static void ev_ses_started(struct ap_session *ses)
 	char peername[64];
 	char calling_sid[64];
 	char called_sid[64];
-	struct pppd_compat_pd_t *pd = find_pd(ses);
+	struct pppd_compat_pd *pd = find_pd(ses);
 	
 	if (!pd)
 		return;
@@ -246,7 +266,7 @@ static void ev_ses_finished(struct ap_session *ses)
 	char connect_time[24];
 	char bytes_sent[24];
 	char bytes_rcvd[24];
-	struct pppd_compat_pd_t *pd = find_pd(ses);
+	struct pppd_compat_pd *pd = find_pd(ses);
 	
 	if (!pd)
 		return;
@@ -311,7 +331,7 @@ static void ev_ses_finished(struct ap_session *ses)
 skip:
 #ifdef RADIUS
 	if (pd->radattr_saved)
-		remove_radattr(ses);
+		remove_radattr(pd);
 #endif
 	
 	list_del(&pd->pd.entry);
@@ -321,12 +341,12 @@ skip:
 #ifdef RADIUS
 static void ev_radius_access_accept(struct ev_radius_t *ev)
 {
-	struct pppd_compat_pd_t *pd = find_pd(ev->ses);
+	struct pppd_compat_pd *pd = find_pd(ev->ses);
 
 	if (!pd)
 		return;
 
-	write_radattr(ev->ses, ev->reply, 0);
+	write_radattr(pd, ev->reply);
 
 	pd->radattr_saved = 1;
 }
@@ -341,12 +361,12 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 	char peername[64];
 	char calling_sid[64];
 	char called_sid[64];
-	struct pppd_compat_pd_t *pd = find_pd(ev->ses);
+	struct pppd_compat_pd *pd = find_pd(ev->ses);
 	
 	if (!pd)
 		return;
 
-	write_radattr(ev->ses, ev->request, 1);
+	write_radattr(pd, ev->request);
 
 	argv[4] = ipaddr;
 	argv[5] = peer_ipaddr;
@@ -377,28 +397,35 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 		log_error("pppd_compat: fork: %s\n", strerror(errno));
 }
 
-static void remove_radattr(struct ap_session *ses)
+static void remove_radattr(struct pppd_compat_pd *pd)
 {
 	char *fname;
+	
+	if (pd->tmp_fname) {
+		unlink(pd->tmp_fname);
+		_free(pd->tmp_fname);
+	} else {
+		fname = _malloc(PATH_MAX);
+		if (!fname) {
+			log_emerg("pppd_compat: out of memory\n");
+			return;
+		}
 
-	fname = _malloc(PATH_MAX);
-	if (!fname) {
-		log_emerg("pppd_compat: out of memory\n");
-		return;
+		sprintf(fname, "%s.%s", conf_radattr_prefix, pd->ses->ifname);
+
+		if (unlink(fname)) {
+			log_ppp_warn("pppd_compat: failed to remove '%s': %s\n", fname, strerror(errno));
+		}
+		sprintf(fname, "%s_old.%s", conf_radattr_prefix, pd->ses->ifname);
+		unlink(fname);
+
+		_free(fname);
 	}
-
-	sprintf(fname, "%s.%s", conf_radattr_prefix, ses->ifname);
-	if (unlink(fname)) {
-		log_ppp_warn("pppd_compat: failed to remove '%s': %s\n", fname, strerror(errno));
-	}
-	sprintf(fname, "%s_old.%s", conf_radattr_prefix, ses->ifname);
-	unlink(fname);
-
-	_free(fname);
 }
 
-static void write_radattr(struct ap_session *ses, struct rad_packet_t *pack, int save_old)
+static void write_radattr(struct pppd_compat_pd *pd, struct rad_packet_t *pack)
 {
+	struct ap_session *ses = pd->ses;
 	struct rad_attr_t *attr;
 	struct rad_dict_value_t *val;
 	FILE *f;
@@ -411,7 +438,7 @@ static void write_radattr(struct ap_session *ses, struct rad_packet_t *pack, int
 		return;
 	}
 
-	if (save_old) {
+	if (ses->state == AP_STATE_ACTIVE) {
 		fname2 = _malloc(PATH_MAX);
 		if (!fname2) {
 			log_emerg("pppd_compat: out of memory\n");
@@ -420,12 +447,15 @@ static void write_radattr(struct ap_session *ses, struct rad_packet_t *pack, int
 		}
 	}
 
-	sprintf(fname1, "%s.%s", conf_radattr_prefix, ses->ifname);
-	if (save_old) {
+	if (ses->state == AP_STATE_ACTIVE) {
+		sprintf(fname1, "%s.%s", conf_radattr_prefix, ses->ifname);
 		sprintf(fname2, "%s_old.%s", conf_radattr_prefix, ses->ifname);
 		if (rename(fname1, fname2)) {
 			log_ppp_warn("pppd_compat: rename: %s\n", strerror(errno));
 		}
+	} else {
+		sprintf(fname1, "%s.XXXXXX", conf_radattr_prefix);
+		mktemp(fname1);
 	}
 
 	f = fopen(fname1, "w");
@@ -460,16 +490,18 @@ static void write_radattr(struct ap_session *ses, struct rad_packet_t *pack, int
 	} else
 		log_ppp_warn("pppd_compat: failed to create '%s': %s\n", fname1, strerror(errno));
 	
-	_free(fname1);
-	if (save_old)
+	if (ses->state == AP_STATE_ACTIVE) {
+		_free(fname1);
 		_free(fname2);
+	} else
+		pd->tmp_fname = fname1;
 }
 #endif
 
-static struct pppd_compat_pd_t *find_pd(struct ap_session *ses)
+static struct pppd_compat_pd *find_pd(struct ap_session *ses)
 {
 	struct ap_private *pd;
-	struct pppd_compat_pd_t *cpd;
+	struct pppd_compat_pd *cpd;
 
 	list_for_each_entry(pd, &ses->pd_list, entry) {
 		if (pd->key == &pd_key) {
@@ -482,7 +514,7 @@ static struct pppd_compat_pd_t *find_pd(struct ap_session *ses)
 	return NULL;
 }
 
-static void fill_argv(char **argv, struct pppd_compat_pd_t *pd, char *path)
+static void fill_argv(char **argv, struct pppd_compat_pd *pd, char *path)
 {
 	argv[0] = path;
 	argv[1] = pd->ses->ifname;
@@ -494,7 +526,7 @@ static void fill_argv(char **argv, struct pppd_compat_pd_t *pd, char *path)
 	argv[7] = NULL;
 }
 
-static void fill_env(char **env, struct pppd_compat_pd_t *pd)
+static void fill_env(char **env, struct pppd_compat_pd *pd)
 {
 	struct ap_session *ses = pd->ses;
 	uint64_t tx_bytes, rx_bytes;
