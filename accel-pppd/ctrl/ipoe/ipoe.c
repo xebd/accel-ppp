@@ -378,7 +378,6 @@ static void ipoe_session_start(struct ipoe_session *ses)
 	if (ses->serv->opt_shared == 0 && (!ses->ses.ipv4 || ses->ses.ipv4->peer_addr == ses->yiaddr)) {
 		strncpy(ses->ses.ifname, ses->serv->ifname, AP_IFNAME_LEN);
 		ses->ses.ifindex = ses->serv->ifindex;
-		ses->ctrl.dont_ifcfg = 1;
 	} else if (ses->ifindex == -1) {
 		pthread_mutex_lock(&uc_lock);
 		if (!list_empty(&uc_list)) {
@@ -410,6 +409,7 @@ static void ipoe_session_start(struct ipoe_session *ses)
 		strncpy(ses->ses.ifname, ifr.ifr_name, AP_IFNAME_LEN);
 		ses->ses.ifindex = ses->ifindex;
 		ses->ses.unit_idx = ses->ifindex;
+		ses->ctrl.dont_ifcfg = 0;
 	}
 
 	ap_session_set_ifindex(&ses->ses);
@@ -1511,7 +1511,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 			serv->dhcpv4_relay = NULL;
 		}
 
-		if (serv->opt_dhcpv4 && opt_relay && opt_giaddr) {
+		if (serv->opt_dhcpv4 && opt_relay) {
 			if (opt_ifcfg)
 				ipoe_serv_add_addr(serv, giaddr);
 			serv->dhcpv4_relay = dhcpv4_relay_create(opt_relay, opt_giaddr, &serv->ctx, (triton_event_func)ipoe_recv_dhcpv4_relay);
@@ -1550,7 +1550,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 		if (serv->dhcpv4)
 			serv->dhcpv4->recv = ipoe_recv_dhcpv4;
 	
-		if (opt_relay && opt_giaddr) {
+		if (opt_relay) {
 			if (opt_ifcfg)
 				ipoe_serv_add_addr(serv, giaddr);
 			serv->dhcpv4_relay = dhcpv4_relay_create(opt_relay, opt_giaddr, &serv->ctx, (triton_event_func)ipoe_recv_dhcpv4_relay);

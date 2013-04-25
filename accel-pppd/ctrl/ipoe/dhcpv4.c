@@ -27,8 +27,7 @@
 
 #define BUF_SIZE 4096
 
-struct dhcpv4_relay_ctx
-{
+struct dhcpv4_relay_ctx {
 	struct list_head entry;
 	struct triton_context_t *ctx;
 	triton_event_func recv;
@@ -796,9 +795,10 @@ struct dhcpv4_relay *dhcpv4_relay_create(const char *_addr, const char *_giaddr,
 	struct dhcpv4_relay *r;
 	in_addr_t addr;// = inet_addr(_addr);
 	int port = DHCP_SERV_PORT;
-	in_addr_t giaddr = inet_addr(_giaddr);
+	in_addr_t giaddr;// = inet_addr(_giaddr);
 	struct sockaddr_in raddr;
 	struct sockaddr_in laddr;
+	socklen_t len = sizeof(laddr);
 	int sock = -1;
 	int f = 1;
 	struct dhcpv4_relay_ctx *c;
@@ -811,6 +811,32 @@ struct dhcpv4_relay *dhcpv4_relay_create(const char *_addr, const char *_giaddr,
 		port = atoi(ptr + 1);
 	} else
 		addr = inet_addr(_addr);
+	
+	memset(&raddr, 0, sizeof(raddr));
+	raddr.sin_family = AF_INET;
+	raddr.sin_addr.s_addr = addr;
+	raddr.sin_port = htons(port);
+
+	if (_giaddr)
+		giaddr = inet_addr(_giaddr);
+	else {
+		sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+		
+		if (connect(sock, &raddr, sizeof(raddr))) {
+			log_error("dhcpv4: relay: %s: connect: %s\n", _addr, strerror(errno));
+			goto out_err;
+		}
+
+		getsockname(sock, &laddr, &len);
+		giaddr = laddr.sin_addr.s_addr;
+
+		close(sock);
+	}
+	
+	memset(&laddr, 0, sizeof(laddr));
+	laddr.sin_family = AF_INET;
+	laddr.sin_addr.s_addr = giaddr;
+	laddr.sin_port = htons(DHCP_SERV_PORT);
 
 	list_for_each_entry(r, &relay_list, entry) {
 		if (r->addr == addr && r->giaddr == giaddr)
@@ -822,16 +848,6 @@ struct dhcpv4_relay *dhcpv4_relay_create(const char *_addr, const char *_giaddr,
 	INIT_LIST_HEAD(&r->ctx_list);
 	r->addr = addr;
 	r->giaddr = giaddr;
-
-	memset(&raddr, 0, sizeof(raddr));
-	raddr.sin_family = AF_INET;
-	raddr.sin_addr.s_addr = addr;
-	raddr.sin_port = htons(port);
-
-	memset(&laddr, 0, sizeof(laddr));
-	laddr.sin_family = AF_INET;
-	laddr.sin_addr.s_addr = giaddr;
-	laddr.sin_port = htons(DHCP_SERV_PORT);
 
 	sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (!sock) {
