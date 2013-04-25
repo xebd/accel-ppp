@@ -858,6 +858,7 @@ static struct ipoe_session *ipoe_session_create_dhcpv4(struct ipoe_serv *serv, s
 	ses->ctrl.terminate = ipoe_session_terminate;
 	ses->ctrl.type = CTRL_TYPE_IPOE;
 	ses->ctrl.name = "ipoe";
+	ses->ctrl.dont_ifcfg = 1;
 	
 	ses->ctrl.calling_station_id = _malloc(19);
 	ses->ctrl.called_station_id = _strdup(serv->ifname);
