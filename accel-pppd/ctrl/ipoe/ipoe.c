@@ -766,7 +766,7 @@ static void ipoe_session_finished(struct ap_session *s)
 	
 	if (ses->dhcpv4)
 		dhcpv4_free(ses->dhcpv4);
-
+	
 	triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_free, ses);
 }
 
@@ -904,7 +904,7 @@ static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packe
 		if (ses->yiaddr) {
 			if (ses->serv->dhcpv4_relay) {
 				dhcpv4_packet_ref(pack);
-				triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_keepalive, pack);
+				ipoe_session_keepalive(pack);
 			} else
 				dhcpv4_send_reply(DHCPOFFER, dhcpv4, pack, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
 		}
@@ -919,14 +919,14 @@ static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packe
 			else if (ses->serv->dhcpv4_relay)
 				dhcpv4_relay_send(ses->serv->dhcpv4_relay, pack, 0, ses->serv->ifname, conf_agent_remote_id);
 			
-			ap_session_terminate(&ses->ses, TERM_USER_REQUEST, 0);
+			triton_context_call(ses->ctrl.ctx, (triton_event_func)__ipoe_session_terminate, ses);
 		} else {
 			dhcpv4_packet_ref(pack);
 			ipoe_session_keepalive(pack);
 		}
 	} else if (pack->msg_type == DHCPDECLINE || pack->msg_type == DHCPRELEASE) {
 		dhcpv4_packet_ref(pack);
-		ipoe_session_decline(pack);
+		triton_context_call(ses->ctrl.ctx, (triton_event_func)ipoe_session_decline, pack);
 	}
 }
 
