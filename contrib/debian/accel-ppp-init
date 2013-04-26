@@ -5,7 +5,7 @@
 # Required-Start:    $networking
 # Required-Stop:     $networking
 # Default-Start:     2 3 4 5
-# Default-Stop:      1
+# Default-Stop:      0 1 6
 ### END INIT INFO
 
 set -e
@@ -18,7 +18,7 @@ if test -f /etc/default/accel-ppp; then
     . /etc/default/accel-ppp
 fi
 
-if [ -z $ACCEL_PPPD_OPTS ]; then
+if [ -z "$ACCEL_PPPD_OPTS" ]; then
   ACCEL_PPPD_OPTS="-c /etc/accel-ppp.conf"
 fi
 
