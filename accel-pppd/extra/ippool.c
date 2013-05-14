@@ -11,6 +11,7 @@
 #include "log.h"
 #include "list.h"
 #include "utils.h"
+#include "cli.h"
 #include "spinlock.h"
 
 #ifdef RADIUS
@@ -282,7 +283,7 @@ static struct ipv4db_item_t *get_ip(struct ppp_t *ppp)
 		fprintf(persist_file, "%s %s\n", ppp->username, addr);
 		fflush(persist_file);
 		pthread_mutex_unlock(&persist_file_lock);
-		it->username = strdup(ppp->username);
+		it->username = _strdup(ppp->username);
 		
 		spin_lock(&persist_pool->lock);
 		list_add_tail(&it->entry, &persist_pool->items);
@@ -451,6 +452,48 @@ found:
 	}
 }
 
+static void ippool_help(char * const *f, int f_cnt, void *cli)
+{
+	cli_send(cli, "ippool remove <username> - removes persist entry for specified username\r\n");
+}
+
+static int ippool_remove(const char *cmd, char * const *f, int f_cnt, void *cli)
+{
+	struct ippool_item_t *it, *it1;
+	char addr[17];
+
+	if (f_cnt != 3)
+		return CLI_CMD_SYNTAX;
+
+	if (!persist_file)
+		return CLI_CMD_OK;
+	
+	it = find_persist_item(f[2]);
+	if (!it)
+		return CLI_CMD_OK;
+	
+	spin_lock(&persist_pool->lock);
+	pthread_mutex_lock(&persist_file_lock);
+	
+	list_del(&it->entry);
+
+	ftruncate(fileno(persist_file), 0);
+	list_for_each_entry(it1, &persist_pool->items, entry) {
+		u_inet_ntoa(it1->it.peer_addr, addr);
+		fprintf(persist_file, "%s %s\n", it1->username, addr);
+	}
+		fflush(persist_file);
+
+	pthread_mutex_unlock(&persist_file_lock);
+	spin_unlock(&persist_pool->lock);
+	
+	spin_lock(&it->pool->lock);
+	list_add_tail(&it->entry, &it->pool->items);
+	spin_unlock(&it->pool->lock);
+
+	return CLI_CMD_OK;
+}
+
 static void ippool_init1(void)
 {
 	ipdb_register(&ipdb);
@@ -513,6 +556,8 @@ static void ippool_init2(void)
 	if (triton_module_loaded("radius"))
 		triton_event_register_handler(EV_RADIUS_ACCESS_ACCEPT, (triton_event_func)ev_radius_access_accept);
 #endif
+	
+	cli_register_simple_cmd2(&ippool_remove, ippool_help, 2, "ip-pool", "remove");
 	
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_persist_pool);
 }
