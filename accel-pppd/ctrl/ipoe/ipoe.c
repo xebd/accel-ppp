@@ -570,9 +570,6 @@ static void ipoe_ifcfg_del(struct ipoe_session *ses)
 		log_ppp_warn("ipoe: failed to delete route from interface '%s'\n", serv->ifname);
 
 	if (ses->serv->opt_ifcfg) {
-		if (iproute_del(serv->ifindex, ses->yiaddr))
-			log_ppp_warn("ipoe: failed to delete route from interface '%s'\n", serv->ifname);
-			
 		if (ses->serv->opt_shared) {
 			ipoe_serv_del_addr(ses->serv, ses->siaddr);
 		} else {
