@@ -49,6 +49,7 @@ static int conf_up = 0;
 static int conf_mode = 0;
 static int conf_shared = 1;
 static int conf_ifcfg = 1;
+static int conf_nat = 0;
 //static int conf_dhcpv6;
 static int conf_username;
 static int conf_unit_cache;
@@ -372,8 +373,9 @@ static void ipoe_session_start(struct ipoe_session *ses)
 			return;
 		}
 	}
-	
-	ses->ses.ipv4 = ipdb_get_ipv4(&ses->ses);
+
+	if (ses->serv->opt_nat)
+		ses->ses.ipv4 = ipdb_get_ipv4(&ses->ses);
 	
 	if (ses->serv->opt_shared == 0 && (!ses->ses.ipv4 || ses->ses.ipv4->peer_addr == ses->yiaddr)) {
 		strncpy(ses->ses.ifname, ses->serv->ifname, AP_IFNAME_LEN);
@@ -432,14 +434,18 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 			ses->dhcp_addr = 1;
 	}
 
+	if (!ses->yiaddr && !ses->serv->opt_nat)
+		ses->ses.ipv4 = ipdb_get_ipv4(&ses->ses);
+
+	if (!ses->mask)
+		ses->mask = conf_netmask;
+
 	if (ses->ses.ipv4) {
 		if (conf_gw_address)
 			ses->ses.ipv4->addr = conf_gw_address;
 		
-		if (conf_netmask)
-			ses->ses.ipv4->mask = conf_netmask;
-		else if (!ses->ses.ipv4->mask)
-			ses->ses.ipv4->mask = 24;
+		if (!ses->mask)
+			ses->mask = ses->ses.ipv4->mask;
 
 		if (!ses->yiaddr)
 			ses->yiaddr = ses->ses.ipv4->peer_addr;
@@ -550,7 +556,7 @@ static void ipoe_ifcfg_add(struct ipoe_session *ses)
 		}
 		if (iproute_add(serv->ifindex, ses->siaddr, ses->yiaddr))
 			log_ppp_warn("ipoe: failed to add route to interface '%s'\n", serv->ifname);
-	} else if (iproute_add(serv->ifindex, 0, ses->yiaddr))
+	} else if (iproute_add(serv->ifindex, ses->siaddr, ses->yiaddr))
 		log_ppp_warn("ipoe: failed to add route to interface '%s'\n", serv->ifname);
 
 	ses->ifcfg = 1;
@@ -1414,6 +1420,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 	int opt_up = 0;
 	int opt_mode = conf_mode;
 	int opt_ifcfg = conf_ifcfg;
+	int opt_nat = conf_nat;
 	const char *opt_relay = conf_relay;
 	const char *opt_giaddr = NULL;
 	in_addr_t relay_addr = 0;
@@ -1466,6 +1473,8 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 			} else if (strcmp(str, "giaddr") == 0) {
 				opt_giaddr = ptr1;
 				giaddr = inet_addr(ptr1);
+			} else if (strcmp(str, "nat") == 0) {
+				opt_nat = atoi(ptr1);
 			}
 
 			if (end)
@@ -1521,7 +1530,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 		serv->opt_up = opt_up;
 		serv->opt_mode = opt_mode;
 		serv->opt_ifcfg = opt_ifcfg;
-
+		serv->opt_nat = opt_nat;
 
 		if (str0)
 			_free(str0);
@@ -1539,6 +1548,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 	serv->opt_up = opt_up;
 	serv->opt_mode = opt_mode;
 	serv->opt_ifcfg = opt_ifcfg;
+	serv->opt_nat = opt_nat;
 	serv->active = 1;
 	INIT_LIST_HEAD(&serv->sessions);
 	INIT_LIST_HEAD(&serv->addr_list);
@@ -1843,6 +1853,12 @@ static void load_config(void)
 		conf_ifcfg = atoi(opt);
 	else
 		conf_ifcfg = 1;
+	
+	opt = conf_get_opt("ipoe", "nat");
+	if (opt)
+		conf_nat = atoi(opt);
+	else
+		conf_nat = 0;
 	
 	opt = conf_get_opt("ipoe", "mode");
 	if (opt) {
