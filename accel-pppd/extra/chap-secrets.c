@@ -25,6 +25,7 @@ static char *def_chap_secrets = "/etc/ppp/chap-secrets";
 static char *conf_chap_secrets;
 static int conf_encrypted;
 static in_addr_t conf_gw_ip_address = 0;
+static int conf_netmask;
 
 static void *pd_key;
 static struct ipdb_t ipdb;
@@ -225,6 +226,7 @@ found:
 	pd->ip.addr = conf_gw_ip_address;
 	if (n >= 3 && ptr[2][0] != '*')
 		pd->ip.peer_addr = inet_addr(ptr[2]);
+	pd->ip.mask = conf_netmask;
 	pd->ip.owner = &ipdb;
 
 	if (n >= 4)
@@ -701,6 +703,26 @@ static void parse_hash_chain(const char *opt)
 }
 #endif
 
+static void parse_gw_ip_address(const char *opt)
+{
+	char addr[17];
+	const char *ptr = strchr(opt, '/');
+
+	if (ptr) {
+		memcpy(addr, opt, ptr - opt);
+		addr[ptr - opt] = 0;
+		conf_gw_ip_address = inet_addr(addr);
+		conf_netmask = atoi(ptr + 1);
+		if (conf_netmask < 0 || conf_netmask > 32) {
+			log_error("chap-secrets: invalid netmask %i\n", conf_netmask);
+			conf_netmask = 32;
+		}
+	} else {
+		conf_gw_ip_address = inet_addr(opt);
+		conf_netmask = 32;
+	}
+}
+
 static void load_config(void)
 {
 	const char *opt;
@@ -715,7 +737,10 @@ static void load_config(void)
 
 	opt = conf_get_opt("chap-secrets", "gw-ip-address");
 	if (opt)
-		conf_gw_ip_address = inet_addr(opt);
+		parse_gw_ip_address(opt);
+	else {
+		conf_gw_ip_address = 0;
+	}
 	
 	opt = conf_get_opt("chap-secrets", "encrypted");
 	if (opt)
