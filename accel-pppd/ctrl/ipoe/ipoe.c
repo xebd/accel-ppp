@@ -689,7 +689,7 @@ static void ipoe_session_started(struct ap_session *s)
 {
 	struct ipoe_session *ses = container_of(s, typeof(*ses), ses);
 	
-	log_ppp_debug("ipoe: session started\n");
+	log_ppp_info1("ipoe: session started\n");
 
 	if (ses->timer.tpd)
 		triton_timer_mod(&ses->timer, 0);
@@ -745,7 +745,7 @@ static void ipoe_session_finished(struct ap_session *s)
 	struct ipoe_session *ses = container_of(s, typeof(*ses), ses);
 	int serv_close;
 
-	log_ppp_debug("ipoe: session finished\n");
+	log_ppp_info1("ipoe: session finished\n");
 
 	pthread_mutex_lock(&ses->serv->lock);
 	list_del(&ses->entry);
