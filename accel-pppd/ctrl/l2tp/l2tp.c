@@ -48,6 +48,7 @@
 #define STATE_FIN        9
 #define STATE_CLOSE      0
 
+int conf_port = L2TP_PORT;
 int conf_verbose = 0;
 int conf_hide_avps = 0;
 int conf_avp_permissive = 0;
@@ -2053,7 +2054,7 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 
 		host_addr.sin_family = AF_INET;
 		host_addr.sin_addr = pkt_info->ipi_addr;
-		host_addr.sin_port = 0;
+		host_addr.sin_port = htons(conf_port);
 
 		conn = l2tp_tunnel_alloc(&pack->addr, &host_addr,
 					 framing_cap->val.uint32, 1, 1,
@@ -3503,13 +3504,17 @@ static int start_udp_server(void)
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(L2TP_PORT);
 
 	opt = conf_get_opt("l2tp", "bind");
 	if (opt)
 		addr.sin_addr.s_addr = inet_addr(opt);
 	else
 		addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+	opt = conf_get_opt("l2tp", "port");
+	if (opt && atoi(opt) > 0)
+		conf_port = atoi(opt);
+	addr.sin_port = htons(conf_port);
 
 	if (setsockopt(udp_serv.hnd.fd, SOL_SOCKET, SO_REUSEADDR,
 		       &udp_serv.hnd.fd, sizeof(udp_serv.hnd.fd)) < 0) {
@@ -3616,7 +3621,7 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 	if (opt)
 		if (inet_aton(opt, &host.sin_addr) == 0) {
 			host.sin_family = AF_INET;
-			host.sin_port = 0;
+			host.sin_port = htons(conf_port);
 		}
 
 	for (indx = 3; indx + 1 < fields_cnt; ++indx) {
@@ -3644,7 +3649,7 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 		} else if (strcmp("host-addr", fields[indx]) == 0) {
 			host_indx = ++indx;
 			host.sin_family = AF_INET;
-			host.sin_port = 0;
+			host.sin_port = htons(conf_port);
 			if (inet_aton(fields[indx], &host.sin_addr) == 0) {
 				cli_sendv(client,
 					  "invalid host address: \"%s\"\r\n",

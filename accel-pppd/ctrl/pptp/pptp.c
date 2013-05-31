@@ -778,13 +778,18 @@ static void pptp_init(void)
 	fcntl(serv.hnd.fd, F_SETFD, fcntl(serv.hnd.fd, F_GETFD) | FD_CLOEXEC);
   
 	addr.sin_family = AF_INET;
-  addr.sin_port = htons(PPTP_PORT);
 
 	opt = conf_get_opt("pptp", "bind");
 	if (opt)
 		addr.sin_addr.s_addr = inet_addr(opt);
 	else
 		addr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+	opt = conf_get_opt("pptp", "port");
+	if (opt && atoi(opt) > 0)
+		addr.sin_port = htons(atoi(opt));
+	else
+		addr.sin_port = htons(PPTP_PORT);
   
   setsockopt(serv.hnd.fd, SOL_SOCKET, SO_REUSEADDR, &serv.hnd.fd, 4);  
   if (bind (serv.hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
