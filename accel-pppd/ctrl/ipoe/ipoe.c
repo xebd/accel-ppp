@@ -126,12 +126,16 @@ static void ipoe_serv_close(struct triton_context_t *ctx);
 static void __ipoe_session_activate(struct ipoe_session *ses);
 static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *pack);
 
-static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct dhcpv4_packet *pack)
+static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct dhcpv4_packet *pack, struct ipoe_session **opt82_ses)
 {
-	struct ipoe_session *ses;
+	struct ipoe_session *ses, *res = NULL;
 	
 	uint8_t *agent_circuit_id = NULL;
 	uint8_t *agent_remote_id = NULL;
+	int opt82_match;
+
+	if (opt82_ses)
+		*opt82_ses = NULL;
 
 	if (pack->relay_agent && dhcpv4_parse_opt82(pack->relay_agent, &agent_circuit_id, &agent_remote_id)) {
 		agent_circuit_id = NULL;
@@ -139,38 +143,44 @@ static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct d
 	}
 
 	list_for_each_entry(ses, &serv->sessions, entry) {
-		if (agent_circuit_id && !ses->agent_circuit_id)
-			continue;
+		opt82_match = pack->relay_agent != NULL;
 		
-		if (agent_remote_id && !ses->agent_remote_id)
-			continue;
+		if (opt82_match && agent_circuit_id && !ses->agent_circuit_id)
+			opt82_match = 0;
 		
-		if (!agent_circuit_id && ses->agent_circuit_id)
-			continue;
+		if (opt82_match && agent_remote_id && !ses->agent_remote_id)
+			opt82_match = 0;
 		
-		if (!agent_remote_id && ses->agent_remote_id)
-			continue;
+		if (opt82_match && !agent_circuit_id && ses->agent_circuit_id)
+			opt82_match = 0;
 		
-		if (agent_circuit_id) {
+		if (opt82_match && !agent_remote_id && ses->agent_remote_id)
+			opt82_match = 0;
+		
+		if (opt82_match && agent_circuit_id) {
 			if (*agent_circuit_id != *ses->agent_circuit_id)
-				continue;
+				opt82_match = 0;
+		
 			if (memcmp(agent_circuit_id + 1, ses->agent_circuit_id + 1, *agent_circuit_id))
-				continue;
+				opt82_match = 0;
 		}
 		
-		if (agent_remote_id) {
+		if (opt82_match && agent_remote_id) {
 			if (*agent_remote_id != *ses->agent_remote_id)
-				continue;
+				opt82_match = 0;
+
 			if (memcmp(agent_remote_id + 1, ses->agent_remote_id + 1, *agent_remote_id))
-				continue;
-		
-			return ses;
+				opt82_match = 0;
 		}
+
+		if (opt82_match && opt82_ses)
+			*opt82_ses = ses;
 			
 		if (memcmp(pack->hdr->chaddr, ses->hwaddr, 6))
 			continue;
 	
-		return ses;
+		res = ses;
+		break;
 		
 		/*if (pack->client_id && !ses->client_id)
 			continue;
@@ -193,7 +203,43 @@ static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct d
 		return ses;*/
 	}
 
-	return NULL;
+	if (!res || !pack->relay_agent || !opt82_ses || *opt82_ses)
+		return res;
+	
+	list_for_each_entry(ses, &serv->sessions, entry) {
+		if (agent_circuit_id && !ses->agent_circuit_id)
+			continue;
+		
+		if (opt82_match && agent_remote_id && !ses->agent_remote_id)
+			continue;
+		
+		if (opt82_match && !agent_circuit_id && ses->agent_circuit_id)
+			continue;
+		
+		if (opt82_match && !agent_remote_id && ses->agent_remote_id)
+			continue;
+		
+		if (opt82_match && agent_circuit_id) {
+			if (*agent_circuit_id != *ses->agent_circuit_id)
+				continue;
+		
+			if (memcmp(agent_circuit_id + 1, ses->agent_circuit_id + 1, *agent_circuit_id))
+				continue;
+		}
+		
+		if (opt82_match && agent_remote_id) {
+			if (*agent_remote_id != *ses->agent_remote_id)
+				continue;
+
+			if (memcmp(agent_remote_id + 1, ses->agent_remote_id + 1, *agent_remote_id))
+				continue;
+		}
+
+		*opt82_ses = ses;
+		break;
+	}
+			
+	return res;
 }
 
 static void ipoe_session_timeout(struct triton_timer_t *t)
@@ -894,6 +940,9 @@ static void __ipoe_session_terminate(struct ap_session *ses)
 static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *pack)
 {
 	struct ipoe_session *ses = container_of(dhcpv4->ctx, typeof(*ses), ctx);
+	int opt82_match;
+	uint8_t *agent_circuit_id = NULL;
+	uint8_t *agent_remote_id = NULL;
 
 	if (ap_shutdown)
 		return;
@@ -901,6 +950,49 @@ static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packe
 	if (conf_verbose) {
 		log_ppp_info2("recv ");
 		dhcpv4_print_packet(pack, 0, log_info2);
+	}
+
+	if (pack->relay_agent && dhcpv4_parse_opt82(pack->relay_agent, &agent_circuit_id, &agent_remote_id)) {
+		agent_circuit_id = NULL;
+		agent_remote_id = NULL;
+	}
+
+	opt82_match = pack->relay_agent != NULL;
+	
+	if (opt82_match && agent_circuit_id && !ses->agent_circuit_id)
+		opt82_match = 0;
+	
+	if (opt82_match && agent_remote_id && !ses->agent_remote_id)
+		opt82_match = 0;
+	
+	if (opt82_match && !agent_circuit_id && ses->agent_circuit_id)
+		opt82_match = 0;
+	
+	if (opt82_match && !agent_remote_id && ses->agent_remote_id)
+		opt82_match = 0;
+	
+	if (opt82_match && agent_circuit_id) {
+		if (*agent_circuit_id != *ses->agent_circuit_id)
+			opt82_match = 0;
+	
+		if (memcmp(agent_circuit_id + 1, ses->agent_circuit_id + 1, *agent_circuit_id))
+			opt82_match = 0;
+	}
+	
+	if (opt82_match && agent_remote_id) {
+		if (*agent_remote_id != *ses->agent_remote_id)
+			opt82_match = 0;
+
+		if (memcmp(agent_remote_id + 1, ses->agent_remote_id + 1, *agent_remote_id))
+			opt82_match = 0;
+	}
+
+	if (!opt82_match) {
+		log_ppp_info2("port change detected\n");
+		if (pack->msg_type == DHCPREQUEST)
+			dhcpv4_send_nak(dhcpv4, pack);
+		triton_context_call(ses->ctrl.ctx, (triton_event_func)__ipoe_session_terminate, &ses->ses);
+		return;
 	}
 			
 	if (pack->msg_type == DHCPDISCOVER) {
@@ -922,7 +1014,7 @@ static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packe
 			else if (ses->serv->dhcpv4_relay)
 				dhcpv4_relay_send(ses->serv->dhcpv4_relay, pack, 0, ses->serv->ifname, conf_agent_remote_id);
 			
-			triton_context_call(ses->ctrl.ctx, (triton_event_func)__ipoe_session_terminate, ses);
+			triton_context_call(ses->ctrl.ctx, (triton_event_func)__ipoe_session_terminate, &ses->ses);
 		} else {
 			dhcpv4_packet_ref(pack);
 			ipoe_session_keepalive(pack);
@@ -936,7 +1028,7 @@ static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packe
 static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *pack)
 {
 	struct ipoe_serv *serv = container_of(dhcpv4->ctx, typeof(*serv), ctx);
-	struct ipoe_session *ses;
+	struct ipoe_session *ses, *opt82_ses;
 	//struct dhcpv4_packet *reply;
 
 	if (ap_shutdown)
@@ -944,10 +1036,16 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 
 	pthread_mutex_lock(&serv->lock);
 	if (pack->msg_type == DHCPDISCOVER) {
-		ses = ipoe_session_lookup(serv, pack);
+		ses = ipoe_session_lookup(serv, pack, &opt82_ses);
 		if (!ses) {
 			if (serv->opt_shared == 0)
 				ipoe_drop_sessions(serv, NULL);
+			else if (opt82_ses) {
+				if (conf_verbose)
+					log_ppp_warn("mac change detected\n");
+
+				triton_context_call(&opt82_ses->ctx, (triton_event_func)__ipoe_session_terminate, &opt82_ses->ses);
+			}
 
 			ses = ipoe_session_create_dhcpv4(serv, pack);
 			if (ses) {
@@ -960,6 +1058,18 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 				}
 			}
 		}	else {
+			if ((opt82_ses && ses != opt82_ses) || (!opt82_ses && pack->relay_agent)) {
+				if (conf_verbose) {
+					log_switch(dhcpv4->ctx, &ses->ses);
+					log_ppp_info2("recv ");
+					dhcpv4_print_packet(pack, 0, log_ppp_info2);
+					log_ppp_warn("port change detected\n");
+				}
+
+				triton_context_call(&ses->ctx, (triton_event_func)__ipoe_session_terminate, &ses->ses);
+				goto out;
+			}
+
 			log_switch(dhcpv4->ctx, &ses->ses);
 
 			if (conf_verbose) {
@@ -976,7 +1086,7 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 			}
 		}
 	} else if (pack->msg_type == DHCPREQUEST) {
-		ses = ipoe_session_lookup(serv, pack);
+		ses = ipoe_session_lookup(serv, pack, &opt82_ses);
 
 		if (!ses) {
 			if (conf_verbose) {
@@ -986,18 +1096,29 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 				
 			if (serv->opt_shared == 0)
 				ipoe_drop_sessions(serv, NULL);
+			else if (opt82_ses) {
+				if (conf_verbose) {
+					log_switch(dhcpv4->ctx, &opt82_ses->ses);
+					log_ppp_warn("mac change detected\n");
+				}
+				
+				triton_context_call(&opt82_ses->ctx, (triton_event_func)__ipoe_session_terminate, &opt82_ses->ses);
+			}
 
 			dhcpv4_send_nak(dhcpv4, pack);
 		} else {
 			if (pack->hdr->ciaddr == ses->yiaddr && pack->hdr->xid != ses->xid)
 				ses->xid = pack->hdr->xid;
 			if ((pack->server_id && (pack->server_id != ses->siaddr || pack->request_ip != ses->yiaddr)) ||
-				(pack->hdr->ciaddr && (pack->hdr->xid != ses->xid || pack->hdr->ciaddr != ses->yiaddr))) {
+				(pack->hdr->ciaddr && (pack->hdr->xid != ses->xid || pack->hdr->ciaddr != ses->yiaddr)) ||
+				(opt82_ses && ses != opt82_ses) || (!opt82_ses && pack->relay_agent)) {
 
 				if (conf_verbose) {
 					log_switch(dhcpv4->ctx, &ses->ses);
 					log_ppp_info2("recv ");
 					dhcpv4_print_packet(pack, 0, log_info2);
+					if ((opt82_ses && ses != opt82_ses) || (!opt82_ses && pack->relay_agent))
+						log_ppp_warn("port change detected\n");
 				}
 
 				if (pack->server_id == ses->siaddr)
@@ -1027,12 +1148,14 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 			}
 		}
 	} else if (pack->msg_type == DHCPDECLINE || pack->msg_type == DHCPRELEASE) {
-		ses = ipoe_session_lookup(serv, pack);
+		ses = ipoe_session_lookup(serv, pack, &opt82_ses);
 		if (ses) {
 			dhcpv4_packet_ref(pack);
 			triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_decline, pack);
 		}
 	}
+
+out:
 	pthread_mutex_unlock(&serv->lock);
 }
 
