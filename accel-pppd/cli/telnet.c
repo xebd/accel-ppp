@@ -69,7 +69,7 @@ static uint8_t *recv_buf;
 static uint8_t *temp_buf;
 
 static int conf_history_len = 100;
-static const char *conf_history_file = "/var/run/accel-ppp/history";
+static const char *conf_history_file = "/var/lib/accel-ppp/history";
 static LIST_HEAD(history);
 static int history_len;
 static pthread_mutex_t history_lock = PTHREAD_MUTEX_INITIALIZER;

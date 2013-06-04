@@ -6,11 +6,13 @@
 #include <errno.h>
 #include <signal.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <pthread.h>
 #include <arpa/inet.h>
 #include <features.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <linux/if.h>
 
 #include "triton.h"
@@ -29,26 +31,27 @@
 static int conf_sid_ucase;
 static int conf_single_session = -1;
 static int conf_sid_source;
+static int conf_seq_save_timeout = 10;
+static const char *conf_seq_file;
 
 pthread_rwlock_t __export ses_lock = PTHREAD_RWLOCK_INITIALIZER;
 __export LIST_HEAD(ses_list);
-
-#if __WORDSIZE == 32
-static spinlock_t seq_lock;
-#endif
 
 int __export sock_fd;
 int __export sock6_fd;
 int __export urandom_fd;
 int __export ap_shutdown;
 
+static spinlock_t seq_lock;
 static long long unsigned seq;
+static struct timespec seq_ts;
 
 struct ap_session_stat __export ap_session_stat;
 
 static void (*shutdown_cb)(void);
 
 static void generate_sessionid(struct ap_session *ses);
+static void save_seq(void);
 
 void __export ap_session_init(struct ap_session *ses)
 {
@@ -237,6 +240,8 @@ static void generate_sessionid(struct ap_session *ses)
 {
 	if (conf_sid_source == SID_SOURCE_SEQ) {
 		unsigned long long sid;
+		struct timespec ts;
+
 #if __WORDSIZE == 32
 		spin_lock(&seq_lock);
 		sid = ++seq;
@@ -244,6 +249,10 @@ static void generate_sessionid(struct ap_session *ses)
 #else
 		sid = __sync_add_and_fetch(&seq, 1);
 #endif
+		
+		clock_gettime(CLOCK_MONOTONIC, &ts);
+		if (ts.tv_sec - seq_ts.tv_sec > conf_seq_save_timeout)
+			save_seq();
 
 		if (conf_sid_ucase)
 			sprintf(ses->sessionid, "%016llX", sid);
@@ -333,11 +342,21 @@ int __export ap_session_check_single(const char *username)
 static void save_seq(void)
 {
 	FILE *f;
-	char *opt = conf_get_opt("common", "seq-file");
-	if (!opt)
-		opt = "/var/run/accel-ppp/seq";
+	char path[PATH_MAX];
+	const char *ptr;
+	
+	if (conf_sid_source != SID_SOURCE_SEQ)
+		return;
 
-	f = fopen(opt, "w");
+	for (ptr = conf_seq_file + 1; *ptr; ptr++) {
+		if (*ptr == '/') {
+			memcpy(path, conf_seq_file, ptr - conf_seq_file);
+			path[ptr - conf_seq_file] = 0;
+			mkdir(path, 0755);
+		}
+	}
+
+	f = fopen(conf_seq_file, "w");
 	if (f) {
 		fprintf(f, "%llu", seq);
 		fclose(f);
@@ -375,11 +394,14 @@ static void load_config(void)
 			log_error("unknown sid-source\n");
 	} else
 		conf_sid_source = SID_SOURCE_SEQ;
+	
+	conf_seq_file = conf_get_opt("common", "seq-file");
+	if (!conf_seq_file)
+		conf_seq_file = "/var/lib/accel-ppp/seq";
 }
 
 static void init(void)
 {
-	const char *opt;
 	FILE *f;
 
 	sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -404,18 +426,16 @@ static void init(void)
 	
 	fcntl(urandom_fd, F_SETFD, fcntl(urandom_fd, F_GETFD) | FD_CLOEXEC);
 
-	opt = conf_get_opt("common", "seq-file");
-	if (!opt)
-		opt = "/var/run/accel-ppp/seq";
-	
-	f = fopen(opt, "r");
+	load_config();
+
+	f = fopen(conf_seq_file, "r");
 	if (f) {
 		fscanf(f, "%llu", &seq);
+		seq += 1000;
 		fclose(f);
 	} else
-		seq = (unsigned long long)random() * (unsigned long long)random();
+		read(urandom_fd, &seq, sizeof(seq));
 
-	load_config();
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 
 	atexit(save_seq);
