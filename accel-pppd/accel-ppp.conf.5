@@ -602,8 +602,8 @@ If specified and greated then zero pppd_module will produce verbose logging.
 .br
 Configuration of chap-secrets module.
 .TP
-.BI "gw-ip-address=" x.x.x.x
-Specifies address to use as local address of ppp interfaces if chap-secrets is used for IP address assignment.
+.BI "gw-ip-address=" x.x.x.x[/mask]
+Specifies address to use as local address of ppp interfaces if chap-secrets is used for IP address assignment. Mask is used for IPoE.
 .TP
 .BI "chap-secrets=" file
 Specifies alternate chap-secrets file location (default is /etc/ppp/chap-secrets).

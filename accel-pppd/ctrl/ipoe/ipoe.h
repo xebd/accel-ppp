@@ -26,6 +26,7 @@ struct ipoe_serv
 	int opt_dhcpv4:1;
 	int opt_up:1;
 	int opt_ifcfg:1;
+	int opt_nat:1;
 	int need_close:1;
 };
 

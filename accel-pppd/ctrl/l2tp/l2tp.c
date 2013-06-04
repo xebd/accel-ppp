@@ -1222,16 +1222,16 @@ static int l2tp_session_connect(struct l2tp_sess_t *sess)
 			    " snprintf() failed: %s\n", strerror(errno));
 		goto out_err;
 	}
-	sess->ppp.ses.chan_name = _malloc(chan_sz);
+	sess->ppp.ses.chan_name = _malloc(chan_sz + 1);
 	if (sess->ppp.ses.chan_name == NULL) {
 		log_session(log_error, sess, "impossible to connect session:"
 			    " memory allocation failed\n");
 		goto out_err;
 	}
-	if (snprintf(sess->ppp.ses.chan_name, chan_sz, "%s:%i session %i",
+	if (snprintf(sess->ppp.ses.chan_name, chan_sz + 1, "%s:%i session %i",
 		     addr, peer_port, sess->peer_sid) < 0) {
 		log_session(log_error, sess, "impossible to connect session:"
-			    " snprintf(%i) failed\n", chan_sz);
+			    " snprintf(%i) failed\n", chan_sz + 1);
 		goto out_err;
 	}
 

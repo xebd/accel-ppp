@@ -546,9 +546,6 @@ static int shaper_restore_exec(const char *cmd, char * const *f, int f_cnt, void
 {
 	struct shaper_pd_t *pd;
 	int all, found = 0;;
-	int *ptr = 0;
-
-	*ptr = 1;
 
 	if (f_cnt != 3)
 		return CLI_CMD_SYNTAX;
