@@ -2054,7 +2054,7 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 
 		host_addr.sin_family = AF_INET;
 		host_addr.sin_addr = pkt_info->ipi_addr;
-		host_addr.sin_port = htons(conf_port);
+		host_addr.sin_port = 0;
 
 		conn = l2tp_tunnel_alloc(&pack->addr, &host_addr,
 					 framing_cap->val.uint32, 1, 1,
@@ -3621,7 +3621,7 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 	if (opt)
 		if (inet_aton(opt, &host.sin_addr) == 0) {
 			host.sin_family = AF_INET;
-			host.sin_port = htons(conf_port);
+			host.sin_port = 0;
 		}
 
 	for (indx = 3; indx + 1 < fields_cnt; ++indx) {
@@ -3649,7 +3649,7 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 		} else if (strcmp("host-addr", fields[indx]) == 0) {
 			host_indx = ++indx;
 			host.sin_family = AF_INET;
-			host.sin_port = htons(conf_port);
+			host.sin_port = 0;
 			if (inet_aton(fields[indx], &host.sin_addr) == 0) {
 				cli_sendv(client,
 					  "invalid host address: \"%s\"\r\n",
