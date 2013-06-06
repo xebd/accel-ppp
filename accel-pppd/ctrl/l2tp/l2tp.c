@@ -3608,10 +3608,14 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 {
 	struct l2tp_conn_t *conn = NULL;
 	struct sockaddr_in peer = {
-		.sin_family = AF_UNSPEC
+		.sin_family = AF_INET,
+		.sin_port = htons(L2TP_PORT),
+		.sin_addr = { htonl(INADDR_ANY) }
 	};
 	struct sockaddr_in host = {
-		.sin_family = AF_UNSPEC
+		.sin_family = AF_INET,
+		.sin_port = 0,
+		.sin_addr = { htonl(INADDR_ANY) }
 	};
 	const char *opt = NULL;
 	int peer_indx = -1;
@@ -3642,8 +3646,6 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 			}
 		} else if (strcmp("peer-addr", fields[indx]) == 0) {
 			peer_indx = ++indx;
-			peer.sin_family = AF_INET;
-			peer.sin_port = htons(L2TP_PORT);
 			if (inet_aton(fields[indx], &peer.sin_addr) == 0) {
 				cli_sendv(client,
 					  "invalid peer address: \"%s\"\r\n",
@@ -3652,14 +3654,34 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 			}
 		} else if (strcmp("host-addr", fields[indx]) == 0) {
 			host_indx = ++indx;
-			host.sin_family = AF_INET;
-			host.sin_port = 0;
 			if (inet_aton(fields[indx], &host.sin_addr) == 0) {
 				cli_sendv(client,
 					  "invalid host address: \"%s\"\r\n",
 					  fields[indx]);
 				return CLI_CMD_INVAL;
 			}
+		} else if (strcmp("peer-port", fields[indx]) == 0) {
+			long port;
+			++indx;
+			if (u_readlong(&port, fields[indx],
+				       0, UINT16_MAX) < 0) {
+				cli_sendv(client,
+					  "invalid peer port: \"%s\"\r\n",
+					  fields[indx]);
+				return CLI_CMD_INVAL;
+			}
+			peer.sin_port = htons(port);
+		} else if (strcmp("host-port", fields[indx]) == 0) {
+			long port;
+			++indx;
+			if (u_readlong(&port, fields[indx],
+				       0, UINT16_MAX) < 0) {
+				cli_sendv(client,
+					  "invalid host port: \"%s\"\r\n",
+					  fields[indx]);
+				return CLI_CMD_INVAL;
+			}
+			host.sin_port = htons(port);
 		} else if (strcmp("hide-avps", fields[indx]) == 0) {
 			++indx;
 			hide_avps = atoi(fields[indx]) > 0;
@@ -3755,7 +3777,8 @@ static void l2tp_create_tunnel_help(char * const *fields, int fields_cnt,
 				    void *client)
 {
 	cli_send(client,
-		 "l2tp create tunnel peer-addr <ip_addr> [host-addr <ip_addr>]"
+		 "l2tp create tunnel peer-addr <ip_addr> [peer-port <port>]"
+		 " [host-addr <ip_addr>] [host-port <port>]"
 		 " [hide-avps <0|1>] [mode <lac|lns>]"
 		 " - initiate new tunnel to peer\r\n");
 }
