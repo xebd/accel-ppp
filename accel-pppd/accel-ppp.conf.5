@@ -436,6 +436,12 @@ If this option is given and
 .B n
 is greater than 0, then attributes sent in L2TP packets will be hidden (for
 AVPs that support it).
+.TP
+.BI "use-ephemeral-ports=" 0|1
+Specifies if an arbitrary source port is used when replying to a tunnel
+establishment request. When this option is deactivated, the destination
+port of the incoming request (SCCRQ) is used as source port for the
+reply (SCCRP). Default value is 1.
 .SH [radius]
 .br
 Configuration of RADIUS module.

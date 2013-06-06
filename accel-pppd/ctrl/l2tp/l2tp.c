@@ -52,6 +52,7 @@ int conf_verbose = 0;
 int conf_hide_avps = 0;
 int conf_avp_permissive = 0;
 static int conf_port = L2TP_PORT;
+static int conf_ephemeral_ports = 1;
 static int conf_timeout = 60;
 static int conf_rtimeout = 5;
 static int conf_retransmit = 5;
@@ -2054,7 +2055,10 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 
 		host_addr.sin_family = AF_INET;
 		host_addr.sin_addr = pkt_info->ipi_addr;
-		host_addr.sin_port = 0;
+		if (conf_ephemeral_ports)
+			host_addr.sin_port = 0;
+		else
+			host_addr.sin_port = serv->addr.sin_port;
 
 		conn = l2tp_tunnel_alloc(&pack->addr, &host_addr,
 					 framing_cap->val.uint32, 1, 1,
@@ -3777,6 +3781,10 @@ static void load_config(void)
 	opt = conf_get_opt("l2tp", "verbose");
 	if (opt && atoi(opt) >= 0)
 		conf_verbose = atoi(opt) > 0;
+
+	opt = conf_get_opt("l2tp", "use-ephemeral-ports");
+	if (opt && atoi(opt) >= 0)
+		conf_ephemeral_ports = atoi(opt) > 0;
 
 	opt = conf_get_opt("l2tp", "hide-avps");
 	if (opt && atoi(opt) >= 0)
