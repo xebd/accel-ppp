@@ -48,10 +48,10 @@
 #define STATE_FIN        9
 #define STATE_CLOSE      0
 
-int conf_port = L2TP_PORT;
 int conf_verbose = 0;
 int conf_hide_avps = 0;
 int conf_avp_permissive = 0;
+static int conf_port = L2TP_PORT;
 static int conf_timeout = 60;
 static int conf_rtimeout = 5;
 static int conf_retransmit = 5;
