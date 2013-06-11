@@ -148,7 +148,7 @@ void core_restart(int soft)
 
 	if (fork()) {
 		//close_all_fd();
-		return;
+		_exit(0);
 	}
 
 	pthread_sigmask(SIG_SETMASK, &orig_set, NULL);
@@ -180,7 +180,7 @@ void core_restart(int soft)
 	sprintf(exe, "/proc/%u/exe", getpid());
 	readlink(exe, exe, PATH_MAX);
 
-	if (!f)
+	if (!f && soft)
 		argv[n++] = "--internal";
 
 	argv[n++] = NULL;

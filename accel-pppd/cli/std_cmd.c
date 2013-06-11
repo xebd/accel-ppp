@@ -341,41 +341,37 @@ static void reload_help(char * const *fields, int fields_cnt, void *client)
 
 //==========================
 
-static void __do_restart(void)
+static void __do_restart1(void)
 {
-#ifdef USE_BACKUP
-	core_restart(0);
-#else
 	core_restart(1);
-#endif
-	_exit(0);
 }
+
+static void __do_restart0(void)
+{
+	core_restart(0);
+}
+
 
 static int restart_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 {
-	int hard = 0;
+	void (*restart)(void);
 
 	if (f_cnt == 2) {
 		if (strcmp(f[1], "soft") == 0)
-			hard = 0;
+			restart = __do_restart1;
 		else if (strcmp(f[1], "gracefully") == 0)
-			hard = 1;
+			restart = __do_restart0;
 		else if (strcmp(f[1], "hard") == 0)
-			__do_restart();
+			core_restart(0);
 		else
 			return CLI_CMD_SYNTAX;
 	} else if (f_cnt == 1)
-		hard = 0;
+		restart = __do_restart1;
 	else
 		return CLI_CMD_SYNTAX;
 
-	if (hard) {
-		core_restart(1);
-		_exit(0);
-	} else {
-		ap_shutdown_soft(__do_restart);
-		terminate_all_sessions(0);
-	}
+	ap_shutdown_soft(restart);
+	terminate_all_sessions(0);
 
 	return CLI_CMD_OK;
 }

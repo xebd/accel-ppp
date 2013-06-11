@@ -534,13 +534,13 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 			ses->siaddr = ses->router;
 		
 		if (!ses->siaddr)
+			find_gw_addr(ses);
+		
+		if (!ses->siaddr)
 			ses->siaddr = ses->serv->opt_src;		
 
 		if (!ses->siaddr && ses->serv->dhcpv4_relay)
 			ses->siaddr = ses->serv->dhcpv4_relay->giaddr;
-
-		if (!ses->siaddr)
-			find_gw_addr(ses);
 
 		if (!ses->siaddr) {
 			log_ppp_error("can't determine Server-ID\n");
