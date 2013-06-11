@@ -69,7 +69,7 @@ static const char *conf_lua_username_func;
 #endif
 
 static int conf_offer_timeout = 3;
-static in_addr_t conf_gw_address;
+static LIST_HEAD(conf_gw_addr);
 static int conf_netmask = 24;
 static int conf_lease_time = 600;
 static int conf_lease_timeout = 660;
@@ -83,31 +83,33 @@ static mempool_t ses_pool;
 
 static LIST_HEAD(serv_list);
 
-struct ifaddr
-{
+struct ifaddr {
 	struct list_head entry;
 	in_addr_t addr;
 	int refs;
 };
 
-struct iplink_arg
-{
+struct iplink_arg {
 	pcre *re;
 	const char *opt;
 };
 
-struct unit_cache
-{
+struct unit_cache {
 	struct list_head entry;
 	int ifindex;
 };
 
-struct l4_redirect
-{
+struct l4_redirect {
 	struct list_head entry;
 	int ifindex;
 	in_addr_t addr;
 	time_t timeout;
+};
+
+struct gw_addr {
+	struct list_head entry;
+	in_addr_t addr;
+	int mask;
 };
 
 static pthread_mutex_t uc_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -472,6 +474,22 @@ static void ipoe_session_start(struct ipoe_session *ses)
 		__ipoe_session_start(ses);
 }
 
+static void find_gw_addr(struct ipoe_session *ses)
+{
+	struct gw_addr *a;
+
+	list_for_each_entry(a, &conf_gw_addr, entry) {
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+		if ((ses->yiaddr & ((1<<a->mask) - 1)) == (a->addr & ((1<<a->mask) - 1))) {
+			ses->siaddr = a->addr;
+			ses->mask = a->mask;
+			return;
+		}
+#else
+#endif
+	}
+}
+
 static void __ipoe_session_start(struct ipoe_session *ses) 
 {
 	if (!ses->yiaddr) {
@@ -487,9 +505,6 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 		ses->mask = conf_netmask;
 
 	if (ses->ses.ipv4) {
-		if (conf_gw_address)
-			ses->ses.ipv4->addr = conf_gw_address;
-		
 		if (!ses->mask)
 			ses->mask = ses->ses.ipv4->mask;
 
@@ -518,6 +533,9 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 		
 		if (!ses->siaddr && ses->serv->dhcpv4_relay)
 			ses->siaddr = ses->serv->dhcpv4_relay->giaddr;
+
+		if (!ses->siaddr)
+			find_gw_addr(ses);
 
 		if (!ses->siaddr) {
 			log_ppp_error("can't determine Server-ID\n");
@@ -1855,6 +1873,46 @@ static void load_local_nets(struct conf_sect_t *sect)
 	}
 }
 
+static void load_gw_addr(struct conf_sect_t *sect)
+{
+	struct conf_option_t *opt;
+	struct gw_addr *a;
+	char addr[17];
+	char *ptr;
+
+	while (!list_empty(&conf_gw_addr)) {
+		a = list_entry(conf_gw_addr.next, typeof(*a), entry);
+		list_del(&a->entry);
+		_free(a);
+	}
+
+	list_for_each_entry(opt, &sect->items, entry) {
+		if (strcmp(opt->name, "gw-ip-address"))
+			continue;
+		if (!opt->val)
+			continue;
+
+		a = _malloc(sizeof(*a));
+		ptr = strchr(opt->val, '/');
+		if (ptr) {
+			memcpy(addr, opt->val, ptr - opt->val);
+			addr[ptr - opt->val] = 0;
+			a->addr = inet_addr(addr);
+			a->mask = atoi(ptr + 1);
+		} else {
+			a->addr = inet_addr(opt->val);
+			a->mask = 32;
+		}
+
+		if (a->addr == 0xffffffff || a->mask < 1 || a->mask > 32) {
+			log_error("ipoe: failed to parse '%s=%s'\n", opt->name, opt->val);
+			_free(a);
+			continue;
+		}
+		list_add_tail(&a->entry, &conf_gw_addr);
+	}
+}
+
 #ifdef RADIUS
 static void parse_conf_rad_attr(const char *opt, int *val)
 {
@@ -1907,12 +1965,6 @@ static void load_config(void)
 		else
 			log_emerg("ipoe: unknown username value '%s'\n", opt);
 	}
-
-	opt = conf_get_opt("ipoe", "gw-ip-address");
-	if (opt)
-		conf_gw_address = inet_addr(opt);
-	else
-		conf_gw_address = 0;
 
 	opt = conf_get_opt("ipoe", "netmask");
 	if (opt) {
@@ -2027,6 +2079,7 @@ static void load_config(void)
 	
 	load_interfaces(s);
 	load_local_nets(s);
+	load_gw_addr(s);
 }
 
 static struct triton_context_t l4_redirect_ctx = {

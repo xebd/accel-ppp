@@ -214,6 +214,9 @@ If specified then if radius rejects access 'ip rule add from ip_addr table l4-re
 .B n
 seconds.
 .TP
+.BI "gw-ip-address="x.x.x.x/mask
+Specifies address to be used as server ip address if radius can assign only client address. In such case if client address is matched network and mask then specified address and mask will be used. You can specify multiple such options.
+.TP
 .BI "shared=" 0|1
 Specifies default value for per-interface
 .B shared
