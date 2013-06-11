@@ -112,6 +112,7 @@ struct gw_addr {
 	struct list_head entry;
 	in_addr_t addr;
 	int mask;
+	int mask1;
 };
 
 static pthread_mutex_t uc_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -481,14 +482,11 @@ static void find_gw_addr(struct ipoe_session *ses)
 	struct gw_addr *a;
 
 	list_for_each_entry(a, &conf_gw_addr, entry) {
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-		if ((ses->yiaddr & ((1<<a->mask) - 1)) == (a->addr & ((1<<a->mask) - 1))) {
+		if ((ntohl(ses->yiaddr) & (a->mask1)) == (ntohl(a->addr) & (a->mask1))) {
 			ses->siaddr = a->addr;
 			ses->mask = a->mask;
 			return;
 		}
-#else
-#endif
 	}
 }
 
@@ -547,6 +545,9 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 0);
 			return;
 		}
+
+		if (!ses->router)
+			ses->router = ses->siaddr;
 				
 		if (!ses->mask)
 			ses->mask = 32;
@@ -1919,6 +1920,8 @@ static void load_gw_addr(struct conf_sect_t *sect)
 			_free(a);
 			continue;
 		}
+
+		a->mask1 = ((1 << a->mask) - 1) << (32 - a->mask);
 		list_add_tail(&a->entry, &conf_gw_addr);
 	}
 }

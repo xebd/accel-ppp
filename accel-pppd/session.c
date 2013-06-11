@@ -42,7 +42,9 @@ int __export sock6_fd;
 int __export urandom_fd;
 int __export ap_shutdown;
 
+#if __WORDSIZE == 32
 static spinlock_t seq_lock;
+#endif
 static long long unsigned seq;
 static struct timespec seq_ts;
 
