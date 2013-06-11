@@ -22,6 +22,7 @@ struct ipoe_serv
 	struct dhcpv4_relay *dhcpv4_relay;
 	pthread_mutex_t lock;
 	int opt_mode;
+	uint32_t opt_src;
 	int opt_shared:1;
 	int opt_dhcpv4:1;
 	int opt_up:1;

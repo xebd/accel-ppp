@@ -243,6 +243,7 @@ parameter.
 .BI "" [,range=x.x.x.x/mask][,ifcfg=0|1]
 .BI "" [,relay=x.x.x.x]
 .BI "" [,giaddr=x.x.x.x]
+.BI "" [,src=x.x.x.x]
 .br
 Specifies interface to listen dhcp or unclassified packets. You may specify multiple
 .B interface
@@ -289,6 +290,10 @@ is also needed.
 The
 .B giaddr
 parameter specifies relay agent IP address.
+.br
+The
+.B src
+parameter specifies ip address to use as source when adding route to client.
 .TP
 .BI "local-net=" x.x.x.x/mask
 Specifies networks from which packets will be treated as unclassified. You may specify multiple local-net options.

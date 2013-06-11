@@ -50,6 +50,8 @@ static int conf_mode = 0;
 static int conf_shared = 1;
 static int conf_ifcfg = 1;
 static int conf_nat = 0;
+static uint32_t conf_src;
+
 //static int conf_dhcpv6;
 static int conf_username;
 static int conf_unit_cache;
@@ -516,6 +518,9 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 		if (!ses->siaddr && ses->router != ses->yiaddr)
 			ses->siaddr = ses->router;
 		
+		if (!ses->siaddr)
+			ses->siaddr = ses->serv->opt_src;		
+
 		if (!ses->siaddr && ses->serv->dhcpv4_relay)
 			ses->siaddr = ses->serv->dhcpv4_relay->giaddr;
 
@@ -600,9 +605,9 @@ static void ipoe_ifcfg_add(struct ipoe_session *ses)
 				log_ppp_warn("ipoe: failed to add addess to interface '%s'\n", serv->ifname);
 			pthread_mutex_unlock(&serv->lock);
 		}
-		if (iproute_add(serv->ifindex, ses->siaddr, ses->yiaddr))
+		if (iproute_add(serv->ifindex, ses->serv->opt_src ? ses->serv->opt_src : ses->router, ses->yiaddr))
 			log_ppp_warn("ipoe: failed to add route to interface '%s'\n", serv->ifname);
-	} else if (iproute_add(serv->ifindex, ses->siaddr, ses->yiaddr))
+	} else if (iproute_add(serv->ifindex, ses->serv->opt_src ? ses->serv->opt_src : ses->router, ses->yiaddr))
 		log_ppp_warn("ipoe: failed to add route to interface '%s'\n", serv->ifname);
 
 	ses->ifcfg = 1;
@@ -1545,6 +1550,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 	const char *opt_giaddr = NULL;
 	in_addr_t relay_addr = 0;
 	in_addr_t giaddr = 0;
+	in_addr_t opt_src = conf_src;
 
 	str0 = strchr(opt, ',');
 	if (str0) {
@@ -1595,6 +1601,8 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 				giaddr = inet_addr(ptr1);
 			} else if (strcmp(str, "nat") == 0) {
 				opt_nat = atoi(ptr1);
+			} else if (strcmp(str, "src") == 0) {
+				opt_src = inet_addr(ptr1);
 			}
 
 			if (end)
@@ -1651,6 +1659,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 		serv->opt_mode = opt_mode;
 		serv->opt_ifcfg = opt_ifcfg;
 		serv->opt_nat = opt_nat;
+		serv->opt_src = opt_src;
 
 		if (str0)
 			_free(str0);
@@ -1669,6 +1678,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 	serv->opt_mode = opt_mode;
 	serv->opt_ifcfg = opt_ifcfg;
 	serv->opt_nat = opt_nat;
+	serv->opt_src = opt_src;
 	serv->active = 1;
 	INIT_LIST_HEAD(&serv->sessions);
 	INIT_LIST_HEAD(&serv->addr_list);
@@ -1979,6 +1989,12 @@ static void load_config(void)
 		conf_nat = atoi(opt);
 	else
 		conf_nat = 0;
+
+	opt = conf_get_opt("ipoe", "src");
+	if (opt)
+		conf_src = inet_addr(opt);
+	else
+		conf_src = 0;
 	
 	opt = conf_get_opt("ipoe", "mode");
 	if (opt) {
