@@ -77,6 +77,7 @@ static int conf_lease_time = 600;
 static int conf_lease_timeout = 660;
 static int conf_verbose;
 static const char *conf_agent_remote_id;
+static int conf_proto;
 
 static unsigned int stat_starting;
 static unsigned int stat_active;
@@ -624,9 +625,9 @@ static void ipoe_ifcfg_add(struct ipoe_session *ses)
 				log_ppp_warn("ipoe: failed to add addess to interface '%s'\n", serv->ifname);
 			pthread_mutex_unlock(&serv->lock);
 		}
-		if (iproute_add(serv->ifindex, ses->serv->opt_src ? ses->serv->opt_src : ses->router, ses->yiaddr))
+		if (iproute_add(serv->ifindex, ses->serv->opt_src ? ses->serv->opt_src : ses->router, ses->yiaddr, conf_proto))
 			log_ppp_warn("ipoe: failed to add route to interface '%s'\n", serv->ifname);
-	} else if (iproute_add(serv->ifindex, ses->serv->opt_src ? ses->serv->opt_src : ses->router, ses->yiaddr))
+	} else if (iproute_add(serv->ifindex, ses->serv->opt_src ? ses->serv->opt_src : ses->router, ses->yiaddr, conf_proto))
 		log_ppp_warn("ipoe: failed to add route to interface '%s'\n", serv->ifname);
 
 	ses->ifcfg = 1;
@@ -2090,6 +2091,12 @@ static void load_config(void)
 
 	if (!conf_dhcpv4 && !conf_up)
 		conf_dhcpv4 = 1;
+	
+	opt = conf_get_opt("ipoe", "proto");
+	if (opt && atoi(opt) > 0)
+		conf_proto = atoi(opt);
+	else
+		conf_proto = 0;
 	
 #ifdef RADIUS
 	if (triton_module_loaded("radius"))

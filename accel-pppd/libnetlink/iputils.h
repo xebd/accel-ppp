@@ -11,7 +11,7 @@ int iplink_get_stats(int ifindex, struct rtnl_link_stats *stats);
 int ipaddr_add(int ifindex, in_addr_t addr, int mask);
 int ipaddr_del(int ifindex, in_addr_t addr);
 
-int iproute_add(int ifindex, in_addr_t src, in_addr_t dst);
+int iproute_add(int ifindex, in_addr_t src, in_addr_t dst, int proto);
 int iproute_del(int ifindex, in_addr_t dst);
 
 int iprule_add(uint32_t addr, int table);

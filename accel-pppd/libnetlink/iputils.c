@@ -224,7 +224,7 @@ int __export ipaddr_del(int ifindex, in_addr_t addr)
 	return 0;
 }
 
-int __export iproute_add(int ifindex, in_addr_t src, in_addr_t dst)
+int __export iproute_add(int ifindex, in_addr_t src, in_addr_t dst, int proto)
 {
 	struct ipaddr_req {
 		struct nlmsghdr n;
@@ -246,7 +246,7 @@ int __export iproute_add(int ifindex, in_addr_t src, in_addr_t dst)
 	req.i.rtm_family = AF_INET;
 	req.i.rtm_table = RT_TABLE_MAIN;
 	req.i.rtm_scope = RT_SCOPE_LINK;
-	req.i.rtm_protocol = RTPROT_BOOT;
+	req.i.rtm_protocol = proto;
 	req.i.rtm_type = RTN_UNICAST;
 	req.i.rtm_dst_len = 32;
 
