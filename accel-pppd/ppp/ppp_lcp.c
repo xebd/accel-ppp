@@ -862,6 +862,10 @@ static void lcp_recv(struct ppp_handler_t*h)
 				log_ppp_info2("recv [LCP ProtoRej id=%x <%04x>]\n", hdr->id, ntohs(*(uint16_t*)(hdr + 1)));
 			ppp_recv_proto_rej(lcp->ppp, ntohs(*(uint16_t *)(hdr + 1)));
 			break;
+		case DISCARDREQ:
+			if (conf_ppp_verbose)
+				log_ppp_info2("recv [LCP DiscardReq id=%x <magic %08x>]\n", hdr->id, ntohl(*(uint32_t*)(hdr + 1)));
+			break;
 		case IDENT:
 			if (conf_ppp_verbose) {
 				term_msg = _strndup((char*)(hdr + 1) + 4, ntohs(hdr->len) - 4 - 4);
