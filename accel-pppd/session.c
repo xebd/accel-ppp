@@ -137,8 +137,6 @@ void __export ap_session_finished(struct ap_session *ses)
 {
 	ses->terminated = 1;
 
-	ap_session_read_stats(ses, NULL);
-	
 	triton_event_fire(EV_SES_PRE_FINISHED, ses);
 
 	pthread_rwlock_wrlock(&ses_lock);
