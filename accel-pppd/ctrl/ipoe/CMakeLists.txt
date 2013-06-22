@@ -6,6 +6,7 @@ SET(sources
 	dhcpv4_options.c
 	ipoe_netlink.c
 	backup.c
+	arp.c
 )
 
 IF (LUA)

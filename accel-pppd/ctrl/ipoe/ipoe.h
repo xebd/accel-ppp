@@ -9,26 +9,35 @@
 #include "ipdb.h"
 #include "dhcpv4.h"
 
+#ifndef ETH_ALEN
+#define ETH_ALEN 6
+#endif
+
+struct arp_serv;
+
 struct ipoe_serv
 {
 	struct list_head entry;
 	struct triton_context_t ctx;
 	char *ifname;
 	int ifindex;
-	int active;
+	uint8_t hwaddr[ETH_ALEN];
 	struct list_head sessions;
 	struct list_head addr_list;
 	struct dhcpv4_serv *dhcpv4;
 	struct dhcpv4_relay *dhcpv4_relay;
+	struct arp_serv *arp;
 	pthread_mutex_t lock;
 	int opt_mode;
 	uint32_t opt_src;
+	int opt_arp;
 	int opt_shared:1;
 	int opt_dhcpv4:1;
 	int opt_up:1;
 	int opt_ifcfg:1;
 	int opt_nat:1;
 	int need_close:1;
+	int active:1;
 };
 
 struct ipoe_session
@@ -40,7 +49,7 @@ struct ipoe_session
 	struct dhcpv4_serv *dhcpv4;
 	struct ap_ctrl ctrl;
 	struct ap_session ses;
-	uint8_t hwaddr[6];
+	uint8_t hwaddr[ETH_ALEN];
 	struct dhcpv4_option *client_id;
 	struct dhcpv4_option *relay_agent;
 	uint8_t *agent_circuit_id;
@@ -74,6 +83,11 @@ struct ipoe_session_info
 	uint32_t peer_addr;
 };
 
+struct arp_serv {
+	struct triton_md_handler_t h;
+	struct ipoe_serv *ipoe;
+};
+
 #ifdef USE_LUA
 int ipoe_lua_set_username(struct ipoe_session *, const char *func);
 #endif
@@ -95,5 +109,7 @@ void ipoe_nl_delete(int ifindex);
 int ipoe_nl_modify(int ifindex, uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_t *hwaddr);
 void ipoe_nl_get_sessions(struct list_head *list);
 
+struct arp_serv *arpd_start(struct ipoe_serv *ipoe);
+void arpd_stop(struct arp_serv *arp);
 #endif
 

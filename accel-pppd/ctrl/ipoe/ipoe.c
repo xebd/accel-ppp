@@ -50,6 +50,7 @@ static int conf_mode = 0;
 static int conf_shared = 1;
 static int conf_ifcfg = 1;
 static int conf_nat = 0;
+static int conf_arp = 0;
 static uint32_t conf_src;
 
 //static int conf_dhcpv6;
@@ -149,7 +150,7 @@ static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct d
 	}
 
 	list_for_each_entry(ses, &serv->sessions, entry) {
-		opt82_match = pack->relay_agent != NULL;
+		opt82_match = pack->relay_agent == NULL;
 		
 		if (opt82_match && agent_circuit_id && !ses->agent_circuit_id)
 			opt82_match = 0;
@@ -982,7 +983,7 @@ static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packe
 		agent_remote_id = NULL;
 	}
 
-	opt82_match = pack->relay_agent != NULL;
+	opt82_match = pack->relay_agent == NULL;
 	
 	if (opt82_match && agent_circuit_id && !ses->agent_circuit_id)
 		opt82_match = 0;
@@ -1476,6 +1477,9 @@ static void ipoe_serv_close(struct triton_context_t *ctx)
 		dhcpv4_relay_free(serv->dhcpv4_relay, &serv->ctx);
 	}
 
+	if (serv->arp)
+		arpd_stop(serv->arp);
+
 	triton_context_unregister(ctx);
 
 	_free(serv->ifname);
@@ -1571,6 +1575,8 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 	in_addr_t relay_addr = 0;
 	in_addr_t giaddr = 0;
 	in_addr_t opt_src = conf_src;
+	int opt_arp = conf_arp;
+	struct ifreq ifr;
 
 	str0 = strchr(opt, ',');
 	if (str0) {
@@ -1623,6 +1629,8 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 				opt_nat = atoi(ptr1);
 			} else if (strcmp(str, "src") == 0) {
 				opt_src = inet_addr(ptr1);
+			} else if (strcmp(str, "proxy-arp") == 0) {
+				opt_arp = atoi(ptr1);
 			}
 
 			if (end)
@@ -1674,16 +1682,31 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 				ipoe_serv_add_addr(serv, giaddr);
 			serv->dhcpv4_relay = dhcpv4_relay_create(opt_relay, opt_giaddr, &serv->ctx, (triton_event_func)ipoe_recv_dhcpv4_relay);
 		}
+
+		if (serv->arp && !conf_arp) {
+			arpd_stop(serv->arp);
+			serv->arp = NULL;
+		} else if (!serv->arp && conf_arp)
+			serv->arp = arpd_start(serv);
 		
 		serv->opt_up = opt_up;
 		serv->opt_mode = opt_mode;
 		serv->opt_ifcfg = opt_ifcfg;
 		serv->opt_nat = opt_nat;
 		serv->opt_src = opt_src;
+		serv->opt_arp = opt_arp;
 
 		if (str0)
 			_free(str0);
 
+		return;
+	}
+
+	memset(&ifr, 0, sizeof(ifr));
+	strcpy(ifr.ifr_name, ifname);
+	
+	if (ioctl(sock_fd, SIOCGIFHWADDR, &ifr)) {
+		log_error("ipoe: '%s': ioctl(SIOCGIFHWADDR): %s\n", ifname, strerror(errno));
 		return;
 	}
 
@@ -1699,9 +1722,11 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 	serv->opt_ifcfg = opt_ifcfg;
 	serv->opt_nat = opt_nat;
 	serv->opt_src = opt_src;
+	serv->opt_arp = opt_arp;
 	serv->active = 1;
 	INIT_LIST_HEAD(&serv->sessions);
 	INIT_LIST_HEAD(&serv->addr_list);
+	memcpy(serv->hwaddr, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
 	pthread_mutex_init(&serv->lock, NULL);
 
 	triton_context_register(&serv->ctx, NULL);
@@ -1717,6 +1742,9 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 			serv->dhcpv4_relay = dhcpv4_relay_create(opt_relay, opt_giaddr, &serv->ctx, (triton_event_func)ipoe_recv_dhcpv4_relay);
 		}
 	}
+
+	if (serv->opt_arp)
+		serv->arp = arpd_start(serv);
 
 	triton_context_wakeup(&serv->ctx);
 
@@ -1749,7 +1777,7 @@ static void load_interface(const char *opt)
 		log_error("ipoe: '%s': ioctl(SIOCGIFINDEX): %s\n", ifr.ifr_name, strerror(errno));
 		return;
 	}
-
+	
 	add_interface(ifr.ifr_name, ifr.ifr_ifindex, opt);
 }
 
@@ -2051,6 +2079,17 @@ static void load_config(void)
 		conf_src = inet_addr(opt);
 	else
 		conf_src = 0;
+
+	opt = conf_get_opt("ipoe", "proxy-arp");
+	if (opt)
+		conf_arp = atoi(opt);
+	else
+		conf_arp = 0;
+	
+	if (conf_arp < 0 || conf_arp > 2) {
+		log_error("ipoe: arp=%s: invalid value\n", opt);
+		conf_arp = 0;
+	}
 	
 	opt = conf_get_opt("ipoe", "mode");
 	if (opt) {
