@@ -109,8 +109,10 @@ static int arp_read(struct triton_md_handler_t *h)
 		if (!ses1)
 			memcpy(ah2.ar_sha, s->ipoe->hwaddr, ETH_ALEN);
 		else if (ses2) {
-			if (s->ipoe->opt_arp == 1 || ses1 == ses2)
+			if (s->ipoe->opt_arp == 1 || ses1 == ses2) {
+				pthread_mutex_unlock(&s->ipoe->lock);
 				continue;
+			}
 			memcpy(ah2.ar_sha, ses2->hwaddr, ETH_ALEN);
 		} else
 			memcpy(ah2.ar_sha, s->ipoe->hwaddr, ETH_ALEN);
