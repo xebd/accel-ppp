@@ -150,9 +150,9 @@ static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct d
 	}
 
 	list_for_each_entry(ses, &serv->sessions, entry) {
-		opt82_match = pack->relay_agent != NULL;
+		opt82_match = 1;
 		
-		if (opt82_match && agent_circuit_id && !ses->agent_circuit_id)
+		if (agent_circuit_id && !ses->agent_circuit_id)
 			opt82_match = 0;
 		
 		if (opt82_match && agent_remote_id && !ses->agent_remote_id)
@@ -983,9 +983,9 @@ static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packe
 		agent_remote_id = NULL;
 	}
 
-	opt82_match = pack->relay_agent == NULL;
+	opt82_match = 1;
 	
-	if (opt82_match && agent_circuit_id && !ses->agent_circuit_id)
+	if (agent_circuit_id && !ses->agent_circuit_id)
 		opt82_match = 0;
 	
 	if (opt82_match && agent_remote_id && !ses->agent_remote_id)
