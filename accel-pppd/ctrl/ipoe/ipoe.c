@@ -150,7 +150,7 @@ static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct d
 	}
 
 	list_for_each_entry(ses, &serv->sessions, entry) {
-		opt82_match = pack->relay_agent == NULL;
+		opt82_match = pack->relay_agent != NULL;
 		
 		if (opt82_match && agent_circuit_id && !ses->agent_circuit_id)
 			opt82_match = 0;
