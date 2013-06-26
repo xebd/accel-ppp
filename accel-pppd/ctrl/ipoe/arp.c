@@ -82,7 +82,7 @@ static int arp_read(struct triton_md_handler_t *h)
 
 		if (memcmp(ah->ar_sha, src.sll_addr, ETH_ALEN))
 			continue;
-			
+
 		ses1 = ses2 = NULL;
 		pthread_mutex_lock(&s->ipoe->lock);
 		list_for_each_entry(ses, &s->ipoe->sessions, entry) {
@@ -100,15 +100,13 @@ static int arp_read(struct triton_md_handler_t *h)
 				break;
 		}
 
-		if ((ses1 && ses1->ses.state != AP_STATE_ACTIVE) ||
+		if (!ses1 || (ses1->ses.state != AP_STATE_ACTIVE) ||
 			  (ses2 && ses2->ses.state != AP_STATE_ACTIVE)) {
 			pthread_mutex_unlock(&s->ipoe->lock);
 			continue;
 		}
-		
-		if (!ses1)
-			memcpy(ah2.ar_sha, s->ipoe->hwaddr, ETH_ALEN);
-		else if (ses2) {
+
+		if (ses2) {
 			if (s->ipoe->opt_arp == 1 || ses1 == ses2) {
 				pthread_mutex_unlock(&s->ipoe->lock);
 				continue;
