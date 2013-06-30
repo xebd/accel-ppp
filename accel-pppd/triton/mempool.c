@@ -29,9 +29,9 @@ struct _mempool_t
 	struct list_head items;
 #ifdef MEMDEBUG
 	struct list_head ditems;
-	uint64_t magic;
 #endif
 	spinlock_t lock;
+	uint64_t magic;
 	int mmap:1;
 	int objects;
 };
@@ -46,9 +46,9 @@ struct _item_t
 #ifdef MEMDEBUG
 	const char *fname;
 	int line;
+#endif
 	uint64_t magic2;
 	uint64_t magic1;
-#endif
 	char ptr[0];
 };
 
@@ -69,10 +69,10 @@ mempool_t __export *mempool_create(int size)
 	INIT_LIST_HEAD(&p->items);
 #ifdef MEMDEBUG
 	INIT_LIST_HEAD(&p->ditems);
-	p->magic = (uint64_t)random() * (uint64_t)random();
 #endif
 	spinlock_init(&p->lock);
 	p->size = size;
+	p->magic = (uint64_t)random() * (uint64_t)random();
 
 	spin_lock(&pools_lock);
 	list_add_tail(&p->entry, &pools);
@@ -135,6 +135,9 @@ void __export *mempool_alloc(mempool_t *pool)
 		return NULL;
 	}
 	it->owner = p;
+	it->magic2 = p->magic;
+	it->magic1 = MAGIC1;
+	*(uint64_t*)(it->ptr + p->size) = it->magic2;
 
 	return it->ptr;
 }
