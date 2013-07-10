@@ -1157,7 +1157,6 @@ static int l2tp_session_connect(struct l2tp_sess_t *sess)
 	struct l2tp_conn_t *conn = sess->paren_conn;
 	int lns_mode = sess->lns_mode;
 	int flg;
-	int chan_sz;
 	uint16_t peer_port;
 	char addr[17];
 
@@ -1209,23 +1208,10 @@ static int l2tp_session_connect(struct l2tp_sess_t *sess)
 
 	u_inet_ntoa(conn->peer_addr.sin_addr.s_addr, addr);
 	peer_port = ntohs(conn->peer_addr.sin_port);
-	chan_sz = snprintf(NULL, 0, "%s:%i session %i",
-		       addr, peer_port, sess->peer_sid);
-	if (chan_sz < 0) {
+	if (_asprintf(&sess->ppp.ses.chan_name, "%s:%i session %i",
+		      addr, peer_port, sess->peer_sid) < 0) {
 		log_session(log_error, sess, "impossible to connect session:"
-			    " snprintf() failed: %s\n", strerror(errno));
-		goto out_err;
-	}
-	sess->ppp.ses.chan_name = _malloc(chan_sz + 1);
-	if (sess->ppp.ses.chan_name == NULL) {
-		log_session(log_error, sess, "impossible to connect session:"
-			    " memory allocation failed\n");
-		goto out_err;
-	}
-	if (snprintf(sess->ppp.ses.chan_name, chan_sz + 1, "%s:%i session %i",
-		     addr, peer_port, sess->peer_sid) < 0) {
-		log_session(log_error, sess, "impossible to connect session:"
-			    " snprintf(%i) failed\n", chan_sz + 1);
+			    " setting session's channel name failed\n");
 		goto out_err;
 	}
 
