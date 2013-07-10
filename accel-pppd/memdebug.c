@@ -25,7 +25,7 @@
 	(type *)( (char *)__mptr - offsetof(type,member) );})
 
 
-#define MAGIC1 0x1122334455667788llu
+#define MAGIC1 UINT64_C(0x1122334455667788)
 
 struct mem_t
 {
@@ -41,9 +41,12 @@ struct mem_t
 static LIST_HEAD(mem_list);
 static spinlock_t mem_list_lock = SPINLOCK_INITIALIZER;
 
-struct mem_t *_md_malloc(size_t size, const char *fname, int line)
+static struct mem_t *_md_malloc(size_t size, const char *fname, int line)
 {
 	struct mem_t *mem = malloc(sizeof(*mem) + size + 8);
+
+	if (mem == NULL)
+		return NULL;
 
 	if (size > 4096)
 		line = 0;
@@ -66,7 +69,7 @@ void __export *md_malloc(size_t size, const char *fname, int line)
 {
 	struct mem_t *mem = _md_malloc(size, fname, line);
 
-	return mem->data;
+	return mem ? mem->data : NULL;
 }
 
 void __export md_free(void *ptr, const char *fname, int line)
