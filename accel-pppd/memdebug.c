@@ -74,20 +74,21 @@ void __export *md_malloc(size_t size, const char *fname, int line)
 
 void __export md_free(void *ptr, const char *fname, int line)
 {
-	struct mem_t *mem = container_of(ptr, typeof(*mem), data);
+	struct mem_t *mem;
 
-	if (!ptr) {
-		printf("free null pointer at %s:%i\n", fname, line);
-		abort();
-	}
-	
+	if (!ptr)
+		return;
+
+	mem = container_of(ptr, typeof(*mem), data);
+
 	if (mem->magic1 != MAGIC1) {
 		printf("memory corruption:\nfree at %s:%i\n", fname, line);
 		abort();
 	}
 
 	if (mem->magic2 != *(uint64_t*)(mem->data + mem->size)) {
-		printf("memory corruption:\nmalloc(%lu) at %s:%i\nfree at %s:%i\n", (long unsigned)mem->size, mem->fname, mem->line, fname, line);
+		printf("memory corruption:\nmalloc(%zu) at %s:%i\nfree at %s:%i\n",
+		       mem->size, mem->fname, mem->line, fname, line);
 		abort();
 	}
 	
