@@ -142,9 +142,13 @@ void __export *md_realloc(void *ptr, size_t size, const char *fname, int line)
 
 char __export *md_strdup(const char *ptr, const char *fname, int line)
 {
-	struct mem_t *mem = _md_malloc(strlen(ptr) + 1, fname, line);
-	memcpy(mem->data, ptr, strlen(ptr) + 1);
-	return mem->data;
+	size_t len = strlen(ptr);
+	char *str = md_malloc(len + 1, fname, line);
+
+	if (str)
+		memcpy(str, ptr, len + 1);
+
+	return str;
 }
 
 char __export *md_strndup(const char *ptr, size_t n, const char *fname, int line)
