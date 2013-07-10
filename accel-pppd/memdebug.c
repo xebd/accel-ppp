@@ -153,10 +153,15 @@ char __export *md_strdup(const char *ptr, const char *fname, int line)
 
 char __export *md_strndup(const char *ptr, size_t n, const char *fname, int line)
 {
-	struct mem_t *mem = _md_malloc(n + 1, fname, line);
-	memcpy(mem->data, ptr, n);
-	mem->data[n] = 0;
-	return mem->data;
+	size_t len = strnlen(ptr, n);
+	char *str = md_malloc(len + 1, fname, line);
+
+	if (str) {
+		memcpy(str, ptr, len);
+		str[len] = '\0';
+	}
+
+	return str;
 }
 
 static void siginfo(int num)
