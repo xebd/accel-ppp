@@ -1,5 +1,6 @@
 #undef MEMDEBUG
 
+#include <stdarg.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
@@ -162,6 +163,41 @@ char __export *md_strndup(const char *ptr, size_t n, const char *fname, int line
 	}
 
 	return str;
+}
+
+int __export md_asprintf(const char *fname, int line,
+			 char **strp, const char *fmt, ...)
+{
+	va_list ap;
+	va_list aq;
+	int len;
+
+	va_start(ap, fmt);
+	va_copy(aq, ap);
+
+	len = vsnprintf(NULL, 0, fmt, ap);
+	if (len < 0)
+		goto err;
+
+	*strp = md_malloc(len + 1, fname, line);
+	if (*strp == NULL)
+		goto err;
+
+	len = vsnprintf(*strp, len + 1, fmt, aq);
+	if (len < 0)
+		goto err_strp;
+
+	va_end(aq);
+	va_end(ap);
+
+	return len;
+
+err_strp:
+	md_free(*strp, fname, line);
+err:
+	va_end(aq);
+	va_end(ap);
+	return -1;
 }
 
 static void siginfo(int num)
