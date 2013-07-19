@@ -841,6 +841,8 @@ static void ipoe_session_finished(struct ap_session *s)
 	
 	if (ses->dhcpv4)
 		dhcpv4_free(ses->dhcpv4);
+
+	triton_event_fire(EV_CTRL_FINISHED, s);
 	
 	triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_free, ses);
 }
@@ -870,7 +872,7 @@ static struct ipoe_session *ipoe_session_create_dhcpv4(struct ipoe_serv *serv, s
 {
 	struct ipoe_session *ses;
 	int dlen = 0;
-	uint8_t *ptr;
+	uint8_t *ptr = NULL;
 	
 	ses = mempool_alloc(ses_pool);
 	if (!ses) {
