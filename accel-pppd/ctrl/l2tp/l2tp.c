@@ -48,9 +48,12 @@
 #define STATE_FIN        9
 #define STATE_CLOSE      0
 
+#define DEFAULT_PPP_MAX_MTU 1420
+
 int conf_verbose = 0;
 int conf_hide_avps = 0;
 int conf_avp_permissive = 0;
+static int conf_ppp_max_mtu = DEFAULT_PPP_MAX_MTU;
 static int conf_port = L2TP_PORT;
 static int conf_ephemeral_ports = 0;
 static int conf_timeout = 60;
@@ -878,7 +881,7 @@ static struct l2tp_sess_t *l2tp_tunnel_alloc_session(struct l2tp_conn_t *conn)
 	sess->ctrl.started = l2tp_ppp_started;
 	sess->ctrl.finished = l2tp_ppp_finished;
 	sess->ctrl.terminate = ppp_terminate;
-	sess->ctrl.max_mtu = 1420;
+	sess->ctrl.max_mtu = conf_ppp_max_mtu;
 	sess->ctrl.mppe = conf_mppe;
 	sess->ctrl.calling_station_id = _malloc(17);
 	sess->ctrl.called_station_id = _malloc(17);
@@ -3812,6 +3815,12 @@ static void load_config(void)
 	opt = conf_get_opt("l2tp", "retransmit");
 	if (opt && atoi(opt) > 0)
 		conf_retransmit = atoi(opt);
+
+	opt = conf_get_opt("l2tp", "ppp-max-mtu");
+	if (opt && atoi(opt) > 0)
+		conf_ppp_max_mtu = atoi(opt);
+	else
+		conf_ppp_max_mtu = DEFAULT_PPP_MAX_MTU;
 
 	opt = conf_get_opt("l2tp", "host-name");
 	if (opt)
