@@ -185,11 +185,6 @@ static void ctx_thread(struct _triton_context_t *ctx)
 	uint64_t tt;
 
 	log_debug2("ctx %p %p: enter\n", ctx, ctx->thread);
-	if (ctx->need_close) {
-		if (ctx->ud->close)
-			ctx->ud->close(ctx->ud);
-		ctx->need_close = 0;
-	}
 
 	while (1) {
 		spin_lock(&ctx->lock);
@@ -233,6 +228,17 @@ static void ctx_thread(struct _triton_context_t *ctx)
 		spin_unlock(&ctx->lock);
 		break;	
 	}
+
+	spin_lock(&ctx->lock);
+	if (ctx->need_close) {
+		spin_unlock(&ctx->lock);
+		if (ctx->ud->close) {
+			ctx->ud->close(ctx->ud);
+		}
+		spin_lock(&ctx->lock);
+		ctx->need_close = 0;
+	}
+	spin_unlock(&ctx->lock);
 
 	log_debug2("ctx %p %p: exit\n", ctx, ctx->thread);
 }
