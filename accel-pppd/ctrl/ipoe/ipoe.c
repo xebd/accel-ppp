@@ -427,6 +427,9 @@ static void ipoe_session_start(struct ipoe_session *ses)
 		}
 	}
 
+	log_ppp_info1("%s: authentication succeeded\n", ses->ses.username);
+	triton_event_fire(EV_SES_AUTHORIZED, &ses->ses);
+
 	if (ses->serv->opt_nat)
 		ses->ses.ipv4 = ipdb_get_ipv4(&ses->ses);
 	
