@@ -638,7 +638,7 @@ static void ipoe_ifcfg_del(struct ipoe_session *ses)
 {
 	struct ipoe_serv *serv = ses->serv;
 	
-	if (iproute_del(serv->ifindex, ses->yiaddr))
+	if (iproute_del(serv->ifindex, ses->yiaddr, conf_proto))
 		log_ppp_warn("ipoe: failed to delete route from interface '%s'\n", serv->ifname);
 
 	if (ses->serv->opt_ifcfg) {
@@ -2135,7 +2135,7 @@ static void load_config(void)
 	if (opt && atoi(opt) > 0)
 		conf_proto = atoi(opt);
 	else
-		conf_proto = 0;
+		conf_proto = 3;
 	
 #ifdef RADIUS
 	if (triton_module_loaded("radius"))
