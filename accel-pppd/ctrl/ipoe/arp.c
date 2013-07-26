@@ -133,7 +133,16 @@ struct arp_serv *arpd_start(struct ipoe_serv *ipoe)
 	int sock;
 	struct sockaddr_ll addr;
 	struct arp_serv *s;
-	int f = 1;
+	int f = 1, fd;
+	char fname[1024];
+
+	sprintf(fname, "/proc/sys/net/ipv4/conf/%s/proxy_arp", ipoe->ifname);
+	fd = open(fname, O_WRONLY);
+	if (fd >= 0) {
+		fname[0] = '0';
+		write(fd, fname, 1);
+		close(fd);
+	}
 
 	sock = socket(PF_PACKET, SOCK_DGRAM, 0);
 	if (sock < 0) {
