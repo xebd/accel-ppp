@@ -11,7 +11,7 @@ static inline uint64_t cl_key_from_mac(uint8_t hw[6])
 	union {
 		uint8_t hw[6];
 		uint64_t key;
-	} key;
+	} key = {{ 0 }};
 
 	memcpy(key.hw, hw, sizeof(key.hw));
 

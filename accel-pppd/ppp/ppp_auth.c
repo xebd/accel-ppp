@@ -329,7 +329,7 @@ static void __ppp_auth_started(struct ppp_t *ppp)
 
 
 	log_ppp_info1("%s: authentication succeeded\n", ppp->ses.username);
-	triton_event_fire(EV_SES_AUTHORIZED, ppp);
+	triton_event_fire(EV_SES_AUTHORIZED, &ppp->ses);
 }
 
 int __export ppp_auth_succeeded(struct ppp_t *ppp, char *username)

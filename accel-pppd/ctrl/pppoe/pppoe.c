@@ -1478,7 +1478,7 @@ static void load_config(void)
 		conf_padi_limit = atoi(opt);
 
 	conf_mppe = MPPE_UNSET;
-	opt = conf_get_opt("l2tp", "mppe");
+	opt = conf_get_opt("pppoe", "mppe");
 	if (opt) {
 		if (strcmp(opt, "deny") == 0)
 			conf_mppe = MPPE_DENY;

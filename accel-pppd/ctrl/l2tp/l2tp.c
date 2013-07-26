@@ -48,11 +48,14 @@
 #define STATE_FIN        9
 #define STATE_CLOSE      0
 
+#define DEFAULT_PPP_MAX_MTU 1420
+
 int conf_verbose = 0;
 int conf_hide_avps = 0;
 int conf_avp_permissive = 0;
+static int conf_ppp_max_mtu = DEFAULT_PPP_MAX_MTU;
 static int conf_port = L2TP_PORT;
-static int conf_ephemeral_ports = 1;
+static int conf_ephemeral_ports = 0;
 static int conf_timeout = 60;
 static int conf_rtimeout = 5;
 static int conf_retransmit = 5;
@@ -96,8 +99,6 @@ struct l2tp_conn_t
 	struct triton_timer_t timeout_timer;
 	struct triton_timer_t rtimeout_timer;
 	struct triton_timer_t hello_timer;
-
-	int tunnel_fd;
 
 	struct sockaddr_in peer_addr;
 	struct sockaddr_in host_addr;
@@ -706,9 +707,6 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 	l2tp_conn[conn->tid] = NULL;
 	pthread_mutex_unlock(&l2tp_lock);
 
-	if (conn->tunnel_fd != -1)
-		close(conn->tunnel_fd);
-
 	if (conn->ctx.tpd)
 		triton_context_unregister(&conn->ctx);
 
@@ -883,7 +881,7 @@ static struct l2tp_sess_t *l2tp_tunnel_alloc_session(struct l2tp_conn_t *conn)
 	sess->ctrl.started = l2tp_ppp_started;
 	sess->ctrl.finished = l2tp_ppp_finished;
 	sess->ctrl.terminate = ppp_terminate;
-	sess->ctrl.max_mtu = 1420;
+	sess->ctrl.max_mtu = conf_ppp_max_mtu;
 	sess->ctrl.mppe = conf_mppe;
 	sess->ctrl.calling_station_id = _malloc(17);
 	sess->ctrl.called_station_id = _malloc(17);
@@ -1123,8 +1121,6 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 	conn->hello_timer.expire = l2tp_send_HELLO;
 	conn->hello_timer.period = conf_hello_interval * 1000;
 
-	conn->tunnel_fd = -1;
-
 	conn->sessions = NULL;
 	conn->sess_count = 0;
 	conn->lns_mode = lns_mode;
@@ -1164,7 +1160,6 @@ static int l2tp_session_connect(struct l2tp_sess_t *sess)
 	struct l2tp_conn_t *conn = sess->paren_conn;
 	int lns_mode = sess->lns_mode;
 	int flg;
-	int chan_sz;
 	uint16_t peer_port;
 	char addr[17];
 
@@ -1216,23 +1211,10 @@ static int l2tp_session_connect(struct l2tp_sess_t *sess)
 
 	u_inet_ntoa(conn->peer_addr.sin_addr.s_addr, addr);
 	peer_port = ntohs(conn->peer_addr.sin_port);
-	chan_sz = snprintf(NULL, 0, "%s:%i session %i",
-		       addr, peer_port, sess->peer_sid);
-	if (chan_sz < 0) {
+	if (_asprintf(&sess->ppp.ses.chan_name, "%s:%i session %i",
+		      addr, peer_port, sess->peer_sid) < 0) {
 		log_session(log_error, sess, "impossible to connect session:"
-			    " snprintf() failed: %s\n", strerror(errno));
-		goto out_err;
-	}
-	sess->ppp.ses.chan_name = _malloc(chan_sz + 1);
-	if (sess->ppp.ses.chan_name == NULL) {
-		log_session(log_error, sess, "impossible to connect session:"
-			    " memory allocation failed\n");
-		goto out_err;
-	}
-	if (snprintf(sess->ppp.ses.chan_name, chan_sz + 1, "%s:%i session %i",
-		     addr, peer_port, sess->peer_sid) < 0) {
-		log_session(log_error, sess, "impossible to connect session:"
-			    " snprintf(%i) failed\n", chan_sz + 1);
+			    " setting session's channel name failed\n");
 		goto out_err;
 	}
 
@@ -1269,6 +1251,7 @@ out_err:
 static int l2tp_tunnel_connect(struct l2tp_conn_t *conn)
 {
 	struct sockaddr_pppol2tp pppox_addr;
+	int tunnel_fd;
 	int flg;
 
 	memset(&pppox_addr, 0, sizeof(pppox_addr));
@@ -1280,31 +1263,31 @@ static int l2tp_tunnel_connect(struct l2tp_conn_t *conn)
 	pppox_addr.pppol2tp.s_tunnel = conn->tid;
 	pppox_addr.pppol2tp.d_tunnel = conn->peer_tid;
 
-	conn->tunnel_fd = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
-	if (conn->tunnel_fd < 0) {
+	tunnel_fd = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
+	if (tunnel_fd < 0) {
 		log_tunnel(log_error, conn, "impossible to connect tunnel:"
 			   " socket(AF_PPPOX) failed: %s\n", strerror(errno));
-		goto out_err;
+		goto err;
 	}
 
-	flg = fcntl(conn->tunnel_fd, F_GETFD);
+	flg = fcntl(tunnel_fd, F_GETFD);
 	if (flg < 0) {
 		log_tunnel(log_error, conn, "impossible to connect tunnel:"
 			   " fcntl(F_GETFD) failed: %s\n", strerror(errno));
-		goto out_err;
+		goto err_fd;
 	}
-	flg = fcntl(conn->tunnel_fd, F_SETFD, flg | FD_CLOEXEC);
+	flg = fcntl(tunnel_fd, F_SETFD, flg | FD_CLOEXEC);
 	if (flg < 0) {
 		log_tunnel(log_error, conn, "impossible to connect tunnel:"
 			   " fcntl(F_SETFD) failed: %s\n", strerror(errno));
-		goto out_err;
+		goto err_fd;
 	}
 
-	if (connect(conn->tunnel_fd,
+	if (connect(tunnel_fd,
 		    (struct sockaddr *)&pppox_addr, sizeof(pppox_addr)) < 0) {
 		log_tunnel(log_error, conn, "impossible to connect tunnel:"
 			   " connect() failed: %s\n", strerror(errno));
-		goto out_err;
+		goto err_fd;
 	}
 
 	if (conf_hello_interval)
@@ -1312,19 +1295,19 @@ static int l2tp_tunnel_connect(struct l2tp_conn_t *conn)
 			log_tunnel(log_error, conn,
 				   "impossible to connect tunnel:"
 				   " setting HELLO timer failed\n");
-			goto out_err;
+			goto err_fd;
 		}
 
 	if (conn->timeout_timer.tpd)
 		triton_timer_del(&conn->timeout_timer);
 
+	close(tunnel_fd);
+
 	return 0;
 
-out_err:
-	if (conn->tunnel_fd >= 0) {
-		close(conn->tunnel_fd);
-		conn->tunnel_fd = -1;
-	}
+err_fd:
+	close(tunnel_fd);
+err:
 	return -1;
 }
 
@@ -3832,6 +3815,12 @@ static void load_config(void)
 	opt = conf_get_opt("l2tp", "retransmit");
 	if (opt && atoi(opt) > 0)
 		conf_retransmit = atoi(opt);
+
+	opt = conf_get_opt("l2tp", "ppp-max-mtu");
+	if (opt && atoi(opt) > 0)
+		conf_ppp_max_mtu = atoi(opt);
+	else
+		conf_ppp_max_mtu = DEFAULT_PPP_MAX_MTU;
 
 	opt = conf_get_opt("l2tp", "host-name");
 	if (opt)

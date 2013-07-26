@@ -274,15 +274,12 @@ static void generate_sessionid(struct ap_session *ses)
 int __export ap_session_read_stats(struct ap_session *ses, struct rtnl_link_stats *stats)
 {
 	struct rtnl_link_stats lstats;
-	time_t t;
 
 	if (ses->ifindex == -1)
 		return -1;
 
 	if (!stats)
 		stats = &lstats;
-
-	time(&t);
 
 	if (iplink_get_stats(ses->ifindex, stats)) {
 		log_ppp_warn("failed to get interface statistics\n");

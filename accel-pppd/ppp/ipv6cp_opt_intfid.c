@@ -37,6 +37,7 @@ static int ipaddr_send_conf_nak(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_optio
 static int ipaddr_recv_conf_req(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_option_t *opt, uint8_t *ptr);
 //static int ipaddr_recv_conf_ack(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_option_t *opt, uint8_t *ptr);
 static void ipaddr_print(void (*print)(const char *fmt,...),struct ipv6cp_option_t*, uint8_t *ptr);
+static void put_ipv6_item(struct ap_session *ses, struct ipv6db_item_t *ip6);
 
 struct ipaddr_option_t
 {
@@ -54,6 +55,41 @@ static struct ipv6cp_option_handler_t ipaddr_opt_hnd =
 	.free          = ipaddr_free,
 	.print         = ipaddr_print,
 };
+
+/* ipdb backend used for generating a link-local address when all other
+ * backends (like radius and ipv6pool) failed to assign IPv6 addresses.
+ * This backend isn't registered to ipdb as it's only used as a fallback
+ * during IPv6CP negociation.
+ */
+static struct ipdb_t ipv6db = {
+	.put_ipv6 = put_ipv6_item
+};
+
+static void put_ipv6_item(struct ap_session *ses, struct ipv6db_item_t *ip6)
+{
+	_free(ip6);
+}
+
+static int gen_ipv6_item(struct ap_session *ses)
+{
+	struct ipv6db_item_t *ip6 = NULL;
+
+	ip6 = _malloc(sizeof(*ip6));
+	if (ip6 == NULL) {
+		log_ppp_warn("ppp: allocation of IPv6 address failed\n");
+		return -1;
+	}
+
+	memset(ip6, 0, sizeof(*ip6));
+	ip6->owner = &ipv6db;
+	ip6->intf_id = 0;
+	ip6->peer_intf_id = 0;
+	INIT_LIST_HEAD(&ip6->addr_list);
+
+	ses->ipv6 = ip6;
+
+	return 0;
+}
 
 static struct ipv6cp_option_t *ipaddr_init(struct ppp_ipv6cp_t *ipv6cp)
 {
@@ -165,8 +201,10 @@ static int alloc_ip(struct ppp_t *ppp)
 {
 	ppp->ses.ipv6 = ipdb_get_ipv6(&ppp->ses);
 	if (!ppp->ses.ipv6) {
-		log_ppp_warn("ppp: no free IPv6 address\n");
-		return IPV6CP_OPT_CLOSE;
+		if (gen_ipv6_item(&ppp->ses) < 0) {
+			log_ppp_warn("ppp: no free IPv6 address\n");
+			return IPV6CP_OPT_CLOSE;
+		}
 	}
 
 	if (!ppp->ses.ipv6->intf_id)

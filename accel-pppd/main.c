@@ -146,9 +146,9 @@ void core_restart(int soft)
 	char *argv[16];
 	char *ptr = cmdline, *endptr;
 
-	if (fork()) {
+	if (soft && fork()) {
 		//close_all_fd();
-		_exit(0);
+		return;
 	}
 
 	pthread_sigmask(SIG_SETMASK, &orig_set, NULL);
@@ -224,11 +224,7 @@ static void sigsegv(int num)
 	}
 
 out:
-#ifdef USE_BACKUP
 	core_restart(1);
-#else
-	core_restart(0);
-#endif
 
 	if (conf_dump) {
 		lim.rlim_cur = RLIM_INFINITY;
