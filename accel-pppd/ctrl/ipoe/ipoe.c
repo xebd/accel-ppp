@@ -1217,6 +1217,10 @@ static void ipoe_ses_recv_dhcpv4_relay(struct ipoe_session *ses)
 	if (opt)
 		ses->mask = parse_dhcpv4_mask(ntohl(*(uint32_t *)opt->data));
 
+	opt = dhcpv4_packet_find_opt(pack, 3);
+	if (opt)
+		ses->router = *(uint32_t *)opt->data;
+
 	if (pack->msg_type == DHCPOFFER) {
 		if (ses->ses.state == AP_STATE_STARTING) {
 			triton_timer_del(&ses->timer);
