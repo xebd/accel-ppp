@@ -8,7 +8,7 @@
 #include "spinlock.h"
 #include "log.h"
 #include "list.h"
-#include "ppp.h"
+#include "ap_session.h"
 
 #include "memdebug.h"
 
@@ -55,7 +55,7 @@ static void unpack_msg(struct log_msg_t *msg)
 		log_buf[0] = 0;
 }
 
-static void set_hdr(struct log_msg_t *msg, struct ppp_t *ppp)
+static void set_hdr(struct log_msg_t *msg, struct ap_session *ses)
 {
 	struct tm tm;
 
@@ -63,11 +63,11 @@ static void set_hdr(struct log_msg_t *msg, struct ppp_t *ppp)
 
 	strftime(msg->hdr->msg, LOG_CHUNK_SIZE, "%Y-%m-%d %H:%M:%S", &tm);
 	msg->hdr->len = strlen(msg->hdr->msg) + 1;
-	if (ppp && ppp->username) {
-		strcpy(msg->hdr->msg + msg->hdr->len, ppp->username);
-		msg->hdr->len += strlen(ppp->username) + 1;
-		strcpy(msg->hdr->msg + msg->hdr->len, ppp->sessionid);
-		msg->hdr->len += strlen(ppp->sessionid) + 1;
+	if (ses && ses->username) {
+		strcpy(msg->hdr->msg + msg->hdr->len, ses->username);
+		msg->hdr->len += strlen(ses->username) + 1;
+		strcpy(msg->hdr->msg + msg->hdr->len, ses->sessionid);
+		msg->hdr->len += strlen(ses->sessionid) + 1;
 	} else 
 		memset(msg->hdr->msg + msg->hdr->len, 0, 2);
 		
@@ -194,9 +194,9 @@ static void queue_log(struct log_msg_t *msg)
 }
 
 
-static void general_log(struct log_target_t *t, struct log_msg_t *msg, struct ppp_t *ppp)
+static void general_log(struct log_target_t *t, struct log_msg_t *msg, struct ap_session *ses)
 {
-	set_hdr(msg, ppp);
+	set_hdr(msg, ses);
 	queue_log(msg);
 }
 
