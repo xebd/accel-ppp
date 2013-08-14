@@ -93,7 +93,8 @@ int rad_proc_attrs(struct rad_req_t *req)
 			case Framed_IP_Address:
 				if (!conf_gw_ip_address && req->rpd->ses->ctrl->ppp)
 					log_ppp_warn("radius: gw-ip-address not specified, cann't assign IP address...\n");
-				else {
+				else if (attr->val.ipaddr != 0xfffffffe) {
+					req->rpd->ipv4_addr.owner = &ipdb;
 					req->rpd->ipv4_addr.peer_addr = attr->val.ipaddr;
 					req->rpd->ipv4_addr.addr = conf_gw_ip_address;
 				}
