@@ -60,6 +60,9 @@ static struct rad_req_t *__rad_req_alloc(struct radius_pd_t *rpd, int code, cons
 		break;
 	}
 
+	if (conf_verbose)
+		req->log = log_ppp_info1;
+
 	req->pack = rad_packet_alloc(code);
 	if (!req->pack)
 		goto out_err;
@@ -253,7 +256,7 @@ out_err:
 	return -1;
 }
 
-int rad_req_send(struct rad_req_t *req, int verbose)
+int rad_req_send(struct rad_req_t *req, void (*log)(const char *fmt, ...))
 {
 	if (req->hnd.fd == -1 && make_socket(req))
 		return -1;
@@ -261,9 +264,9 @@ int rad_req_send(struct rad_req_t *req, int verbose)
 	if (!req->pack->buf && rad_packet_build(req->pack, req->RA))
 		goto out_err;
 	
-	if (verbose) {
-		log_ppp_info1("send ");
-		rad_packet_print(req->pack, req->serv, log_ppp_info1);
+	if (log) {
+		log("send ");
+		rad_packet_print(req->pack, req->serv, log);
 	}
 
 	rad_packet_send(req->pack, req->hnd.fd, NULL);
@@ -278,7 +281,7 @@ out_err:
 
 static void req_wakeup(struct rad_req_t *req)
 {
-	struct triton_context_t *ctx = req->rpd->ses->ctrl->ctx;
+	struct triton_context_t *ctx = req->wait_ctx;
 	if (req->timeout.tpd)
 		triton_timer_del(&req->timeout);
 	triton_md_unregister_handler(&req->hnd);
@@ -317,10 +320,11 @@ static void rad_req_timeout(struct triton_timer_t *t)
 
 int rad_req_wait(struct rad_req_t *req, int timeout)
 {
+	req->wait_ctx = triton_context_self();
 	req->hnd.read = rad_req_read;
 	req->timeout.expire = rad_req_timeout;
 
-	triton_context_register(&req->ctx, req->rpd->ses);
+	triton_context_register(&req->ctx, req->rpd ? req->rpd->ses : NULL);
 	triton_context_set_priority(&req->ctx, 1);
 	triton_md_register_handler(&req->ctx, &req->hnd);
 	triton_md_enable_handler(&req->hnd, MD_MODE_READ);
@@ -332,9 +336,9 @@ int rad_req_wait(struct rad_req_t *req, int timeout)
 
 	triton_context_schedule();
 
-	if (conf_verbose && req->reply) {
-		log_ppp_info1("recv ");
-		rad_packet_print(req->reply, req->serv, log_ppp_info1);
+	if (req->log && req->reply) {
+		req->log("recv ");
+		rad_packet_print(req->reply, req->serv, req->log);
 	}
 	return 0;
 }

@@ -124,7 +124,7 @@ static void __rad_req_send(struct rad_req_t *req)
 			continue;
 		}
 
-		rad_req_send(req, conf_interim_verbose);
+		rad_req_send(req, conf_interim_verbose ? log_ppp_info2 : NULL);
 		if (!req->hnd.tpd) {
 			triton_md_register_handler(req->rpd->ses->ctrl->ctx, &req->hnd);
 			triton_md_enable_handler(&req->hnd, MD_MODE_READ);
@@ -280,7 +280,7 @@ int rad_acct_start(struct radius_pd_t *rpd)
 						goto out_err;
 				}
 
-				if (rad_req_send(rpd->acct_req, conf_verbose))
+				if (rad_req_send(rpd->acct_req, conf_verbose ? log_ppp_info1 : NULL))
 					goto out_err;
 
 				__sync_add_and_fetch(&rpd->acct_req->serv->stat_acct_sent, 1);
@@ -304,7 +304,6 @@ int rad_acct_start(struct radius_pd_t *rpd)
 				if (rpd->acct_req->reply->id != rpd->acct_req->pack->id || rpd->acct_req->reply->code != CODE_ACCOUNTING_RESPONSE) {
 					rad_packet_free(rpd->acct_req->reply);
 					rpd->acct_req->reply = NULL;
-					rpd->acct_req->pack->id++;
 					__sync_add_and_fetch(&rpd->acct_req->serv->stat_acct_lost, 1);
 					stat_accm_add(rpd->acct_req->serv->stat_acct_lost_1m, 1);
 					stat_accm_add(rpd->acct_req->serv->stat_acct_lost_5m, 1);
@@ -431,7 +430,7 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 					if (req_set_RA(rpd->acct_req, rpd->acct_req->serv->secret))
 						break;
 				}
-				if (rad_req_send(rpd->acct_req, conf_verbose))
+				if (rad_req_send(rpd->acct_req, conf_verbose ? log_ppp_info1 : NULL))
 					break;
 				__sync_add_and_fetch(&rpd->acct_req->serv->stat_acct_sent, 1);
 				rad_req_wait(rpd->acct_req, conf_timeout);

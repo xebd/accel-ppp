@@ -532,6 +532,9 @@ Specifies whether radius client should include Acct-Delay-Time attribute to acco
 .TP
 .BI "default-realm=" realm
 Append specified realm to username.
+.TP
+.BI "acct-on=" 0|1
+Specifies whether radius client should send Account-Request with Acct-Status-Type=Account-On on startup and Acct-Status-Type=Account-Off on shutdown.
 .SH [log]
 .br
 Configuration of log and log_file modules.

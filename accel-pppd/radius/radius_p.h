@@ -12,8 +12,7 @@
 
 struct rad_server_t;
 
-struct radius_pd_t
-{
+struct radius_pd_t {
 	struct list_head entry;
 	struct ap_private pd;
 	struct ap_session *ses;
@@ -46,8 +45,7 @@ struct radius_pd_t
 	struct list_head plugin_list;
 };
 
-struct rad_req_t
-{
+struct rad_req_t {
 	struct list_head entry;
 	struct triton_context_t ctx;
 	struct triton_md_handler_t hnd;
@@ -58,15 +56,19 @@ struct rad_req_t
 
 	struct radius_pd_t *rpd;
 	struct rad_server_t *serv;
+	struct triton_context_t *wait_ctx;
 	
 	in_addr_t server_addr;
 	int server_port;
 	int type;
+
+	void (*log)(const char *fmt, ...);
 };
 
-struct rad_server_t
-{
+struct rad_server_t {
 	struct list_head entry;
+	struct triton_context_t ctx;
+	struct triton_timer_t timer;
 	int id;
 	in_addr_t addr;
 	char *secret;
@@ -105,7 +107,10 @@ struct rad_server_t
 	struct stat_accm_t *stat_interim_query_1m;
 	struct stat_accm_t *stat_interim_query_5m;
 
+	int starting:1;
+	int acct_on:1;
 	int need_free:1;
+	int need_close:1;
 };
 
 #define RAD_SERV_AUTH 0
@@ -143,7 +148,7 @@ struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *u
 struct rad_req_t *rad_req_alloc2(struct radius_pd_t *rpd, int code, const char *username, in_addr_t addr, int port);
 int rad_req_acct_fill(struct rad_req_t *);
 void rad_req_free(struct rad_req_t *);
-int rad_req_send(struct rad_req_t *, int verbose);
+int rad_req_send(struct rad_req_t *req, void (*log)(const char *fmt, ...));
 int rad_req_wait(struct rad_req_t *, int);
 
 struct radius_pd_t *find_pd(struct ap_session *ses);

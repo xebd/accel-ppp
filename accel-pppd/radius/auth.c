@@ -161,7 +161,7 @@ static int rad_auth_send(struct rad_req_t *req)
 		for(i = 0; i < conf_max_try; i++) {
 			__sync_add_and_fetch(&req->serv->stat_auth_sent, 1);
 			clock_gettime(CLOCK_MONOTONIC, &tv);
-			if (rad_req_send(req, conf_verbose))
+			if (rad_req_send(req, conf_verbose ? log_ppp_info1 : NULL))
 				goto out;
 
 			timeout = conf_timeout;

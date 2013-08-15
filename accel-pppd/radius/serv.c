@@ -15,14 +15,20 @@
 #include "events.h"
 #include "cli.h"
 #include "utils.h"
+
+#include "crypto.h"
+
 #include "radius_p.h"
 
 #include "memdebug.h"
+
+static int conf_acct_on;
 
 static int num;
 static LIST_HEAD(serv_list);
 
 static void __free_server(struct rad_server_t *);
+static void serv_ctx_close(struct triton_context_t *);
 
 static struct rad_server_t *__rad_server_get(int type, struct rad_server_t *exclude, in_addr_t addr, int port)
 {
@@ -85,15 +91,19 @@ void rad_server_put(struct rad_server_t *s, int type)
 {
 	__sync_sub_and_fetch(&s->client_cnt[type], 1);
 
-	if (s->need_free && !s->client_cnt[0] && !s->client_cnt[1])
-		__free_server(s);
+	if ((s->need_free || s->need_close) && !s->client_cnt[0] && !s->client_cnt[1]) {
+		if (s->need_close)
+			triton_context_call(&s->ctx, (triton_event_func)serv_ctx_close, &s->ctx);
+		else
+			__free_server(s);
+	}
 }
 
 int rad_server_req_enter(struct rad_req_t *req)
 {
 	struct timespec ts;
 	
-	if (req->serv->need_free)
+	if (req->serv->need_free || req->serv->starting)
 		return -1;
 
 	clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -217,6 +227,127 @@ void rad_server_reply(struct rad_server_t *s)
 	s->timeout_cnt = 0;
 }
 
+static int req_set_RA(struct rad_req_t *req, const char *secret)
+{
+	MD5_CTX ctx;
+	
+	if (rad_packet_build(req->pack, req->RA))
+		return -1;
+
+	MD5_Init(&ctx);
+	MD5_Update(&ctx, req->pack->buf, req->pack->len);
+	MD5_Update(&ctx, secret, strlen(secret));
+	MD5_Final(req->pack->buf + 4, &ctx);
+
+	return 0;
+}
+
+static void send_acct_on(struct rad_server_t *s)
+{
+	struct rad_req_t *req = _malloc(sizeof(*req));
+	int i;
+
+	if (!req)
+		goto out_err;
+
+	memset(req, 0, sizeof(*req));
+	req->hnd.fd = -1;
+	req->type = RAD_SERV_ACCT;
+	req->server_addr = s->addr;
+	req->server_port = s->acct_port;
+	req->serv = s;
+	__sync_add_and_fetch(&s->client_cnt[req->type], 1);
+	if (conf_verbose)
+		req->log = log_info1;
+
+	req->pack = rad_packet_alloc(CODE_ACCOUNTING_REQUEST);
+	if (!req->pack)
+		goto out_err;
+	
+	if (rad_packet_add_val(req->pack, NULL, "Acct-Status-Type", s->starting ? "Accounting-On" : "Accounting-Off"))
+		goto out_err;
+	
+	if (conf_nas_identifier)
+		if (rad_packet_add_str(req->pack, NULL, "NAS-Identifier", conf_nas_identifier))
+			goto out_err;
+
+	if (conf_nas_ip_address)
+		if (rad_packet_add_ipaddr(req->pack, NULL, "NAS-IP-Address", conf_nas_ip_address))
+			goto out_err;
+	
+	if (req_set_RA(req, s->secret))
+		goto out_err;
+
+	for (i = 0; i < conf_max_try; i++) {
+		if (rad_req_send(req, conf_verbose ? log_info1 : NULL))
+			goto out_err;
+		
+		rad_req_wait(req, conf_timeout);
+		
+		if (!s->starting)
+			break;
+
+		if (!req->reply)
+			continue;
+				
+		if (req->reply->id == req->pack->id && req->reply->code == CODE_ACCOUNTING_RESPONSE) {
+			s->starting = 0;
+			s->acct_on = 1;
+			break;
+		}
+
+		rad_packet_free(req->reply);
+		req->reply = NULL;
+	}
+
+	if (!s->starting) {
+		if (s->timer.tpd)
+			triton_timer_del(&s->timer);
+
+		if (!s->acct_on)
+			triton_context_unregister(&s->ctx);
+		
+		rad_req_free(req);
+
+		return;
+	}
+	
+out_err:
+	if (req)
+		rad_req_free(req);
+	
+	if (s->timer.tpd)
+		triton_timer_mod(&s->timer, 0);
+	else
+		triton_timer_add(&s->ctx, &s->timer, 0);
+}
+
+static void restart_acct_on(struct triton_timer_t *t)
+{
+	struct rad_server_t *s = container_of(t, typeof(*s), timer);
+
+	send_acct_on(s);
+}
+
+static void serv_ctx_close(struct triton_context_t *ctx)
+{
+	struct rad_server_t *s = container_of(ctx, typeof(*s), ctx);
+		
+	if (s->timer.tpd)
+		triton_timer_del(&s->timer);
+
+	s->need_close = 1;
+	
+	if (!s->client_cnt[0] && !s->client_cnt[1]) {
+		if (s->acct_on) {
+			s->acct_on = 0;
+			s->starting = 0;
+			s->need_close = 0;
+			send_acct_on(s);
+		} else
+			triton_context_unregister(ctx);
+	}
+}
 
 static void show_stat(struct rad_server_t *s, void *client)
 {
@@ -291,6 +422,7 @@ static void __add_server(struct rad_server_t *s)
 	INIT_LIST_HEAD(&s->req_queue);
 	pthread_mutex_init(&s->lock, NULL);
 	list_add_tail(&s->entry, &serv_list);
+	s->starting = conf_acct_on;
 
 	s->stat_auth_lost_1m = stat_accm_create(60);
 	s->stat_auth_lost_5m = stat_accm_create(5 * 60);
@@ -557,9 +689,16 @@ static void load_config(void)
 	struct rad_server_t *s;
 	struct rad_req_t *r;
 	struct list_head *pos, *n;
+	const char *opt1;
 
 	list_for_each_entry(s, &serv_list, entry)
 		s->need_free = 1;
+		
+	opt1 = conf_get_opt("radius", "acct-on");
+	if (opt1)
+		conf_acct_on = atoi(opt1);
+	else
+		conf_acct_on = 0;
 
 	list_for_each_entry(opt, &sect->items, entry) {
 		if (strcmp(opt->name, "server"))
@@ -578,8 +717,12 @@ static void load_config(void)
 				triton_context_wakeup(r->rpd->ses->ctrl->ctx);
 			}
 
-			if (!s->client_cnt[0] && !s->client_cnt[1])
-				__free_server(s);
+			if (!s->client_cnt[0] && !s->client_cnt[1]) {
+				if (s->acct_on)
+					triton_context_call(&s->ctx, (triton_event_func)serv_ctx_close, &s->ctx);
+				else
+					__free_server(s);
+			}
 		}
 	}
 	
@@ -590,6 +733,23 @@ static void load_config(void)
 		if (s->acct_port) {
 			conf_accounting = 1;
 			break;
+		}
+	}
+	
+	list_for_each_entry(s, &serv_list, entry) {
+		if (s->starting) {
+			if (!conf_accounting || !s->acct_port)
+				s->starting = 0;
+			else {
+				s->ctx.close = serv_ctx_close;
+				s->timer.expire = restart_acct_on;
+				s->timer.expire_tv.tv_sec = 10;
+
+				triton_context_register(&s->ctx, NULL);
+				triton_context_set_priority(&s->ctx, 1);
+				triton_context_call(&s->ctx, (triton_event_func)send_acct_on, s);
+				triton_context_wakeup(&s->ctx);
+			}
 		}
 	}
 }
