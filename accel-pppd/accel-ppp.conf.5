@@ -534,7 +534,7 @@ Specifies whether radius client should include Acct-Delay-Time attribute to acco
 Append specified realm to username.
 .TP
 .BI "acct-on=" 0|1
-Specifies whether radius client should send Account-Request with Acct-Status-Type=Account-On on startup and Acct-Status-Type=Account-Off on shutdown.
+Specifies whether radius client should send Account-Request with Acct-Status-Type=Accounting-On on startup and Acct-Status-Type=Accounting-Off on shutdown.
 .SH [log]
 .br
 Configuration of log and log_file modules.
@@ -754,6 +754,9 @@ Specifies downstream rate limiting method.
 .BI "leaf-qdisc=" "qdisc parameters"
 In case if htb is used as up-limiter or down-limiter specified leaf qdisc can be attached automaticaly.
 At present only sfq qdisc is implemented. Parameters are same as for tc: [ limit NUMBER ] [ perturn SECS ] [ quantum BYTES ].
+.TP
+.BI "rate-multiplier=" n
+Due to accel-ppp operates with rates in kilobit basis if you send rates in different basis then you can use this option to bring your values to kilobits.
 .SH [cli]
 .br
 Configuration of the command line interface.

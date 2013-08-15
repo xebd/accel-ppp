@@ -40,6 +40,7 @@ int conf_quantum = 1500;
 int conf_r2q = 10;
 int conf_cburst = 1534;
 int conf_ifb_ifindex;
+static double conf_multiplier = 1;
 
 int conf_up_limiter = LIM_POLICE;
 int conf_down_limiter = LIM_TBF;
@@ -178,7 +179,7 @@ static void parse_string(const char *str, int dir, int *speed, int *burst, int *
 
 	val = strtol(str, &endptr, 10);
 	if (*endptr == 0) {
-		*speed = val;
+		*speed = conf_multiplier * val;
 		return;
 	}
 	if (*endptr == ',') {
@@ -186,14 +187,14 @@ static void parse_string(const char *str, int dir, int *speed, int *burst, int *
 		val = strtol(endptr + 1, &endptr, 10);
 	}
 	if (*endptr == 0) {
-		*speed = val;
+		*speed = conf_multiplier * val;
 		return;
 	} else {
 		if (*endptr == '/' || *endptr == '\\' || *endptr == ':') {
 			if (dir == ATTR_DOWN)
-				*speed = val;
+				*speed = conf_multiplier * val;
 			else
-				*speed = strtol(endptr + 1, &endptr, 10);
+				*speed = conf_multiplier * strtol(endptr + 1, &endptr, 10);
 		}
 	}
 }
@@ -897,6 +898,12 @@ static void load_config(void)
 	opt = conf_get_opt("shaper", "verbose");
 	if (opt && atoi(opt) >= 0)
 		conf_verbose = atoi(opt) > 0;
+	
+	opt = conf_get_opt("shaper", "rate-multiplier");
+	if (opt && atoi(opt) >= 0)
+		conf_multiplier = atof(opt);
+	else
+		conf_multiplier = 1;
 
 	triton_context_call(&shaper_ctx, (triton_event_func)load_time_ranges, NULL);
 }
