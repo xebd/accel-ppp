@@ -230,7 +230,7 @@ static void ctx_thread(struct _triton_context_t *ctx)
 	}
 
 	spin_lock(&ctx->lock);
-	if (ctx->need_close) {
+	if (ctx->need_close && !ctx->need_free) {
 		spin_unlock(&ctx->lock);
 		if (ctx->ud->close) {
 			ctx->ud->close(ctx->ud);
