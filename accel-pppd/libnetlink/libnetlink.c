@@ -48,17 +48,17 @@ int __export rtnl_open_byproto(struct rtnl_handle *rth, unsigned subscriptions,
 
 	rth->fd = socket(AF_NETLINK, SOCK_RAW, protocol);
 	if (rth->fd < 0) {
-		log_error("libnetlink: ""Cannot open netlink socket: %s\n", strerror(errno));
+		log_debug("libnetlink: ""Cannot open netlink socket: %s\n", strerror(errno));
 		return -1;
 	}
 
 	if (setsockopt(rth->fd,SOL_SOCKET,SO_SNDBUF,&sndbuf,sizeof(sndbuf)) < 0) {
-		log_error("libnetlink: ""SO_SNDBUF: %s\n", strerror(errno));
+		log_debug("libnetlink: ""SO_SNDBUF: %s\n", strerror(errno));
 		return -1;
 	}
 
 	if (setsockopt(rth->fd,SOL_SOCKET,SO_RCVBUF,&rcvbuf,sizeof(rcvbuf)) < 0) {
-		log_error("libnetlink: ""SO_RCVBUF: %s\n", strerror(errno));
+		log_debug("libnetlink: ""SO_RCVBUF: %s\n", strerror(errno));
 		return -1;
 	}
 
@@ -67,20 +67,20 @@ int __export rtnl_open_byproto(struct rtnl_handle *rth, unsigned subscriptions,
 	rth->local.nl_groups = subscriptions;
 
 	if (bind(rth->fd, (struct sockaddr*)&rth->local, sizeof(rth->local)) < 0) {
-		log_error("libnetlink: ""Cannot bind netlink socket: %s\n", strerror(errno));
+		log_debug("libnetlink: ""Cannot bind netlink socket: %s\n", strerror(errno));
 		return -1;
 	}
 	addr_len = sizeof(rth->local);
 	if (getsockname(rth->fd, (struct sockaddr*)&rth->local, &addr_len) < 0) {
-		log_error("libnetlink: ""Cannot getsockname: %s\n", strerror(errno));
+		log_debug("libnetlink: ""Cannot getsockname: %s\n", strerror(errno));
 		return -1;
 	}
 	if (addr_len != sizeof(rth->local)) {
-		log_error("libnetlink: ""Wrong address length %d\n", addr_len);
+		log_debug("libnetlink: ""Wrong address length %d\n", addr_len);
 		return -1;
 	}
 	if (rth->local.nl_family != AF_NETLINK) {
-		log_error("libnetlink: ""Wrong address family %d\n", rth->local.nl_family);
+		log_debug("libnetlink: ""Wrong address family %d\n", rth->local.nl_family);
 		return -1;
 	}
 	rth->seq = time(NULL);
@@ -138,7 +138,7 @@ int __export rtnl_send_check(struct rtnl_handle *rth, const char *buf, int len)
 		if (h->nlmsg_type == NLMSG_ERROR) {
 			struct nlmsgerr *err = (struct nlmsgerr*)NLMSG_DATA(h);
 			if (h->nlmsg_len < NLMSG_LENGTH(sizeof(struct nlmsgerr)))
-				log_error("libnetlink: ""ERROR truncated\n");
+				log_debug("libnetlink: ""ERROR truncated\n");
 			else 
 				errno = -err->error;
 			return -1;
@@ -201,13 +201,13 @@ int __export rtnl_dump_filter_l(struct rtnl_handle *rth,
 		if (status < 0) {
 			if (errno == EINTR || errno == EAGAIN)
 				continue;
-			log_error("libnetlink: ""netlink receive error %s (%d)\n",
+			log_debug("libnetlink: ""netlink receive error %s (%d)\n",
 				strerror(errno), errno);
 			return -1;
 		}
 
 		if (status == 0) {
-			log_error("libnetlink: ""EOF on netlink\n");
+			log_debug("libnetlink: ""EOF on netlink\n");
 			return -1;
 		}
 
@@ -241,7 +241,7 @@ int __export rtnl_dump_filter_l(struct rtnl_handle *rth,
 							"ERROR truncated\n");
 					} else {
 						errno = -err->error;
-						log_error("libnetlink: ""RTNETLINK answers: %s\n", strerror(errno));
+						log_debug("libnetlink: ""RTNETLINK answers: %s\n", strerror(errno));
 					}
 					return -1;
 				}
@@ -258,11 +258,11 @@ skip_it:
 			return 0;
 
 		if (msg.msg_flags & MSG_TRUNC) {
-			log_error("libnetlink: ""Message truncated\n");
+			log_debug("libnetlink: ""Message truncated\n");
 			continue;
 		}
 		if (msglen) {
-			log_error("libnetlink: ""!!!Remnant of size %d\n", msglen);
+			log_debug("libnetlink: ""!!!Remnant of size %d\n", msglen);
 			exit(1);
 		}
 	}
@@ -316,7 +316,7 @@ int __export rtnl_talk(struct rtnl_handle *rtnl, struct nlmsghdr *n, pid_t peer,
 	status = sendmsg(rtnl->fd, &msg, 0);
 
 	if (status < 0) {
-		log_error("libnetlink: ""Cannot talk to rtnetlink: %s\n", strerror(errno));
+		log_debug("libnetlink: ""Cannot talk to rtnetlink: %s\n", strerror(errno));
 		return -1;
 	}
 
@@ -331,16 +331,16 @@ int __export rtnl_talk(struct rtnl_handle *rtnl, struct nlmsghdr *n, pid_t peer,
 		if (status < 0) {
 			if (errno == EINTR || errno == EAGAIN)
 				continue;
-			log_error("libnetlink: ""netlink receive error %s (%d)\n",
+			log_debug("libnetlink: ""netlink receive error %s (%d)\n",
 				strerror(errno), errno);
 			return -1;
 		}
 		if (status == 0) {
-			log_error("libnetlink: ""EOF on netlink\n");
+			log_debug("libnetlink: ""EOF on netlink\n");
 			return -1;
 		}
 		if (msg.msg_namelen != sizeof(nladdr)) {
-			log_error("libnetlink: ""sender address length == %d\n", msg.msg_namelen);
+			log_debug("libnetlink: ""sender address length == %d\n", msg.msg_namelen);
 			exit(1);
 		}
 		for (h = (struct nlmsghdr*)buf; status >= sizeof(*h); ) {
@@ -350,10 +350,10 @@ int __export rtnl_talk(struct rtnl_handle *rtnl, struct nlmsghdr *n, pid_t peer,
 
 			if (l<0 || len>status) {
 				if (msg.msg_flags & MSG_TRUNC) {
-					log_error("libnetlink: ""Truncated message\n");
+					log_debug("libnetlink: ""Truncated message\n");
 					return -1;
 				}
-				log_error("libnetlink: ""!!!malformed message: len=%d\n", len);
+				log_debug("libnetlink: ""!!!malformed message: len=%d\n", len);
 				exit(1);
 			}
 
@@ -374,7 +374,7 @@ int __export rtnl_talk(struct rtnl_handle *rtnl, struct nlmsghdr *n, pid_t peer,
 			if (h->nlmsg_type == NLMSG_ERROR) {
 				struct nlmsgerr *err = (struct nlmsgerr*)NLMSG_DATA(h);
 				if (l < sizeof(struct nlmsgerr)) {
-					log_error("libnetlink: ""ERROR truncated\n");
+					log_debug("libnetlink: ""ERROR truncated\n");
 				} else {
 					errno = -err->error;
 					if (errno == 0 || (errno == EINVAL && ignore_einval)) {
@@ -382,7 +382,7 @@ int __export rtnl_talk(struct rtnl_handle *rtnl, struct nlmsghdr *n, pid_t peer,
 							memcpy(answer, h, h->nlmsg_len);
 						return 0;
 					}
-					log_error("libnetlink: ""RTNETLINK answers: %s\n", strerror(errno));
+					log_debug("libnetlink: ""RTNETLINK answers: %s\n", strerror(errno));
 				}
 				return -1;
 			}
@@ -391,17 +391,17 @@ int __export rtnl_talk(struct rtnl_handle *rtnl, struct nlmsghdr *n, pid_t peer,
 				return 0;
 			}
 
-			log_error("libnetlink: ""Unexpected reply!!!\n");
+			log_debug("libnetlink: ""Unexpected reply!!!\n");
 
 			status -= NLMSG_ALIGN(len);
 			h = (struct nlmsghdr*)((char*)h + NLMSG_ALIGN(len));
 		}
 		if (msg.msg_flags & MSG_TRUNC) {
-			log_error("libnetlink: ""Message truncated\n");
+			log_debug("libnetlink: ""Message truncated\n");
 			continue;
 		}
 		if (status) {
-			log_error("libnetlink: ""!!!Remnant of size %d\n", status);
+			log_debug("libnetlink: ""!!!Remnant of size %d\n", status);
 			exit(1);
 		}
 	}
@@ -436,18 +436,18 @@ int __export rtnl_listen(struct rtnl_handle *rtnl,
 		if (status < 0) {
 			if (errno == EINTR || errno == EAGAIN)
 				continue;
-			log_error("libnetlink: ""netlink receive error %s (%d)\n",
+			log_debug("libnetlink: ""netlink receive error %s (%d)\n",
 				strerror(errno), errno);
 			if (errno == ENOBUFS)
 				continue;
 			return -1;
 		}
 		if (status == 0) {
-			log_error("libnetlink: ""EOF on netlink\n");
+			log_debug("libnetlink: ""EOF on netlink\n");
 			return -1;
 		}
 		if (msg.msg_namelen != sizeof(nladdr)) {
-			log_error("libnetlink: ""Sender address length == %d\n", msg.msg_namelen);
+			log_debug("libnetlink: ""Sender address length == %d\n", msg.msg_namelen);
 			exit(1);
 		}
 		for (h = (struct nlmsghdr*)buf; status >= sizeof(*h); ) {
@@ -457,10 +457,10 @@ int __export rtnl_listen(struct rtnl_handle *rtnl,
 
 			if (l<0 || len>status) {
 				if (msg.msg_flags & MSG_TRUNC) {
-					log_error("libnetlink: ""Truncated message\n");
+					log_debug("libnetlink: ""Truncated message\n");
 					return -1;
 				}
-				log_error("libnetlink: ""!!!malformed message: len=%d\n", len);
+				log_debug("libnetlink: ""!!!malformed message: len=%d\n", len);
 				exit(1);
 			}
 
@@ -472,11 +472,11 @@ int __export rtnl_listen(struct rtnl_handle *rtnl,
 			h = (struct nlmsghdr*)((char*)h + NLMSG_ALIGN(len));
 		}
 		if (msg.msg_flags & MSG_TRUNC) {
-			log_error("libnetlink: ""Message truncated\n");
+			log_debug("libnetlink: ""Message truncated\n");
 			continue;
 		}
 		if (status) {
-			log_error("libnetlink: ""!!!Remnant of size %d\n", status);
+			log_debug("libnetlink: ""!!!Remnant of size %d\n", status);
 			exit(1);
 		}
 	}
@@ -505,7 +505,7 @@ int __export addattr_l(struct nlmsghdr *n, int maxlen, int type, const void *dat
 	struct rtattr *rta;
 
 	if (NLMSG_ALIGN(n->nlmsg_len) + RTA_ALIGN(len) > maxlen) {
-		log_error("libnetlink: ""addattr_l ERROR: message exceeded bound of %d\n",maxlen);
+		log_debug("libnetlink: ""addattr_l ERROR: message exceeded bound of %d\n",maxlen);
 		return -1;
 	}
 	rta = NLMSG_TAIL(n);
@@ -519,7 +519,7 @@ int __export addattr_l(struct nlmsghdr *n, int maxlen, int type, const void *dat
 int __export addraw_l(struct nlmsghdr *n, int maxlen, const void *data, int len)
 {
 	if (NLMSG_ALIGN(n->nlmsg_len) + NLMSG_ALIGN(len) > maxlen) {
-		log_error("libnetlink: ""addraw_l ERROR: message exceeded bound of %d\n",maxlen);
+		log_debug("libnetlink: ""addraw_l ERROR: message exceeded bound of %d\n",maxlen);
 		return -1;
 	}
 
@@ -606,7 +606,7 @@ int __export parse_rtattr(struct rtattr *tb[], int max, struct rtattr *rta, int 
 		rta = RTA_NEXT(rta,len);
 	}
 	if (len)
-		log_error("libnetlink: ""!!!Deficit %d, rta_len=%d\n", len, rta->rta_len);
+		log_debug("libnetlink: ""!!!Deficit %d, rta_len=%d\n", len, rta->rta_len);
 	return 0;
 }
 
@@ -621,7 +621,7 @@ int parse_rtattr_byindex(struct rtattr *tb[], int max, struct rtattr *rta, int l
 		rta = RTA_NEXT(rta,len);
 	}
 	if (len)
-		log_error("libnetlink: ""!!!Deficit %d, rta_len=%d\n", len, rta->rta_len);
+		log_debug("libnetlink: ""!!!Deficit %d, rta_len=%d\n", len, rta->rta_len);
 	return i;
 }
 
