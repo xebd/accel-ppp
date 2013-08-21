@@ -329,17 +329,24 @@ static int add_msg(struct _log_msg_t *msg, const char *buf)
 static void write_msg(FILE *f, struct _log_msg_t *msg, struct ap_session *ses)
 {
 	struct log_chunk_t *chunk;
+	struct timeval tv;
+	struct tm tm;
+	static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+
+	gettimeofday(&tv, NULL);
+	localtime_r(&tv.tv_sec, &tm);
+
+	pthread_mutex_lock(&lock);
+	fprintf(f, "[%04i-%02i-%02i %02i:%02i:%02i.%03i] ", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, (int)tv.tv_usec/1000);
 
 	if (ses)
-		sprintf(stat_buf,"%s: %s: ", ses->ifname, ses->sessionid);
-	else
-		stat_buf[0] = 0;
+		fprintf(f, "%s: %s: ", ses->ifname, ses->sessionid);
 	
 	list_for_each_entry(chunk, &msg->chunks, entry)
-		strcat(stat_buf, chunk->msg);
+		fwrite(chunk->msg, chunk->len, 1, f);
 	
-	fwrite(stat_buf, strlen(stat_buf), 1, f);
 	fflush(f);
+	pthread_mutex_unlock(&lock);
 }
 
 /*static struct log_pd_t *find_pd(struct ap_session *ses)
