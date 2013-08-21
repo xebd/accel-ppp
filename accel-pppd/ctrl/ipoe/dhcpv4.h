@@ -25,8 +25,7 @@
 #define DHCPRELEASE  7
 #define DHCPINFORM   8
 
-struct dhcpv4_hdr
-{
+struct dhcpv4_hdr {
 	uint8_t op;
 	uint8_t htype;
 	uint8_t hlen;
@@ -44,16 +43,14 @@ struct dhcpv4_hdr
 	uint8_t magic[4];
 } __packed;
 
-struct dhcpv4_option
-{
+struct dhcpv4_option {
 	struct list_head entry;
 	uint8_t type;
 	uint8_t len;
 	uint8_t *data;
 };
 
-struct dhcpv4_packet
-{
+struct dhcpv4_packet {
 	struct dhcpv4_hdr *hdr;
 	struct list_head options;
 	struct dhcpv4_option *client_id;
@@ -66,8 +63,7 @@ struct dhcpv4_packet
 	uint8_t data[0];
 };
 
-struct dhcpv4_iprange
-{
+struct dhcpv4_iprange {
 	struct list_head entry;
 	uint32_t routerip;
 	uint32_t startip;
@@ -78,8 +74,7 @@ struct dhcpv4_iprange
 	unsigned long free[0];
 }; 
 
-struct dhcpv4_serv
-{
+struct dhcpv4_serv {
 	struct triton_context_t *ctx;
 	struct triton_md_handler_t hnd;
 	int raw_sock;
@@ -88,8 +83,7 @@ struct dhcpv4_serv
 	struct dhcpv4_iprange *range;
 };
 
-struct dhcpv4_relay
-{
+struct dhcpv4_relay {
 	struct list_head entry;
 	struct triton_context_t ctx;
 	struct triton_md_handler_t hnd;

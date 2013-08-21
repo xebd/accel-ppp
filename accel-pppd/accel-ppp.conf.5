@@ -313,6 +313,11 @@ Specifies networks from which packets will be treated as unclassified. You may s
 .TP
 .BI "proto=" n
 Specifies number of protocol to be used for inserted routes.
+.TP
+.BI "offer-delay=" delay[,delay1:count1[,delay2:count2[,...]]]
+Specifies delays (also in condition of connection count) to send DHCPOFFER (ms).
+Last delay in list may be -1 which means don't accept new connections.
+List must to be sorted by count key.
 .SH [dns]
 .TP
 .BI "dns1=" x.x.x.x

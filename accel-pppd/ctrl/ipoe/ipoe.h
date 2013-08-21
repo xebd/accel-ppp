@@ -15,8 +15,7 @@
 
 struct arp_serv;
 
-struct ipoe_serv
-{
+struct ipoe_serv {
 	struct list_head entry;
 	struct triton_context_t ctx;
 	char *ifname;
@@ -27,6 +26,8 @@ struct ipoe_serv
 	struct dhcpv4_serv *dhcpv4;
 	struct dhcpv4_relay *dhcpv4_relay;
 	struct arp_serv *arp;
+	struct list_head disc_list;
+	struct triton_timer_t disc_timer;
 	pthread_mutex_t lock;
 	int opt_mode;
 	uint32_t opt_src;
@@ -40,8 +41,7 @@ struct ipoe_serv
 	int active:1;
 };
 
-struct ipoe_session
-{
+struct ipoe_session {
 	struct list_head entry;
 	struct triton_context_t ctx;
 	struct triton_timer_t timer;
@@ -68,6 +68,7 @@ struct ipoe_session
 	int ifindex;
 	struct ipv4db_item_t ipv4;
 	int ifcfg:1;
+	int started:1;
 	int terminating:1;
 	int dhcp_addr:1;
 	int relay_addr:1;
@@ -75,8 +76,7 @@ struct ipoe_session
 	int l4_redirect_set:1;
 };
 
-struct ipoe_session_info
-{
+struct ipoe_session_info {
 	struct list_head entry;
 	int ifindex;
 	uint32_t addr;
@@ -111,5 +111,6 @@ void ipoe_nl_get_sessions(struct list_head *list);
 
 struct arp_serv *arpd_start(struct ipoe_serv *ipoe);
 void arpd_stop(struct arp_serv *arp);
+
 #endif
 

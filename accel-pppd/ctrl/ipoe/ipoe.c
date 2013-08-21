@@ -79,11 +79,14 @@ static int conf_lease_timeout = 660;
 static int conf_verbose;
 static const char *conf_agent_remote_id;
 static int conf_proto;
+static LIST_HEAD(conf_offer_delay);
 
 static unsigned int stat_starting;
 static unsigned int stat_active;
+static unsigned int stat_delayed_offer;
 
 static mempool_t ses_pool;
+static mempool_t disc_item_pool;
 
 static LIST_HEAD(serv_list);
 
@@ -117,6 +120,19 @@ struct gw_addr {
 	int mask1;
 };
 
+struct disc_item {
+	struct list_head entry;
+	struct dhcpv4_packet *pack;
+	struct timespec ts;
+};
+
+struct delay {
+	struct list_head entry;
+	unsigned int conn_cnt;
+	int delay;
+};
+
+
 static pthread_mutex_t uc_lock = PTHREAD_MUTEX_INITIALIZER;
 static LIST_HEAD(uc_list);
 static int uc_size;
@@ -132,6 +148,8 @@ static void ipoe_drop_sessions(struct ipoe_serv *serv, struct ipoe_session *skip
 static void ipoe_serv_close(struct triton_context_t *ctx);
 static void __ipoe_session_activate(struct ipoe_session *ses);
 static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *pack);
+static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *pack, int force);
+static int get_offer_delay();
 
 static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct dhcpv4_packet *pack, struct ipoe_session **opt82_ses)
 {
@@ -183,7 +201,7 @@ static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct d
 		if (opt82_match && opt82_ses)
 			*opt82_ses = ses;
 			
-		if (memcmp(pack->hdr->chaddr, ses->hwaddr, 6))
+		if (memcmp(pack->hdr->chaddr, ses->hwaddr, ETH_ALEN))
 			continue;
 	
 		res = ses;
@@ -385,6 +403,8 @@ static void ipoe_session_start(struct ipoe_session *ses)
 	struct ifreq ifr;
 	struct unit_cache *uc;
 
+	__sync_add_and_fetch(&stat_starting, 1);
+	
 	if (!ses->ses.username) {
 		strncpy(ses->ses.ifname, ses->serv->ifname, AP_IFNAME_LEN);
 		
@@ -692,6 +712,10 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 	if (ses->l4_redirect)
 		ipoe_change_l4_redirect(ses, 0);
 
+	__sync_sub_and_fetch(&stat_starting, 1);
+	__sync_add_and_fetch(&stat_active, 1);
+	ses->started = 1;
+
 	ap_session_activate(&ses->ses);
 
 	if (ses->dhcpv4_request) {
@@ -786,6 +810,11 @@ static void ipoe_session_free(struct ipoe_session *ses)
 {
 	struct unit_cache *uc;
 
+	if (ses->started)
+		__sync_sub_and_fetch(&stat_active, 1);
+	else
+		__sync_sub_and_fetch(&stat_starting, 1);
+	
 	if (ses->timer.tpd)
 		triton_timer_del(&ses->timer);
 
@@ -1056,10 +1085,88 @@ static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packe
 	}
 }
 
-static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *pack)
+static void ipoe_serv_disc_timer(struct triton_timer_t *t)
+{
+	struct ipoe_serv *serv = container_of(t, typeof(*serv), disc_timer);
+	struct disc_item *d;
+	struct timespec ts;
+	int delay, offer_delay;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	
+	while (!list_empty(&serv->disc_list)) {	
+	  d = list_entry(serv->disc_list.next, typeof(*d), entry);
+			
+		delay = (ts.tv_sec - d->ts.tv_sec) * 1000 + (ts.tv_nsec - d->ts.tv_nsec) / 1000000;
+		offer_delay = get_offer_delay();
+
+		if (delay < offer_delay - 1) {
+			delay = offer_delay - delay;
+			t->expire_tv.tv_sec = delay / 1000;
+			t->expire_tv.tv_usec = (delay % 1000) * 1000;
+			triton_timer_mod(t, 0);
+			return;
+		}
+	
+		__ipoe_recv_dhcpv4(serv->dhcpv4, d->pack, 1);
+
+		list_del(&d->entry);
+		dhcpv4_packet_free(d->pack);
+		mempool_free(d);
+
+		__sync_sub_and_fetch(&stat_delayed_offer, 1);
+	}
+
+	triton_timer_del(t);
+}
+
+static void ipoe_serv_add_disc(struct ipoe_serv *serv, struct dhcpv4_packet *pack, int offer_delay)
+{
+	struct disc_item *d = mempool_alloc(disc_item_pool);
+
+	if (!d)
+		return;
+		
+	__sync_add_and_fetch(&stat_delayed_offer, 1);
+	
+	dhcpv4_packet_ref(pack);
+	d->pack = pack;
+	clock_gettime(CLOCK_MONOTONIC, &d->ts);
+	list_add_tail(&d->entry, &serv->disc_list);
+		
+	if (!serv->disc_timer.tpd) {
+		serv->disc_timer.expire_tv.tv_sec = offer_delay / 1000;
+		serv->disc_timer.expire_tv.tv_usec = (offer_delay % 1000) * 1000;
+		triton_timer_add(&serv->ctx, &serv->disc_timer, 0);
+	}
+}
+
+static void ipoe_serv_check_disc(struct ipoe_serv *serv, struct dhcpv4_packet *pack)
+{
+	struct disc_item *d;
+
+	list_for_each_entry(d, &serv->disc_list, entry) {
+		if (d->pack->hdr->xid != pack->hdr->xid)
+			continue;
+
+		if (memcmp(d->pack->hdr->chaddr, pack->hdr->chaddr, ETH_ALEN))
+			continue;
+		
+		list_del(&d->entry);
+		dhcpv4_packet_free(d->pack);
+		mempool_free(d);
+		
+		__sync_sub_and_fetch(&stat_delayed_offer, 1);
+		
+		break;
+	}
+}
+
+static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *pack, int force)
 {
 	struct ipoe_serv *serv = container_of(dhcpv4->ctx, typeof(*serv), ctx);
 	struct ipoe_session *ses, *opt82_ses;
+	int offer_delay;
 	//struct dhcpv4_packet *reply;
 
 	if (ap_shutdown)
@@ -1076,6 +1183,15 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 					log_ppp_warn("mac change detected\n");
 
 				triton_context_call(&opt82_ses->ctx, (triton_event_func)__ipoe_session_terminate, &opt82_ses->ses);
+			}
+
+			offer_delay = get_offer_delay();
+			if (offer_delay == -1)
+				goto out;
+
+			if (offer_delay && !force) {
+				ipoe_serv_add_disc(serv, pack, offer_delay);
+				goto out;
 			}
 
 			ses = ipoe_session_create_dhcpv4(serv, pack);
@@ -1117,17 +1233,20 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 			}
 		}
 	} else if (pack->msg_type == DHCPREQUEST) {
+		ipoe_serv_check_disc(serv, pack);
+		
 		ses = ipoe_session_lookup(serv, pack, &opt82_ses);
 
 		if (!ses) {
 			if (conf_verbose) {
-				log_info2("recv ");
-				dhcpv4_print_packet(pack, 0, log_info2);
+				log_debug("recv ");
+				dhcpv4_print_packet(pack, 0, log_debug);
 			}
-				
-			if (serv->opt_shared == 0)
+
+			if (serv->opt_shared == 0) {
 				ipoe_drop_sessions(serv, NULL);
-			else if (opt82_ses) {
+				//dhcpv4_send_nak(dhcpv4, pack);
+			} else if (opt82_ses) {
 				if (conf_verbose) {
 					log_switch(dhcpv4->ctx, &opt82_ses->ses);
 					log_ppp_warn("mac change detected\n");
@@ -1135,11 +1254,10 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 				
 				triton_context_call(&opt82_ses->ctx, (triton_event_func)__ipoe_session_terminate, &opt82_ses->ses);
 			}
-
-			dhcpv4_send_nak(dhcpv4, pack);
 		} else {
 			if (pack->hdr->ciaddr == ses->yiaddr && pack->hdr->xid != ses->xid)
 				ses->xid = pack->hdr->xid;
+			
 			if ((pack->server_id && (pack->server_id != ses->siaddr || pack->request_ip != ses->yiaddr)) ||
 				(pack->hdr->ciaddr && (pack->hdr->xid != ses->xid || pack->hdr->ciaddr != ses->yiaddr)) ||
 				(opt82_ses && ses != opt82_ses) || (!opt82_ses && pack->relay_agent)) {
@@ -1154,7 +1272,8 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 
 				if (pack->server_id == ses->siaddr)
 					dhcpv4_send_nak(dhcpv4, pack);
-				else if (ses->serv->dhcpv4_relay)
+
+				if (ses->serv->dhcpv4_relay)
 					dhcpv4_relay_send(ses->serv->dhcpv4_relay, pack, 0, ses->serv->ifname, conf_agent_remote_id);
 				
 				triton_context_call(&ses->ctx, (triton_event_func)__ipoe_session_terminate, &ses->ses);
@@ -1188,6 +1307,11 @@ static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *p
 
 out:
 	pthread_mutex_unlock(&serv->lock);
+}
+
+static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *pack)
+{
+	__ipoe_recv_dhcpv4(dhcpv4, pack, 0);
 }
 
 static int parse_dhcpv4_mask(uint32_t mask)
@@ -1489,6 +1613,17 @@ static void ipoe_serv_close(struct triton_context_t *ctx)
 	if (serv->arp)
 		arpd_stop(serv->arp);
 
+	while (!list_empty(&serv->disc_list)) {
+		struct disc_item *d = list_entry(serv->disc_list.next, typeof(*d), entry);
+		list_del(&d->entry);
+		dhcpv4_packet_free(d->pack);
+		mempool_free(d);
+		__sync_sub_and_fetch(&stat_delayed_offer, 1);
+	}
+
+	if (serv->disc_timer.tpd)
+		triton_timer_del(&serv->disc_timer);
+
 	triton_context_unregister(ctx);
 
 	_free(serv->ifname);
@@ -1520,6 +1655,7 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	cli_send(client, "ipoe:\r\n");
 	cli_sendv(client,"  starting: %u\r\n", stat_starting);
 	cli_sendv(client,"  active: %u\r\n", stat_active);
+	cli_sendv(client,"  delayed: %u\r\n", stat_delayed_offer);
 
 	return CLI_CMD_OK;
 }
@@ -1566,6 +1702,24 @@ struct ipoe_serv *ipoe_find_serv(const char *ifname)
 	}
 
 	return NULL;
+}
+
+static int get_offer_delay()
+{
+	struct delay *r, *prev = NULL;
+
+	list_for_each_entry(r, &conf_offer_delay, entry) {
+		if (!prev || stat_active >= r->conn_cnt) {
+			prev = r;
+			continue;
+		}
+		break;
+	}
+
+	if (prev)
+		return prev->delay;
+	
+	return 0;
 }
 
 static void add_interface(const char *ifname, int ifindex, const char *opt)
@@ -1735,7 +1889,9 @@ static void add_interface(const char *ifname, int ifindex, const char *opt)
 	serv->active = 1;
 	INIT_LIST_HEAD(&serv->sessions);
 	INIT_LIST_HEAD(&serv->addr_list);
+	INIT_LIST_HEAD(&serv->disc_list);
 	memcpy(serv->hwaddr, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
+	serv->disc_timer.expire = ipoe_serv_disc_timer;
 	pthread_mutex_init(&serv->lock, NULL);
 
 	triton_context_register(&serv->ctx, NULL);
@@ -1994,6 +2150,81 @@ static void load_radius_attrs(void)
 }
 #endif
 
+static void strip(char *str)
+{
+	char *ptr = str;
+	char *endptr = strchr(str, 0);
+	while (1) {
+		ptr = strchr(ptr, ' ');
+		if (ptr)
+			memmove(ptr, ptr + 1, endptr - ptr - 1);
+		else
+			break;
+	}
+}
+
+int parse_offer_delay(const char *str)
+{
+	char *str1;
+	char *ptr1, *ptr2, *ptr3, *endptr;
+	struct delay *r;
+
+	while (!list_empty(&conf_offer_delay)) {
+		r = list_entry(conf_offer_delay.next, typeof(*r), entry);
+		list_del(&r->entry);
+		_free(r);
+	}
+
+	if (!str)
+		return 0;
+
+	str1 = _strdup(str);
+	strip(str1);
+
+	ptr1 = str1;
+
+	while (1) {
+		ptr2 = strchr(ptr1, ',');
+		if (ptr2)
+			*ptr2 = 0;
+		ptr3 = strchr(ptr1, ':');
+		if (ptr3)
+			*ptr3 = 0;
+
+		r = _malloc(sizeof(*r));
+		memset(r, 0, sizeof(*r));
+
+		r->delay = strtol(ptr1, &endptr, 10);
+		if (*endptr)
+			goto out_err;
+
+		if (list_empty(&conf_offer_delay))
+			r->conn_cnt = 0;
+		else {
+			if (!ptr3)
+				goto out_err;
+			r->conn_cnt = strtol(ptr3 + 1, &endptr, 10);
+			if (*endptr)
+				goto out_err;
+		}
+
+		list_add_tail(&r->entry, &conf_offer_delay);
+
+		if (!ptr2)
+			break;
+
+		ptr1 = ptr2 + 1;
+	}
+
+	_free(str1);
+	return 0;
+
+out_err:
+	_free(str1);
+	log_error("ipoe: failed to parse offer-delay\n");
+	return -1;
+}
+
 static void load_config(void)
 {
 	const char *opt;
@@ -2150,6 +2381,8 @@ static void load_config(void)
 	if (triton_module_loaded("radius"))
 		load_radius_attrs();
 #endif
+
+	parse_offer_delay(conf_get_opt("ipoe", "offer-delay"));
 	
 	load_interfaces(s);
 	load_local_nets(s);
@@ -2167,6 +2400,7 @@ static struct triton_timer_t l4_redirect_timer = {
 static void ipoe_init(void)
 {
 	ses_pool = mempool_create(sizeof(struct ipoe_session));
+	disc_item_pool = mempool_create(sizeof(struct disc_item));
 	uc_pool = mempool_create(sizeof(struct unit_cache));
 
 	triton_context_register(&l4_redirect_ctx, NULL);
