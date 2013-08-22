@@ -900,7 +900,7 @@ static void load_config(void)
 		conf_verbose = atoi(opt) > 0;
 	
 	opt = conf_get_opt("shaper", "rate-multiplier");
-	if (opt && atoi(opt) >= 0)
+	if (opt && atof(opt) > 0)
 		conf_multiplier = atof(opt);
 	else
 		conf_multiplier = 1;
