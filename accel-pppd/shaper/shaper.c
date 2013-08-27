@@ -56,8 +56,7 @@ static pthread_rwlock_t shaper_lock = PTHREAD_RWLOCK_INITIALIZER;
 static LIST_HEAD(shaper_list);
 
 struct time_range_pd_t;
-struct shaper_pd_t
-{
+struct shaper_pd_t {
 	struct list_head entry;
 	struct ppp_t *ppp;
 	struct ppp_pd_t pd;
@@ -67,10 +66,10 @@ struct shaper_pd_t
 	int up_speed;
 	struct list_head tr_list;
 	struct time_range_pd_t *cur_tr;
+	int refs;
 };
 
-struct time_range_pd_t
-{
+struct time_range_pd_t {
 	struct list_head entry;
 	int id;
 	int down_speed;
@@ -79,8 +78,7 @@ struct time_range_pd_t
 	int up_burst;
 };
 
-struct time_range_t
-{
+struct time_range_t {
 	struct list_head entry;
 	int id;
 	struct triton_timer_t begin;
@@ -122,6 +120,7 @@ static struct shaper_pd_t *find_pd(struct ppp_t *ppp, int create)
 		list_add_tail(&spd->pd.entry, &ppp->pd_list);
 		spd->pd.key = &pd_key;
 		INIT_LIST_HEAD(&spd->tr_list);
+		spd->refs = 1;
 
 		pthread_rwlock_wrlock(&shaper_lock);
 		list_add_tail(&spd->entry, &shaper_list);
@@ -432,7 +431,6 @@ static void ev_ppp_finishing(struct ppp_t *ppp)
 	struct shaper_pd_t *pd = find_pd(ppp, 0);
 
 	if (pd) {
-		clear_tr_pd(pd);
 		pthread_rwlock_wrlock(&shaper_lock);
 		list_del(&pd->entry);
 		pthread_rwlock_unlock(&shaper_lock);
@@ -441,7 +439,11 @@ static void ev_ppp_finishing(struct ppp_t *ppp)
 		if (pd->down_speed || pd->up_speed)
 			remove_limiter(ppp);
 
-		_free(pd);
+		if (--pd->refs == 0) {
+			clear_tr_pd(pd);
+			_free(pd);
+		} else
+			pd->ppp = NULL;
 	}
 }
 
@@ -625,8 +627,8 @@ static void update_shaper_tr(struct shaper_pd_t *pd)
 {
 	struct time_range_pd_t *tr;
 
-	if (pd->ppp->terminating)
-		return;
+	if (!pd->ppp || pd->ppp->terminating)
+		goto out;
 
 	list_for_each_entry(tr, &pd->tr_list, entry) {
 		if (tr->id != time_range_id)
@@ -636,11 +638,11 @@ static void update_shaper_tr(struct shaper_pd_t *pd)
 	}
 
 	if (pd->temp_down_speed || pd->temp_up_speed)
-		return;
+		goto out;
 
 	if (pd->down_speed || pd->up_speed) {
 		if (pd->cur_tr && pd->down_speed == pd->cur_tr->down_speed && pd->up_speed == pd->cur_tr->up_speed)
-			return;
+			goto out;
 		remove_limiter(pd->ppp);
 	}
 	
@@ -653,7 +655,13 @@ static void update_shaper_tr(struct shaper_pd_t *pd)
 		}
 	} else
 		if (conf_verbose)
-			log_ppp_info2("shaper: removed shaper\n");	
+			log_ppp_info2("shaper: removed shaper\n");
+
+out:
+	if (--pd->refs == 0) {
+		clear_tr_pd(pd);
+		_free(pd);
+	}
 }
 
 static void time_range_begin_timer(struct triton_timer_t *t)
@@ -666,8 +674,10 @@ static void time_range_begin_timer(struct triton_timer_t *t)
 	log_debug("shaper: time_range_begin_timer: id=%i\n", time_range_id);
 
 	pthread_rwlock_rdlock(&shaper_lock);
-	list_for_each_entry(pd, &shaper_list, entry)
+	list_for_each_entry(pd, &shaper_list, entry) {
+		pd->refs++;
 		triton_context_call(pd->ppp->ctrl->ctx, (triton_event_func)update_shaper_tr, pd);
+	}
 	pthread_rwlock_unlock(&shaper_lock);
 }
 
