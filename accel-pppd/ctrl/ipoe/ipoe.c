@@ -29,6 +29,8 @@
 #include "ipdb.h"
 
 #include "iputils.h"
+#include "ipset.h"
+
 #include "connlimit.h"
 #ifdef RADIUS
 #include "radius.h"
@@ -65,6 +67,8 @@ static int conf_attr_l4_redirect;
 #endif
 static int conf_l4_redirect_table;
 static int conf_l4_redirect_on_reject;
+static const char *conf_l4_redirect_ipset;
+
 static const char *conf_relay;
 
 #ifdef USE_LUA
@@ -304,7 +308,12 @@ static void l4_redirect_list_add(in_addr_t addr, int ifindex)
 	n->timeout = ts.tv_sec + conf_l4_redirect_on_reject;
 	
 	ipoe_nl_modify(ifindex, addr, 1, NULL, NULL);
-	iprule_add(addr, conf_l4_redirect_table);
+
+	if (conf_l4_redirect_table)
+		iprule_add(addr, conf_l4_redirect_table);
+
+	if (conf_l4_redirect_ipset)
+		ipset_add(conf_l4_redirect_ipset, addr);
 
 	pthread_rwlock_wrlock(&l4_list_lock);
 	
@@ -345,7 +354,12 @@ static void l4_redirect_list_timer(struct triton_timer_t *t)
 		if (ts.tv_sec > n->timeout) {
 			list_del(&n->entry);
 			pthread_rwlock_unlock(&l4_list_lock);
-			iprule_del(n->addr, conf_l4_redirect_table);
+
+			if (conf_l4_redirect_table)
+				iprule_del(n->addr, conf_l4_redirect_table);
+			
+			if (conf_l4_redirect_ipset)
+				ipset_del(conf_l4_redirect_ipset, n->addr);
 
 			if (uc_size < conf_unit_cache && ipoe_nl_modify(n->ifindex, 0, 0, "", NULL)) {
 				uc = mempool_alloc(uc_pool);
@@ -372,21 +386,30 @@ static void l4_redirect_list_timer(struct triton_timer_t *t)
 static void ipoe_change_l4_redirect(struct ipoe_session *ses, int del)
 {
 	in_addr_t addr;
-	
-	if (conf_l4_redirect_table <= 0)
-		return;
-
+		
 	if (ses->ses.ipv4)
 		addr = ses->ses.ipv4->addr;
 	else
 		addr = ses->yiaddr;
+	
+	if (conf_l4_redirect_table) {
+		if (del) {
+			iprule_del(addr, conf_l4_redirect_table);
+			ses->l4_redirect_set = 0;
+		} else {
+			iprule_add(addr, conf_l4_redirect_table);
+			ses->l4_redirect_set = 1;
+		}
+	}
 
-	if (del) {
-		iprule_del(addr, conf_l4_redirect_table);
-		ses->l4_redirect_set = 0;
-	} else {
-		iprule_add(addr, conf_l4_redirect_table);
-		ses->l4_redirect_set = 1;
+	if (conf_l4_redirect_ipset) {
+		if (del) {
+			ipset_del(conf_l4_redirect_ipset, addr);
+			ses->l4_redirect_set = 0;
+		} else {
+			ipset_add(conf_l4_redirect_ipset, addr);
+			ses->l4_redirect_set = 1;
+		}
 	}
 }
 
@@ -1638,8 +1661,15 @@ static void l4_redirect_ctx_close(struct triton_context_t *ctx)
 	while (!list_empty(&l4_redirect_list)) {
 		n = list_entry(l4_redirect_list.next, typeof(*n), entry);
 		list_del(&n->entry);
-		iprule_del(n->addr, conf_l4_redirect_table);
+
+		if (conf_l4_redirect_table)
+			iprule_del(n->addr, conf_l4_redirect_table);
+		
+		if (conf_l4_redirect_ipset)
+			ipset_del(conf_l4_redirect_ipset, n->addr);
+		
 		ipoe_nl_delete(n->ifindex);
+		
 		_free(n);
 	}
 	pthread_rwlock_unlock(&l4_list_lock);
@@ -2279,10 +2309,12 @@ static void load_config(void)
 		conf_unit_cache = atoi(opt);
 	
 	opt = conf_get_opt("ipoe", "l4-redirect-table");
-	if (opt)
+	if (opt && atoi(opt) > 0)
 		conf_l4_redirect_table = atoi(opt);
 	else
-		conf_l4_redirect_table = 1;
+		conf_l4_redirect_table = 0;
+	
+	conf_l4_redirect_ipset = conf_get_opt("ipoe", "l4-redirect-ipset");
 	
 	opt = conf_get_opt("ipoe", "l4-redirect-on-reject");
 	if (opt) {
@@ -2407,6 +2439,9 @@ static void ipoe_init(void)
 	triton_context_wakeup(&l4_redirect_ctx);
 
 	load_config();
+
+	if (conf_l4_redirect_ipset)
+		ipset_flush(conf_l4_redirect_ipset);
 
 	cli_register_simple_cmd2(show_stat_exec, NULL, 2, "show", "stat");
 	

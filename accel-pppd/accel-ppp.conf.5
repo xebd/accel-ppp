@@ -209,6 +209,9 @@ This should reduce kernel-level interface creation/deletion rate lack.
 Specifies number of table. If L4-Redirect radius attribute is received and it's value is not 0 or '0' then accel-ppp will add following rule: ip rule add from client_ip table
 .B n
 .TP
+.BI "l4-redirect-ipset=" name
+Specifies name of ipset list. If L4-Redirect radius attribute is received and it's value is not 0 or '0' then accel-ppp will add client's ip to that ipset name.
+.TP
 .BI "l4-redirect-on-reject=" n
 If specified then if radius rejects access 'ip rule add from ip_addr table l4-redirect-table' rule will be created for time
 .B n

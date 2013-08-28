@@ -45,6 +45,9 @@ IF (SHAPER)
 	ADD_SUBDIRECTORY(shaper)
 ENDIF (SHAPER)
 
+INCLUDE(CheckIncludeFile)
+CHECK_INCLUDE_FILE("linux/netfilter/ipset/ip_set.h" HAVE_IPSET)
+
 ADD_EXECUTABLE(accel-pppd
 	session.c
 	session_backup.c
@@ -78,6 +81,7 @@ ADD_EXECUTABLE(accel-pppd
 	libnetlink/libnetlink.c
 	libnetlink/iputils.c
 	libnetlink/genl.c
+	libnetlink/ipset.c
 
 	pwdb.c
 	ipdb.c

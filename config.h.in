@@ -1,0 +1,3 @@
+//#cmakedefine ACCEL_PPP_VERSION "${ACCEL_PPP_VERSION}"
+//#cmakedefine RADIUS
+#cmakedefine HAVE_IPSET
