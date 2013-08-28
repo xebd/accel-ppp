@@ -1034,7 +1034,11 @@ static int ipoe_nl_cmd_noop(struct sk_buff *skb, struct genl_info *info)
 		goto out;
 	}
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,7,0)
 	hdr = genlmsg_put(msg, info->snd_pid, info->snd_seq,
+#else
+	hdr = genlmsg_put(msg, info->snd_portid, info->snd_seq,
+#endif
 			  &ipoe_nl_family, 0, IPOE_CMD_NOOP);
 	if (IS_ERR(hdr)) {
 		ret = PTR_ERR(hdr);
@@ -1045,8 +1049,10 @@ static int ipoe_nl_cmd_noop(struct sk_buff *skb, struct genl_info *info)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,32)
 	return genlmsg_unicast(msg, info->snd_pid);
-#else
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(3,7,0)
 	return genlmsg_unicast(genl_info_net(info), msg, info->snd_pid);
+#else
+	return genlmsg_unicast(genl_info_net(info), msg, info->snd_portid);
 #endif
 
 err_out:
@@ -1095,7 +1101,11 @@ static int ipoe_nl_cmd_create(struct sk_buff *skb, struct genl_info *info)
 		goto out;
 	}
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,7,0)
 	hdr = genlmsg_put(msg, info->snd_pid, info->snd_seq,
+#else
+	hdr = genlmsg_put(msg, info->snd_portid, info->snd_seq,
+#endif
 			  &ipoe_nl_family, 0, IPOE_CMD_CREATE);
 	if (IS_ERR(hdr)) {
 		ret = PTR_ERR(hdr);
@@ -1116,8 +1126,10 @@ static int ipoe_nl_cmd_create(struct sk_buff *skb, struct genl_info *info)
 	genlmsg_end(msg, hdr);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,32)
 	return genlmsg_unicast(msg, info->snd_pid);
-#else
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(3,7,0)
 	return genlmsg_unicast(genl_info_net(info), msg, info->snd_pid);
+#else
+	return genlmsg_unicast(genl_info_net(info), msg, info->snd_portid);
 #endif
 
 err_out:
@@ -1334,7 +1346,11 @@ static int ipoe_nl_cmd_dump_sessions(struct sk_buff *skb, struct netlink_callbac
 		if (idx++ < start_idx)
 			continue;
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,7,0)
 		if (fill_info(skb, ses, NETLINK_CB(cb->skb).pid, cb->nlh->nlmsg_seq) < 0)
+#else
+		if (fill_info(skb, ses, NETLINK_CB(cb->skb).portid, cb->nlh->nlmsg_seq) < 0)
+#endif
 			break;
 	}
 
