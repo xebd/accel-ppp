@@ -153,6 +153,7 @@ static void ipoe_serv_close(struct triton_context_t *ctx);
 static void __ipoe_session_activate(struct ipoe_session *ses);
 static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *pack);
 static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *pack, int force);
+static void ipoe_session_keepalive(struct dhcpv4_packet *pack);
 static int get_offer_delay();
 
 static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct dhcpv4_packet *pack, struct ipoe_session **opt82_ses)
@@ -757,8 +758,20 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 		triton_timer_mod(&ses->timer, 0);
 }
 
-static void ipoe_session_activate(struct ipoe_session *ses)
+static void ipoe_session_activate(struct dhcpv4_packet *pack)
 {
+	struct ipoe_session *ses = container_of(triton_context_self(), typeof(*ses), ctx);
+	
+	if (ses->ses.state == AP_STATE_ACTIVE) {
+		ipoe_session_keepalive(pack);
+		return;
+	}
+
+	if (ses->dhcpv4_request)
+		dhcpv4_packet_free(ses->dhcpv4_request);
+	
+	ses->dhcpv4_request = pack;
+
 	if (ses->serv->dhcpv4_relay)
 		dhcpv4_relay_send(ses->serv->dhcpv4_relay, ses->dhcpv4_request, ses->relay_server_id, ses->serv->ifname, conf_agent_remote_id);
 	else
@@ -1310,10 +1323,9 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 				if (serv->opt_shared == 0)
 					ipoe_drop_sessions(serv, ses);
 
-				if (ses->ses.state == AP_STATE_STARTING && ses->yiaddr && !ses->dhcpv4_request) {
-					ses->dhcpv4_request = pack;
+				if (ses->ses.state == AP_STATE_STARTING && ses->yiaddr) {
 					dhcpv4_packet_ref(pack);
-					triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_activate, ses);
+					triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_activate, pack);
 				} else if (ses->ses.state == AP_STATE_ACTIVE) {
 					dhcpv4_packet_ref(pack);
 					triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_keepalive, pack);
