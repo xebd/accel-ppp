@@ -1358,10 +1358,15 @@ static int parse_dhcpv4_mask(uint32_t mask)
 	return 32 - (i + 1);
 }
 
-static void ipoe_ses_recv_dhcpv4_relay(struct ipoe_session *ses)
+static void ipoe_ses_recv_dhcpv4_relay(struct dhcpv4_packet *pack)
 {
-	struct dhcpv4_packet *pack = ses->dhcpv4_relay_reply;
+	struct ipoe_session *ses = container_of(triton_context_self(), typeof(*ses), ctx);
 	struct dhcpv4_option *opt;
+
+	if (ses->dhcpv4_relay_reply)
+		dhcpv4_packet_free(ses->dhcpv4_relay_reply);
+	
+	ses->dhcpv4_relay_reply = pack;
 
 	if (conf_verbose) {
 		log_ppp_info2("recv ");
@@ -1433,9 +1438,8 @@ static void ipoe_recv_dhcpv4_relay(struct dhcpv4_packet *pack)
 		break;
 	}
 	
-	if (found && !ses->dhcpv4_relay_reply) {
-		ses->dhcpv4_relay_reply = pack;
-		triton_context_call(&ses->ctx, (triton_event_func)ipoe_ses_recv_dhcpv4_relay, ses);
+	if (found) {
+		triton_context_call(&ses->ctx, (triton_event_func)ipoe_ses_recv_dhcpv4_relay, pack);
 	} else
 		dhcpv4_packet_free(pack);
 
