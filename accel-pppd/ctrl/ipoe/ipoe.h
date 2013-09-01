@@ -28,7 +28,10 @@ struct ipoe_serv {
 	struct arp_serv *arp;
 	struct list_head disc_list;
 	struct triton_timer_t disc_timer;
+	struct triton_timer_t timer;
 	pthread_mutex_t lock;
+	int parent_ifindex;
+	int vid;
 	int opt_mode;
 	uint32_t opt_src;
 	int opt_arp;
@@ -96,6 +99,8 @@ struct iphdr;
 struct ethhdr;
 
 void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph);
+void ipoe_vlan_notify(int ifindex, int vid);
+
 struct ipoe_session *ipoe_session_alloc(void);
 
 struct ipoe_serv *ipoe_find_serv(const char *ifname);
@@ -108,6 +113,9 @@ int ipoe_nl_create(uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_
 void ipoe_nl_delete(int ifindex);
 int ipoe_nl_modify(int ifindex, uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_t *hwaddr);
 void ipoe_nl_get_sessions(struct list_head *list);
+int ipoe_nl_add_vlan_mon(int ifindex, long *mask, int len);
+int ipoe_nl_add_vlan_mon_vid(int ifindex, int vid);
+int ipoe_nl_del_vlan_mon(int ifindex);
 
 struct arp_serv *arpd_start(struct ipoe_serv *ipoe);
 void arpd_stop(struct arp_serv *arp);

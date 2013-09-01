@@ -162,7 +162,7 @@ int __export iplink_get_stats(int ifindex, struct rtnl_link_stats *stats)
 	return 0;
 }
 	
-int iplink_vlan_add(const char *ifname, int ifindex, int vid)
+int __export iplink_vlan_add(const char *ifname, int ifindex, int vid)
 {
 	struct iplink_req {
 		struct nlmsghdr n;
@@ -204,7 +204,7 @@ int iplink_vlan_add(const char *ifname, int ifindex, int vid)
 	return 0;
 }
 
-int iplink_vlan_del(int ifindex)
+int __export iplink_vlan_del(int ifindex)
 {
 	struct iplink_req {
 		struct nlmsghdr n;

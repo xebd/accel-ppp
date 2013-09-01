@@ -402,7 +402,7 @@ int ipoe_nl_add_vlan_mon(int ifindex, long *mask, int len)
 	addattr_l(nlh, 1024, IPOE_ATTR_VLAN_MASK, mask, len);
 
 	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 ) {
-		log_error("ipoe: nl_delete: error talking to kernel\n");
+		log_error("ipoe: nl_add_vlan_mon: error talking to kernel\n");
 		return -1;
 	}
 
@@ -411,6 +411,7 @@ int ipoe_nl_add_vlan_mon(int ifindex, long *mask, int len)
 
 int ipoe_nl_add_vlan_mon_vid(int ifindex, int vid)
 {
+	struct rtnl_handle rth;
 	struct nlmsghdr *nlh;
 	struct genlmsghdr *ghdr;
 	struct {
@@ -436,7 +437,7 @@ int ipoe_nl_add_vlan_mon_vid(int ifindex, int vid)
 	addattr32(nlh, 1024, IPOE_ATTR_ADDR, vid);
 
 	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 ) {
-		log_error("ipoe: nl_delete: error talking to kernel\n");
+		log_error("ipoe: nl_add_vlan_mon_vid: error talking to kernel\n");
 		r = -1;
 	}
 	
@@ -448,7 +449,6 @@ int ipoe_nl_add_vlan_mon_vid(int ifindex, int vid)
 
 int ipoe_nl_del_vlan_mon(int ifindex)
 {
-	struct rtnl_handle rth;
 	struct nlmsghdr *nlh;
 	struct genlmsghdr *ghdr;
 	struct {
@@ -470,7 +470,7 @@ int ipoe_nl_del_vlan_mon(int ifindex)
 	addattr32(nlh, 1024, IPOE_ATTR_IFINDEX, ifindex);
 
 	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 ) {
-		log_error("ipoe: nl_delete: error talking to kernel\n");
+		log_error("ipoe: nl_del_vlan_mon: error talking to kernel\n");
 		return -1;
 	}
 

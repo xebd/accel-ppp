@@ -858,6 +858,7 @@ static int vlan_pt_recv(struct sk_buff *skb, struct net_device *dev, struct pack
 		goto out;
 
 	vid = skb->vlan_tci & VLAN_VID_MASK;
+	//pr_info("vid %i\n", vid);
 
 	rcu_read_lock();
 	list_for_each_entry_rcu(d, &vlan_devices, entry) {
@@ -868,6 +869,7 @@ static int vlan_pt_recv(struct sk_buff *skb, struct net_device *dev, struct pack
 	goto out;
 
 found:
+	//pr_info("found %i\n", d->ifindex);
 	if (d->vid[vid / (8*sizeof(long))] & (1 << (vid % (8*sizeof(long)))))
 		vid = -1;
 	else
@@ -876,6 +878,8 @@ found:
 
 	if (vid == -1)
 		goto out;
+	
+	//pr_info("queue %i %i\n", d->ifindex, vid);
 	
 	n = kmalloc(sizeof(*n), GFP_ATOMIC);
 	if (!n)
@@ -1598,18 +1602,44 @@ static int ipoe_nl_cmd_del_interface(struct sk_buff *skb, struct genl_info *info
 static int ipoe_nl_cmd_add_vlan_mon(struct sk_buff *skb, struct genl_info *info)
 {
 	struct vlan_dev *d;
+	struct net_device *dev;
+	int ifindex, i;
 
 	if (!info->attrs[IPOE_ATTR_IFINDEX])
 		return -EINVAL;
 	
+	ifindex = nla_get_u32(info->attrs[IPOE_ATTR_IFINDEX]);
+	
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34)
+	rtnl_lock();
+	dev = __dev_get_by_index(&init_net, ifindex);
+	rtnl_unlock();
+#else
+	dev = dev_get_by_index(&init_net, ifindex);
+#endif
+
+	if (!dev)
+		return -ENODEV;
+	
 	d = kzalloc(sizeof(*d), GFP_KERNEL);
-	if (!d)
+	if (!d) {
+		dev_put(dev);
 		return -ENOMEM;
+	}
 
-	d->ifindex = nla_get_u32(info->attrs[IPOE_ATTR_IFINDEX]);
+	d->ifindex = ifindex;
 
-	if (info->attrs[IPOE_ATTR_VLAN_MASK])
+	if (info->attrs[IPOE_ATTR_VLAN_MASK]) {
 		memcpy(d->vid, nla_data(info->attrs[IPOE_ATTR_VLAN_MASK]), min((int)nla_len(info->attrs[IPOE_ATTR_VLAN_MASK]), (int)sizeof(d->vid)));
+		if (dev->features & NETIF_F_HW_VLAN_FILTER) {
+			for (i = 1; i < 4096; i++) {
+				if (!(d->vid[i / (8*sizeof(long))] & (1 << (i % (8*sizeof(long))))))
+					dev->netdev_ops->ndo_vlan_rx_add_vid(dev, i);
+			}
+		}
+	}
+
+	dev_put(dev);
 
 	down(&ipoe_wlock);
 	list_add_tail_rcu(&d->entry, &vlan_devices);
@@ -1622,21 +1652,37 @@ static int ipoe_nl_cmd_add_vlan_mon_vid(struct sk_buff *skb, struct genl_info *i
 {
 	struct vlan_dev *d;
 	int ifindex, vid;
+	struct net_device *dev;
 
 	if (!info->attrs[IPOE_ATTR_IFINDEX] || !info->attrs[IPOE_ATTR_ADDR])
 		return -EINVAL;
-	
+
 	ifindex = nla_get_u32(info->attrs[IPOE_ATTR_IFINDEX]);
 	vid = nla_get_u32(info->attrs[IPOE_ATTR_ADDR]);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34)
+	rtnl_lock();
+	dev = __dev_get_by_index(&init_net, ifindex);
+	rtnl_unlock();
+#else
+	dev = dev_get_by_index(&init_net, ifindex);
+#endif
+
+	if (!dev)
+		return -ENODEV;
+	
 	down(&ipoe_wlock);
 	list_for_each_entry(d, &vlan_devices, entry) {
 		if (d->ifindex == ifindex) {
 			d->vid[vid / (8*sizeof(long))] &= ~(1 << (vid % (8*sizeof(long))));
+			if (dev->features & NETIF_F_HW_VLAN_FILTER)
+				dev->netdev_ops->ndo_vlan_rx_add_vid(dev, vid);
 			break;
 		}
 	}
 	up(&ipoe_wlock);
+	
+	dev_put(dev);
 
 	return 0;
 }
@@ -1691,7 +1737,7 @@ static struct nla_policy ipoe_nl_policy[IPOE_ATTR_MAX + 1] = {
 	[IPOE_ATTR_HWADDR]	    = { .type = NLA_U64                         },
 	[IPOE_ATTR_IFNAME]	    = { .type = NLA_STRING, .len = IFNAMSIZ - 1 },
 	[IPOE_ATTR_MASK]	      = { .type = NLA_U32,                        },
-	[IPOE_ATTR_VLAN_MASK]	  = { .type = NLA_BINARY, .len = 4096/8/sizeof(long) },
+	[IPOE_ATTR_VLAN_MASK]	  = { .type = NLA_BINARY, .len = 4096/8       },
 };
 
 static struct genl_ops ipoe_nl_ops[] = {
@@ -1829,7 +1875,7 @@ static int __init ipoe_init(void)
 {
 	int err, i;
 
-	printk("IPoE session driver v0.1\n");
+	printk("IPoE session driver v0.2\n");
 
 	/*err = register_pernet_device(&ipoe_net_ops);
 	if (err < 0)

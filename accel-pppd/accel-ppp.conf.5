@@ -321,6 +321,15 @@ Specifies number of protocol to be used for inserted routes.
 Specifies delays (also in condition of connection count) to send DHCPOFFER (ms).
 Last delay in list may be -1 which means don't accept new connections.
 List must to be sorted by count key.
+.TP
+.BI "vlan-mon=" [re:]name[,filter]
+Starts vlan monitor on specified interface (requires ipoe kernel module).
+.br
+The
+.B filter
+parameter specifies list of vlans or ranges of vlans to monitor for and may be in following form:
+.br
+vlan-mon=eth1,2,5,10,20-30
 .SH [dns]
 .TP
 .BI "dns1=" x.x.x.x
