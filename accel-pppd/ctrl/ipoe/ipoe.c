@@ -1373,6 +1373,11 @@ static void ipoe_ses_recv_dhcpv4_relay(struct dhcpv4_packet *pack)
 	if (ses->dhcpv4_relay_reply)
 		dhcpv4_packet_free(ses->dhcpv4_relay_reply);
 	
+	if (!ses->dhcpv4_request) {
+		ses->dhcpv4_relay_reply = NULL;
+		return;
+	}
+
 	ses->dhcpv4_relay_reply = pack;
 
 	if (conf_verbose) {
