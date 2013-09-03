@@ -2022,7 +2022,11 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 		return;
 	}
 
-	log_info2("ipoe: start interface %s %s\n", ifname, str0 ? str0 : "");
+	opt = strchr(opt, ',');
+	if (opt)
+		opt++;
+
+	log_info2("ipoe: start interface %s (%s)\n", ifname, opt ? opt : "");
 
 	memset(&ifr, 0, sizeof(ifr));
 	strcpy(ifr.ifr_name, ifname);
