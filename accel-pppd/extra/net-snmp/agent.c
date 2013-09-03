@@ -76,6 +76,7 @@ static void *snmp_thread(void *a)
 	sigfillset(&set);
 	sigdelset(&set, SIGKILL);
 	sigdelset(&set, SIGSTOP);
+	sigdelset(&set, 32);
 	pthread_sigmask(SIG_BLOCK, &set, NULL);
 
 	snmp_register_callback(SNMP_CALLBACK_LIBRARY, SNMP_CALLBACK_LOGGING, agent_log, NULL);
@@ -118,7 +119,8 @@ static void *snmp_thread(void *a)
 static void snmp_ctx_close(struct triton_context_t *ctx)
 {
 	snmp_term = 1;
-	snmp_shutdown(conf_agent_name);
+	pthread_cancel(snmp_thr);
+	pthread_join(snmp_thr, NULL);
 	triton_context_unregister(ctx);
 }
 
