@@ -848,7 +848,6 @@ static void ipoe_session_started(struct ap_session *s)
 
 static void ipoe_session_free(struct ipoe_session *ses)
 {
-	struct unit_cache *uc;
 
 	if (ses->started)
 		__sync_sub_and_fetch(&stat_active, 1);
@@ -872,6 +871,22 @@ static void ipoe_session_free(struct ipoe_session *ses)
 	if (ses->data)
 		_free(ses->data);
 	
+	mempool_free(ses);
+}
+
+static void ipoe_session_finished(struct ap_session *s)
+{
+	struct ipoe_session *ses = container_of(s, typeof(*ses), ses);
+	int serv_close;
+	struct unit_cache *uc;
+
+	log_ppp_info1("ipoe: session finished\n");
+
+	pthread_mutex_lock(&ses->serv->lock);
+	list_del(&ses->entry);
+	serv_close = (ses->serv->vid || ses->serv->need_close) && list_empty(&ses->serv->sessions);
+	pthread_mutex_unlock(&ses->serv->lock);
+
 	if (ses->ifindex != -1) {
 		if (uc_size < conf_unit_cache && ipoe_nl_modify(ses->ifindex, 0, 0, "", NULL)) {
 			uc = mempool_alloc(uc_pool);
@@ -883,21 +898,6 @@ static void ipoe_session_free(struct ipoe_session *ses)
 		} else
 			ipoe_nl_delete(ses->ifindex);
 	}
-
-	mempool_free(ses);
-}
-
-static void ipoe_session_finished(struct ap_session *s)
-{
-	struct ipoe_session *ses = container_of(s, typeof(*ses), ses);
-	int serv_close;
-
-	log_ppp_info1("ipoe: session finished\n");
-
-	pthread_mutex_lock(&ses->serv->lock);
-	list_del(&ses->entry);
-	serv_close = (ses->serv->vid || ses->serv->need_close) && list_empty(&ses->serv->sessions);
-	pthread_mutex_unlock(&ses->serv->lock);
 
 	if (ses->dhcp_addr)
 		dhcpv4_put_ip(ses->serv->dhcpv4, ses->yiaddr);
