@@ -1631,12 +1631,21 @@ static int ipoe_nl_cmd_add_vlan_mon(struct sk_buff *skb, struct genl_info *info)
 
 	if (info->attrs[IPOE_ATTR_VLAN_MASK]) {
 		memcpy(d->vid, nla_data(info->attrs[IPOE_ATTR_VLAN_MASK]), min((int)nla_len(info->attrs[IPOE_ATTR_VLAN_MASK]), (int)sizeof(d->vid)));
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
 		if (dev->features & NETIF_F_HW_VLAN_FILTER) {
 			for (i = 1; i < 4096; i++) {
 				if (!(d->vid[i / (8*sizeof(long))] & (1 << (i % (8*sizeof(long))))))
 					dev->netdev_ops->ndo_vlan_rx_add_vid(dev, i);
 			}
 		}
+#else
+		if (dev->features & NETIF_F_HW_VLAN_CTAG_FILTER) {
+			for (i = 1; i < 4096; i++) {
+				if (!(d->vid[i / (8*sizeof(long))] & (1 << (i % (8*sizeof(long))))))
+					dev->netdev_ops->ndo_vlan_rx_add_vid(dev, htons(ETH_P_8021Q), i);
+			}
+		}
+#endif
 	}
 
 	dev_put(dev);
@@ -1675,8 +1684,13 @@ static int ipoe_nl_cmd_add_vlan_mon_vid(struct sk_buff *skb, struct genl_info *i
 	list_for_each_entry(d, &vlan_devices, entry) {
 		if (d->ifindex == ifindex) {
 			d->vid[vid / (8*sizeof(long))] &= ~(1 << (vid % (8*sizeof(long))));
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
 			if (dev->features & NETIF_F_HW_VLAN_FILTER)
 				dev->netdev_ops->ndo_vlan_rx_add_vid(dev, vid);
+#else
+			if (dev->features & NETIF_F_HW_VLAN_CTAG_FILTER)
+				dev->netdev_ops->ndo_vlan_rx_add_vid(dev, htons(ETH_P_8021Q), vid);
+#endif
 			break;
 		}
 	}
