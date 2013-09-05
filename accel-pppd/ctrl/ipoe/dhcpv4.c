@@ -41,6 +41,7 @@ static mempool_t pack_pool;
 static mempool_t opt_pool;
 
 static LIST_HEAD(relay_list);
+static pthread_mutex_t relay_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static int dhcpv4_read(struct triton_md_handler_t *h);
 int dhcpv4_packet_add_opt(struct dhcpv4_packet *pack, int type, const void *data, int len);
@@ -838,6 +839,7 @@ struct dhcpv4_relay *dhcpv4_relay_create(const char *_addr, const char *_giaddr,
 	laddr.sin_addr.s_addr = giaddr;
 	laddr.sin_port = htons(DHCP_SERV_PORT);
 
+	pthread_mutex_lock(&relay_lock);
 	list_for_each_entry(r, &relay_list, entry) {
 		if (r->addr == addr && r->giaddr == giaddr)
 			goto found;
@@ -852,7 +854,7 @@ struct dhcpv4_relay *dhcpv4_relay_create(const char *_addr, const char *_giaddr,
 	sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
 	if (!sock) {
 		log_error("socket: %s\n", strerror(errno));
-		goto out_err;
+		goto out_err_unlock;
 	}
 
 	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &f, sizeof(f)))
@@ -860,12 +862,12 @@ struct dhcpv4_relay *dhcpv4_relay_create(const char *_addr, const char *_giaddr,
 	
 	if (bind(sock, &laddr, sizeof(laddr))) {
 		log_error("dhcpv4: relay: %s: bind: %s\n", _addr, strerror(errno));
-		goto out_err;
+		goto out_err_unlock;
 	}
 
 	if (connect(sock, &raddr, sizeof(raddr))) {
 		log_error("dhcpv4: relay: %s: connect: %s\n", _addr, strerror(errno));
-		goto out_err;
+		goto out_err_unlock;
 	}
 	
 	fcntl(sock, F_SETFL, O_NONBLOCK);
@@ -875,7 +877,7 @@ struct dhcpv4_relay *dhcpv4_relay_create(const char *_addr, const char *_giaddr,
 	r->hnd.read = dhcpv4_relay_read;
 
 	triton_context_register(&r->ctx, NULL);
-	triton_md_register_handler(ctx, &r->hnd);
+	triton_md_register_handler(&r->ctx, &r->hnd);
 	triton_md_enable_handler(&r->hnd, MD_MODE_READ);
 	triton_context_wakeup(&r->ctx);
 
@@ -886,8 +888,13 @@ found:
 	c->ctx = ctx;
 	c->recv = recv;
 	list_add_tail(&c->entry, &r->ctx_list);
+	
+	pthread_mutex_unlock(&relay_lock);
 
 	return r;
+
+out_err_unlock:
+	pthread_mutex_unlock(&relay_lock);
 
 out_err:
 	if (sock != -1)
@@ -900,6 +907,7 @@ void dhcpv4_relay_free(struct dhcpv4_relay *r, struct triton_context_t *ctx)
 {
 	struct dhcpv4_relay_ctx *c;
 
+	pthread_mutex_lock(&relay_lock);
 	list_for_each_entry(c, &r->ctx_list, entry) {
 		if (c->ctx == ctx) {
 			list_del(&c->entry);
@@ -916,6 +924,7 @@ void dhcpv4_relay_free(struct dhcpv4_relay *r, struct triton_context_t *ctx)
 		triton_context_unregister(&r->ctx);
 		_free(r);
 	}
+	pthread_mutex_unlock(&relay_lock);
 }
 
 int dhcpv4_relay_send(struct dhcpv4_relay *relay, struct dhcpv4_packet *request, uint32_t server_id, const char *agent_circuit_id, const char *agent_remote_id)

@@ -56,7 +56,6 @@ struct iplink_arg {
 	pcre *re;
 	const char *opt;
 	long *arg1;
-	int arg2;
 };
 
 struct unit_cache {
@@ -685,7 +684,7 @@ static void ipoe_ifcfg_add(struct ipoe_session *ses)
 	ses->ifcfg = 1;
 }
 
-static void ipoe_ifcfg_del(struct ipoe_session *ses)
+static void ipoe_ifcfg_del(struct ipoe_session *ses, int lock)
 {
 	struct ipoe_serv *serv = ses->serv;
 	
@@ -696,10 +695,14 @@ static void ipoe_ifcfg_del(struct ipoe_session *ses)
 		if (ses->serv->opt_shared) {
 			ipoe_serv_del_addr(ses->serv, ses->siaddr);
 		} else {
-			pthread_mutex_lock(&serv->lock);
-			if (ipaddr_del(serv->ifindex, ses->siaddr))
-				log_ppp_warn("ipoe: failed to remove addess from interface '%s'\n", serv->ifname);
-			pthread_mutex_unlock(&serv->lock);
+			if (lock)
+				pthread_mutex_lock(&serv->lock);
+			if (ipaddr_del(serv->ifindex, ses->siaddr)) {
+				if (lock)
+					log_ppp_warn("ipoe: failed to remove addess from interface '%s'\n", serv->ifname);
+			}
+			if (lock)
+				pthread_mutex_unlock(&serv->lock);
 		}
 	}
 }
@@ -848,7 +851,6 @@ static void ipoe_session_started(struct ap_session *s)
 
 static void ipoe_session_free(struct ipoe_session *ses)
 {
-
 	if (ses->started)
 		__sync_sub_and_fetch(&stat_active, 1);
 	else
@@ -906,7 +908,7 @@ static void ipoe_session_finished(struct ap_session *s)
 		dhcpv4_relay_send_release(ses->serv->dhcpv4_relay, ses->hwaddr, ses->xid, ses->yiaddr, ses->client_id, ses->relay_agent, ses->serv->ifname, conf_agent_remote_id);
 
 	if (ses->ifcfg)
-		ipoe_ifcfg_del(ses);
+		ipoe_ifcfg_del(ses, 1);
 	
 	if (ses->dhcpv4)
 		dhcpv4_free(ses->dhcpv4);
@@ -1655,7 +1657,7 @@ static void ipoe_serv_release(struct ipoe_serv *serv)
 	}
 	pthread_mutex_unlock(&serv->lock);
 
-	if (serv->vid && !serv->need_close) {
+	if (serv->vid && !serv->need_close && !ap_shutdown) {
 		if (serv->timer.tpd)
 			triton_timer_mod(&serv->timer, 0);
 		else
@@ -1780,7 +1782,7 @@ static void ipoe_drop_sessions(struct ipoe_serv *serv, struct ipoe_session *skip
 
 		ses->terminating = 1;
 		if (ses->ifcfg) {
-			ipoe_ifcfg_del(ses);
+			ipoe_ifcfg_del(ses, 0);
 			ses->ifcfg = 0;
 		}
 
@@ -1853,8 +1855,10 @@ void ipoe_vlan_notify(int ifindex, int vid)
 
 	log_info2("ipoe: create vlan %s\n", ifr.ifr_name);
 
-	if (iplink_vlan_add(ifr.ifr_name, ifindex, vid))
+	if (iplink_vlan_add(ifr.ifr_name, ifindex, vid)) {
 		log_warn("ipoe: vlan-mon: %s: failed to add vlan\n", ifr.ifr_name);
+		return;
+	}
 	
 	if (ioctl(sock_fd, SIOCGIFINDEX, &ifr, sizeof(ifr))) {
 		log_error("ipoe: vlan-mon: %s: failed to get interface index\n", ifr.ifr_name);
@@ -1993,6 +1997,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	if (opt_up)
 		ipoe_nl_add_interface(ifindex);
 
+	pthread_mutex_lock(&serv_lock);
 	list_for_each_entry(serv, &serv_list, entry) {
 		if (strcmp(ifname, serv->ifname))
 			continue;
@@ -2044,8 +2049,10 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 		if (str0)
 			_free(str0);
 
+		pthread_mutex_unlock(&serv_lock);
 		return;
 	}
+	pthread_mutex_unlock(&serv_lock);
 
 	opt = strchr(opt, ',');
 	if (opt)
@@ -2117,7 +2124,9 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 
 	triton_context_wakeup(&serv->ctx);
 
+	pthread_mutex_lock(&serv_lock);
 	list_add_tail(&serv->entry, &serv_list);
+	pthread_mutex_unlock(&serv_lock);
 
 	if (str0)
 		_free(str0);
@@ -2436,9 +2445,9 @@ static int parse_vlan_mon(const char *opt, long *mask)
 		ptr = strchr(opt, 0);
 
 	if (*ptr == ',')
-		memset(mask, 0xff, 4096/8/sizeof(long));
+		memset(mask, 0xff, 4096/8);
 	else if (*ptr == 0) {
-		memset(mask, 0, 4096/8/sizeof(long));
+		memset(mask, 0, 4096/8);
 		return 0;
 	} else
 		goto out_err;
@@ -2458,10 +2467,10 @@ static int parse_vlan_mon(const char *opt, long *mask)
 			}
 			
 			for (; vid < vid2; vid++)
-				mask[vid / (8*sizeof(long))] &= ~(1 << (vid % (8*sizeof(long))));
+				mask[vid / (8*sizeof(long))] &= ~(1lu << (vid % (8*sizeof(long))));
 		}
 			
-		mask[vid / (8*sizeof(long))] &= ~(1 << (vid % (8*sizeof(long))));
+		mask[vid / (8*sizeof(long))] &= ~(1lu << (vid % (8*sizeof(long))));
 
 		if (*ptr2 == 0)
 			break;
@@ -2479,11 +2488,13 @@ out_err:
 	return -1;
 }
 
-static void add_vlan_mon(const char *opt, long *mask, int len)
+static void add_vlan_mon(const char *opt, long *mask)
 {
 	const char *ptr;
 	struct ifreq ifr;
 	int ifindex;
+	long mask1[4096/8/sizeof(long)];
+	struct ipoe_serv *serv;
 	
 	for (ptr = opt; *ptr && *ptr != ','; ptr++);
 	
@@ -2512,12 +2523,20 @@ static void add_vlan_mon(const char *opt, long *mask, int len)
 		ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
 	}
 
-	ipoe_nl_add_vlan_mon(ifindex, mask, len);
+	memcpy(mask1, mask, sizeof(mask1));
+	list_for_each_entry(serv, &serv_list, entry) {
+		if (serv->vid && serv->parent_ifindex == ifindex)
+			mask1[serv->vid / (8*sizeof(long))] |= 1lu << (serv->vid % (8*sizeof(long)));
+	}
+
+	ipoe_nl_add_vlan_mon(ifindex, mask1, sizeof(mask1));
 }
 
 static int __load_vlan_mon_re(int index, int flags, const char *name, struct iplink_arg *arg)
 {
 	struct ifreq ifr;
+	long mask1[4096/8/sizeof(long)];
+	struct ipoe_serv *serv;
 
 	if (pcre_exec(arg->re, NULL, name, strlen(name), 0, 0, NULL, 0) < 0)
 		return 0;
@@ -2532,8 +2551,14 @@ static int __load_vlan_mon_re(int index, int flags, const char *name, struct ipl
 
 		ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
 	}
+	
+	memcpy(mask1, arg->arg1, sizeof(mask1));
+	list_for_each_entry(serv, &serv_list, entry) {
+		if (serv->vid && serv->parent_ifindex == index)
+			mask1[serv->vid / (8*sizeof(long))] |= 1lu << (serv->vid % (8*sizeof(long)));
+	}
 
-	ipoe_nl_add_vlan_mon(index, arg->arg1, arg->arg2);
+	ipoe_nl_add_vlan_mon(index, mask1, sizeof(mask1));
 
 	return 0;
 }
@@ -2563,7 +2588,6 @@ static void load_vlan_mon_re(const char *opt, long *mask, int len)
 	arg.re = re;
 	arg.opt = opt;
 	arg.arg1 = mask;
-	arg.arg2 = len;
 
 	iplink_list((iplink_list_func)__load_vlan_mon_re, &arg);
 
@@ -2592,7 +2616,7 @@ static void load_vlan_mon(struct conf_sect_t *sect)
 		if (strlen(opt->val) > 3 && !memcmp(opt->val, "re:", 3))
 			load_vlan_mon_re(opt->val, mask, sizeof(mask));
 		else
-			add_vlan_mon(opt->val, mask, sizeof(mask));
+			add_vlan_mon(opt->val, mask);
 	}
 }
 

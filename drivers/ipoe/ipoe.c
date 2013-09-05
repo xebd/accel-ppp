@@ -106,6 +106,7 @@ struct vlan_dev {
 	struct list_head entry;
 
 	int ifindex;
+	spinlock_t lock;
 	unsigned long vid[4096/8/sizeof(long)];
 };
 
@@ -865,16 +866,19 @@ static int vlan_pt_recv(struct sk_buff *skb, struct net_device *dev, struct pack
 		if (d->ifindex == dev->ifindex)
 			goto found;
 	}
-	rcu_read_lock();
+	rcu_read_unlock();
 	goto out;
 
 found:
 	//pr_info("found %i\n", d->ifindex);
-	if (d->vid[vid / (8*sizeof(long))] & (1 << (vid % (8*sizeof(long)))))
+	if (d->vid[vid / (8*sizeof(long))] & (1lu << (vid % (8*sizeof(long)))))
 		vid = -1;
-	else
-		d->vid[vid / (8*sizeof(long))] |= 1 << (vid % (8*sizeof(long)));
-	rcu_read_lock();
+	else {
+		spin_lock(&d->lock);
+		d->vid[vid / (8*sizeof(long))] |= 1lu << (vid % (8*sizeof(long)));
+		spin_unlock(&d->lock);
+	}
+	rcu_read_unlock();
 
 	if (vid == -1)
 		goto out;
@@ -908,6 +912,8 @@ static void vlan_do_notify(struct work_struct *w)
 	int id = 1;
 	unsigned long flags;
 
+	//pr_info("vlan_do_notify\n");
+
 	while (1) {
 		spin_lock_irqsave(&vlan_lock, flags);
 		if (list_empty(&vlan_notifies))
@@ -926,10 +932,12 @@ static void vlan_do_notify(struct work_struct *w)
 			header = genlmsg_put(report_skb, 0, ipoe_nl_mcg.id, &ipoe_nl_family, 0, IPOE_VLAN_NOTIFY);
 		}
 
+		//pr_info("notify %i vlan %i\n", id, n->vid);
+	
 		ns = nla_nest_start(report_skb, id++);
 		if (!ns)
 			goto nl_err;
-	
+
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,32)
 		if (nla_put_u32(report_skb, IPOE_ATTR_IFINDEX, n->ifindex))
 #else
@@ -1628,20 +1636,22 @@ static int ipoe_nl_cmd_add_vlan_mon(struct sk_buff *skb, struct genl_info *info)
 	}
 
 	d->ifindex = ifindex;
+	spin_lock_init(&d->lock);
 
 	if (info->attrs[IPOE_ATTR_VLAN_MASK]) {
 		memcpy(d->vid, nla_data(info->attrs[IPOE_ATTR_VLAN_MASK]), min((int)nla_len(info->attrs[IPOE_ATTR_VLAN_MASK]), (int)sizeof(d->vid)));
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
 		if (dev->features & NETIF_F_HW_VLAN_FILTER) {
 			for (i = 1; i < 4096; i++) {
-				if (!(d->vid[i / (8*sizeof(long))] & (1 << (i % (8*sizeof(long))))))
+				if (!(d->vid[i / (8*sizeof(long))] & (1lu << (i % (8*sizeof(long))))))
 					dev->netdev_ops->ndo_vlan_rx_add_vid(dev, i);
 			}
 		}
 #else
 		if (dev->features & NETIF_F_HW_VLAN_CTAG_FILTER) {
 			for (i = 1; i < 4096; i++) {
-				if (!(d->vid[i / (8*sizeof(long))] & (1 << (i % (8*sizeof(long))))))
+				if (!(d->vid[i / (8*sizeof(long))] & (1lu << (i % (8*sizeof(long))))))
 					dev->netdev_ops->ndo_vlan_rx_add_vid(dev, htons(ETH_P_8021Q), i);
 			}
 		}
@@ -1662,6 +1672,7 @@ static int ipoe_nl_cmd_add_vlan_mon_vid(struct sk_buff *skb, struct genl_info *i
 	struct vlan_dev *d;
 	int ifindex, vid;
 	struct net_device *dev;
+	unsigned long flags;
 
 	if (!info->attrs[IPOE_ATTR_IFINDEX] || !info->attrs[IPOE_ATTR_ADDR])
 		return -EINVAL;
@@ -1683,7 +1694,9 @@ static int ipoe_nl_cmd_add_vlan_mon_vid(struct sk_buff *skb, struct genl_info *i
 	down(&ipoe_wlock);
 	list_for_each_entry(d, &vlan_devices, entry) {
 		if (d->ifindex == ifindex) {
-			d->vid[vid / (8*sizeof(long))] &= ~(1 << (vid % (8*sizeof(long))));
+			spin_lock_irqsave(&d->lock, flags);
+			d->vid[vid / (8*sizeof(long))] &= ~(1lu << (vid % (8*sizeof(long))));
+			spin_unlock_irqrestore(&d->lock, flags);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
 			if (dev->features & NETIF_F_HW_VLAN_FILTER)
 				dev->netdev_ops->ndo_vlan_rx_add_vid(dev, vid);
