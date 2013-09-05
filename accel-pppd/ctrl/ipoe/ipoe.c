@@ -1286,10 +1286,12 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 				dhcpv4_print_packet(pack, 0, log_debug);
 			}
 
-			if (serv->opt_shared == 0) {
+			if (!pack->server_id)
+				dhcpv4_send_nak(dhcpv4, pack);
+
+			if (serv->opt_shared == 0)
 				ipoe_drop_sessions(serv, NULL);
-				//dhcpv4_send_nak(dhcpv4, pack);
-			} else if (opt82_ses) {
+			else if (opt82_ses) {
 				if (conf_verbose) {
 					log_switch(dhcpv4->ctx, &opt82_ses->ses);
 					log_ppp_warn("mac change detected\n");
