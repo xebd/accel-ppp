@@ -112,7 +112,7 @@ static int conf_attr_l4_redirect;
 static int conf_l4_redirect_table;
 static int conf_l4_redirect_on_reject;
 static const char *conf_l4_redirect_ipset;
-static int conf_vlan_timeout = 10;
+static int conf_vlan_timeout = 30;
 
 static const char *conf_relay;
 
@@ -152,7 +152,7 @@ static struct triton_context_t l4_redirect_ctx;
 
 static void ipoe_session_finished(struct ap_session *s);
 static void ipoe_drop_sessions(struct ipoe_serv *serv, struct ipoe_session *skip);
-static void ipoe_serv_close(struct triton_context_t *ctx);
+static void ipoe_serv_release(struct ipoe_serv *serv);
 static void __ipoe_session_activate(struct ipoe_session *ses);
 static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *pack);
 static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *pack, int force);
@@ -877,14 +877,14 @@ static void ipoe_session_free(struct ipoe_session *ses)
 static void ipoe_session_finished(struct ap_session *s)
 {
 	struct ipoe_session *ses = container_of(s, typeof(*ses), ses);
-	int serv_close;
 	struct unit_cache *uc;
 
 	log_ppp_info1("ipoe: session finished\n");
 
 	pthread_mutex_lock(&ses->serv->lock);
 	list_del(&ses->entry);
-	serv_close = (ses->serv->vid || ses->serv->need_close) && list_empty(&ses->serv->sessions);
+	if  ((ses->serv->vid || ses->serv->need_close) && list_empty(&ses->serv->sessions))
+		triton_context_call(&ses->serv->ctx, (triton_event_func)ipoe_serv_release, ses->serv);
 	pthread_mutex_unlock(&ses->serv->lock);
 
 	if (ses->ifindex != -1) {
@@ -907,9 +907,6 @@ static void ipoe_session_finished(struct ap_session *s)
 
 	if (ses->ifcfg)
 		ipoe_ifcfg_del(ses);
-
-	if (serv_close)
-		ipoe_serv_close(&ses->serv->ctx);
 	
 	if (ses->dhcpv4)
 		dhcpv4_free(ses->dhcpv4);
@@ -1211,6 +1208,9 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 	struct ipoe_session *ses, *opt82_ses;
 	int offer_delay;
 	//struct dhcpv4_packet *reply;
+
+	if (serv->timer.tpd)
+		triton_timer_mod(&serv->timer, 0);
 
 	if (ap_shutdown)
 		return;
@@ -1644,18 +1644,24 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 }
 #endif
 
-static void ipoe_serv_close(struct triton_context_t *ctx)
+static void ipoe_serv_release(struct ipoe_serv *serv)
 {
-	struct ipoe_serv *serv = container_of(ctx, typeof(*serv), ctx);
-
 	pthread_mutex_lock(&serv->lock);
 	if (!list_empty(&serv->sessions)) {
-		serv->need_close = 1;
 		pthread_mutex_unlock(&serv->lock);
 		return;
 	}
 	pthread_mutex_unlock(&serv->lock);
-		
+
+	if (serv->vid && !serv->need_close) {
+		if (serv->timer.tpd)
+			triton_timer_mod(&serv->timer, 0);
+		else
+			triton_timer_add(&serv->ctx, &serv->timer, 0);
+
+		return;
+	}
+	
 	log_info2("ipoe: stop interface %s\n", serv->ifname);
 
 	pthread_mutex_lock(&serv_lock);
@@ -1693,10 +1699,25 @@ static void ipoe_serv_close(struct triton_context_t *ctx)
 		ipoe_nl_add_vlan_mon_vid(serv->parent_ifindex, serv->vid);
 	}
 
-	triton_context_unregister(ctx);
+	triton_context_unregister(&serv->ctx);
 
 	_free(serv->ifname);
 	_free(serv);
+}
+
+static void ipoe_serv_close(struct triton_context_t *ctx)
+{
+	struct ipoe_serv *serv = container_of(ctx, typeof(*serv), ctx);
+
+	pthread_mutex_lock(&serv->lock);
+	if (!list_empty(&serv->sessions)) {
+		serv->need_close = 1;
+		pthread_mutex_unlock(&serv->lock);
+		return;
+	}
+	pthread_mutex_unlock(&serv->lock);
+
+	ipoe_serv_release(serv);
 }
 
 static void l4_redirect_ctx_close(struct triton_context_t *ctx)
@@ -1876,7 +1897,9 @@ static void ipoe_serv_timeout(struct triton_timer_t *t)
 {
 	struct ipoe_serv *serv = container_of(t, typeof(*serv), timer);
 
-	ipoe_serv_close(&serv->ctx);
+	serv->need_close = 1;
+	
+	ipoe_serv_release(serv);
 }
 
 static void add_interface(const char *ifname, int ifindex, const char *opt, int parent_ifindex, int vid)
@@ -2189,9 +2212,9 @@ static void load_interfaces(struct conf_sect_t *sect)
 	}
 	
 	list_for_each_entry(serv, &serv_list, entry) {
-		if (!serv->active) {
+		if (!serv->active && !serv->vid) {
 			ipoe_drop_sessions(serv, NULL);
-			triton_context_call(&serv->ctx, (triton_event_func)ipoe_serv_close, &serv->ctx);
+			triton_context_call(&serv->ctx, (triton_event_func)ipoe_serv_release, serv);
 		}
 	}
 }
@@ -2725,6 +2748,12 @@ static void load_config(void)
 		conf_proto = atoi(opt);
 	else
 		conf_proto = 3;
+	
+	opt = conf_get_opt("ipoe", "vlan-timeout");
+	if (opt && atoi(opt) > 0)
+		conf_vlan_timeout = atoi(opt);
+	else
+		conf_vlan_timeout = 60;
 	
 #ifdef RADIUS
 	if (triton_module_loaded("radius"))
