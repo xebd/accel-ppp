@@ -535,10 +535,12 @@ static int dhcpv4_relay_read(struct triton_md_handler_t *h)
 			continue;
 		}
 
+		pthread_mutex_lock(&relay_lock);
 		list_for_each_entry(c, &r->ctx_list, entry) {
 			dhcpv4_packet_ref(pack);
 			triton_context_call(c->ctx, c->recv, pack);
 		}
+		pthread_mutex_unlock(&relay_lock);
 
 		dhcpv4_packet_free(pack);
 	}
@@ -790,16 +792,14 @@ out_err:
 	return 0;
 }
 
-struct dhcpv4_relay *dhcpv4_relay_create(const char *_addr, const char *_giaddr, struct triton_context_t *ctx, triton_event_func recv)
+struct dhcpv4_relay *dhcpv4_relay_create(const char *_addr, in_addr_t giaddr, struct triton_context_t *ctx, triton_event_func recv)
 {
 	char str[17], *ptr;
 	struct dhcpv4_relay *r;
 	in_addr_t addr;// = inet_addr(_addr);
 	int port = DHCP_SERV_PORT;
-	in_addr_t giaddr;// = inet_addr(_giaddr);
 	struct sockaddr_in raddr;
 	struct sockaddr_in laddr;
-	socklen_t len = sizeof(laddr);
 	int sock = -1;
 	int f = 1;
 	struct dhcpv4_relay_ctx *c;
@@ -818,22 +818,6 @@ struct dhcpv4_relay *dhcpv4_relay_create(const char *_addr, const char *_giaddr,
 	raddr.sin_addr.s_addr = addr;
 	raddr.sin_port = htons(port);
 
-	if (_giaddr)
-		giaddr = inet_addr(_giaddr);
-	else {
-		sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
-		
-		if (connect(sock, &raddr, sizeof(raddr))) {
-			log_error("dhcpv4: relay: %s: connect: %s\n", _addr, strerror(errno));
-			goto out_err;
-		}
-
-		getsockname(sock, &laddr, &len);
-		giaddr = laddr.sin_addr.s_addr;
-
-		close(sock);
-	}
-	
 	memset(&laddr, 0, sizeof(laddr));
 	laddr.sin_family = AF_INET;
 	laddr.sin_addr.s_addr = giaddr;
@@ -896,11 +880,18 @@ found:
 out_err_unlock:
 	pthread_mutex_unlock(&relay_lock);
 
-out_err:
 	if (sock != -1)
 		close(sock);
 	_free(r);
 	return NULL;
+}
+
+static void __dhcpv4_relay_free(struct dhcpv4_relay *r)
+{
+	triton_md_unregister_handler(&r->hnd);
+	close(r->hnd.fd);
+	triton_context_unregister(&r->ctx);
+	_free(r);
 }
 
 void dhcpv4_relay_free(struct dhcpv4_relay *r, struct triton_context_t *ctx)
@@ -918,11 +909,7 @@ void dhcpv4_relay_free(struct dhcpv4_relay *r, struct triton_context_t *ctx)
 
 	if (list_empty(&r->ctx_list)) {
 		list_del(&r->entry);
-
-		triton_md_unregister_handler(&r->hnd);
-		close(r->hnd.fd);
-		triton_context_unregister(&r->ctx);
-		_free(r);
+		triton_context_call(&r->ctx, (triton_event_func)__dhcpv4_relay_free, r);
 	}
 	pthread_mutex_unlock(&relay_lock);
 }

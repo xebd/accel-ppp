@@ -68,6 +68,7 @@ struct ipoe_session {
 	uint8_t *data;
 	struct dhcpv4_packet *dhcpv4_request;
 	struct dhcpv4_packet *dhcpv4_relay_reply;
+	int relay_retransmit;
 	int ifindex;
 	struct ipv4db_item_t ipv4;
 	int ifcfg:1;

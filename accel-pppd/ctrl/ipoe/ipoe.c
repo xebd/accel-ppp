@@ -119,7 +119,9 @@ static const char *conf_relay;
 static const char *conf_lua_username_func;
 #endif
 
-static int conf_offer_timeout = 3;
+static int conf_offer_timeout = 10;
+static int conf_relay_timeout = 3;
+static int conf_relay_retransmit = 3;
 static LIST_HEAD(conf_gw_addr);
 static int conf_netmask = 24;
 static int conf_lease_time = 600;
@@ -285,6 +287,26 @@ static void ipoe_session_timeout(struct triton_timer_t *t)
 
 	ap_session_terminate(&ses->ses, TERM_LOST_CARRIER, 0);
 }
+
+static void ipoe_relay_timeout(struct triton_timer_t *t)
+{
+	struct ipoe_session *ses = container_of(t, typeof(*ses), timer);
+
+	if (!ses->serv->dhcpv4_relay || !ses->dhcpv4_request) {
+		triton_timer_del(t);
+		return;
+	}
+
+	if (++ses->relay_retransmit > conf_relay_retransmit) {
+		triton_timer_del(t);
+
+		log_ppp_info2("ipoe: relay timed out\n");
+
+		ap_session_terminate(&ses->ses, TERM_LOST_CARRIER, 0);
+	} else
+		dhcpv4_relay_send(ses->serv->dhcpv4_relay, ses->dhcpv4_request, ses->relay_server_id, ses->serv->ifname, conf_agent_remote_id);
+}
+
 
 static void ipoe_session_set_username(struct ipoe_session *ses)
 {
@@ -522,8 +544,8 @@ static void ipoe_session_start(struct ipoe_session *ses)
 	if (ses->dhcpv4_request && ses->serv->dhcpv4_relay) {
 		dhcpv4_relay_send(ses->serv->dhcpv4_relay, ses->dhcpv4_request, ses->relay_server_id, ses->serv->ifname, conf_agent_remote_id);
 
-		ses->timer.expire = ipoe_session_timeout;
-		ses->timer.expire_tv.tv_sec = conf_offer_timeout;
+		ses->timer.expire = ipoe_relay_timeout;
+		ses->timer.period = conf_relay_timeout * 1000;
 		triton_timer_add(&ses->ctx, &ses->timer, 0);
 	} else
 		__ipoe_session_start(ses);
@@ -603,13 +625,14 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 				
 		if (!ses->mask)
 			ses->mask = 32;
-	
+
 		dhcpv4_send_reply(DHCPOFFER, ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
 
 		dhcpv4_packet_free(ses->dhcpv4_request);
 		ses->dhcpv4_request = NULL;
 	
 		ses->timer.expire = ipoe_session_timeout;
+		ses->timer.period = 0;
 		ses->timer.expire_tv.tv_sec = conf_offer_timeout;
 		triton_timer_add(&ses->ctx, &ses->timer, 0);
 	} else
@@ -760,6 +783,7 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 	}
 	
 	ses->timer.expire = ipoe_session_timeout;
+	ses->timer.period = 0;
 	ses->timer.expire_tv.tv_sec = conf_lease_timeout ? conf_lease_timeout : ses->lease_time;
 	if (ses->timer.tpd)
 		triton_timer_mod(&ses->timer, 0);
@@ -861,6 +885,9 @@ static void ipoe_session_free(struct ipoe_session *ses)
 
 	if (ses->dhcpv4_request)
 		dhcpv4_packet_free(ses->dhcpv4_request);
+	
+	if (ses->dhcpv4_relay_reply)
+		dhcpv4_packet_free(ses->dhcpv4_relay_reply);
 	
 	if (ses->ctrl.called_station_id)
 		_free(ses->ctrl.called_station_id);
@@ -1269,13 +1296,8 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 				dhcpv4_print_packet(pack, 0, log_ppp_info2);
 			}
 
-			if (ses->yiaddr) {
-				if (ses->serv->dhcpv4_relay) {
-					dhcpv4_packet_ref(pack);
-					triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_keepalive, pack);
-				} else
-					dhcpv4_send_reply(DHCPOFFER, dhcpv4, pack, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
-			}
+			if (ses->yiaddr)
+				dhcpv4_send_reply(DHCPOFFER, dhcpv4, pack, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
 		}
 	} else if (pack->msg_type == DHCPREQUEST) {
 		ipoe_serv_check_disc(serv, pack);
@@ -1920,9 +1942,8 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	int opt_ifcfg = conf_ifcfg;
 	int opt_nat = conf_nat;
 	const char *opt_relay = conf_relay;
-	const char *opt_giaddr = NULL;
-	in_addr_t relay_addr = 0;
-	in_addr_t giaddr = 0;
+	in_addr_t relay_addr = conf_relay ? inet_addr(conf_relay) : 0;
+	in_addr_t opt_giaddr = 0;
 	in_addr_t opt_src = conf_src;
 	int opt_arp = conf_arp;
 	struct ifreq ifr;
@@ -1972,8 +1993,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 				opt_relay = ptr1;
 				relay_addr = inet_addr(ptr1);
 			} else if (strcmp(str, "giaddr") == 0) {
-				opt_giaddr = ptr1;
-				giaddr = inet_addr(ptr1);
+				opt_giaddr = inet_addr(ptr1);
 			} else if (strcmp(str, "nat") == 0) {
 				opt_nat = atoi(ptr1);
 			} else if (strcmp(str, "src") == 0) {
@@ -1992,6 +2012,29 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	if (!opt_up && !opt_dhcpv4) {
 		opt_up = conf_up;
 		opt_dhcpv4 = conf_dhcpv4;
+	}
+
+	if (opt_relay && !opt_giaddr && opt_dhcpv4) {
+		struct sockaddr_in addr;
+		int sock;
+		socklen_t len = sizeof(addr);
+
+		memset(&addr, 0, sizeof(addr));
+		addr.sin_family = AF_INET;
+		addr.sin_addr.s_addr = relay_addr;
+		addr.sin_port = htons(DHCP_SERV_PORT);
+		
+		sock = socket(PF_INET, SOCK_DGRAM, IPPROTO_UDP);
+		
+		if (connect(sock, &addr, sizeof(addr))) {
+			log_error("dhcpv4: relay: %s: connect: %s\n", opt_relay, strerror(errno));
+			goto out_err;
+		}
+		
+		getsockname(sock, &addr, &len);
+		opt_giaddr = addr.sin_addr.s_addr;
+
+		close(sock);
 	}
 
 	if (opt_up)
@@ -2019,17 +2062,17 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 			serv->dhcpv4 = NULL;
 		}
 
-		if (serv->dhcpv4_relay && 
-				(serv->dhcpv4_relay->addr != relay_addr || serv->dhcpv4_relay->giaddr != giaddr)) {
+		if (serv->dhcpv4_relay &&  
+				(serv->dhcpv4_relay->addr != relay_addr || serv->dhcpv4_relay->giaddr != opt_giaddr)) {
 			if (serv->opt_ifcfg)
 				ipoe_serv_del_addr(serv, serv->dhcpv4_relay->giaddr);
 			dhcpv4_relay_free(serv->dhcpv4_relay, &serv->ctx);
 			serv->dhcpv4_relay = NULL;
 		}
 
-		if (serv->opt_dhcpv4 && opt_relay) {
+		if (!serv->dhcpv4_relay && serv->opt_dhcpv4 && opt_relay) {
 			if (opt_ifcfg)
-				ipoe_serv_add_addr(serv, giaddr);
+				ipoe_serv_add_addr(serv, opt_giaddr);
 			serv->dhcpv4_relay = dhcpv4_relay_create(opt_relay, opt_giaddr, &serv->ctx, (triton_event_func)ipoe_recv_dhcpv4_relay);
 		}
 
@@ -2108,7 +2151,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	
 		if (opt_relay) {
 			if (opt_ifcfg)
-				ipoe_serv_add_addr(serv, giaddr);
+				ipoe_serv_add_addr(serv, opt_giaddr);
 			serv->dhcpv4_relay = dhcpv4_relay_create(opt_relay, opt_giaddr, &serv->ctx, (triton_event_func)ipoe_recv_dhcpv4_relay);
 		}
 	}
@@ -2135,6 +2178,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 
 parse_err:
 	log_error("ipoe: failed to parse '%s'\n", opt);
+out_err:
 	_free(str0);
 }
 
@@ -2741,6 +2785,18 @@ static void load_config(void)
 		conf_mode = MODE_L2;
 	
 	conf_relay = conf_get_opt("ipoe", "relay");
+
+	opt = conf_get_opt("ipoe", "relay-timeout");
+	if (opt && atoi(opt) > 0)
+		conf_relay_timeout = atoi(opt);
+	else
+		conf_relay_timeout = 3;
+	
+	opt = conf_get_opt("ipoe", "relay-retransmit");
+	if (opt && atoi(opt) > 0)
+		conf_relay_retransmit = atoi(opt);
+	else
+		conf_relay_retransmit = 3;
 	
 	opt = conf_get_opt("ipoe", "agent-remote-id");
 	if (opt)
@@ -2780,6 +2836,12 @@ static void load_config(void)
 		conf_vlan_timeout = atoi(opt);
 	else
 		conf_vlan_timeout = 60;
+	
+	opt = conf_get_opt("ipoe", "offer-timeout");
+	if (opt && atoi(opt) > 0)
+		conf_offer_timeout = atoi(opt);
+	else
+		conf_offer_timeout = 10;
 	
 #ifdef RADIUS
 	if (triton_module_loaded("radius"))
