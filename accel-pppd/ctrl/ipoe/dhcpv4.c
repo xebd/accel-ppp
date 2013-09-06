@@ -574,8 +574,9 @@ static int dhcpv4_send_raw(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack,
 	struct udphdr *udp = (struct udphdr *)(ip + 1);
 	int len = pack->ptr - pack->data;
 	struct iovec iov[2];
+	static uint8_t bc_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
-	memcpy(eth->ether_dhost, pack->hdr->chaddr, ETH_ALEN);
+	memcpy(eth->ether_dhost, (pack->hdr->flags & DHCP_F_BROADCAST) ? bc_addr : pack->hdr->chaddr, ETH_ALEN);
 	memcpy(eth->ether_shost, serv->hwaddr, ETH_ALEN);
 	eth->ether_type = htons(ETH_P_IP);
 
@@ -589,7 +590,7 @@ static int dhcpv4_send_raw(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack,
 	ip->protocol = IPPROTO_UDP;
 	ip->check = 0;
 	ip->saddr = saddr;
-	ip->daddr = daddr;
+	ip->daddr = (pack->hdr->flags & DHCP_F_BROADCAST) ? INADDR_BROADCAST : daddr;
 	ip->check = ip_csum((uint16_t *)ip, 20);
 
 	udp->source = ntohs(DHCP_SERV_PORT);

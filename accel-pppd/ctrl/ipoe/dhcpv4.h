@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <pthread.h>
+#include <endian.h>
 #include "list.h"
 
 #include "triton.h"
@@ -15,6 +16,12 @@
 
 #define DHCP_OP_REQUEST 1
 #define DHCP_OP_REPLY   2
+
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+#define DHCP_F_BROADCAST 0x0080
+#else
+#define DHCP_F_BROADCAST 0x8000
+#endif
 
 #define DHCPDISCOVER 1
 #define DHCPOFFER    2
