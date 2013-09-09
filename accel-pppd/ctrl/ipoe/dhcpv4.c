@@ -177,7 +177,7 @@ struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifna
 	serv->hnd.read = dhcpv4_read;
 	serv->raw_sock = raw_sock;
 
-	str0 = strchr(opt, ',');
+	str0 = opt ? strchr(opt, ',') : NULL;
 	if (str0) {
 		str0 = _strdup(str0 + 1);
 		str = str0;
