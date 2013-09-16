@@ -414,7 +414,7 @@ static void ipoe_change_l4_redirect(struct ipoe_session *ses, int del)
 	in_addr_t addr;
 		
 	if (ses->ses.ipv4)
-		addr = ses->ses.ipv4->addr;
+		addr = ses->ses.ipv4->peer_addr;
 	else
 		addr = ses->yiaddr;
 	
