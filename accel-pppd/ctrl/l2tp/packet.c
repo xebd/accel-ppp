@@ -868,7 +868,10 @@ int l2tp_packet_add_octets(struct l2tp_packet_t *pack, int id, const uint8_t *va
 	if (!attr)
 		return -1;
 
-	if (attr->H) {
+	if (size == 0) {
+		attr->length = size;
+		attr->val.octets = NULL;
+	} else if (attr->H) {
 		if (pack->last_RV == NULL)
 			if (l2tp_packet_add_random_vector(pack) < 0)
 				goto err;

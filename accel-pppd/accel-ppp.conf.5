@@ -492,6 +492,24 @@ If this option is given and
 is greater than 0, then attributes sent in L2TP packets will be hidden (for
 AVPs that support it).
 .TP
+.BI "dataseq=" deny|allow|prefer|require
+Specify data sequencing negotiation algorithm:
+.br
+.B deny
+- don't send data packets with sequence numbers
+.br
+.B allow
+- send data packets with sequence numbers if peer have requested so only
+.br
+.B prefer
+- send data packets with sequence numbers and enable same for peer
+.br
+.B require
+- send data packets with sequence numbers and enforce same for peer
+.TP
+.BI "reorder-timeout=" ms
+Specifies timeout (in milliseconds) to wait for out-of-order packets. If 0, don't try to reorder.
+.TP
 .BI "use-ephemeral-ports=" 0|1
 Specifies if an arbitrary source port is used when replying to a tunnel
 establishment request. When this option is deactivated, the destination

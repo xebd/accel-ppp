@@ -18,6 +18,11 @@
 
 #define L2TP_V2_PROTOCOL_VERSION ( 1 << 8 | 0 )
 
+#define L2TP_DATASEQ_ALLOW  -1
+#define L2TP_DATASEQ_DENY    0
+#define L2TP_DATASEQ_PREFER  1
+#define L2TP_DATASEQ_REQUIRE 2
+
 typedef union
 {
 	uint32_t uint32;

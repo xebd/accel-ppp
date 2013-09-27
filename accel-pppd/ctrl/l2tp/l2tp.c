@@ -65,6 +65,8 @@ static const char *conf_host_name = "accel-ppp";
 static const char *conf_secret = NULL;
 static size_t conf_secret_len = 0;
 static int conf_mppe = MPPE_UNSET;
+static int conf_dataseq = L2TP_DATASEQ_ALLOW;
+static int conf_reorder_timeout = 0;
 
 static unsigned int stat_active;
 static unsigned int stat_starting;
@@ -85,6 +87,9 @@ struct l2tp_sess_t
 	int state1;
 	uint16_t lns_mode:1;
 	uint16_t hide_avps:1;
+	uint16_t send_seq:1;
+	uint16_t recv_seq:1;
+	int reorder_timeout;
 
 	struct triton_context_t sctx;
 	struct triton_timer_t timeout_timer;
@@ -870,6 +875,10 @@ static struct l2tp_sess_t *l2tp_tunnel_alloc_session(struct l2tp_conn_t *conn)
 	sess->state1 = STATE_CLOSE;
 	sess->lns_mode = conn->lns_mode;
 	sess->hide_avps = conn->hide_avps;
+	sess->send_seq = (conf_dataseq == L2TP_DATASEQ_PREFER) ||
+			 (conf_dataseq == L2TP_DATASEQ_REQUIRE);
+	sess->recv_seq = (conf_dataseq == L2TP_DATASEQ_REQUIRE);
+	sess->reorder_timeout = conf_reorder_timeout;
 
 	sess->sctx.before_switch = log_switch;
 	sess->sctx.close = l2tp_sess_close;
@@ -1205,6 +1214,32 @@ static int l2tp_session_connect(struct l2tp_sess_t *sess)
 		       &lns_mode, sizeof(lns_mode))) {
 		log_session(log_error, sess, "impossible to connect session:"
 			    " setsockopt(PPPOL2TP_SO_LNSMODE) failed: %s\n",
+			    strerror(errno));
+		goto out_err;
+	}
+
+	flg = 1;
+	if (sess->send_seq &&
+	    setsockopt(sess->ppp.fd, SOL_PPPOL2TP, PPPOL2TP_SO_SENDSEQ,
+		       &flg, sizeof(flg))) {
+		log_session(log_error, sess, "impossible to connect session:"
+			    " setsockopt(PPPOL2TP_SO_SENDSEQ) failed: %s\n",
+			    strerror(errno));
+		goto out_err;
+	}
+	if (sess->recv_seq &&
+	    setsockopt(sess->ppp.fd, SOL_PPPOL2TP, PPPOL2TP_SO_RECVSEQ,
+		       &flg, sizeof(flg))) {
+		log_session(log_error, sess, "impossible to connect session:"
+			    " setsockopt(PPPOL2TP_SO_RECVSEQ) failed: %s\n",
+			    strerror(errno));
+		goto out_err;
+	}
+	if (sess->reorder_timeout &&
+	    setsockopt(sess->ppp.fd, SOL_PPPOL2TP, PPPOL2TP_SO_REORDERTO,
+		       &sess->reorder_timeout, sizeof(sess->reorder_timeout))) {
+		log_session(log_error, sess, "impossible to connect session:"
+			    " setsockopt(PPPOL2TP_REORDERTO) failed: %s\n",
 			    strerror(errno));
 		goto out_err;
 	}
@@ -1799,6 +1834,12 @@ static int l2tp_send_ICCN(struct l2tp_sess_t *sess)
 			    " adding data to packet failed\n");
 		goto out_err;
 	}
+	if (sess->send_seq &&
+	    l2tp_packet_add_octets(pack, Sequencing_Required, NULL, 0, 1) < 0) {
+		log_session(log_error, sess, "impossible to send ICCN:"
+			    " adding data to packet failed\n");
+		goto out_err;
+	}
 
 	if (l2tp_session_send(sess, pack) < 0) {
 		log_session(log_error, sess, "impossible to send ICCN:"
@@ -1934,6 +1975,12 @@ static int l2tp_send_OCCN(struct l2tp_sess_t *sess)
 		goto out_err;
 	}
 	if (l2tp_packet_add_int32(pack, Framing_Type, 3, 1) < 0) {
+		log_session(log_error, sess, "impossible to send OCCN:"
+			    " adding data to packet failed\n");
+		goto out_err;
+	}
+	if (sess->send_seq &&
+	    l2tp_packet_add_octets(pack, Sequencing_Required, NULL, 0, 1) < 0) {
 		log_session(log_error, sess, "impossible to send OCCN:"
 			    " adding data to packet failed\n");
 		goto out_err;
@@ -2638,12 +2685,58 @@ static int l2tp_recv_ICRP(struct l2tp_sess_t *sess,
 static int l2tp_recv_ICCN(struct l2tp_sess_t *sess,
 			  const struct l2tp_packet_t *pack)
 {
+	const struct l2tp_attr_t *unknown_attr = NULL;
+	const struct l2tp_attr_t *attr = NULL;
+
 	if (sess->state1 != STATE_WAIT_ICCN) {
 		log_session(log_warn, sess, "discarding unexpected ICCN\n");
 		return 0;
 	}
 
 	log_session(log_info2, sess, "handling ICCN\n");
+
+	list_for_each_entry(attr, &pack->attrs, entry) {
+		switch (attr->attr->id) {
+		case Message_Type:
+		case Random_Vector:
+		case TX_Speed:
+		case Framing_Type:
+		case Init_Recv_LCP:
+		case Last_Sent_LCP:
+		case Last_Recv_LCP:
+		case Proxy_Authen_Type:
+		case Proxy_Authen_Name:
+		case Proxy_Authen_Challenge:
+		case Proxy_Authen_ID:
+		case Proxy_Authen_Response:
+		case Private_Group_ID:
+		case RX_Speed:
+			break;
+		case Sequencing_Required:
+			if (conf_dataseq != L2TP_DATASEQ_DENY)
+				sess->send_seq = 1;
+			break;
+		default:
+			if (attr->M)
+				unknown_attr = attr;
+			else
+				log_session(log_warn, sess,
+					    "discarding unknown attribute type"
+					     " %i in ICCN\n", attr->attr->id);
+			break;
+		}
+	}
+
+	if (unknown_attr) {
+		log_session(log_error, sess, "impossible to handle ICCN:"
+			    " unknown mandatory attribute type %i,"
+			    " disconnecting session\n",
+			    unknown_attr->attr->id);
+		if (l2tp_session_disconnect(sess, 2, 8) < 0)
+			log_session(log_error, sess,
+				    "session disconnection failed\n");
+		return -1;
+	}
 
 	sess->state1 = STATE_ESTB;
 
@@ -2905,6 +2998,10 @@ static int l2tp_recv_OCCN(struct l2tp_sess_t *sess,
 		case Random_Vector:
 		case TX_Speed:
 		case Framing_Type:
+			break;
+		case Sequencing_Required:
+			if (conf_dataseq != L2TP_DATASEQ_DENY)
+				sess->send_seq = 1;
 			break;
 		default:
 			if (attr->M)
@@ -3795,6 +3892,22 @@ static void load_config(void)
 	opt = conf_get_opt("l2tp", "hide-avps");
 	if (opt && atoi(opt) >= 0)
 		conf_hide_avps = atoi(opt) > 0;
+
+	opt = conf_get_opt("l2tp", "dataseq");
+	if (opt) {
+		if (strcmp(opt, "deny") == 0)
+			conf_dataseq = L2TP_DATASEQ_DENY;
+		else if (strcmp(opt, "allow") == 0)
+			conf_dataseq = L2TP_DATASEQ_ALLOW;
+		else if (strcmp(opt, "prefer") == 0)
+			conf_dataseq = L2TP_DATASEQ_PREFER;
+		else if (strcmp(opt, "require") == 0)
+			conf_dataseq = L2TP_DATASEQ_REQUIRE;
+	}
+
+	opt = conf_get_opt("l2tp", "reorder-timeout");
+	if (opt && atoi(opt) >= 0)
+		conf_reorder_timeout = atoi(opt);
 
 	opt = conf_get_opt("l2tp", "avp_permissive");
 	if (opt && atoi(opt) >= 0)
