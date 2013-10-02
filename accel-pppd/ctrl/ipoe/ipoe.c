@@ -101,6 +101,7 @@ static uint32_t conf_src;
 
 //static int conf_dhcpv6;
 static int conf_username;
+static const char *conf_password;
 static int conf_unit_cache;
 static int conf_noauth;
 #ifdef RADIUS
@@ -474,7 +475,7 @@ static void ipoe_session_start(struct ipoe_session *ses)
 	ap_session_starting(&ses->ses);
 	
 	if (!conf_noauth) {
-		r = pwdb_check(&ses->ses, ses->ses.username, PPP_PAP, ses->ses.username);
+		r = pwdb_check(&ses->ses, ses->ses.username, PPP_PAP, conf_password ? conf_password : ses->ses.username);
 		if (r == PWDB_NO_IMPL) {
 			passwd = pwdb_get_passwd(&ses->ses, ses->ses.username);
 			if (!passwd)
@@ -2690,6 +2691,17 @@ static void load_config(void)
 			log_emerg("ipoe: unknown username value '%s'\n", opt);
 	} else
 		conf_username = USERNAME_UNSET;
+	
+	opt = conf_get_opt("ipoe", "password");
+	if (opt) {
+		if (!strcmp(opt, "username"))
+			conf_password = NULL;
+		else if (!strcmp(opt, "empty"))
+			conf_password = "";
+		else
+			conf_password = opt;
+	} else
+		conf_password = NULL;
 
 	opt = conf_get_opt("ipoe", "netmask");
 	if (opt) {

@@ -183,7 +183,7 @@ This should reduce kernel-level interface creation/deletion rate lack.
 If n is not zero ipoe module will produce verbose logging.
 .TP
 .BI "username=" ifname|lua:function
-Specifies how to determine username of DHCP user.
+Specifies how to determine username of user.
 .br
 If username=
 .B ifname
@@ -194,6 +194,20 @@ If username=
 then lua function with name
 .B username
 will be called to construct username from dhcp packet fields.
+.TP
+.BI "password=" username|empty|<string>
+Specifies how to generate password.
+.br
+If password=
+.B username
+then password will be same as username.
+.br
+If password=
+.B empty
+then password will be empty string.
+.br
+Or you can specify fixed password in
+.B <string>.
 .TP
 .BI "lease-time=" n
 Specifies lease time in seconds to be sent to dhcp client.
