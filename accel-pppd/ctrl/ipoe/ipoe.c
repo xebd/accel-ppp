@@ -40,8 +40,9 @@
 
 #include "memdebug.h"
 
-#define USERNAME_IFNAME 0
-#define USERNAME_LUA 1
+#define USERNAME_UNSET 0
+#define USERNAME_IFNAME 1
+#define USERNAME_LUA 2
 
 #define MODE_L2 0
 #define MODE_L3 1
@@ -1526,8 +1527,9 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 
 	u_inet_ntoa(iph->saddr, ses->ctrl.calling_station_id);
 	u_inet_ntoa(iph->daddr, ses->ctrl.called_station_id);
-	
-	ses->ses.username = _strdup(ses->ctrl.calling_station_id);
+
+	if (conf_username == USERNAME_UNSET)
+		ses->ses.username = _strdup(ses->ctrl.calling_station_id);
 	
 	ses->ses.ctrl = &ses->ctrl;
 	ses->ses.chan_name = ses->ctrl.calling_station_id;
@@ -2686,7 +2688,8 @@ static void load_config(void)
 #endif
 		else
 			log_emerg("ipoe: unknown username value '%s'\n", opt);
-	}
+	} else
+		conf_username = USERNAME_UNSET;
 
 	opt = conf_get_opt("ipoe", "netmask");
 	if (opt) {
