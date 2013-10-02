@@ -68,7 +68,7 @@ static int packet4_hdr(lua_State *L)
 	char str[20];
 	uint8_t *ptr;
 
-	if (!ses)
+	if (!ses || !ses->dhcpv4_request)
 		return 0;
 	
 	if (!strcmp(name, "xid"))
@@ -107,10 +107,12 @@ static int packet4_option(lua_State *L)
 	int type = luaL_checkinteger(L, 2);
 	struct dhcpv4_option *opt;
 
-	list_for_each_entry(opt, &ses->dhcpv4_request->options, entry) {
-		if (opt->type == type) {
-			lua_pushlstring(L, (char *)opt->data, opt->len);
-			return 1;
+	if (ses && ses->dhcpv4_request) {
+		list_for_each_entry(opt, &ses->dhcpv4_request->options, entry) {
+			if (opt->type == type) {
+				lua_pushlstring(L, (char *)opt->data, opt->len);
+				return 1;
+			}
 		}
 	}
 
@@ -125,7 +127,7 @@ static int packet4_options(lua_State *L)
 	struct dhcpv4_option *opt;
 	int i = 1;
 
-	if (!ses)
+	if (!ses || !ses->dhcpv4_request)
 		return 0;
 	
 	lua_newtable(L);
@@ -142,7 +144,7 @@ static int packet4_agent_circuit_id(lua_State *L)
 {
 	struct ipoe_session *ses = luaL_checkudata(L, 1, IPOE_PACKET4);
 
-	if (!ses)
+	if (!ses || !ses->dhcpv4_request)
 		return 0;
 	
 	if (ses->agent_circuit_id)
@@ -157,7 +159,7 @@ static int packet4_agent_remote_id(lua_State *L)
 {
 	struct ipoe_session *ses = luaL_checkudata(L, 1, IPOE_PACKET4);
 
-	if (!ses)
+	if (!ses || !ses->dhcpv4_request)
 		return 0;
 	
 	if (ses->agent_remote_id)
