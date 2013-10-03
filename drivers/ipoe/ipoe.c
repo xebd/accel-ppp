@@ -1090,9 +1090,9 @@ static int ipoe_create(__be32 peer_addr, __be32 addr, const char *link_ifname, c
 		link_dev = dev_get_by_name(&init_net, link_ifname);
 		if (!link_dev)
 			return -EINVAL;
-		sprintf(name, "%s.ipoe%%d", link_ifname);
-	} else
-		sprintf(name, "ipoe%%d");
+	}
+
+	sprintf(name, "ipoe%%d");
 
 	dev = alloc_netdev(sizeof(*ses), name, ipoe_netdev_setup);
 	if (dev == NULL) {
