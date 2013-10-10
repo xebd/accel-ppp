@@ -67,6 +67,7 @@ static size_t conf_secret_len = 0;
 static int conf_mppe = MPPE_UNSET;
 static int conf_dataseq = L2TP_DATASEQ_ALLOW;
 static int conf_reorder_timeout = 0;
+static const char *conf_ip_pool;
 
 static unsigned int stat_active;
 static unsigned int stat_starting;
@@ -904,6 +905,9 @@ static struct l2tp_sess_t *l2tp_tunnel_alloc_session(struct l2tp_conn_t *conn)
 	ppp_init(&sess->ppp);
 	sess->ppp.ses.ctrl = &sess->ctrl;
 	sess->ppp.fd = -1;
+
+	if (conf_ip_pool)
+		sess->ppp.ses.ipv4_pool_name = _strdup(conf_ip_pool);
 
 	return sess;
 }
@@ -3963,6 +3967,8 @@ static void load_config(void)
 		else if (strcmp(opt, "require") == 0)
 			conf_mppe = MPPE_REQUIRE;
 	}
+
+	conf_ip_pool = conf_get_opt("l2tp", "ip-pool");
 }
 
 static void l2tp_init(void)

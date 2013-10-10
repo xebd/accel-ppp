@@ -89,6 +89,7 @@ char *conf_pado_delay;
 int conf_tr101 = 1;
 int conf_padi_limit = 0;
 int conf_mppe = MPPE_UNSET;
+static const char *conf_ip_pool;
 
 static mempool_t conn_pool;
 static mempool_t pado_pool;
@@ -299,6 +300,9 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 
 	conn->ppp.ses.ctrl = &conn->ctrl;
 	conn->ppp.ses.chan_name = conn->ctrl.calling_station_id;
+
+	if (conf_ip_pool)
+		conn->ppp.ses.ipv4_pool_name = _strdup(conf_ip_pool);
 	
 	triton_context_register(&conn->ctx, &conn->ppp.ses);
 	triton_context_wakeup(&conn->ctx);
@@ -1489,6 +1493,8 @@ static void load_config(void)
 		else if (strcmp(opt, "require") == 0)
 			conf_mppe = MPPE_REQUIRE;
 	}
+
+	conf_ip_pool = conf_get_opt("pppoe", "ip-pool");
 }
 
 static void pppoe_init(void)

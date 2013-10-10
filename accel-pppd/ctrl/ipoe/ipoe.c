@@ -98,7 +98,7 @@ static int conf_ifcfg = 1;
 static int conf_nat = 0;
 static int conf_arp = 0;
 static uint32_t conf_src;
-
+static const char *conf_ip_pool;
 //static int conf_dhcpv6;
 static int conf_username;
 static const char *conf_password;
@@ -974,18 +974,11 @@ static struct ipoe_session *ipoe_session_create_dhcpv4(struct ipoe_serv *serv, s
 	int dlen = 0;
 	uint8_t *ptr = NULL;
 	
-	ses = mempool_alloc(ses_pool);
-	if (!ses) {
-		log_emerg("out of memery\n");
+	ses = ipoe_session_alloc();
+	if (!ses)
 		return NULL;
-	}
-
-	memset(ses, 0, sizeof(*ses));
-
-	ap_session_init(&ses->ses);
 
 	ses->serv = serv;
-	ses->ifindex = -1;
 	ses->dhcpv4_request = pack;
 	
 	ses->xid = pack->hdr->xid;
@@ -1027,14 +1020,6 @@ static struct ipoe_session *ipoe_session_create_dhcpv4(struct ipoe_serv *serv, s
 			ses->relay_agent = NULL;
 	}
 
-	ses->ctx.before_switch = log_switch;
-	ses->ctx.close = ipoe_session_close;
-	ses->ctrl.ctx = &ses->ctx;
-	ses->ctrl.started = ipoe_session_started;
-	ses->ctrl.finished = ipoe_session_finished;
-	ses->ctrl.terminate = ipoe_session_terminate;
-	ses->ctrl.type = CTRL_TYPE_IPOE;
-	ses->ctrl.name = "ipoe";
 	ses->ctrl.dont_ifcfg = 1;
 	
 	ses->ctrl.calling_station_id = _malloc(19);
@@ -1046,6 +1031,9 @@ static struct ipoe_session *ipoe_session_create_dhcpv4(struct ipoe_serv *serv, s
 	
 	ses->ses.ctrl = &ses->ctrl;
 	ses->ses.chan_name = ses->ctrl.calling_station_id;
+
+	if (conf_ip_pool)
+		ses->ses.ipv4_pool_name = _strdup(conf_ip_pool);
 
 	triton_context_register(&ses->ctx, &ses->ses);
 
@@ -1497,44 +1485,27 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 	if (l4_redirect_list_check(iph->saddr))
 		return NULL;
 	
-	ses = mempool_alloc(ses_pool);
-	if (!ses) {
-		log_emerg("out of memery\n");
+	ses = ipoe_session_alloc();
+	if (!ses)
 		return NULL;
-	}
-
-	memset(ses, 0, sizeof(*ses));
-
-	ap_session_init(&ses->ses);
 
 	ses->serv = serv;
-	ses->ifindex = -1;
-	
 	memcpy(ses->hwaddr, eth->h_source, 6);
-
-	ses->ctx.before_switch = log_switch;
-	ses->ctx.close = ipoe_session_close;
-	ses->ctrl.ctx = &ses->ctx;
-	ses->ctrl.started = ipoe_session_started;
-	ses->ctrl.finished = ipoe_session_finished;
-	ses->ctrl.terminate = ipoe_session_terminate;
-	ses->ctrl.type = CTRL_TYPE_IPOE;
-	ses->ctrl.name = "ipoe";
-
 	ses->yiaddr = iph->saddr;
 
 	ses->ctrl.calling_station_id = _malloc(17);
-	ses->ctrl.called_station_id = _malloc(17);
+	ses->ctrl.called_station_id = _strdup(serv->ifname);
 
 	u_inet_ntoa(iph->saddr, ses->ctrl.calling_station_id);
-	u_inet_ntoa(iph->daddr, ses->ctrl.called_station_id);
+	
+	ses->ses.chan_name = ses->ctrl.calling_station_id;
 
 	if (conf_username == USERNAME_UNSET)
 		ses->ses.username = _strdup(ses->ctrl.calling_station_id);
 	
-	ses->ses.ctrl = &ses->ctrl;
-	ses->ses.chan_name = ses->ctrl.calling_station_id;
-
+	if (conf_ip_pool)
+		ses->ses.ipv4_pool_name = _strdup(conf_ip_pool);
+	
 	triton_context_register(&ses->ctx, &ses->ses);
 
 	triton_context_wakeup(&ses->ctx);
@@ -1577,8 +1548,7 @@ struct ipoe_session *ipoe_session_alloc(void)
 	ses->ctrl.name = "ipoe";
 
 	ses->ses.ctrl = &ses->ctrl;
-	ses->ses.chan_name = ses->ctrl.calling_station_id;
-
+	
 	return ses;
 }
 
@@ -2857,6 +2827,8 @@ static void load_config(void)
 		conf_offer_timeout = atoi(opt);
 	else
 		conf_offer_timeout = 10;
+	
+	conf_ip_pool = conf_get_opt("ipoe", "ip-pool");
 	
 #ifdef RADIUS
 	if (triton_module_loaded("radius"))
