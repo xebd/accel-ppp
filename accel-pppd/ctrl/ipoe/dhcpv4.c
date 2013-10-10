@@ -43,8 +43,34 @@ static mempool_t opt_pool;
 static LIST_HEAD(relay_list);
 static pthread_mutex_t relay_lock = PTHREAD_MUTEX_INITIALIZER;
 
+static pthread_key_t raw_sock_key;
+static __thread int raw_sock = -1;
+
 static int dhcpv4_read(struct triton_md_handler_t *h);
 int dhcpv4_packet_add_opt(struct dhcpv4_packet *pack, int type, const void *data, int len);
+
+static int open_raw_sock(void)
+{
+	if (raw_sock == -1) {
+		raw_sock = socket(AF_PACKET, SOCK_RAW, 0);
+		if (raw_sock < 0) {
+			log_error("dhcpv4: socket(AF_PACKET, SOCK_RAW): %s\n", strerror(errno));
+			return -1;
+		}
+	
+		fcntl(raw_sock, F_SETFL, O_NONBLOCK);
+		fcntl(raw_sock, F_SETFD, fcntl(raw_sock, F_GETFD) | FD_CLOEXEC);
+	
+		pthread_setspecific(raw_sock_key, (void *)(long)raw_sock);
+	}
+
+	return raw_sock;
+}
+
+static void close_raw_sock(void *arg)
+{
+	close((long)arg);
+}
 
 static struct dhcpv4_iprange *parse_range(const char *str)
 {
@@ -96,13 +122,12 @@ parse_err:
 struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifname, const char *opt)
 {
 	struct dhcpv4_serv *serv;
-	int sock, raw_sock;
+	int sock;
 	struct sockaddr_in addr;
-	struct sockaddr_ll ll_addr;
 	struct ifreq ifr;
 	int f = 1;
 	char *str0, *str, *ptr1, *ptr2;
-	int end;
+	int end, ifindex;
 
 	memset(&ifr, 0, sizeof(ifr));
 
@@ -111,23 +136,7 @@ struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifna
 		log_error("dhcpv4(%s): ioctl(SIOCGIFINDEX): %s\n", ifname, strerror(errno));
 		return NULL;
 	}
-
-	raw_sock = socket(AF_PACKET, SOCK_RAW, ntohs(ETH_P_IP));
-	if (raw_sock < 0) {
-		log_error("dhcpv4: packet socket is not supported by kernel\n");
-		return NULL;
-	}
-
-	memset(&ll_addr, 0, sizeof(ll_addr));
-	ll_addr.sll_family = AF_PACKET;
-	ll_addr.sll_ifindex = ifr.ifr_ifindex;
-	ll_addr.sll_protocol = ntohs(ETH_P_IP);
-
-	if (bind(raw_sock, (struct sockaddr *)&ll_addr, sizeof(ll_addr))) {
-		log_error("dhcpv4(%s): bind: %s\n", ifname, strerror(errno));
-		close(raw_sock);
-		return NULL;
-	}
+	ifindex = ifr.ifr_ifindex;
 
 	memset(&addr, 0, sizeof(addr));
 
@@ -161,9 +170,6 @@ struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifna
 		goto out_err;
 	}
 	
-	fcntl(raw_sock, F_SETFL, O_NONBLOCK);
-	fcntl(raw_sock, F_SETFD, fcntl(raw_sock, F_GETFD) | FD_CLOEXEC);
-
 	fcntl(sock, F_SETFL, O_NONBLOCK);
 	fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
 	
@@ -175,7 +181,7 @@ struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifna
 	serv->ctx = ctx;
 	serv->hnd.fd = sock;
 	serv->hnd.read = dhcpv4_read;
-	serv->raw_sock = raw_sock;
+	serv->ifindex = ifindex;
 
 	str0 = opt ? strchr(opt, ',') : NULL;
 	if (str0) {
@@ -218,7 +224,6 @@ struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifna
 	return serv;
 
 out_err:
-	close(raw_sock);
 	close(sock);
 	return NULL;
 }
@@ -575,6 +580,21 @@ static int dhcpv4_send_raw(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack,
 	int len = pack->ptr - pack->data;
 	struct iovec iov[2];
 	static uint8_t bc_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+	struct sockaddr_ll ll_addr;
+	struct msghdr msg;
+	int sock = open_raw_sock();
+	
+	memset(&ll_addr, 0, sizeof(ll_addr));
+	ll_addr.sll_family = AF_PACKET;
+	ll_addr.sll_ifindex = serv->ifindex;
+	ll_addr.sll_protocol = ntohs(ETH_P_IP);
+
+	msg.msg_name = &ll_addr;
+	msg.msg_namelen = sizeof(ll_addr);
+	msg.msg_iov = iov;
+	msg.msg_iovlen = 2;
+	msg.msg_controllen = 0;
+	msg.msg_flags = 0;
 
 	memcpy(eth->ether_dhost, (pack->hdr->flags & DHCP_F_BROADCAST) ? bc_addr : pack->hdr->chaddr, ETH_ALEN);
 	memcpy(eth->ether_shost, serv->hwaddr, ETH_ALEN);
@@ -603,10 +623,13 @@ static int dhcpv4_send_raw(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack,
 	iov[1].iov_base = pack->data;
 	iov[1].iov_len = len;
 
-	len = writev(serv->raw_sock, iov, 2);
+	len = sendmsg(sock, &msg, 0);
 
-	if (len < 0)
+	if (len < 0) {
+		perror("sendmsg");
+		printf("%i %i\n", errno, serv->ifindex);
 		return -1;
+	}
 	
 	return 0;
 }
@@ -1093,6 +1116,8 @@ static void init()
 {
 	pack_pool = mempool_create(BUF_SIZE + sizeof(struct dhcpv4_packet));
 	opt_pool = mempool_create(sizeof(struct dhcpv4_option));
+	
+	pthread_key_create(&raw_sock_key, close_raw_sock);
 
 	load_config();
 

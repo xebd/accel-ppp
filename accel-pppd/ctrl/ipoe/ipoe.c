@@ -521,7 +521,7 @@ static void ipoe_session_start(struct ipoe_session *ses)
 			ses->ifindex = ipoe_nl_create(0, 0, ses->serv->opt_mode == MODE_L2 ? ses->serv->ifname : NULL, ses->hwaddr);
 			if (ses->ifindex == -1) {
 				log_ppp_error("ipoe: failed to create interface\n");
-				ipoe_session_finished(&ses->ses);
+				ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 1);
 				return;
 			}
 		}
@@ -531,7 +531,7 @@ static void ipoe_session_start(struct ipoe_session *ses)
 		if (ioctl(sock_fd, SIOCGIFNAME, &ifr, sizeof(ifr))) {
 			log_ppp_error("ipoe: failed to get interface name\n");
 			ses->ifindex = -1;
-			ipoe_session_finished(&ses->ses);
+			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 1);
 			return;
 		}
 
