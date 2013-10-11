@@ -84,8 +84,8 @@ struct dhcpv4_iprange {
 struct dhcpv4_serv {
 	struct triton_context_t *ctx;
 	struct triton_md_handler_t hnd;
-	int raw_sock;
 	uint8_t hwaddr[6];
+	int ifindex;
 	void (*recv)(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack);
 	struct dhcpv4_iprange *range;
 };
