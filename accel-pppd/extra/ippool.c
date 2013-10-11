@@ -285,6 +285,11 @@ static struct ipv4db_item_t *get_ip(struct ap_session *ses)
 		it = NULL;
 	spin_unlock(&p->lock);
 
+	if (ses->ctrl->ppp)
+		it->it.addr = conf_gw_ip_address;
+	else
+		it->it.addr = 0;
+
 	return it ? &it->it : NULL;
 }
 

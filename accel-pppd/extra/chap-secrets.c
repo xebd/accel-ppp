@@ -287,7 +287,7 @@ static struct ipv4db_item_t *get_ip(struct ap_session *ses)
 {
 	struct cs_pd_t *pd;
 	
-	if (!conf_gw_ip_address)
+	if (!conf_gw_ip_address && ses->ctrl->ppp)
 		return NULL;
 
 	pd = find_pd(ses);
@@ -297,6 +297,9 @@ static struct ipv4db_item_t *get_ip(struct ap_session *ses)
 
 	if (!pd->ip.peer_addr)
 		return NULL;
+
+	if (!ses->ctrl->ppp)
+		pd->ip.addr = 0;
 
 	return &pd->ip;
 }

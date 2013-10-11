@@ -96,7 +96,7 @@ int rad_proc_attrs(struct rad_req_t *req)
 				else if (attr->val.ipaddr != 0xfffffffe) {
 					req->rpd->ipv4_addr.owner = &ipdb;
 					req->rpd->ipv4_addr.peer_addr = attr->val.ipaddr;
-					req->rpd->ipv4_addr.addr = conf_gw_ip_address;
+					req->rpd->ipv4_addr.addr = req->rpd->ses->ctrl->ppp ? conf_gw_ip_address : 0;
 				}
 				break;
 			case Acct_Interim_Interval:
