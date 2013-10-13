@@ -622,6 +622,9 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 			return;
 		}
 
+		if (ses->ses.ipv4 && !ses->ses.ipv4->addr)
+			ses->ses.ipv4->addr = ses->siaddr;
+
 		if (!ses->router)
 			ses->router = ses->siaddr;
 				
