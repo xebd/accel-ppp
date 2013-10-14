@@ -193,7 +193,7 @@ static int rad_auth_send(struct rad_req_t *req)
 				stat_accm_add(req->serv->stat_auth_lost_5m, 1);
 			}
 		}
-		
+out:
 		rad_server_req_exit(req);
 
 		if (!req->reply) {
@@ -212,7 +212,6 @@ static int rad_auth_send(struct rad_req_t *req)
 		}
 	}
 
-out:
 	return PWDB_DENIED;
 }
 
