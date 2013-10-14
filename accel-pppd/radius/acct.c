@@ -276,12 +276,14 @@ int rad_acct_start(struct radius_pd_t *rpd)
 				if (conf_acct_delay_time) {
 					time(&ts);
 					rad_packet_change_int(rpd->acct_req->pack, NULL, "Acct-Delay-Time", ts - rpd->acct_timestamp);
-					if (req_set_RA(rpd->acct_req, rpd->acct_req->serv->secret))
+					if (req_set_RA(rpd->acct_req, rpd->acct_req->serv->secret)) {
+						rad_server_req_exit(rpd->acct_req);
 						goto out_err;
+					}
 				}
 
 				if (rad_req_send(rpd->acct_req, conf_verbose ? log_ppp_info1 : NULL))
-					goto out_err;
+					goto out;
 
 				__sync_add_and_fetch(&rpd->acct_req->serv->stat_acct_sent, 1);
 
@@ -311,6 +313,7 @@ int rad_acct_start(struct radius_pd_t *rpd)
 					break;
 			}
 
+out:
 			rad_server_req_exit(rpd->acct_req);
 
 			if (rpd->acct_req->reply)
@@ -431,7 +434,7 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 						break;
 				}
 				if (rad_req_send(rpd->acct_req, conf_verbose ? log_ppp_info1 : NULL))
-					break;
+					goto out;
 				__sync_add_and_fetch(&rpd->acct_req->serv->stat_acct_sent, 1);
 				rad_req_wait(rpd->acct_req, conf_timeout);
 				if (!rpd->acct_req->reply) {
@@ -456,6 +459,7 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 					break;
 			}
 
+out:
 			rad_server_req_exit(rpd->acct_req);
 
 			if (rpd->acct_req->reply)

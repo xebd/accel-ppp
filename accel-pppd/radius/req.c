@@ -146,7 +146,10 @@ struct rad_req_t *rad_req_alloc2(struct radius_pd_t *rpd, int code, const char *
 	if (code == CODE_ACCOUNTING_REQUEST)
 		req->server_port = req->serv->acct_port;
 
-	make_socket(req);
+	if (make_socket(req)) {
+		rad_req_free(req);
+		req = NULL;
+	}
 
 	return req;
 }
