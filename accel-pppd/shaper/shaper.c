@@ -690,16 +690,17 @@ static void time_range_end_timer(struct triton_timer_t *t)
 	log_debug("shaper: time_range_end_timer\n");
 
 	pthread_rwlock_rdlock(&shaper_lock);
-	list_for_each_entry(pd, &shaper_list, entry)
+	list_for_each_entry(pd, &shaper_list, entry) {
+		pd->refs++;
 		triton_context_call(pd->ppp->ctrl->ctx, (triton_event_func)update_shaper_tr, pd);
+	}
 	pthread_rwlock_unlock(&shaper_lock);
 }
 
-static struct time_range_t *parse_range(const char *val)
+static struct time_range_t *parse_range(time_t t, const char *val)
 {
 	char *endptr;
 	int id;
-	time_t t;
 	struct tm begin_tm, end_tm;
 	struct time_range_t *r;
 
@@ -709,11 +710,9 @@ static struct time_range_t *parse_range(const char *val)
 	if (id <= 0)
 		return NULL;
 	
-	time(&t);
 	localtime_r(&t, &begin_tm);
-	begin_tm.tm_sec = 1;
+	begin_tm.tm_sec = 0;
 	end_tm = begin_tm;
-	end_tm.tm_sec = 0;
 
 	endptr = strptime(endptr + 1, "%H:%M", &begin_tm);
 	if (*endptr != '-')
@@ -741,7 +740,7 @@ static void load_time_ranges(void)
 {
 	struct conf_sect_t *s = conf_get_section("shaper");
 	struct conf_option_t *opt;
-	struct time_range_t *r;
+	struct time_range_t *r, *r1;
 	time_t ts;
 
 	if (!s)
@@ -762,24 +761,38 @@ static void load_time_ranges(void)
 	list_for_each_entry(opt, &s->items, entry) {
 		if (strcmp(opt->name, "time-range"))
 			continue;
-		r = parse_range(opt->val);
-		if (r) {
+		r = parse_range(ts, opt->val);
+		if (r)
 			list_add_tail(&r->entry, &time_range_list);
-			if (r->begin.expire_tv.tv_sec > r->end.expire_tv.tv_sec) {
-				if (ts >= r->begin.expire_tv.tv_sec || ts <= r->end.expire_tv.tv_sec)
-					time_range_begin_timer(&r->begin);
-			} else {
-				if (ts >= r->begin.expire_tv.tv_sec && ts <= r->end.expire_tv.tv_sec)
-					time_range_begin_timer(&r->begin);
-			}
-			if (r->begin.expire_tv.tv_sec < ts)
-				r->begin.expire_tv.tv_sec += 24 * 60 * 60;
-			if (r->end.expire_tv.tv_sec < ts)
-				r->end.expire_tv.tv_sec += 24 * 60 * 60;
-			triton_timer_add(&shaper_ctx, &r->begin, 1);
-			triton_timer_add(&shaper_ctx, &r->end, 1);
-		} else
+		else
 			log_emerg("shaper: failed to parse time-range '%s'\n", opt->val);
+	}
+
+	list_for_each_entry(r, &time_range_list, entry) {
+		list_for_each_entry(r1, &time_range_list, entry) {
+			if (r->end.expire_tv.tv_sec == r1->begin.expire_tv.tv_sec) {
+				r->end.period = 0;
+				break;
+			}
+		}
+
+		if (r->begin.expire_tv.tv_sec > r->end.expire_tv.tv_sec) {
+			if (ts >= r->begin.expire_tv.tv_sec || ts <= r->end.expire_tv.tv_sec)
+				time_range_begin_timer(&r->begin);
+		} else {
+			if (ts >= r->begin.expire_tv.tv_sec && ts <= r->end.expire_tv.tv_sec)
+				time_range_begin_timer(&r->begin);
+		}
+
+		if (r->begin.expire_tv.tv_sec < ts)
+			r->begin.expire_tv.tv_sec += 24 * 60 * 60;
+		if (r->end.expire_tv.tv_sec < ts)
+			r->end.expire_tv.tv_sec += 24 * 60 * 60;
+
+		triton_timer_add(&shaper_ctx, &r->begin, 1);
+		
+		if (r->end.period)
+			triton_timer_add(&shaper_ctx, &r->end, 1);
 	}
 }
 
