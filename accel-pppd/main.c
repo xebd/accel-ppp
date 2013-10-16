@@ -12,6 +12,7 @@
 #include <pthread.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <sys/wait.h>
 #include <sys/resource.h>
 
 #ifdef CRYPTO_OPENSSL
@@ -33,6 +34,8 @@ static char *pid_file;
 static char *conf_file;
 static char *conf_dump;
 static sigset_t orig_set;
+static char **argv;
+static int argc;
 
 #ifdef CRYPTO_OPENSSL
 #include <openssl/ssl.h>
@@ -75,7 +78,6 @@ static void change_limits(void)
 {
 	FILE *f;
 	struct rlimit lim;
-	unsigned int file_max = 1024*1024;
 	unsigned int nr_open = 1024*1024;
 
 	f = fopen("/proc/sys/fs/nr_open", "r");
@@ -84,17 +86,8 @@ static void change_limits(void)
 		fclose(f);
 	}
 
-	f = fopen("/proc/sys/fs/file-max", "r");
-	if (f) {
-		fscanf(f, "%d", &file_max);
-		fclose(f);
-	}
-
-	if (file_max > nr_open)
-		file_max = nr_open;
-
-	lim.rlim_cur = file_max;
-	lim.rlim_max = file_max;
+	lim.rlim_cur = nr_open;
+	lim.rlim_max = nr_open;
 	if (setrlimit(RLIMIT_NOFILE, &lim))
 		log_emerg("main: setrlimit: %s\n", strerror(errno));
 }
@@ -110,7 +103,7 @@ static void config_reload(int num)
 	triton_conf_reload(config_reload_notify);
 }
 
-/*static void close_all_fd(void)
+static void close_all_fd(void)
 {
 	DIR *dirp;
 	struct dirent ent, *res;
@@ -135,55 +128,23 @@ static void config_reload(int num)
 	}
 
 	closedir(dirp);
-}*/
+}
 
 void core_restart(int soft)
 {
-	char fname[128];
-	int fd, n, f = 0;
-	char cmdline[ARG_MAX];
 	char exe[PATH_MAX];
-	char *argv[16];
-	char *ptr = cmdline, *endptr;
-
-	if (soft && fork()) {
-		//close_all_fd();
-		return;
-	}
 
 	pthread_sigmask(SIG_SETMASK, &orig_set, NULL);
 
-	sprintf(fname, "/proc/%i/cmdline", getpid());
-
-	fd = open(fname, O_RDONLY);
-	n = read(fd, cmdline, ARG_MAX);
-
-	endptr = ptr + n;
-
-	n = 0;
-	while (ptr < endptr && n < 14) {
-		if (strcmp(ptr, "--internal"))
-			argv[n++] = ptr;
-		else if (soft) {
-			f = 1;
-			argv[n++] = ptr;
-		}
-
-		while (ptr < endptr && *ptr++);
-	}
-	
 #ifdef USE_BACKUP
 	if (soft)
 		backup_restore_fd();
+	else
 #endif
+		close_all_fd();
 
 	sprintf(exe, "/proc/%u/exe", getpid());
 	readlink(exe, exe, PATH_MAX);
-
-	if (!f && soft)
-		argv[n++] = "--internal";
-
-	argv[n++] = NULL;
 
 	while (1) {
 		execv(exe, argv);
@@ -197,6 +158,8 @@ static void sigsegv(int num)
 	char fname[128];
 	char exec_file[PATH_MAX];
 	struct rlimit lim;
+	pid_t pid;
+	int status;
 
 	pthread_sigmask(SIG_SETMASK, &orig_set, NULL);
 	
@@ -224,7 +187,11 @@ static void sigsegv(int num)
 	}
 
 out:
-	core_restart(1);
+	pid = fork();
+	if (pid) {
+		waitpid(pid, &status, 0);
+		core_restart(1);
+	}
 
 	if (conf_dump) {
 		lim.rlim_cur = RLIM_INFINITY;
@@ -236,7 +203,7 @@ out:
 	abort();
 }
 
-int main(int argc, char **argv)
+int main(int _argc, char **_argv)
 {
 	sigset_t set;
 	int i, sig, goto_daemon = 0, len;
@@ -244,6 +211,9 @@ int main(int argc, char **argv)
 	struct sigaction sa;
 	int pagesize = sysconf(_SC_PAGE_SIZE);
 	int internal = 0;
+
+	argc = _argc;
+	argv = _argv;
 
 	if (argc < 2)
 		goto usage;
