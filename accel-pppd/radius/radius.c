@@ -395,6 +395,8 @@ struct radius_pd_t *rad_find_session_pack(struct rad_packet_t *pack)
 	in_addr_t ipaddr = 0;
 	
 	list_for_each_entry(attr, &pack->attrs, entry) {
+		if (attr->vendor)
+			continue;
 		switch(attr->attr->id) {
 			case Acct_Session_Id:
 				sessionid = attr->val.string;
