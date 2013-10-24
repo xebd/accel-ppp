@@ -1121,7 +1121,7 @@ static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packe
 		triton_context_call(ses->ctrl.ctx, (triton_event_func)__ipoe_session_terminate, &ses->ses);
 		return;
 	}
-			
+
 	if (pack->msg_type == DHCPDISCOVER) {
 		if (ses->yiaddr) {
 			if (ses->serv->dhcpv4_relay) {
@@ -1131,6 +1131,7 @@ static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packe
 				dhcpv4_send_reply(DHCPOFFER, dhcpv4, pack, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
 		}
 	} else if (pack->msg_type == DHCPREQUEST) {
+		ses->xid = pack->hdr->xid;
 		if (pack->hdr->ciaddr == ses->yiaddr && pack->hdr->xid != ses->xid)
 			ses->xid = pack->hdr->xid;
 		if ((pack->server_id && (pack->server_id != ses->siaddr || pack->request_ip != ses->yiaddr)) ||
@@ -1322,9 +1323,8 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 				triton_context_call(&opt82_ses->ctx, (triton_event_func)__ipoe_session_terminate, &opt82_ses->ses);
 			}
 		} else {
-			if (pack->hdr->ciaddr == ses->yiaddr && pack->hdr->xid != ses->xid)
-				ses->xid = pack->hdr->xid;
-			
+			ses->xid = pack->hdr->xid;
+
 			if ((pack->server_id && (pack->server_id != ses->siaddr || pack->request_ip != ses->yiaddr)) ||
 				(pack->hdr->ciaddr && (pack->hdr->xid != ses->xid || pack->hdr->ciaddr != ses->yiaddr)) ||
 				(opt82_ses && ses != opt82_ses) || (!opt82_ses && pack->relay_agent)) {
@@ -1366,6 +1366,7 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 	} else if (pack->msg_type == DHCPDECLINE || pack->msg_type == DHCPRELEASE) {
 		ses = ipoe_session_lookup(serv, pack, &opt82_ses);
 		if (ses) {
+			ses->xid = pack->hdr->xid;
 			dhcpv4_packet_ref(pack);
 			triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_decline, pack);
 		}
