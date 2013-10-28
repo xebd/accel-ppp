@@ -1822,12 +1822,6 @@ static int l2tp_send_ICCN(struct l2tp_sess_t *sess)
 		return -1;
 	}
 
-	if (l2tp_packet_add_int16(pack, Assigned_Session_ID,
-				  sess->sid, 1) < 0) {
-		log_session(log_error, sess, "impossible to send ICCN:"
-			    " adding data to packet failed\n");
-		goto out_err;
-	}
 	if (l2tp_packet_add_int32(pack, TX_Speed, 1000, 1) < 0) {
 		log_session(log_error, sess, "impossible to send ICCN:"
 			    " adding data to packet failed\n");
