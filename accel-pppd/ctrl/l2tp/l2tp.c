@@ -3786,12 +3786,6 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 		return CLI_CMD_SYNTAX;
 	}
 
-	if (iprange_client_check(peer.sin_addr.s_addr) < 0) {
-		cli_sendv(client, "peer address %s out of IP range\r\n",
-			  fields[peer_indx]);
-		return CLI_CMD_INVAL;
-	}
-
 	conn = l2tp_tunnel_alloc(&peer, &host, 3, lns_mode, 0, hide_avps);
 	if (conn == NULL) {
 		cli_send(client, "tunnel allocation failed\r\n");
