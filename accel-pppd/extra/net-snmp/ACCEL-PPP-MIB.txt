@@ -33,6 +33,7 @@ statPPP           OBJECT IDENTIFIER ::= { accelPPPStat 2 }
 statPPTP          OBJECT IDENTIFIER ::= { accelPPPStat 3 }
 statL2TP          OBJECT IDENTIFIER ::= { accelPPPStat 4 }
 statPPPOE         OBJECT IDENTIFIER ::= { accelPPPStat 5 }
+statIPOE          OBJECT IDENTIFIER ::= { accelPPPStat 6 }
 --statRadius        OBJECT IDENTIFIER ::= { accelPPPStat 6 }
 
 
@@ -155,6 +156,27 @@ statPPPOEActive OBJECT-TYPE
 			"count of active connections"
     ::= { statPPPOE 2 }
 
+--
+-- IPOE stats
+--
+
+statIPOEStarting OBJECT-TYPE
+    SYNTAX      INTEGER
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"count of connections which are
+			in starting phase"
+    ::= { statIPOE 1 }
+
+statIPOEActive OBJECT-TYPE
+    SYNTAX      INTEGER
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"count of active connections"
+    ::= { statIPOE 2 }
+
 
 --
 -- PPP session table
@@ -227,6 +249,7 @@ sesType OBJECT-TYPE
 									pptp(1),
 									l2tp(2),
 									pppoe(3)
+									ipoe(4)
 		            }
     MAX-ACCESS  read-only
     STATUS      current
