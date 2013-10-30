@@ -91,10 +91,11 @@ struct rc2_key { unsigned xkey[64]; };
 struct des_key {
     ulong32 ek[32], dk[32];
 };
-
+#ifdef LTC_DES3
 struct des3_key {
     ulong32 ek[3][32], dk[3][32];
 };
+#endif
 #endif
 
 #ifdef LTC_CAST5
@@ -141,10 +142,11 @@ struct multi2_key {
 typedef union Symmetric_key {
 #ifdef LTC_DES
    struct des_key des;
+#ifdef LTC_DES3
    struct des3_key des3;
 #endif
+#endif
 #ifdef LTC_RC2
-	 aa
    struct rc2_key rc2;
 #endif
 #ifdef LTC_SAFER
@@ -667,13 +669,16 @@ int des_ecb_decrypt(const unsigned char *ct, unsigned char *pt, symmetric_key *s
 int des_test(void);
 void des_done(symmetric_key *skey);
 int des_keysize(int *keysize);
+extern const struct ltc_cipher_descriptor des_desc;
+#ifdef LTC_DES3
 int des3_setup(const unsigned char *key, int keylen, int num_rounds, symmetric_key *skey);
 int des3_ecb_encrypt(const unsigned char *pt, unsigned char *ct, symmetric_key *skey);
 int des3_ecb_decrypt(const unsigned char *ct, unsigned char *pt, symmetric_key *skey);
 int des3_test(void);
 void des3_done(symmetric_key *skey);
 int des3_keysize(int *keysize);
-extern const struct ltc_cipher_descriptor des_desc, des3_desc;
+extern const struct ltc_cipher_descriptor des3_desc;
+#endif
 #endif
 
 #ifdef LTC_CAST5

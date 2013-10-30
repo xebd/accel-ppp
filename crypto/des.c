@@ -34,6 +34,7 @@ const struct ltc_cipher_descriptor des_desc =
     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
 };
 
+#ifdef LTC_DES3
 const struct ltc_cipher_descriptor des3_desc =
 {
     "3des",
@@ -47,6 +48,7 @@ const struct ltc_cipher_descriptor des3_desc =
     &des3_keysize,
     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL
 };
+#endif
 
 static const ulong32 bytebit[8] =
 {
@@ -1545,6 +1547,7 @@ int des_setup(const unsigned char *key, int keylen, int num_rounds, symmetric_ke
     return CRYPT_OK;
 }
 
+#ifdef LTC_DES3
  /**
     Initialize the 3LTC_DES-EDE block cipher
     @param key The symmetric key you wish to pass
@@ -1576,6 +1579,7 @@ int des3_setup(const unsigned char *key, int keylen, int num_rounds, symmetric_k
 
     return CRYPT_OK;
 }
+#endif
 
 /**
   Encrypts a block of text with LTC_DES
@@ -1619,6 +1623,7 @@ int des_ecb_decrypt(const unsigned char *ct, unsigned char *pt, symmetric_key *s
     return CRYPT_OK;
 }
 
+#ifdef LTC_DES3
 /**
   Encrypts a block of text with 3LTC_DES-EDE
   @param pt The input plaintext (8 bytes)
@@ -1665,6 +1670,7 @@ int des3_ecb_decrypt(const unsigned char *ct, unsigned char *pt, symmetric_key *
     STORE32H(work[1],pt+4);
     return CRYPT_OK;
 }
+#endif
 
 /**
   Performs a self-test of the LTC_DES block cipher
@@ -1813,6 +1819,7 @@ int des_test(void)
   #endif
 }
 
+#ifdef LTC_DES3
 int des3_test(void)
 {
  #ifndef LTC_TEST
@@ -1848,6 +1855,7 @@ int des3_test(void)
    return CRYPT_OK;
  #endif
 }
+#endif
 
 /** Terminate the context 
    @param skey    The scheduled key
@@ -1856,12 +1864,14 @@ void des_done(symmetric_key *skey)
 {
 }
 
+#ifdef LTC_DES3
 /** Terminate the context 
    @param skey    The scheduled key
 */
 void des3_done(symmetric_key *skey)
 {
 }
+#endif
 
 
 /**
@@ -1879,6 +1889,7 @@ int des_keysize(int *keysize)
     return CRYPT_OK;
 }
 
+#ifdef LTC_DES3
 /**
   Gets suitable key size
   @param keysize [in/out] The length of the recommended key (in bytes).  This function will store the suitable size back in this variable.
@@ -1893,6 +1904,7 @@ int des3_keysize(int *keysize)
     *keysize = 24;
     return CRYPT_OK;
 }
+#endif
 
 #endif
 

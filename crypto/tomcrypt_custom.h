@@ -16,6 +16,7 @@
 #define LTC_MD5
 #define LTC_SHA1
 #define LTC_DES
+#undef  LTC_DES3
 
 /* macros for various libc functions you can change for embedded targets */
 #ifndef XMALLOC
@@ -88,6 +89,7 @@
    #define LTC_RIJNDAEL
    #define LTC_BLOWFISH
    #define LTC_DES
+   #define LTC_DES3
    #define LTC_CAST5
    
    #define LTC_NO_MODES
@@ -163,6 +165,7 @@
 /* #define LTC_TWOFISH_SMALL */
 /* LTC_DES includes EDE triple-LTC_DES */
 #define LTC_DES
+#define LTC_DES3
 #define LTC_CAST5
 #define LTC_NOEKEON
 #define LTC_SKIPJACK

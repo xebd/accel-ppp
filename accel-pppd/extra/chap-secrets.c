@@ -30,11 +30,13 @@ static int conf_netmask;
 static void *pd_key;
 static struct ipdb_t ipdb;
 
+#ifdef CRYPTO_OPENSSL
 struct hash_chain
 {
 	struct list_head entry;
 	const EVP_MD *md;
 };
+#endif
 
 struct cs_pd_t
 {
@@ -44,7 +46,9 @@ struct cs_pd_t
 	char *rate;
 };
 
+#ifdef CRYPTO_OPENSSL
 static LIST_HEAD(hash_chain);
+#endif
 
 static char *skip_word(char *ptr)
 {

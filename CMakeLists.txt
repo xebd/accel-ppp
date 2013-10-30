@@ -6,7 +6,7 @@ project(accel-ppp C)
 
 include(cmake/cpack.cmake)
 
-SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fvisibility=hidden -fno-strict-aliasing -D_GNU_SOURCE -fPIC -rdynamic")
+SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fno-strict-aliasing -D_GNU_SOURCE -fPIC -rdynamic")
 
 IF (NOT DEFINED LIB_SUFFIX)
 	EXECUTE_PROCESS(
@@ -50,7 +50,8 @@ if (NOT BUILD_DRIVER_ONLY)
 		set(crypto_lib crypto ssl)
 	elseif (CRYPTO STREQUAL TOMCRYPT)
 		add_definitions(-DCRYPTO_TOMCRYPT)
-		set(crypto_lib tomcrypt)
+		INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/crypto)
+		set(crypto_lib tomcrypt internal-crypto)
 	elseif (CRYPTO STREQUAL INTERNAL)
 		INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/crypto)
 		set(crypto_lib internal-crypto)
