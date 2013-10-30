@@ -10,6 +10,7 @@ SET(sources
 	statPPP.c
 	statPPPOE.c
 	statPPTP.c
+	statIPOE.c
 	terminate.c
 	shutdown.c
 	exec_cli.c

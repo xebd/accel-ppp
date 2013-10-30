@@ -1822,12 +1822,6 @@ static int l2tp_send_ICCN(struct l2tp_sess_t *sess)
 		return -1;
 	}
 
-	if (l2tp_packet_add_int16(pack, Assigned_Session_ID,
-				  sess->sid, 1) < 0) {
-		log_session(log_error, sess, "impossible to send ICCN:"
-			    " adding data to packet failed\n");
-		goto out_err;
-	}
 	if (l2tp_packet_add_int32(pack, TX_Speed, 1000, 1) < 0) {
 		log_session(log_error, sess, "impossible to send ICCN:"
 			    " adding data to packet failed\n");
@@ -3784,12 +3778,6 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 	if (peer_indx < 0) {
 		cli_sendv(client, "missing option \"peer-addr\"\r\n");
 		return CLI_CMD_SYNTAX;
-	}
-
-	if (iprange_client_check(peer.sin_addr.s_addr) < 0) {
-		cli_sendv(client, "peer address %s out of IP range\r\n",
-			  fields[peer_indx]);
-		return CLI_CMD_INVAL;
 	}
 
 	conn = l2tp_tunnel_alloc(&peer, &host, 3, lns_mode, 0, hide_avps);

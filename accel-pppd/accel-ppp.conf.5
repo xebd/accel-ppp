@@ -347,6 +347,17 @@ vlan-mon=eth1,2,5,10,20-30
 .TP
 .BI "vlan-timeout=" n
 Specifies time of vlan inactivity before it will be removed (seconds).
+.TP
+.BI "vlan-name=" pattern
+Specifies pattern of vlan interface name. Pattern may contain following macros:
+.br
+.B %I
+- name of patern interface.
+.br
+.B %N
+- number of vlan.
+.br
+By default vlan-name=%I.%N.
 .SH [dns]
 .TP
 .BI "dns1=" x.x.x.x

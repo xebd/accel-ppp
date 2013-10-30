@@ -132,6 +132,7 @@ static int conf_verbose;
 static const char *conf_agent_remote_id;
 static int conf_proto;
 static LIST_HEAD(conf_offer_delay);
+static const char *conf_vlan_name;
 
 static unsigned int stat_starting;
 static unsigned int stat_active;
@@ -1846,6 +1847,32 @@ static int get_offer_delay()
 	return 0;
 }
 
+static int make_vlan_name(const char *parent, int vid, char *name)
+{
+	char *ptr1 = name, *endptr = name + IFNAMSIZ - 1;
+	const char *ptr2 = conf_vlan_name;
+	char num[5], *ptr3 = num;
+
+	sprintf(num, "%i", vid);
+
+	while (ptr1 < endptr && *ptr2) {
+		if (ptr2[0] == '%' && ptr2[1] == 'I') {
+			while (ptr1 < endptr && *parent)
+				*ptr1++ = *parent++;
+			ptr2 += 2;
+		} else if (ptr2[0] == '%' && ptr2[1] == 'N') {
+			while (ptr1 < endptr && *ptr3)
+				*ptr1++ = *ptr3++;
+			ptr2 += 2;
+		} else
+			*ptr1++ = *ptr2++;
+	}
+
+	*ptr1 = 0;
+
+	return ptr1 == endptr;
+}
+
 void ipoe_vlan_notify(int ifindex, int vid)
 {
 	struct conf_sect_t *sect = conf_get_section("ipoe");
@@ -1857,6 +1884,7 @@ void ipoe_vlan_notify(int ifindex, int vid)
 	const char *pcre_err;
 	char *pattern;
 	int pcre_offset;
+	char ifname[IFNAMSIZ];
 
 	if (!sect)
 		return;
@@ -1868,12 +1896,12 @@ void ipoe_vlan_notify(int ifindex, int vid)
 		return;
 	}
 	
-	if (strlen(ifr.ifr_name) + 5 >= sizeof(ifr.ifr_name)) {
+	if (make_vlan_name(ifr.ifr_name, vid, ifname)) {
 		log_error("ipoe: vlan-mon: %s.%i: interface name is too long\n", ifr.ifr_name, vid);
 		return;
 	}
-	
-	sprintf(ifr.ifr_name + strlen(ifr.ifr_name), ".%i", vid);
+
+	strcpy(ifr.ifr_name, ifname);
 	len = strlen(ifr.ifr_name);
 
 	log_info2("ipoe: create vlan %s\n", ifr.ifr_name);
@@ -2857,6 +2885,10 @@ static void load_config(void)
 		conf_offer_timeout = 10;
 	
 	conf_ip_pool = conf_get_opt("ipoe", "ip-pool");
+
+	conf_vlan_name = conf_get_opt("ipoe", "vlan-name");
+	if (!conf_vlan_name)
+		conf_vlan_name = "%I.%N";
 	
 #ifdef RADIUS
 	if (triton_module_loaded("radius"))
