@@ -939,7 +939,7 @@ static void ipoe_session_finished(struct ap_session *s)
 	if (ses->relay_addr && ses->serv->dhcpv4_relay)
 		dhcpv4_relay_send_release(ses->serv->dhcpv4_relay, ses->hwaddr, ses->xid, ses->yiaddr, ses->client_id, ses->relay_agent, ses->serv->ifname, conf_agent_remote_id);
 
-	if (s->ipv4) {
+	if (s->ipv4 && s->ipv4->owner) {
 		ipdb_put_ipv4(s, s->ipv4);
 		s->ipv4 = NULL;
 	}
