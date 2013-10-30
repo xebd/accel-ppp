@@ -377,9 +377,71 @@ int __export iproute_del(int ifindex, in_addr_t dst, int proto)
 	return 0;
 }
 
-int __export iprule_add(uint32_t addr, int table)
+in_addr_t __export iproute_get(in_addr_t dst)
 {
 	struct ipaddr_req {
+		struct nlmsghdr n;
+		struct rtmsg r;
+		char buf[1024];
+	} req;
+	struct rtmsg *r;
+	struct rtattr *tb[RTA_MAX+1];
+	int len;
+	in_addr_t res = 0;
+
+	if (!rth)
+		open_rth();
+	
+	if (!rth)
+		return -1;
+
+	memset(&req, 0, sizeof(req) - 1024);
+	
+	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
+	req.n.nlmsg_flags = NLM_F_REQUEST;
+	req.n.nlmsg_type = RTM_GETROUTE;
+	req.r.rtm_family = AF_INET;
+	req.r.rtm_table = 0;
+	req.r.rtm_protocol = 0;
+	req.r.rtm_scope = 0;
+	req.r.rtm_type = 0;
+	req.r.rtm_tos = 0;
+	req.r.rtm_src_len = 0;
+	req.r.rtm_dst_len = 32;
+
+	addattr32(&req.n, 1024, RTA_DST, dst);
+
+	if (rtnl_talk(rth, &req.n, 0, 0, &req.n, NULL, NULL, 0) < 0) {
+		log_error("failed to detect route to server\n");
+		goto out;
+	}
+
+	r = NLMSG_DATA(&req.n);
+	len = req.n.nlmsg_len;
+	
+	if (req.n.nlmsg_type != RTM_NEWROUTE) {
+		log_error("failed to detect route to server (wrong netlink message type)");
+		goto out;
+	}
+
+	len -= NLMSG_LENGTH(sizeof(*r));
+	if (len < 0) {
+		log_error("failed to detect route to server (wrong netlink message length)");
+		goto out;
+	}
+
+	parse_rtattr(tb, RTA_MAX, RTM_RTA(r), len);
+		
+	if (tb[RTA_PREFSRC])
+		res = *(uint32_t *)RTA_DATA(tb[RTA_PREFSRC]);
+			
+out:
+	return res;
+}
+
+int __export iprule_add(uint32_t addr, int table)
+{
+	struct {
 		struct nlmsghdr n;
 		struct rtmsg i;
 		char buf[1024];

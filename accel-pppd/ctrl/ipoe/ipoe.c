@@ -640,8 +640,27 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 		ses->timer.period = 0;
 		ses->timer.expire_tv.tv_sec = conf_offer_timeout;
 		triton_timer_add(&ses->ctx, &ses->timer, 0);
-	} else
+	} else {
+		if (!ses->siaddr)
+			find_gw_addr(ses);
+		
+		if (!ses->siaddr)
+			ses->siaddr = ses->serv->opt_src;
+
+		if (!ses->siaddr)
+			ses->siaddr = iproute_get(ses->yiaddr);
+
+		if (!ses->siaddr) {
+			log_ppp_error("can't determine local address\n");
+			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 0);
+			return;
+		}
+		
+		if (ses->ses.ipv4 && !ses->ses.ipv4->addr)
+			ses->ses.ipv4->addr = ses->siaddr;
+
 		__ipoe_session_activate(ses);
+	}
 }
 
 static void ipoe_serv_add_addr(struct ipoe_serv *serv, in_addr_t addr)
