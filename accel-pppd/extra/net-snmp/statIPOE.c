@@ -31,8 +31,8 @@ init_statIPOE(void)
   netsnmp_handler_registration *reg;
   netsnmp_watcher_info         *winfo;
 
-    static oid statIPOEStarting_oid[] = { 1,3,6,1,4,1,8072,100,1,5,1 };
-    static oid statIPOEActive_oid[] = { 1,3,6,1,4,1,8072,100,1,5,2 };
+    static oid statIPOEStarting_oid[] = { 1,3,6,1,4,1,8072,100,1,6,1 };
+    static oid statIPOEActive_oid[] = { 1,3,6,1,4,1,8072,100,1,6,2 };
 
   /*
    * a debugging statement.  Run the agent with -DstatIPOE to see
