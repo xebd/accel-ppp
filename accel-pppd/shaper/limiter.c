@@ -464,6 +464,8 @@ int remove_limiter(struct ap_session *ses)
 	if (conf_up_limiter == LIM_HTB)
 		remove_htb_ifb(&rth, ses->ifindex, ses->unit_idx + 1);
 
+	rtnl_close(&rth);
+
 	return 0;
 }
 
