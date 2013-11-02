@@ -464,6 +464,8 @@ int remove_limiter(struct ppp_t *ppp)
 	if (conf_up_limiter == LIM_HTB)
 		remove_htb_ifb(&rth, ppp->ifindex, ppp->unit_idx + 1);
 
+	rtnl_close(&rth);
+
 	return 0;
 }
 
