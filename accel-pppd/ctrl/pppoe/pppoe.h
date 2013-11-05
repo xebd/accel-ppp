@@ -95,6 +95,7 @@ extern char *conf_service_name;
 extern char *conf_ac_name;
 extern char *conf_pado_delay;
 
+extern unsigned int stat_starting;
 extern unsigned int stat_active;
 extern unsigned int stat_delayed_pado;
 extern unsigned long stat_PADI_recv;
