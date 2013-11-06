@@ -104,6 +104,7 @@ extern unsigned long stat_PADR_recv;
 extern unsigned long stat_PADR_dup_recv;
 extern unsigned long stat_PADS_sent;
 extern unsigned long stat_PADI_drop;
+extern unsigned long stat_filtered;
 
 extern pthread_rwlock_t serv_lock;
 extern struct list_head serv_list;

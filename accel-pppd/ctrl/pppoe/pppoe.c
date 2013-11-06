@@ -105,6 +105,7 @@ unsigned long stat_PADR_recv;
 unsigned long stat_PADR_dup_recv;
 unsigned long stat_PADS_sent;
 unsigned int total_padi_cnt;
+unsigned long stat_filtered;
 
 pthread_rwlock_t serv_lock = PTHREAD_RWLOCK_INITIALIZER;
 LIST_HEAD(serv_list);
@@ -1055,8 +1056,10 @@ static int pppoe_serv_read(struct triton_md_handler_t *h)
 			continue;
 		}
 
-		if (mac_filter_check(ethhdr->h_source))
+		if (mac_filter_check(ethhdr->h_source)) {
+			__sync_add_and_fetch(&stat_filtered, 1);
 			continue;
+		}
 
 		if (memcmp(ethhdr->h_dest, bc_addr, ETH_ALEN) && memcmp(ethhdr->h_dest, serv->hwaddr, ETH_ALEN))
 			continue;

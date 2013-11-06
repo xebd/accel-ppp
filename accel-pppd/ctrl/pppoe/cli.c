@@ -97,6 +97,7 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	cli_sendv(client, "  sent PADO: %lu\r\n", stat_PADO_sent);
 	cli_sendv(client, "  recv PADR(dup): %lu(%lu)\r\n", stat_PADR_recv, stat_PADR_dup_recv);
 	cli_sendv(client, "  sent PADS: %lu\r\n", stat_PADS_sent);
+	cli_sendv(client, "  filtered: %lu\r\n", stat_filtered);
 
 	return CLI_CMD_OK;
 }
