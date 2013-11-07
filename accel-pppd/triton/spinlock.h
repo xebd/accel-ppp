@@ -31,11 +31,11 @@ typedef volatile int __attribute__((aligned)) spinlock_t;
 #else
 
 #include <pthread.h>
-typedef pthread_mutex_t spinlock_t;
-#define spin_lock(l) pthread_mutex_lock(l)
-#define spin_unlock(l) pthread_mutex_unlock(l)
-#define SPINLOCK_INITIALIZER PTHREAD_MUTEX_INITIALIZER
-#define spinlock_init(l) pthread_mutex_init(l,NULL)
+typedef pthread_spinlock_t spinlock_t;
+#define spin_lock(l) pthread_spin_lock(l)
+#define spin_unlock(l) pthread_spin_unlock(l)
+#define SPINLOCK_INITIALIZER 1
+#define spinlock_init(l) pthread_spin_init(l, 0)
 #endif
 
 #endif
