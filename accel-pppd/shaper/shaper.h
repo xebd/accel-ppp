@@ -30,6 +30,7 @@ extern double conf_down_burst_factor;
 extern double conf_up_burst_factor;
 extern double conf_latency;
 extern int conf_mpu;
+extern int conf_mtu;
 extern int conf_quantum;
 extern int conf_r2q;
 extern int conf_cburst;

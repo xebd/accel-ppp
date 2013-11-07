@@ -36,6 +36,7 @@ double conf_down_burst_factor = 0.1;
 double conf_up_burst_factor = 1;
 double conf_latency = 0.05;
 int conf_mpu = 0;
+int conf_mtu = 0;
 int conf_quantum = 1500;
 int conf_r2q = 10;
 int conf_cburst = 1534;
@@ -897,6 +898,12 @@ static void load_config(void)
 	opt = conf_get_opt("shaper", "mpu");
 	if (opt && atoi(opt) >= 0)
 		conf_mpu = atoi(opt);
+
+	opt = conf_get_opt("shaper", "mtu");
+	if (opt)
+		conf_mtu = atoi(opt);
+	else
+		conf_mtu = 0;
 
 	opt = conf_get_opt("shaper", "r2q");
 	if (opt && atoi(opt) >= 0)
