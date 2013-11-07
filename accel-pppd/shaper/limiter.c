@@ -25,7 +25,6 @@ static int qdisc_tbf(struct qdisc_opt *qopt, struct nlmsghdr *n)
 {
 	struct tc_tbf_qopt opt;
 	__u32 rtab[256];
-	int mtu = 0;
 	int Rcell_log = -1;
 	unsigned int linklayer = LINKLAYER_ETHERNET; /* Assume ethernet */
 	struct rtattr *tail;
@@ -35,7 +34,7 @@ static int qdisc_tbf(struct qdisc_opt *qopt, struct nlmsghdr *n)
 	opt.rate.rate = qopt->rate;
 	opt.limit = (double)qopt->rate * qopt->latency + qopt->buffer;
 	opt.rate.mpu = conf_mpu;
-	if (tc_calc_rtable(&opt.rate, rtab, Rcell_log, mtu, linklayer) < 0) {
+	if (tc_calc_rtable(&opt.rate, rtab, Rcell_log, conf_mtu, linklayer) < 0) {
 		log_ppp_error("shaper: failed to calculate rate table.\n");
 		return -1;
 	}
@@ -73,7 +72,7 @@ static int qdisc_htb_class(struct qdisc_opt *qopt, struct nlmsghdr *n)
 	struct tc_htb_opt opt;
 	__u32 rtab[256],ctab[256];
 	int cell_log=-1,ccell_log = -1;
-	unsigned mtu = 1600;
+	unsigned mtu = conf_mtu ? conf_mtu : 1600;
 	unsigned int linklayer  = LINKLAYER_ETHERNET; /* Assume ethernet */
 	struct rtattr *tail;
 
@@ -190,7 +189,7 @@ static int install_police(struct rtnl_handle *rth, int ifindex, int rate, int bu
 	__u32 rtab[256];
 	struct rtattr *tail, *tail1, *tail2, *tail3;
 	int Rcell_log = -1;
-	int mtu = 0, flowid = 1;
+	int mtu = conf_mtu, flowid = 1;
 	unsigned int linklayer  = LINKLAYER_ETHERNET; /* Assume ethernet */
 
 	struct {
