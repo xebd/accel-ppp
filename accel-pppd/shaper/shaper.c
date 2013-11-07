@@ -431,7 +431,7 @@ static void ev_ppp_finishing(struct ap_session *ses)
 		if (pd->down_speed || pd->up_speed)
 			remove_limiter(ses);
 
-		if (--pd->refs == 0) {
+		if (__sync_sub_and_fetch(&pd->refs, 1) == 0) {
 			clear_tr_pd(pd);
 			_free(pd);
 		} else
@@ -447,6 +447,9 @@ static void shaper_change_help(char * const *f, int f_cnt, void *cli)
 
 static void shaper_change(struct shaper_pd_t *pd)
 {
+	if (!pd->ses || pd->ses->terminating)
+		goto out;
+
 	if (pd->down_speed || pd->up_speed)
 		remove_limiter(pd->ses);
 
@@ -461,6 +464,12 @@ static void shaper_change(struct shaper_pd_t *pd)
 	} else {
 		pd->down_speed = 0;
 		pd->up_speed = 0;
+	}
+	
+out:
+	if (__sync_sub_and_fetch(&pd->refs, 1) == 0) {
+		clear_tr_pd(pd);
+		_free(pd);
 	}
 }
 
@@ -511,6 +520,7 @@ static int shaper_change_exec(const char *cmd, char * const *f, int f_cnt, void 
 				pd->cur_tr->up_speed = up_speed;
 				pd->cur_tr->up_burst = up_burst;
 			}
+			__sync_add_and_fetch(&pd->refs, 1);
 			triton_context_call(pd->ses->ctrl->ctx, (triton_event_func)shaper_change, pd);
 			if (!all) {
 				found = 1;
@@ -534,6 +544,9 @@ static void shaper_restore_help(char * const *f, int f_cnt, void *cli)
 
 static void shaper_restore(struct shaper_pd_t *pd)
 {
+	if (!pd->ses || pd->ses->terminating)
+		goto out;
+
 	remove_limiter(pd->ses);
 
 	if (pd->cur_tr) {
@@ -543,6 +556,12 @@ static void shaper_restore(struct shaper_pd_t *pd)
 	} else {
 		pd->down_speed = 0;
 		pd->up_speed = 0;
+	}
+
+out:
+	if (__sync_sub_and_fetch(&pd->refs, 1) == 0) {
+		clear_tr_pd(pd);
+		_free(pd);
 	}
 }
 
@@ -570,6 +589,7 @@ static int shaper_restore_exec(const char *cmd, char * const *f, int f_cnt, void
 		if (all || !strcmp(f[2], pd->ses->ifname)) {
 			pd->temp_down_speed = 0;
 			pd->temp_up_speed = 0;
+			__sync_add_and_fetch(&pd->refs, 1);
 			triton_context_call(pd->ses->ctrl->ctx, (triton_event_func)shaper_restore, pd);
 			if (!all) {
 				found = 1;
@@ -648,7 +668,7 @@ static void update_shaper_tr(struct shaper_pd_t *pd)
 	}
 
 out:
-	if (--pd->refs == 0) {
+	if (__sync_sub_and_fetch(&pd->refs, 1) == 0) {
 		clear_tr_pd(pd);
 		_free(pd);
 	}
@@ -665,7 +685,7 @@ static void time_range_begin_timer(struct triton_timer_t *t)
 
 	pthread_rwlock_rdlock(&shaper_lock);
 	list_for_each_entry(pd, &shaper_list, entry) {
-		pd->refs++;
+		__sync_add_and_fetch(&pd->refs, 1);
 		triton_context_call(pd->ses->ctrl->ctx, (triton_event_func)update_shaper_tr, pd);
 	}
 	pthread_rwlock_unlock(&shaper_lock);
@@ -681,7 +701,7 @@ static void time_range_end_timer(struct triton_timer_t *t)
 
 	pthread_rwlock_rdlock(&shaper_lock);
 	list_for_each_entry(pd, &shaper_list, entry) {
-		pd->refs++;
+		__sync_add_and_fetch(&pd->refs, 1);
 		triton_context_call(pd->ses->ctrl->ctx, (triton_event_func)update_shaper_tr, pd);
 	}
 	pthread_rwlock_unlock(&shaper_lock);
