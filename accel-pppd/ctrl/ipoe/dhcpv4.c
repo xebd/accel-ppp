@@ -183,9 +183,8 @@ struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifna
 	serv->hnd.read = dhcpv4_read;
 	serv->ifindex = ifindex;
 
-	str0 = opt ? strchr(opt, ',') : NULL;
-	if (str0) {
-		str0 = _strdup(str0 + 1);
+	if (opt) {
+		str0 = _strdup(opt);
 		str = str0;
 	
 		while (1) {
