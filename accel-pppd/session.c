@@ -43,7 +43,7 @@ int __export urandom_fd;
 int __export ap_shutdown;
 
 #if __WORDSIZE == 32
-static spinlock_t seq_lock;
+static spinlock_t seq_lock = SPINLOCK_INITIALIZER;
 #endif
 static long long unsigned seq;
 static struct timespec seq_ts;
