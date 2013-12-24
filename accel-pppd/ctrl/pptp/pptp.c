@@ -771,20 +771,16 @@ static void pptp_init(void)
 {
 	struct sockaddr_in addr;
 	char *opt;
-	int fd;
 
-	fd = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_PPTP);
-	if (fd >= 0)
-		close(fd);
-	else if (system("modprobe -q pptp"))
+	if (system("modprobe -q pptp"))
 		log_warn("failed to load pptp kernel module\n");
 
 	serv.hnd.fd = socket(PF_INET, SOCK_STREAM, 0);
-	if (serv.hnd.fd < 0) {
-		log_emerg("pptp: failed to create server socket: %s\n", strerror(errno));
-		return;
-	}
-
+  if (serv.hnd.fd < 0) {
+    log_emerg("pptp: failed to create server socket: %s\n", strerror(errno));
+    return;
+  }
+	
 	fcntl(serv.hnd.fd, F_SETFD, fcntl(serv.hnd.fd, F_GETFD) | FD_CLOEXEC);
   
 	addr.sin_family = AF_INET;
