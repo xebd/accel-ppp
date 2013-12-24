@@ -1261,7 +1261,12 @@ static void load_config(void)
 
 static void l2tp_init(void)
 {
-	if (system("modprobe -q pppol2tp || modprobe -q l2tp_ppp"))
+	int fd;
+
+	fd = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
+	if (fd >= 0)
+		close(fd);
+	else if (system("modprobe -q pppol2tp || modprobe -q l2tp_ppp"))
 		log_warn("unable to load l2tp kernel module\n");
 	
 	l2tp_conn = malloc(L2TP_MAX_TID * sizeof(void *));
