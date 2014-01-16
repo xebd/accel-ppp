@@ -32,8 +32,14 @@ static int tr101_send_request(struct pppoe_tag *tr101, struct rad_packet_t *pack
 		len = *ptr++;
 		if (ptr + len > endptr)
 			goto inval;
-		if (type && id > 0x80)
+
+		/* Section 4 of RFC 4679 states that attributes 0x83 to 0x8E
+		 * mustn't be included in RADIUS access requests.
+		 */
+		if (type && id > 0x82 && id < 0x90) {
+			ptr += len;
 			continue;
+		}
 		switch (id) {
 			case OPT_CIRCUIT_ID:
 				if (len > 63)
