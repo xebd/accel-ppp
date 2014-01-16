@@ -28,6 +28,7 @@
 #define OPT_MAX_INTER_DELAY_DOWN      0x8D
 #define OPT_ACTUAL_INTER_DELAY_DOWN   0x8E
 #define ACCESS_LOOP_ENCAP             0x90
+#define IFW_SESSION                   0xFE
 
 static int tr101_send_request(struct pppoe_tag *tr101, struct rad_packet_t *pack, int type)
 {
@@ -157,6 +158,12 @@ static int tr101_send_request(struct pppoe_tag *tr101, struct rad_packet_t *pack
 					goto inval;
 				memcpy(str, ptr, 3);
 				if (rad_packet_add_octets(pack, "ADSL-Forum", "Access-Loop-Encapsulation", (uint8_t *)str, 3))
+					return -1;
+				break;
+			case IFW_SESSION:
+				if (len != 0)
+					goto inval;
+				if (rad_packet_add_octets(pack, "ADSL-Forum", "IWF-Session", NULL, 0))
 					return -1;
 				break;
 		}
