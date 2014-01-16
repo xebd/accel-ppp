@@ -450,13 +450,17 @@ int __export rad_packet_add_octets(struct rad_packet_t *pack, const char *vendor
 	ra->vendor = vendor;
 	ra->attr = attr;
 	ra->len = len;
-	ra->val.octets = _malloc(len);
-	if (!ra->val.octets) {
-		log_emerg("radius: out of memory\n");
-		_free(ra);
-		return -1;
+
+	if (len) {
+		ra->val.octets = _malloc(len);
+		if (!ra->val.octets) {
+			log_emerg("radius: out of memory\n");
+			_free(ra);
+			return -1;
+		}
+		memcpy(ra->val.octets, val, len);
 	}
-	memcpy(ra->val.octets, val, len);
+
 	list_add_tail(&ra->entry, &pack->attrs);
 	pack->len += (vendor_name ? 8 : 2) + len;
 
@@ -476,7 +480,7 @@ int __export rad_packet_change_octets(struct rad_packet_t *pack, const char *ven
 			return -1;
 
 		ra->val.octets = _realloc(ra->val.octets, len);
-		if (!ra->val.octets) {
+		if (len && !ra->val.octets) {
 			log_emerg("radius: out of memory\n");
 			return -1;
 		}
@@ -485,7 +489,8 @@ int __export rad_packet_change_octets(struct rad_packet_t *pack, const char *ven
 		ra->len = len;
 	}
 
-	memcpy(ra->val.octets, val, len);
+	if (len)
+		memcpy(ra->val.octets, val, len);
 
 	return 0;
 }
