@@ -16,7 +16,7 @@
 #define OPT_ACTUAL_DATA_RATE_UP       0x81
 #define OPT_ACTUAL_DATA_RATE_DOWN     0x82
 #define OPT_MIN_DATA_RATE_UP          0x83
-#define OPT_MAX_DATA_RATE_DOWN        0x84
+#define OPT_MIN_DATA_RATE_DOWN        0x84
 
 static int tr101_send_request(struct pppoe_tag *tr101, struct rad_packet_t *pack, int type)
 {
@@ -69,10 +69,10 @@ static int tr101_send_request(struct pppoe_tag *tr101, struct rad_packet_t *pack
 				if (rad_packet_add_int(pack, "ADSL-Forum", "Minimum-Data-Rate-Upstream", ntohl(*(uint32_t *)ptr)))
 					return -1;
 				break;
-			case OPT_MAX_DATA_RATE_DOWN:
+			case OPT_MIN_DATA_RATE_DOWN:
 				if (len != 6)
 					goto inval;
-				if (rad_packet_add_int(pack, "ADSL-Forum", "Maximum-Data-Rate-Upstream", ntohl(*(uint32_t *)ptr)))
+				if (rad_packet_add_int(pack, "ADSL-Forum", "Minimum-Data-Rate-Downstream", ntohl(*(uint32_t *)ptr)))
 					return -1;
 				break;
 		}
