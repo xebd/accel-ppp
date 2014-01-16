@@ -58,25 +58,25 @@ static int tr101_send_request(struct pppoe_tag *tr101, struct rad_packet_t *pack
 					return -1;
 				break;
 			case OPT_ACTUAL_DATA_RATE_UP:
-				if (len != 6)
+				if (len != 4)
 					goto inval;
 				if (rad_packet_add_int(pack, "ADSL-Forum", "Actual-Data-Rate-Upstream", ntohl(*(uint32_t *)ptr)))
 					return -1;
 				break;
 			case OPT_ACTUAL_DATA_RATE_DOWN:
-				if (len != 6)
+				if (len != 4)
 					goto inval;
 				if (rad_packet_add_int(pack, "ADSL-Forum", "Actual-Data-Rate-Downstream", ntohl(*(uint32_t *)ptr)))
 					return -1;
 				break;
 			case OPT_MIN_DATA_RATE_UP:
-				if (len != 6)
+				if (len != 4)
 					goto inval;
 				if (rad_packet_add_int(pack, "ADSL-Forum", "Minimum-Data-Rate-Upstream", ntohl(*(uint32_t *)ptr)))
 					return -1;
 				break;
 			case OPT_MIN_DATA_RATE_DOWN:
-				if (len != 6)
+				if (len != 4)
 					goto inval;
 				if (rad_packet_add_int(pack, "ADSL-Forum", "Minimum-Data-Rate-Downstream", ntohl(*(uint32_t *)ptr)))
 					return -1;
