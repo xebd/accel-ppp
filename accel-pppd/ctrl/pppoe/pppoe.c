@@ -921,6 +921,17 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	
 	for (n = 0; n < ntohs(hdr->length); n += sizeof(*tag) + ntohs(tag->tag_len)) {
 		tag = (struct pppoe_tag *)(pack + ETH_HLEN + sizeof(*hdr) + n);
+
+		if (n + sizeof(*tag) > ntohs(hdr->length)) {
+			if (conf_verbose)
+				log_warn("pppoe: discard PADR packet (truncated tag)\n");
+			return;
+		}
+		if (n + sizeof(*tag) + ntohs(tag->tag_len) > ntohs(hdr->length)) {
+			if (conf_verbose)
+				log_warn("pppoe: discard PADR packet (invalid tag length)\n");
+			return;
+		}
 		switch (ntohs(tag->tag_type)) {
 			case TAG_END_OF_LIST:
 				break;
