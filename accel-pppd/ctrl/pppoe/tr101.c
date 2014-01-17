@@ -47,8 +47,11 @@ static int tr101_send_request(struct pppoe_tag *tr101, struct rad_packet_t *pack
 
 		/* Section 4 of RFC 4679 states that attributes 0x83 to 0x8E
 		 * mustn't be included in RADIUS access requests.
+		 * This is in contradiction with the TR-101 specification
+		 * which excludes attributes 0x85 to 0x90.
+		 * Here, we follow the TR-101 guidelines.
 		 */
-		if (type && id > 0x82 && id < 0x90) {
+		if (type && id >= 0x85 && id =< 0x90) {
 			ptr += len;
 			continue;
 		}
@@ -156,6 +159,19 @@ static int tr101_send_request(struct pppoe_tag *tr101, struct rad_packet_t *pack
 			case ACCESS_LOOP_ENCAP:
 				if (len != 3)
 					goto inval;
+				/* Each byte in this tag represents an
+				 * independent field: Data Link, Encaps 1
+				 * and Encaps 2.
+				 * TR-101 and RFC 4679 aggree on the meaning
+				 * of the Encaps 1 and Encaps 2 fields. For
+				 * Data Link, TR-101 states that 0 means AAL5
+				 * and 1 means Ethernet, while RFC 4679 says
+				 * AAL5 is 1 and Ethernet is 2.
+				 *
+				 * Currently, we build the RADIUS request using
+				 * the tag received from PPPoE (TR-101 format).
+				 * RFC 4679 format would require conversion.
+				 */
 				memcpy(str, ptr, 3);
 				if (rad_packet_add_octets(pack, "ADSL-Forum", "Access-Loop-Encapsulation", (uint8_t *)str, 3))
 					return -1;
