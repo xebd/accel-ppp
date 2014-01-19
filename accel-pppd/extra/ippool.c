@@ -487,6 +487,18 @@ static void parse_options(const char *opt, char **pool_name, char **allocator)
 		memcpy(*allocator, ptr1 + 10, len);
 		(*allocator)[len] = 0;
 	}
+
+	if (!*pool_name) {
+		ptr1 = strchr(opt, ',');
+		if (!ptr1)
+			return;
+
+		for (ptr2 = ptr1 + 1; *ptr2 && *ptr2 != '='; ptr2++);
+		if (*ptr2 == '=')
+			return;
+
+		*pool_name = _strdup(ptr1 + 1);
+	}
 }
 
 static void ippool_init1(void)
