@@ -51,7 +51,7 @@ static int tr101_send_request(struct pppoe_tag *tr101, struct rad_packet_t *pack
 		 * which excludes attributes 0x85 to 0x90.
 		 * Here, we follow the TR-101 guidelines.
 		 */
-		if (type && id >= 0x85 && id =< 0x90) {
+		if (type && id >= 0x85 && id <= 0x90) {
 			ptr += len;
 			continue;
 		}
