@@ -41,9 +41,9 @@ static int qdisc_tbf(struct qdisc_opt *qopt, struct nlmsghdr *n)
 	opt.buffer = tc_calc_xmittime(opt.rate.rate, qopt->buffer);
 
 	tail = NLMSG_TAIL(n);
-	addattr_l(n, 1024, TCA_OPTIONS, NULL, 0);
-	addattr_l(n, 2024, TCA_TBF_PARMS, &opt, sizeof(opt));
-	addattr_l(n, 3024, TCA_TBF_RTAB, rtab, 1024);
+	addattr_l(n, TCA_BUF_MAX, TCA_OPTIONS, NULL, 0);
+	addattr_l(n, TCA_BUF_MAX, TCA_TBF_PARMS, &opt, sizeof(opt));
+	addattr_l(n, TCA_BUF_MAX, TCA_TBF_RTAB, rtab, 1024);
 	tail->rta_len = (void *) NLMSG_TAIL(n) - (void *) tail;
 
 	return 0;
@@ -61,8 +61,8 @@ static int qdisc_htb_root(struct qdisc_opt *qopt, struct nlmsghdr *n)
 	opt.defcls = qopt->defcls;
 	
 	tail = NLMSG_TAIL(n);
-	addattr_l(n, 1024, TCA_OPTIONS, NULL, 0);
-	addattr_l(n, 2024, TCA_HTB_INIT, &opt, NLMSG_ALIGN(sizeof(opt)));
+	addattr_l(n, TCA_BUF_MAX, TCA_OPTIONS, NULL, 0);
+	addattr_l(n, TCA_BUF_MAX, TCA_HTB_INIT, &opt, NLMSG_ALIGN(sizeof(opt)));
 	tail->rta_len = (void *) NLMSG_TAIL(n) - (void *) tail;
 	return 0;
 }
@@ -96,10 +96,10 @@ static int qdisc_htb_class(struct qdisc_opt *qopt, struct nlmsghdr *n)
 	opt.cbuffer = tc_calc_xmittime(opt.ceil.rate, conf_cburst ? conf_cburst : qopt->buffer);
 	
 	tail = NLMSG_TAIL(n);
-	addattr_l(n, 1024, TCA_OPTIONS, NULL, 0);
-	addattr_l(n, 2024, TCA_HTB_PARMS, &opt, sizeof(opt));
-	addattr_l(n, 3024, TCA_HTB_RTAB, rtab, 1024);
-	addattr_l(n, 4024, TCA_HTB_CTAB, ctab, 1024);
+	addattr_l(n, TCA_BUF_MAX, TCA_OPTIONS, NULL, 0);
+	addattr_l(n, TCA_BUF_MAX, TCA_HTB_PARMS, &opt, sizeof(opt));
+	addattr_l(n, TCA_BUF_MAX, TCA_HTB_RTAB, rtab, 1024);
+	addattr_l(n, TCA_BUF_MAX, TCA_HTB_CTAB, ctab, 1024);
 	tail->rta_len = (void *) NLMSG_TAIL(n) - (void *) tail;
 	return 0;
 }
@@ -372,7 +372,7 @@ static int install_htb_ifb(struct rtnl_handle *rth, int ifindex, __u32 priority,
 	tail1->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)tail1;
   //
 
-	addattr32(&req.n, 4096, TCA_U32_CLASSID, 1);
+	addattr32(&req.n, TCA_BUF_MAX, TCA_U32_CLASSID, 1);
 	addattr_l(&req.n, MAX_MSG, TCA_U32_SEL, &sel, sizeof(sel));
 	tail->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)tail;
  	
@@ -534,9 +534,9 @@ int init_ifb(const char *name)
 	addattr_l(&req.n, sizeof(req), TCA_KIND, "flow", 5);
 
 	tail = NLMSG_TAIL(&req.n);
-	addattr_l(&req.n, 4096, TCA_OPTIONS, NULL, 0);
-	addattr32(&req.n, 4096, TCA_FLOW_KEYS, 1 << FLOW_KEY_PRIORITY);
-	addattr32(&req.n, 4096, TCA_FLOW_MODE, FLOW_MODE_MAP);
+	addattr_l(&req.n, TCA_BUF_MAX, TCA_OPTIONS, NULL, 0);
+	addattr32(&req.n, TCA_BUF_MAX, TCA_FLOW_KEYS, 1 << FLOW_KEY_PRIORITY);
+	addattr32(&req.n, TCA_BUF_MAX, TCA_FLOW_MODE, FLOW_MODE_MAP);
 	tail->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)tail;
 
 	r = rtnl_talk(&rth, &req.n, 0, 0, NULL, NULL, NULL, 0);

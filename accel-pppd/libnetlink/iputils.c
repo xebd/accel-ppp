@@ -119,7 +119,7 @@ int __export iplink_get_stats(int ifindex, struct rtnl_link_stats *stats)
 	struct iplink_req {
 		struct nlmsghdr n;
 		struct ifinfomsg i;
-		char buf[1024];
+		char buf[4096];
 	} req;
 	struct ifinfomsg *ifi;
 	int len;
@@ -131,7 +131,7 @@ int __export iplink_get_stats(int ifindex, struct rtnl_link_stats *stats)
 	if (!rth)
 		return -1;
 
-	memset(&req, 0, sizeof(req) - 1024);
+	memset(&req, 0, sizeof(req) - 4096);
 	
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
 	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
@@ -167,7 +167,7 @@ int __export iplink_vlan_add(const char *ifname, int ifindex, int vid)
 	struct iplink_req {
 		struct nlmsghdr n;
 		struct ifinfomsg i;
-		char buf[1024];
+		char buf[4096];
 	} req;
 	struct rtattr *linkinfo, *data;
 
@@ -177,23 +177,23 @@ int __export iplink_vlan_add(const char *ifname, int ifindex, int vid)
 	if (!rth)
 		return -1;
 
-	memset(&req, 0, sizeof(req) - 1024);
+	memset(&req, 0, sizeof(req) - 4096);
 	
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
 	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL;
 	req.n.nlmsg_type = RTM_NEWLINK;
 	req.i.ifi_family = AF_UNSPEC;
 	
-	addattr_l(&req.n, 1024, IFLA_LINK, &ifindex, 4);
-	addattr_l(&req.n, 1024, IFLA_IFNAME, ifname, strlen(ifname));
+	addattr_l(&req.n, 4096, IFLA_LINK, &ifindex, 4);
+	addattr_l(&req.n, 4096, IFLA_IFNAME, ifname, strlen(ifname));
 	
 	linkinfo = NLMSG_TAIL(&req.n);
-	addattr_l(&req.n, 1024, IFLA_LINKINFO, NULL, 0);
-	addattr_l(&req.n, 1024, IFLA_INFO_KIND, "vlan", 4);
+	addattr_l(&req.n, 4096, IFLA_LINKINFO, NULL, 0);
+	addattr_l(&req.n, 4096, IFLA_INFO_KIND, "vlan", 4);
 
 	data = NLMSG_TAIL(&req.n);
-	addattr_l(&req.n, 1024, IFLA_INFO_DATA, NULL, 0);
-	addattr_l(&req.n, 1024, IFLA_VLAN_ID, &vid, 2);
+	addattr_l(&req.n, 4096, IFLA_INFO_DATA, NULL, 0);
+	addattr_l(&req.n, 4096, IFLA_VLAN_ID, &vid, 2);
 	data->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)data;
 	
 	linkinfo->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)linkinfo;
@@ -209,7 +209,7 @@ int __export iplink_vlan_del(int ifindex)
 	struct iplink_req {
 		struct nlmsghdr n;
 		struct ifinfomsg i;
-		char buf[1024];
+		char buf[4096];
 	} req;
 	struct rtattr *linkinfo;
 
@@ -219,7 +219,7 @@ int __export iplink_vlan_del(int ifindex)
 	if (!rth)
 		return -1;
 
-	memset(&req, 0, sizeof(req) - 1024);
+	memset(&req, 0, sizeof(req) - 4096);
 	
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
 	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
@@ -228,11 +228,11 @@ int __export iplink_vlan_del(int ifindex)
 	req.i.ifi_index = ifindex;
 	
 	linkinfo = NLMSG_TAIL(&req.n);
-	addattr_l(&req.n, 1024, IFLA_LINKINFO, NULL, 0);
-	addattr_l(&req.n, 1024, IFLA_INFO_KIND, "vlan", 4);
+	addattr_l(&req.n, 4096, IFLA_LINKINFO, NULL, 0);
+	addattr_l(&req.n, 4096, IFLA_INFO_KIND, "vlan", 4);
 
 	/*data = NLMSG_TAIL(&req.n);
-	addattr_l(&req.n, 1024, IFLA_VLAN_ID, &vid, 2);
+	addattr_l(&req.n, 4096, IFLA_VLAN_ID, &vid, 2);
 	data->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)data;*/
 	
 	linkinfo->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)linkinfo;
@@ -248,7 +248,7 @@ int __export ipaddr_add(int ifindex, in_addr_t addr, int mask)
 	struct ipaddr_req {
 		struct nlmsghdr n;
 		struct ifaddrmsg i;
-		char buf[1024];
+		char buf[4096];
 	} req;
 
 	if (!rth)
@@ -257,7 +257,7 @@ int __export ipaddr_add(int ifindex, in_addr_t addr, int mask)
 	if (!rth)
 		return -1;
 
-	memset(&req, 0, sizeof(req) - 1024);
+	memset(&req, 0, sizeof(req) - 4096);
 	
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
 	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE;
@@ -279,7 +279,7 @@ int __export ipaddr_del(int ifindex, in_addr_t addr)
 	struct ipaddr_req {
 		struct nlmsghdr n;
 		struct ifaddrmsg i;
-		char buf[1024];
+		char buf[4096];
 	} req;
 
 	if (!rth)
@@ -288,7 +288,7 @@ int __export ipaddr_del(int ifindex, in_addr_t addr)
 	if (!rth)
 		return -1;
 
-	memset(&req, 0, sizeof(req) - 1024);
+	memset(&req, 0, sizeof(req) - 4096);
 	
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
 	req.n.nlmsg_flags = NLM_F_REQUEST;
@@ -310,7 +310,7 @@ int __export iproute_add(int ifindex, in_addr_t src, in_addr_t dst, int proto)
 	struct ipaddr_req {
 		struct nlmsghdr n;
 		struct rtmsg i;
-		char buf[1024];
+		char buf[4096];
 	} req;
 
 	if (!rth)
@@ -319,7 +319,7 @@ int __export iproute_add(int ifindex, in_addr_t src, in_addr_t dst, int proto)
 	if (!rth)
 		return -1;
 
-	memset(&req, 0, sizeof(req) - 1024);
+	memset(&req, 0, sizeof(req) - 4096);
 	
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
 	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE;
@@ -347,7 +347,7 @@ int __export iproute_del(int ifindex, in_addr_t dst, int proto)
 	struct ipaddr_req {
 		struct nlmsghdr n;
 		struct rtmsg i;
-		char buf[1024];
+		char buf[4096];
 	} req;
 
 	if (!rth)
@@ -356,7 +356,7 @@ int __export iproute_del(int ifindex, in_addr_t dst, int proto)
 	if (!rth)
 		return -1;
 
-	memset(&req, 0, sizeof(req) - 1024);
+	memset(&req, 0, sizeof(req) - 4096);
 	
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
 	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
@@ -382,7 +382,7 @@ in_addr_t __export iproute_get(in_addr_t dst)
 	struct ipaddr_req {
 		struct nlmsghdr n;
 		struct rtmsg r;
-		char buf[1024];
+		char buf[4096];
 	} req;
 	struct rtmsg *r;
 	struct rtattr *tb[RTA_MAX+1];
@@ -395,7 +395,7 @@ in_addr_t __export iproute_get(in_addr_t dst)
 	if (!rth)
 		return -1;
 
-	memset(&req, 0, sizeof(req) - 1024);
+	memset(&req, 0, sizeof(req) - 4096);
 	
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
 	req.n.nlmsg_flags = NLM_F_REQUEST;
@@ -409,7 +409,7 @@ in_addr_t __export iproute_get(in_addr_t dst)
 	req.r.rtm_src_len = 0;
 	req.r.rtm_dst_len = 32;
 
-	addattr32(&req.n, 1024, RTA_DST, dst);
+	addattr32(&req.n, 4096, RTA_DST, dst);
 
 	if (rtnl_talk(rth, &req.n, 0, 0, &req.n, NULL, NULL, 0) < 0) {
 		log_error("failed to detect route to server\n");
@@ -444,7 +444,7 @@ int __export iprule_add(uint32_t addr, int table)
 	struct {
 		struct nlmsghdr n;
 		struct rtmsg i;
-		char buf[1024];
+		char buf[4096];
 	} req;
 
 	if (!rth)
@@ -453,7 +453,7 @@ int __export iprule_add(uint32_t addr, int table)
 	if (!rth)
 		return -1;
 
-	memset(&req, 0, sizeof(req) - 1024);
+	memset(&req, 0, sizeof(req) - 4096);
 	
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
 	req.n.nlmsg_flags = NLM_F_REQUEST;
@@ -480,7 +480,7 @@ int __export iprule_del(uint32_t addr, int table)
 	struct ipaddr_req {
 		struct nlmsghdr n;
 		struct rtmsg i;
-		char buf[1024];
+		char buf[4096];
 	} req;
 
 	if (!rth)
@@ -489,7 +489,7 @@ int __export iprule_del(uint32_t addr, int table)
 	if (!rth)
 		return -1;
 
-	memset(&req, 0, sizeof(req) - 1024);
+	memset(&req, 0, sizeof(req) - 4096);
 	
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
 	req.n.nlmsg_flags = NLM_F_REQUEST;

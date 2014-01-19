@@ -32,7 +32,7 @@ static int __ipset_cmd(const char *name, in_addr_t addr, int cmd, int flags)
 	struct req {
 		struct nlmsghdr n;
 		struct nfgenmsg nf;
-		char buf[1024];
+		char buf[4096];
 	} req;
 	struct rtattr *tail1, *tail2;
 	uint8_t protocol = IPSET_PROTOCOL;
@@ -42,7 +42,7 @@ static int __ipset_cmd(const char *name, in_addr_t addr, int cmd, int flags)
 		return -1;
 	}
 	
-	memset(&req, 0, sizeof(req) - 1024);
+	memset(&req, 0, sizeof(req) - 4096);
 
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct nfgenmsg));
 	req.n.nlmsg_flags = flags;
@@ -51,13 +51,13 @@ static int __ipset_cmd(const char *name, in_addr_t addr, int cmd, int flags)
 	req.nf.version = NFNETLINK_V0;
 	req.nf.res_id = 0;
 
-	addattr_l(&req.n, 1024, IPSET_ATTR_PROTOCOL, &protocol, 1);
-	addattr_l(&req.n, 1024, IPSET_ATTR_SETNAME, name, strlen(name) + 1);
+	addattr_l(&req.n, 4096, IPSET_ATTR_PROTOCOL, &protocol, 1);
+	addattr_l(&req.n, 4096, IPSET_ATTR_SETNAME, name, strlen(name) + 1);
 	
 	tail1 = addattr_nest(&req.n, MAX_MSG, IPSET_ATTR_DATA | NLA_F_NESTED);
 
 	tail2 = addattr_nest(&req.n, MAX_MSG, IPSET_ATTR_IP | NLA_F_NESTED);
-	addattr32(&req.n, 1024, IPSET_ATTR_IPADDR_IPV4 | NLA_F_NET_BYTEORDER, addr);
+	addattr32(&req.n, 4096, IPSET_ATTR_IPADDR_IPV4 | NLA_F_NET_BYTEORDER, addr);
 	addattr_nest_end(&req.n, tail2);
 	
 	addattr_nest_end(&req.n, tail1);
@@ -92,7 +92,7 @@ int __export ipset_flush(const char *name)
 	struct req {
 		struct nlmsghdr n;
 		struct nfgenmsg nf;
-		char buf[1024];
+		char buf[4096];
 	} req;
 	uint8_t protocol = IPSET_PROTOCOL;
 
@@ -101,7 +101,7 @@ int __export ipset_flush(const char *name)
 		return -1;
 	}
 	
-	memset(&req, 0, sizeof(req) - 1024);
+	memset(&req, 0, sizeof(req) - 4096);
 
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct nfgenmsg));
 	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
@@ -110,8 +110,8 @@ int __export ipset_flush(const char *name)
 	req.nf.version = NFNETLINK_V0;
 	req.nf.res_id = 0;
 
-	addattr_l(&req.n, 1024, IPSET_ATTR_PROTOCOL, &protocol, 1);
-	addattr_l(&req.n, 1024, IPSET_ATTR_SETNAME, name, strlen(name) + 1);
+	addattr_l(&req.n, 4096, IPSET_ATTR_PROTOCOL, &protocol, 1);
+	addattr_l(&req.n, 4096, IPSET_ATTR_SETNAME, name, strlen(name) + 1);
 	
 	if (rtnl_talk(&rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
 		goto out_err;
