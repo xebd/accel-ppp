@@ -3976,6 +3976,9 @@ static void load_config(void)
 	if (opt) {
 		conf_secret = opt;
 		conf_secret_len = strlen(opt);
+	} else {
+		conf_secret = NULL;
+		conf_secret_len = 0;
 	}
 
 	opt = conf_get_opt("l2tp", "dir300_quirk");
