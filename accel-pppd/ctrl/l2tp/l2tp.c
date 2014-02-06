@@ -74,6 +74,10 @@ static int conf_dataseq = L2TP_DATASEQ_ALLOW;
 static int conf_reorder_timeout = 0;
 static const char *conf_ip_pool;
 
+static unsigned int stat_conn_starting;
+static unsigned int stat_conn_active;
+static unsigned int stat_conn_finishing;
+
 static unsigned int stat_active;
 static unsigned int stat_starting;
 static unsigned int stat_finishing;
@@ -566,7 +570,12 @@ static void l2tp_tunnel_disconnect(struct l2tp_conn_t *conn, int res, int err)
 	case STATE_INIT:
 	case STATE_WAIT_SCCRP:
 	case STATE_WAIT_SCCCN:
+		__sync_sub_and_fetch(&stat_conn_starting, 1);
+		__sync_add_and_fetch(&stat_conn_finishing, 1);
+		break;
 	case STATE_ESTB:
+		__sync_sub_and_fetch(&stat_conn_active, 1);
+		__sync_add_and_fetch(&stat_conn_finishing, 1);
 		break;
 	case STATE_FIN:
 	case STATE_CLOSE:
@@ -599,6 +608,8 @@ static void __tunnel_destroy(struct l2tp_conn_t *conn)
 	log_tunnel(log_info2, conn, "tunnel destroyed\n");
 
 	mempool_free(conn);
+
+	__sync_sub_and_fetch(&stat_conn_finishing, 1);
 }
 
 static void tunnel_put(struct l2tp_conn_t *conn)
@@ -745,7 +756,13 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 	case STATE_INIT:
 	case STATE_WAIT_SCCRP:
 	case STATE_WAIT_SCCCN:
+		__sync_sub_and_fetch(&stat_conn_starting, 1);
+		__sync_add_and_fetch(&stat_conn_finishing, 1);
+		break;
 	case STATE_ESTB:
+		__sync_sub_and_fetch(&stat_conn_active, 1);
+		__sync_add_and_fetch(&stat_conn_finishing, 1);
+		break;
 	case STATE_FIN:
 		break;
 	case STATE_CLOSE:
@@ -1287,6 +1304,8 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 	conn->hide_avps = hide_avps;
 	tunnel_hold(conn);
 
+	__sync_add_and_fetch(&stat_conn_starting, 1);
+
 	return conn;
 
 out_err:
@@ -1529,6 +1548,9 @@ static int l2tp_tunnel_connect(struct l2tp_conn_t *conn)
 	int tunnel_fd;
 	int flg;
 
+	if (conn->timeout_timer.tpd)
+		triton_timer_del(&conn->timeout_timer);
+
 	memset(&pppox_addr, 0, sizeof(pppox_addr));
 	pppox_addr.sa_family = AF_PPPOX;
 	pppox_addr.sa_protocol = PX_PROTO_OL2TP;
@@ -1573,10 +1595,11 @@ static int l2tp_tunnel_connect(struct l2tp_conn_t *conn)
 			goto err_fd;
 		}
 
-	if (conn->timeout_timer.tpd)
-		triton_timer_del(&conn->timeout_timer);
-
 	close(tunnel_fd);
+
+	__sync_sub_and_fetch(&stat_conn_starting, 1);
+	__sync_add_and_fetch(&stat_conn_active, 1);
+	conn->state = STATE_ESTB;
 
 	return 0;
 
@@ -2490,16 +2513,16 @@ static int l2tp_recv_SCCRP(struct l2tp_conn_t *conn,
 		return -1;
 	}
 
-	if (l2tp_tunnel_connect(conn) < 0) {
+	if (l2tp_send_SCCCN(conn) < 0) {
 		log_tunnel(log_error, conn, "impossible to handle SCCRP:"
-			   " connecting tunnel failed,"
+			   " sending SCCCN failed,"
 			   " disconnecting tunnel\n");
 		l2tp_tunnel_disconnect(conn, 2, 0);
 		return -1;
 	}
-	if (l2tp_send_SCCCN(conn) < 0) {
+	if (l2tp_tunnel_connect(conn) < 0) {
 		log_tunnel(log_error, conn, "impossible to handle SCCRP:"
-			   " sending SCCCN failed,"
+			   " connecting tunnel failed,"
 			   " disconnecting tunnel\n");
 		l2tp_tunnel_disconnect(conn, 2, 0);
 		return -1;
@@ -2508,8 +2531,6 @@ static int l2tp_recv_SCCRP(struct l2tp_conn_t *conn,
 	u_inet_ntoa(conn->host_addr.sin_addr.s_addr, host_addr);
 	log_tunnel(log_info1, conn, "established at %s:%hu\n",
 		   host_addr, ntohs(conn->host_addr.sin_port));
-
-	conn->state = STATE_ESTB;
 
 	return 0;
 }
@@ -2578,8 +2599,6 @@ static int l2tp_recv_SCCCN(struct l2tp_conn_t *conn,
 	u_inet_ntoa(conn->host_addr.sin_addr.s_addr, host_addr);
 	log_tunnel(log_info1, conn, "established at %s:%hu\n",
 		   host_addr, ntohs(conn->host_addr.sin_port));
-
-	conn->state = STATE_ESTB;
 
 	return 0;
 }
@@ -3911,9 +3930,15 @@ err_fd:
 static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
 {
 	cli_send(client, "l2tp:\r\n");
-	cli_sendv(client, "  starting: %u\r\n", stat_starting);
-	cli_sendv(client, "  active: %u\r\n", stat_active);
-	cli_sendv(client, "  finishing: %u\r\n", stat_finishing);
+	cli_send(client, "  tunnels:\r\n");
+	cli_sendv(client, "    starting: %u\r\n", stat_conn_starting);
+	cli_sendv(client, "    active: %u\r\n", stat_conn_active);
+	cli_sendv(client, "    finishing: %u\r\n", stat_conn_finishing);
+
+	cli_send(client, "  sessions (data channels):\r\n");
+	cli_sendv(client, "    starting: %u\r\n", stat_starting);
+	cli_sendv(client, "    active: %u\r\n", stat_active);
+	cli_sendv(client, "    finishing: %u\r\n", stat_finishing);
 
 	return CLI_CMD_OK;
 }
