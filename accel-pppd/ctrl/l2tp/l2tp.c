@@ -85,6 +85,7 @@ struct l2tp_sess_t
 	uint16_t sid;
 	uint16_t peer_sid;
 
+	unsigned int ref_count;
 	int state1;
 	uint16_t lns_mode:1;
 	uint16_t hide_avps:1;
@@ -123,6 +124,7 @@ struct l2tp_conn_t
 	uint16_t Ns, Nr;
 	struct list_head send_queue;
 
+	unsigned int ref_count;
 	int state;
 	void *sessions;
 	unsigned int sess_count;
@@ -562,6 +564,63 @@ static void l2tp_tunnel_disconnect(struct l2tp_conn_t *conn, int res, int err)
 	conn->state = STATE_FIN;
 }
 
+static void __tunnel_destroy(struct l2tp_conn_t *conn)
+{
+	if (conn->challenge)
+		_free(conn->challenge);
+	if (conn->secret)
+		_free(conn->secret);
+
+	log_tunnel(log_info2, conn, "tunnel destroyed\n");
+
+	mempool_free(conn);
+}
+
+static void tunnel_put(struct l2tp_conn_t *conn)
+{
+	if (__sync_sub_and_fetch(&conn->ref_count, 1) == 0)
+		__tunnel_destroy(conn);
+}
+
+static void tunnel_hold(struct l2tp_conn_t *conn)
+{
+	__sync_add_and_fetch(&conn->ref_count, 1);
+}
+
+static void __session_destroy(struct l2tp_sess_t *sess)
+{
+	struct l2tp_conn_t *conn = sess->paren_conn;
+
+	if (sess->ppp.fd >= 0)
+		close(sess->ppp.fd);
+	if (sess->ppp.ses.chan_name)
+		_free(sess->ppp.ses.chan_name);
+	if (sess->ctrl.calling_station_id)
+		_free(sess->ctrl.calling_station_id);
+	if (sess->ctrl.called_station_id)
+		_free(sess->ctrl.called_station_id);
+
+	log_session(log_info2, sess, "session destroyed\n");
+
+	mempool_free(sess);
+
+	/* Now that the session is fully destroyed,
+	 * drop the reference to the tunnel.
+	 */
+	tunnel_put(conn);
+}
+
+static void session_put(struct l2tp_sess_t *sess)
+{
+	if (__sync_sub_and_fetch(&sess->ref_count, 1) == 0)
+		__session_destroy(sess);
+}
+
+static void session_hold(struct l2tp_sess_t *sess)
+{
+	__sync_add_and_fetch(&sess->ref_count, 1);
+}
+
 static void __l2tp_session_free(void *data)
 {
 	struct l2tp_sess_t *sess = data;
@@ -596,24 +655,17 @@ static void __l2tp_session_free(void *data)
 		triton_timer_del(&sess->timeout_timer);
 	triton_context_unregister(&sess->sctx);
 
-	if (sess->ppp.fd != -1)
-		close(sess->ppp.fd);
-	if (sess->ppp.ses.chan_name)
-		_free(sess->ppp.ses.chan_name);
-	if (sess->ctrl.calling_station_id)
-		_free(sess->ctrl.calling_station_id);
-	if (sess->ctrl.called_station_id)
-		_free(sess->ctrl.called_station_id);
-
 	if (triton_context_call(&sess->paren_conn->ctx,
 				l2tp_tunnel_session_freed, NULL) < 0)
 		log_session(log_error, sess,
 			    "impossible to notify parent tunnel that"
 			    " session has been freed\n");
 
-	log_session(log_info2, sess, "destroyed\n");
-
-	mempool_free(sess);
+	/* Only drop the reference the session holds to itself.
+	 * Reference to the parent tunnel will be dropped by
+	 * __session_destroy().
+	 */
+	session_put(sess);
 }
 
 static void __l2tp_tunnel_free_session(void *data)
@@ -625,6 +677,8 @@ static void __l2tp_tunnel_free_session(void *data)
 			   "impossible to free session %hu/%hu:"
 			   " call to child session failed\n",
 			   sess->sid, sess->peer_sid);
+
+	session_put(sess);
 }
 
 static void l2tp_tunnel_free_session(void *sess)
@@ -697,25 +751,20 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 		return;
 	}
 
-	if (conn->hnd.tpd)
-		triton_md_unregister_handler(&conn->hnd);
-
-	if (conn->hnd.fd >= 0)
-		close(conn->hnd.fd);
-
-	if (conn->timeout_timer.tpd)
-		triton_timer_del(&conn->timeout_timer);
-
-	if (conn->rtimeout_timer.tpd)
-		triton_timer_del(&conn->rtimeout_timer);
-
-	if (conn->hello_timer.tpd)
-		triton_timer_del(&conn->hello_timer);
-
 	pthread_mutex_lock(&l2tp_lock);
 	l2tp_conn[conn->tid] = NULL;
 	pthread_mutex_unlock(&l2tp_lock);
 
+	if (conn->hnd.tpd)
+		triton_md_unregister_handler(&conn->hnd);
+	if (conn->hnd.fd >= 0)
+		close(conn->hnd.fd);
+	if (conn->timeout_timer.tpd)
+		triton_timer_del(&conn->timeout_timer);
+	if (conn->rtimeout_timer.tpd)
+		triton_timer_del(&conn->rtimeout_timer);
+	if (conn->hello_timer.tpd)
+		triton_timer_del(&conn->hello_timer);
 	if (conn->ctx.tpd)
 		triton_context_unregister(&conn->ctx);
 
@@ -725,15 +774,8 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 		l2tp_packet_free(pack);
 	}
 
-	if (conn->challenge)
-		_free(conn->challenge);
-
-	if (conn->secret)
-		_free(conn->secret);
-
-	log_tunnel(log_info2, conn, "destroyed\n");
-
-	mempool_free(conn);
+	/* Drop the reference the tunnel holds to itself */
+	tunnel_put(conn);
 }
 
 static void l2tp_tunnel_session_freed(void *data)
@@ -914,6 +956,12 @@ static struct l2tp_sess_t *l2tp_tunnel_alloc_session(struct l2tp_conn_t *conn)
 
 	if (conf_ip_pool)
 		sess->ppp.ses.ipv4_pool_name = _strdup(conf_ip_pool);
+
+	/* The tunnel holds a reference to the session */
+	session_hold(sess);
+	/* The session holds a reference to the tunnel and to itself */
+	tunnel_hold(conn);
+	session_hold(sess);
 
 	return sess;
 }
@@ -1145,6 +1193,7 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 	conn->lns_mode = lns_mode;
 	conn->port_set = port_set;
 	conn->hide_avps = hide_avps;
+	tunnel_hold(conn);
 
 	return conn;
 
