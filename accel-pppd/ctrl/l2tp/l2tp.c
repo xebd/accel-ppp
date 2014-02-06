@@ -44,9 +44,13 @@
 #define STATE_WAIT_OCRP  5
 #define STATE_WAIT_OCCN  6
 #define STATE_ESTB       7
-#define STATE_PPP        8
 #define STATE_FIN        9
 #define STATE_CLOSE      0
+
+#define APSTATE_INIT      1
+#define APSTATE_STARTING  2
+#define APSTATE_STARTED   3
+#define APSTATE_FINISHING 4
 
 #define DEFAULT_PPP_MAX_MTU 1420
 
@@ -71,6 +75,7 @@ static const char *conf_ip_pool;
 
 static unsigned int stat_active;
 static unsigned int stat_starting;
+static unsigned int stat_finishing;
 
 struct l2tp_serv_t
 {
@@ -93,8 +98,13 @@ struct l2tp_sess_t
 	uint16_t recv_seq:1;
 	int reorder_timeout;
 
+	pthread_mutex_t sctx_lock;
 	struct triton_context_t sctx;
 	struct triton_timer_t timeout_timer;
+
+	pthread_mutex_t apses_lock;
+	struct triton_context_t apses_ctx;
+	int apses_state;
 	struct ap_ctrl ctrl;
 	struct ppp_t ppp;
 };
@@ -146,6 +156,7 @@ static int l2tp_session_send(struct l2tp_sess_t *sess,
 			     struct l2tp_packet_t *pack);
 static int l2tp_conn_read(struct triton_md_handler_t *);
 static void l2tp_tunnel_session_freed(void *data);
+static void apses_stop(void *data);
 
 
 #define log_tunnel(log_func, conn, fmt, ...)				\
@@ -591,6 +602,8 @@ static void __session_destroy(struct l2tp_sess_t *sess)
 {
 	struct l2tp_conn_t *conn = sess->paren_conn;
 
+	pthread_mutex_destroy(&sess->apses_lock);
+	pthread_mutex_destroy(&sess->sctx_lock);
 	if (sess->ppp.fd >= 0)
 		close(sess->ppp.fd);
 	if (sess->ppp.ses.chan_name)
@@ -624,36 +637,41 @@ static void session_hold(struct l2tp_sess_t *sess)
 static void __l2tp_session_free(void *data)
 {
 	struct l2tp_sess_t *sess = data;
+	intptr_t cause = TERM_NAS_REQUEST;
+	int res = 1;
 
 	switch (sess->state1) {
-	case STATE_PPP:
-		sess->state1 = STATE_CLOSE;
-		ap_session_terminate(&sess->ppp.ses,
-				     TERM_USER_REQUEST, 1);
-		/* No cleanup here, "sess" must remain a valid session
-		   pointer (even if it no l2tp_conn_t points to it anymore).
-		   This is because the above call to ap_session_terminate()
-		   ends up in calling the l2tp_ppp_finished() callback,
-		   which expects a valid session pointer. It is then the
-		   responsibility of l2tp_ppp_finished() to eventually
-		   cleanup the session structure by calling again
-		   __l2tp_session_free(). */
-		return;
 	case STATE_WAIT_ICCN:
 	case STATE_WAIT_OCRP:
 	case STATE_WAIT_OCCN:
+		log_session(log_info2, sess, "deleting session\n");
+		break;
 	case STATE_ESTB:
-		__sync_sub_and_fetch(&stat_starting, 1);
+		log_session(log_info2, sess, "deleting session\n");
+
+		triton_event_fire(EV_CTRL_FINISHED, &sess->ppp.ses);
+
+		pthread_mutex_lock(&sess->apses_lock);
+		if (sess->apses_ctx.tpd)
+			res = triton_context_call(&sess->apses_ctx, apses_stop,
+						  (void *)cause);
+		pthread_mutex_unlock(&sess->apses_lock);
+
+		if (res < 0)
+			log_session(log_error, sess,
+				    "impossible to delete data channel:"
+				    " call to data channel context failed\n");
+		else if (res == 0)
+			log_session(log_info2, sess,
+				    "deleting data channel\n");
 		break;
 	}
 
-	if (sess->state1 == STATE_ESTB || sess->state1 == STATE_CLOSE)
-		/* Don't send event if session wasn't fully established */
-		triton_event_fire(EV_CTRL_FINISHED, &sess->ppp.ses);
-
 	if (sess->timeout_timer.tpd)
 		triton_timer_del(&sess->timeout_timer);
+	pthread_mutex_lock(&sess->sctx_lock);
 	triton_context_unregister(&sess->sctx);
+	pthread_mutex_unlock(&sess->sctx_lock);
 
 	if (triton_context_call(&sess->paren_conn->ctx,
 				l2tp_tunnel_session_freed, NULL) < 0)
@@ -811,37 +829,181 @@ static int l2tp_session_disconnect(struct l2tp_sess_t *sess,
 	return 0;
 }
 
-static void l2tp_ppp_finished(struct ap_session *ses)
+static void l2tp_session_apses_finished(void *data)
 {
 	struct l2tp_sess_t *sess = l2tp_session_self();
 
-	__sync_sub_and_fetch(&stat_active, 1);
-	if (sess->state1 != STATE_CLOSE) {
+	if (sess->state1 == STATE_ESTB) {
 		log_session(log_info1, sess,
-			    "PPP session finished (%s:%s),"
-			    " disconnecting session\n",
-			    ses->ifname, ses->username ? ses->username : "");
-		sess->state1 = STATE_CLOSE;
-		if (l2tp_send_CDN(sess, 2, 0) < 0)
-			log_session(log_error, sess,
-				    "impossible to notify peer of session"
-				    " disconnection, disconnecting anyway\n");
-		if (l2tp_session_free(sess) < 0)
-			log_session(log_error, sess,
-				    "impossible to free session,"
-				    " session data have been kept\n");
-	} else {
-		/* Called by __l2tp_session_free() via ap_session_terminate().
-		   Now, call __l2tp_session_free() again to finish cleanup. */
-		__l2tp_session_free(sess);
+			    "data channel closed, disconnecting session\n");
+		l2tp_session_disconnect(sess, 2, 0);
 	}
 }
 
-static void l2tp_ppp_started(struct ap_session *ses)
+static void __apses_destroy(void *data)
 {
-	log_session(log_info1, l2tp_session_self(),
-		    "PPP session started (%s:%s)\n",
-		    ses->ifname, ses->username ? ses->username : "");
+	struct l2tp_sess_t *sess = data;
+
+	pthread_mutex_lock(&sess->apses_lock);
+	triton_context_unregister(&sess->apses_ctx);
+	pthread_mutex_unlock(&sess->apses_lock);
+
+	log_ppp_info2("session destroyed\n");
+
+	__sync_sub_and_fetch(&stat_finishing, 1);
+
+	/* Drop reference to the L2TP session */
+	session_put(sess);
+}
+
+static void apses_finished(struct ap_session *apses)
+{
+	struct l2tp_sess_t *sess = container_of(apses->ctrl, typeof(*sess),
+						ctrl);
+	int res = 1;
+
+	switch (sess->apses_state) {
+	case APSTATE_STARTING:
+		__sync_sub_and_fetch(&stat_starting, 1);
+		__sync_add_and_fetch(&stat_finishing, 1);
+		break;
+	case APSTATE_STARTED:
+		__sync_sub_and_fetch(&stat_active, 1);
+		__sync_add_and_fetch(&stat_finishing, 1);
+		break;
+	case APSTATE_FINISHING:
+		break;
+	default:
+		log_ppp_error("impossible to delete session:"
+			      " invalid state %i\n",
+			      sess->apses_state);
+		return;
+	}
+
+	sess->apses_state = APSTATE_FINISHING;
+
+	pthread_mutex_lock(&sess->sctx_lock);
+	if (sess->sctx.tpd)
+		res = triton_context_call(&sess->sctx,
+					  l2tp_session_apses_finished,
+					  NULL);
+	pthread_mutex_unlock(&sess->sctx_lock);
+	if (res < 0)
+		log_ppp_warn("deleting session without notifying L2TP layer:"
+			     " call to L2TP control channel context failed\n");
+
+	/* Don't drop the reference to the session now: session_put() may
+	 * destroy the L2TP session, but the caller expects it to remain valid
+	 * after we return.
+	 */
+	if (triton_context_call(&sess->apses_ctx, __apses_destroy, sess) < 0)
+		log_ppp_error("impossible to delete session:"
+			      " scheduling session destruction failed\n");
+}
+
+static void apses_stop(void *data)
+{
+	struct l2tp_sess_t *sess = container_of(triton_context_self(),
+						typeof(*sess), apses_ctx);
+	intptr_t cause = (intptr_t)data;
+
+	switch (sess->apses_state) {
+	case APSTATE_INIT:
+	case APSTATE_STARTING:
+		__sync_sub_and_fetch(&stat_starting, 1);
+		__sync_add_and_fetch(&stat_finishing, 1);
+		break;
+	case APSTATE_STARTED:
+		__sync_sub_and_fetch(&stat_active, 1);
+		__sync_add_and_fetch(&stat_finishing, 1);
+		break;
+	case APSTATE_FINISHING:
+		break;
+	default:
+		log_ppp_error("impossible to delete session:"
+			      " invalid state %i\n",
+			      sess->apses_state);
+		return;
+	}
+
+	if (sess->apses_state == APSTATE_STARTING ||
+	    sess->apses_state == APSTATE_STARTED) {
+		sess->apses_state = APSTATE_FINISHING;
+		ap_session_terminate(&sess->ppp.ses, cause, 1);
+	} else {
+		int res = 1;
+
+		pthread_mutex_lock(&sess->sctx_lock);
+		if (sess->sctx.tpd)
+			res = triton_context_call(&sess->sctx,
+						  l2tp_session_apses_finished,
+						  NULL);
+		pthread_mutex_unlock(&sess->sctx_lock);
+		if (res < 0)
+			log_ppp_warn("deleting session without notifying L2TP layer:"
+				     " call to L2TP control channel context failed\n");
+	}
+
+	/* Execution of __apses_destroy() may have been scheduled by
+	 * ap_session_terminate() (via apses_finished()). We can
+	 * nevertheless call __apses_destroy() synchronously here,
+	 * so that the data channel gets destroyed without uselessly
+	 * waiting for scheduling.
+	 */
+	__apses_destroy(sess);
+}
+
+static void apses_ctx_stop(struct triton_context_t *ctx)
+{
+	intptr_t cause = TERM_ADMIN_RESET;
+
+	log_ppp_info1("context thread is closing, disconnecting session\n");
+	apses_stop((void *)cause);
+}
+
+static void apses_started(struct ap_session *apses)
+{
+	struct l2tp_sess_t *sess = container_of(apses->ctrl, typeof(*sess),
+						ctrl);
+
+	if (sess->apses_state != APSTATE_STARTING) {
+		log_ppp_error("impossible to activate session:"
+			      " invalid state %i\n",
+			      sess->apses_state);
+		return;
+	}
+
+	__sync_sub_and_fetch(&stat_starting, 1);
+	__sync_add_and_fetch(&stat_active, 1);
+	sess->apses_state = APSTATE_STARTED;
+
+	log_ppp_info1("session started\n");
+}
+
+static void apses_start(void *data)
+{
+	struct ap_session *apses = data;
+	struct l2tp_sess_t *sess = container_of(apses->ctrl, typeof(*sess),
+						ctrl);
+
+	if (sess->apses_state != APSTATE_INIT) {
+		log_ppp_error("impossible to start session:"
+			      " invalid state %i\n",
+			      sess->apses_state);
+		return;
+	}
+
+	log_ppp_info2("starting data channel for l2tp(%s)\n",
+		      apses->chan_name);
+
+	if (establish_ppp(&sess->ppp) < 0) {
+		intptr_t cause = TERM_NAS_ERROR;
+
+		log_ppp_error("session startup failed,"
+			      " disconnecting session\n");
+		apses_stop((void *)cause);
+	} else
+		sess->apses_state = APSTATE_STARTING;
 }
 
 static void l2tp_session_timeout(struct triton_timer_t *t)
@@ -929,12 +1091,14 @@ static struct l2tp_sess_t *l2tp_tunnel_alloc_session(struct l2tp_conn_t *conn)
 	sess->recv_seq = (conf_dataseq == L2TP_DATASEQ_REQUIRE);
 	sess->reorder_timeout = conf_reorder_timeout;
 
+	pthread_mutex_init(&sess->sctx_lock, NULL);
 	sess->sctx.before_switch = log_switch;
 	sess->sctx.close = l2tp_sess_close;
 
 	sess->timeout_timer.expire = l2tp_session_timeout;
 	sess->timeout_timer.period = conf_timeout * 1000;
 
+	pthread_mutex_init(&sess->apses_lock, NULL);
 	ppp_init(&sess->ppp);
 
 	/* The tunnel holds a reference to the session */
@@ -969,7 +1133,6 @@ static int l2tp_tunnel_start_session(struct l2tp_sess_t *sess,
 		goto err_ctx_timer;
 	}
 
-	__sync_add_and_fetch(&stat_starting, 1);
 	++conn->sess_count;
 
 	return 0;
@@ -1204,12 +1367,15 @@ static inline int l2tp_tunnel_update_peerport(struct l2tp_conn_t *conn,
 
 static int l2tp_session_start_data_channel(struct l2tp_sess_t *sess)
 {
-	sess->ctrl.ctx = &sess->sctx;
+	sess->apses_ctx.before_switch = log_switch;
+	sess->apses_ctx.close = apses_ctx_stop;
+
+	sess->ctrl.ctx = &sess->apses_ctx;
 	sess->ctrl.type = CTRL_TYPE_L2TP;
 	sess->ctrl.ppp = 1;
 	sess->ctrl.name = "l2tp";
-	sess->ctrl.started = l2tp_ppp_started;
-	sess->ctrl.finished = l2tp_ppp_finished;
+	sess->ctrl.started = apses_started;
+	sess->ctrl.finished = apses_finished;
 	sess->ctrl.terminate = ppp_terminate;
 	sess->ctrl.max_mtu = conf_ppp_max_mtu;
 	sess->ctrl.mppe = conf_mppe;
@@ -1245,19 +1411,36 @@ static int l2tp_session_start_data_channel(struct l2tp_sess_t *sess)
 	}
 
 	sess->ppp.ses.ctrl = &sess->ctrl;
+	sess->apses_state = APSTATE_INIT;
 
-	if (establish_ppp(&sess->ppp) < 0) {
+	/* The data channel holds a reference to the control session */
+	session_hold(sess);
+
+	if (triton_context_register(&sess->apses_ctx, &sess->ppp.ses) < 0) {
 		log_session(log_error, sess,
 			    "impossible to start data channel:"
-			    " PPP establishment failed\n");
-		goto err;
+			    " context registration failed\n");
+		goto err_put;
 	}
 
-	__sync_sub_and_fetch(&stat_starting, 1);
-	__sync_add_and_fetch(&stat_active, 1);
+	triton_context_wakeup(&sess->apses_ctx);
+
+	if (triton_context_call(&sess->apses_ctx, apses_start,
+				&sess->ppp.ses) < 0) {
+		log_session(log_error, sess,
+			    "impossible to start data channel:"
+			    " call to data channel context failed\n");
+		goto err_put_ctx;
+	}
+
+	__sync_add_and_fetch(&stat_starting, 1);
 
 	return 0;
 
+err_put_ctx:
+	triton_context_unregister(&sess->apses_ctx);
+err_put:
+	session_put(sess);
 err:
 	if (sess->ppp.ses.ipv4_pool_name) {
 		_free(sess->ppp.ses.ipv4_pool_name);
@@ -1369,15 +1552,13 @@ static int l2tp_session_connect(struct l2tp_sess_t *sess)
 	}
 
 	triton_event_fire(EV_CTRL_STARTED, &sess->ppp.ses);
+	sess->state1 = STATE_ESTB;
 
 	if (l2tp_session_start_data_channel(sess) < 0) {
 		log_session(log_error, sess, "impossible to connect session:"
 			    " starting data channel failed\n");
 		goto out_err;
 	}
-
-
-	sess->state1 = STATE_PPP;
 
 	return 0;
 
@@ -2790,8 +2971,6 @@ static int l2tp_recv_ICRP(struct l2tp_sess_t *sess,
 		return -1;
 	}
 
-	sess->state1 = STATE_ESTB;
-
 	if (l2tp_session_connect(sess) < 0) {
 		log_session(log_error, sess, "impossible to handle ICRP:"
 			    " connecting session failed,"
@@ -2861,8 +3040,6 @@ static int l2tp_recv_ICCN(struct l2tp_sess_t *sess,
 		return -1;
 	}
 
-	sess->state1 = STATE_ESTB;
-
 	if (l2tp_session_connect(sess)) {
 		log_session(log_error, sess, "impossible to handle ICCN:"
 			    " connecting session failed,"
@@ -2901,8 +3078,6 @@ static void l2tp_session_outcall_reply(void *data)
 			    " sending OCCN failed, disconnecting session\n");
 		goto out_err;
 	}
-
-	sess->state1 = STATE_ESTB;
 
 	if (l2tp_session_connect(sess) < 0) {
 		log_session(log_error, sess,
@@ -3147,8 +3322,6 @@ static int l2tp_recv_OCCN(struct l2tp_sess_t *sess,
 				    "session disconnection failed\n");
 		return -1;
 	}
-
-	sess->state1 = STATE_ESTB;
 
 	if (l2tp_session_connect(sess) < 0) {
 		log_session(log_error, sess, "impossible to handle OCCN:"
@@ -3804,6 +3977,7 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	cli_send(client, "l2tp:\r\n");
 	cli_sendv(client, "  starting: %u\r\n", stat_starting);
 	cli_sendv(client, "  active: %u\r\n", stat_active);
+	cli_sendv(client, "  finishing: %u\r\n", stat_finishing);
 
 	return CLI_CMD_OK;
 }
