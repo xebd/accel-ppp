@@ -3307,6 +3307,8 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 					   "peer is unreachable,"
 					   " disconnecting tunnel\n");
 				l2tp_tunnel_free(conn);
+
+				return -1;
 			}
 			return 0;
 		}
