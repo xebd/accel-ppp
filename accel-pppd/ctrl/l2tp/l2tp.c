@@ -78,6 +78,10 @@ static unsigned int stat_conn_starting;
 static unsigned int stat_conn_active;
 static unsigned int stat_conn_finishing;
 
+static unsigned int stat_sess_starting;
+static unsigned int stat_sess_active;
+static unsigned int stat_sess_finishing;
+
 static unsigned int stat_active;
 static unsigned int stat_starting;
 static unsigned int stat_finishing;
@@ -642,6 +646,8 @@ static void __session_destroy(struct l2tp_sess_t *sess)
 
 	mempool_free(sess);
 
+	__sync_sub_and_fetch(&stat_sess_finishing, 1);
+
 	/* Now that the session is fully destroyed,
 	 * drop the reference to the tunnel.
 	 */
@@ -671,11 +677,16 @@ static void l2tp_session_free(struct l2tp_sess_t *sess)
 	case STATE_WAIT_OCRP:
 	case STATE_WAIT_OCCN:
 		log_session(log_info2, sess, "deleting session\n");
+
+		__sync_sub_and_fetch(&stat_sess_starting, 1);
+		__sync_add_and_fetch(&stat_sess_finishing, 1);
 		break;
 	case STATE_ESTB:
 		log_session(log_info2, sess, "deleting session\n");
 
 		triton_event_fire(EV_CTRL_FINISHED, &sess->ppp.ses);
+		__sync_sub_and_fetch(&stat_sess_active, 1);
+		__sync_add_and_fetch(&stat_sess_finishing, 1);
 
 		pthread_mutex_lock(&sess->apses_lock);
 		if (sess->apses_ctx.tpd)
@@ -1116,6 +1127,8 @@ static struct l2tp_sess_t *l2tp_tunnel_alloc_session(struct l2tp_conn_t *conn)
 	tunnel_hold(conn);
 	session_hold(sess);
 
+	__sync_add_and_fetch(&stat_sess_starting, 1);
+
 	return sess;
 }
 
@@ -1520,6 +1533,8 @@ static int l2tp_session_connect(struct l2tp_sess_t *sess)
 	}
 
 	triton_event_fire(EV_CTRL_STARTED, &sess->ppp.ses);
+	__sync_sub_and_fetch(&stat_sess_starting, 1);
+	__sync_add_and_fetch(&stat_sess_active, 1);
 	sess->state1 = STATE_ESTB;
 
 	if (l2tp_session_start_data_channel(sess) < 0) {
@@ -3934,6 +3949,11 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	cli_sendv(client, "    starting: %u\r\n", stat_conn_starting);
 	cli_sendv(client, "    active: %u\r\n", stat_conn_active);
 	cli_sendv(client, "    finishing: %u\r\n", stat_conn_finishing);
+
+	cli_send(client, "  sessions (control channels):\r\n");
+	cli_sendv(client, "    starting: %u\r\n", stat_sess_starting);
+	cli_sendv(client, "    active: %u\r\n", stat_sess_active);
+	cli_sendv(client, "    finishing: %u\r\n", stat_sess_finishing);
 
 	cli_send(client, "  sessions (data channels):\r\n");
 	cli_sendv(client, "    starting: %u\r\n", stat_starting);
