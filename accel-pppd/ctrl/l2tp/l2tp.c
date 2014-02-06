@@ -37,15 +37,16 @@
 #define SOL_PPPOL2TP 273
 #endif
 
-#define STATE_WAIT_SCCRP 1
-#define STATE_WAIT_SCCCN 2
-#define STATE_WAIT_ICRP  3
-#define STATE_WAIT_ICCN  4
-#define STATE_WAIT_OCRP  5
-#define STATE_WAIT_OCCN  6
-#define STATE_ESTB       7
+#define STATE_INIT       1
+#define STATE_WAIT_SCCRP 2
+#define STATE_WAIT_SCCCN 3
+#define STATE_WAIT_ICRP  4
+#define STATE_WAIT_ICCN  5
+#define STATE_WAIT_OCRP  6
+#define STATE_WAIT_OCCN  7
+#define STATE_ESTB       8
 #define STATE_FIN        9
-#define STATE_CLOSE      0
+#define STATE_CLOSE      10
 
 #define APSTATE_INIT      1
 #define APSTATE_STARTING  2
@@ -98,8 +99,6 @@ struct l2tp_sess_t
 	uint16_t recv_seq:1;
 	int reorder_timeout;
 
-	pthread_mutex_t sctx_lock;
-	struct triton_context_t sctx;
 	struct triton_timer_t timeout_timer;
 
 	pthread_mutex_t apses_lock;
@@ -111,7 +110,9 @@ struct l2tp_sess_t
 
 struct l2tp_conn_t
 {
+	pthread_mutex_t ctx_lock;
 	struct triton_context_t ctx;
+
 	struct triton_md_handler_t hnd;
 	struct triton_timer_t timeout_timer;
 	struct triton_timer_t rtimeout_timer;
@@ -155,7 +156,6 @@ static int l2tp_tunnel_send(struct l2tp_conn_t *conn,
 static int l2tp_session_send(struct l2tp_sess_t *sess,
 			     struct l2tp_packet_t *pack);
 static int l2tp_conn_read(struct triton_md_handler_t *);
-static void l2tp_tunnel_session_freed(void *data);
 static void apses_stop(void *data);
 
 
@@ -219,11 +219,6 @@ static inline int nsnr_cmp(uint16_t ns, uint16_t nr)
 static inline struct l2tp_conn_t *l2tp_tunnel_self(void)
 {
 	return container_of(triton_context_self(), struct l2tp_conn_t, ctx);
-}
-
-static inline struct l2tp_sess_t *l2tp_session_self(void)
-{
-	return container_of(triton_context_self(), struct l2tp_sess_t, sctx);
 }
 
 static int sess_cmp(const void *a, const void *b)
@@ -567,6 +562,23 @@ out_err:
 
 static void l2tp_tunnel_disconnect(struct l2tp_conn_t *conn, int res, int err)
 {
+	switch (conn->state) {
+	case STATE_INIT:
+	case STATE_WAIT_SCCRP:
+	case STATE_WAIT_SCCCN:
+	case STATE_ESTB:
+		break;
+	case STATE_FIN:
+	case STATE_CLOSE:
+		return;
+	default:
+		log_tunnel(log_error, conn,
+			   "impossible to disconnect tunnel:"
+			   " invalid state %i\n",
+			   conn->state);
+		return;
+	}
+
 	if (l2tp_send_StopCCN(conn, res, err) < 0)
 		log_tunnel(log_error, conn,
 			   "impossible to notify peer of tunnel disconnection,"
@@ -577,6 +589,8 @@ static void l2tp_tunnel_disconnect(struct l2tp_conn_t *conn, int res, int err)
 
 static void __tunnel_destroy(struct l2tp_conn_t *conn)
 {
+	pthread_mutex_destroy(&conn->ctx_lock);
+
 	if (conn->challenge)
 		_free(conn->challenge);
 	if (conn->secret)
@@ -603,7 +617,7 @@ static void __session_destroy(struct l2tp_sess_t *sess)
 	struct l2tp_conn_t *conn = sess->paren_conn;
 
 	pthread_mutex_destroy(&sess->apses_lock);
-	pthread_mutex_destroy(&sess->sctx_lock);
+
 	if (sess->ppp.fd >= 0)
 		close(sess->ppp.fd);
 	if (sess->ppp.ses.chan_name)
@@ -634,13 +648,14 @@ static void session_hold(struct l2tp_sess_t *sess)
 	__sync_add_and_fetch(&sess->ref_count, 1);
 }
 
-static void __l2tp_session_free(void *data)
+static void l2tp_session_free(struct l2tp_sess_t *sess)
 {
-	struct l2tp_sess_t *sess = data;
 	intptr_t cause = TERM_NAS_REQUEST;
 	int res = 1;
 
 	switch (sess->state1) {
+	case STATE_INIT:
+	case STATE_WAIT_ICRP:
 	case STATE_WAIT_ICCN:
 	case STATE_WAIT_OCRP:
 	case STATE_WAIT_OCCN:
@@ -665,19 +680,55 @@ static void __l2tp_session_free(void *data)
 			log_session(log_info2, sess,
 				    "deleting data channel\n");
 		break;
+	case STATE_CLOSE:
+		/* Session already removed. Will be freed once its reference
+		 * counter drops to 0.
+		 */
+		return;
+	default:
+		log_session(log_error, sess,
+			    "impossible to delete session: invalid state %i\n",
+			    sess->state1);
+		return;
 	}
+
+	sess->state1 = STATE_CLOSE;
 
 	if (sess->timeout_timer.tpd)
 		triton_timer_del(&sess->timeout_timer);
-	pthread_mutex_lock(&sess->sctx_lock);
-	triton_context_unregister(&sess->sctx);
-	pthread_mutex_unlock(&sess->sctx_lock);
 
-	if (triton_context_call(&sess->paren_conn->ctx,
-				l2tp_tunnel_session_freed, NULL) < 0)
-		log_session(log_error, sess,
-			    "impossible to notify parent tunnel that"
-			    " session has been freed\n");
+	if (sess->paren_conn->sessions) {
+		if (!tdelete(sess, &sess->paren_conn->sessions, sess_cmp)) {
+			log_session(log_error, sess,
+				    "impossible to delete session:"
+				    " session unreachable from its parent tunnel\n");
+			return;
+		}
+	}
+	/* Parent tunnel doesn't hold the session anymore. This is true even
+	 * if sess->paren_conn->sessions was NULL (which means that
+	 * l2tp_session_free() is being called by tdestroy()).
+	 */
+	session_put(sess);
+
+	if (--sess->paren_conn->sess_count == 0) {
+		switch (sess->paren_conn->state) {
+		case STATE_ESTB:
+			log_tunnel(log_info1, sess->paren_conn,
+				   "no more session, disconnecting tunnel\n");
+			l2tp_tunnel_disconnect(sess->paren_conn, 1, 0);
+			break;
+		case STATE_FIN:
+		case STATE_CLOSE:
+			break;
+		default:
+			log_tunnel(log_warn, sess->paren_conn,
+				   "avoiding disconnection of empty tunnel:"
+				   " invalid state %i\n",
+				   sess->paren_conn->state);
+			break;
+		}
+	}
 
 	/* Only drop the reference the session holds to itself.
 	 * Reference to the parent tunnel will be dropped by
@@ -686,88 +737,32 @@ static void __l2tp_session_free(void *data)
 	session_put(sess);
 }
 
-static void __l2tp_tunnel_free_session(void *data)
-{
-	struct l2tp_sess_t *sess = data;
-
-	if (triton_context_call(&sess->sctx, __l2tp_session_free, sess) < 0)
-		log_tunnel(log_error, l2tp_tunnel_self(),
-			   "impossible to free session %hu/%hu:"
-			   " call to child session failed\n",
-			   sess->sid, sess->peer_sid);
-
-	session_put(sess);
-}
-
-static void l2tp_tunnel_free_session(void *sess)
-{
-	struct l2tp_conn_t *conn = l2tp_tunnel_self();
-
-	tdelete(sess, &conn->sessions, sess_cmp);
-	__l2tp_tunnel_free_session(sess);
-}
-
-static void l2tp_tunnel_free_sessionid(void *data)
-{
-	uint16_t sid = (intptr_t)data;
-	struct l2tp_conn_t *conn = l2tp_tunnel_self();
-	struct l2tp_sess_t *sess = l2tp_tunnel_get_session(conn, sid);
-
-	if (sess)
-		l2tp_tunnel_free_session(sess);
-	else
-		log_tunnel(log_info2, conn, "avoid freeing session %hu:"
-			   " session already removed from tunnel\n", sid);
-}
-
-static int l2tp_session_free(struct l2tp_sess_t *sess)
-{
-	intptr_t sid = sess->sid;
-
-	if (triton_context_call(&sess->paren_conn->ctx,
-				l2tp_tunnel_free_sessionid, (void *)sid) < 0) {
-		log_session(log_error, sess, "impossible to free session:"
-			    " call to parent tunnel failed\n");
-		return -1;
-	}
-
-	return 0;
-}
-
 static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 {
 	struct l2tp_packet_t *pack;
 
-	if (conn->state != STATE_CLOSE)
-		conn->state = STATE_CLOSE;
-
-	if (conn->sess_count != 0) {
-		/*
-		 * There are still sessions in this tunnel: remove the ones
-		 * accessible from conn->sessions then exit.
-		 *
-		 * Each removed session will make an asynchronous call to
-		 * l2tp_tunnel_session_freed(), which is responsible for
-		 * calling l2tp_tunnel_free() again once the last session
-		 * gets removed.
-		 *
-		 * There may be also sessions in this tunnel that are not
-		 * referenced in conn->sessions. This can happen when a
-		 * a session has been removed, but its cleanup function has
-		 * not yet been scheduled. Such sessions will also call
-		 * l2tp_tunnel_session_freed() after cleanup, so
-		 * l2tp_tunnel_free() will be called again once every sessions
-		 * have been cleaned up.
-		 *
-		 * This behaviour ensures that the parent tunnel of a session
-		 * remains valid during this session's lifetime.
+	switch (conn->state) {
+	case STATE_INIT:
+	case STATE_WAIT_SCCRP:
+	case STATE_WAIT_SCCCN:
+	case STATE_ESTB:
+	case STATE_FIN:
+		break;
+	case STATE_CLOSE:
+		/* Tunnel already removed. Will be freed once its reference
+		 * counter drops to 0.
 		 */
-		if (conn->sessions) {
-			tdestroy(conn->sessions, __l2tp_tunnel_free_session);
-			conn->sessions = NULL;
-		}
+		return;
+	default:
+		log_tunnel(log_error, conn,
+			   "impossible to delete tunnel: invalid state %i\n",
+			   conn->state);
 		return;
 	}
+
+	log_tunnel(log_info2, conn, "deleting tunnel\n");
+
+	conn->state = STATE_CLOSE;
 
 	pthread_mutex_lock(&l2tp_lock);
 	l2tp_conn[conn->tid] = NULL;
@@ -775,16 +770,16 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 
 	if (conn->hnd.tpd)
 		triton_md_unregister_handler(&conn->hnd);
-	if (conn->hnd.fd >= 0)
+	if (conn->hnd.fd >= 0) {
 		close(conn->hnd.fd);
+		conn->hnd.fd = -1;
+	}
 	if (conn->timeout_timer.tpd)
 		triton_timer_del(&conn->timeout_timer);
 	if (conn->rtimeout_timer.tpd)
 		triton_timer_del(&conn->rtimeout_timer);
 	if (conn->hello_timer.tpd)
 		triton_timer_del(&conn->hello_timer);
-	if (conn->ctx.tpd)
-		triton_context_unregister(&conn->ctx);
 
 	while (!list_empty(&conn->send_queue)) {
 		pack = list_entry(conn->send_queue.next, typeof(*pack), entry);
@@ -792,24 +787,23 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 		l2tp_packet_free(pack);
 	}
 
+	if (conn->sessions) {
+		void *sessions = conn->sessions;
+
+		conn->sessions = NULL;
+		tdestroy(sessions, (__free_fn_t)l2tp_session_free);
+		/* Let l2tp_session_free() handle the session counter and
+		 * the reference held by the tunnel.
+		 */
+	}
+
+	pthread_mutex_lock(&conn->ctx_lock);
+	if (conn->ctx.tpd)
+		triton_context_unregister(&conn->ctx);
+	pthread_mutex_unlock(&conn->ctx_lock);
+
 	/* Drop the reference the tunnel holds to itself */
 	tunnel_put(conn);
-}
-
-static void l2tp_tunnel_session_freed(void *data)
-{
-	struct l2tp_conn_t *conn = l2tp_tunnel_self();
-
-	if (--conn->sess_count != 0)
-		return;
-
-	log_tunnel(log_info1, conn, "no more session, disconnecting tunnel\n");
-	if (conn->state != STATE_CLOSE)
-		if (l2tp_send_StopCCN(conn, 1, 0) < 0)
-			log_tunnel(log_error, conn,
-				   "impossible to notify peer of tunnel"
-				   " disconnection, disconnecting anyway\n");
-	l2tp_tunnel_free(conn);
 }
 
 static int l2tp_session_disconnect(struct l2tp_sess_t *sess,
@@ -820,23 +814,34 @@ static int l2tp_session_disconnect(struct l2tp_sess_t *sess,
 			    "impossible to notify peer of session"
 			    " disconnection, disconnecting anyway\n");
 
-	if (l2tp_session_free(sess) < 0) {
-		log_session(log_error, sess, "impossible to free session,"
-			    " session data have been kept\n");
-		return -1;
-	}
+	l2tp_session_free(sess);
 
 	return 0;
 }
 
 static void l2tp_session_apses_finished(void *data)
 {
-	struct l2tp_sess_t *sess = l2tp_session_self();
+	struct l2tp_conn_t *conn = l2tp_tunnel_self();
+	struct l2tp_sess_t *sess;
+	intptr_t sid = (intptr_t)data;
 
+	sess = l2tp_tunnel_get_session(conn, sid);
+	if (sess == NULL)
+		return;
+
+	/* Here, the only valid session state is STATE_ESTB. If the session's
+	 * state was STATE_CLOSE (which happens if session gets closed before
+	 * l2tp_session_apses_finished() gets scheduled), it wouldn't be found
+	 * by l2tp_tunnel_get_session().
+	 */
 	if (sess->state1 == STATE_ESTB) {
 		log_session(log_info1, sess,
 			    "data channel closed, disconnecting session\n");
 		l2tp_session_disconnect(sess, 2, 0);
+	} else {
+		log_session(log_warn, sess,
+			    "avoiding disconnection of session with no data channel:"
+			    " invalid state %i\n", sess->state1);
 	}
 }
 
@@ -860,6 +865,7 @@ static void apses_finished(struct ap_session *apses)
 {
 	struct l2tp_sess_t *sess = container_of(apses->ctrl, typeof(*sess),
 						ctrl);
+	intptr_t sid = sess->sid;
 	int res = 1;
 
 	switch (sess->apses_state) {
@@ -882,12 +888,12 @@ static void apses_finished(struct ap_session *apses)
 
 	sess->apses_state = APSTATE_FINISHING;
 
-	pthread_mutex_lock(&sess->sctx_lock);
-	if (sess->sctx.tpd)
-		res = triton_context_call(&sess->sctx,
+	pthread_mutex_lock(&sess->paren_conn->ctx_lock);
+	if (sess->paren_conn->ctx.tpd)
+		res = triton_context_call(&sess->paren_conn->ctx,
 					  l2tp_session_apses_finished,
-					  NULL);
-	pthread_mutex_unlock(&sess->sctx_lock);
+					  (void *)sid);
+	pthread_mutex_unlock(&sess->paren_conn->ctx_lock);
 	if (res < 0)
 		log_ppp_warn("deleting session without notifying L2TP layer:"
 			     " call to L2TP control channel context failed\n");
@@ -931,14 +937,15 @@ static void apses_stop(void *data)
 		sess->apses_state = APSTATE_FINISHING;
 		ap_session_terminate(&sess->ppp.ses, cause, 1);
 	} else {
+		intptr_t sid = sess->sid;
 		int res = 1;
 
-		pthread_mutex_lock(&sess->sctx_lock);
-		if (sess->sctx.tpd)
-			res = triton_context_call(&sess->sctx,
+		pthread_mutex_lock(&sess->paren_conn->ctx_lock);
+		if (sess->paren_conn->ctx.tpd)
+			res = triton_context_call(&sess->paren_conn->ctx,
 						  l2tp_session_apses_finished,
-						  NULL);
-		pthread_mutex_unlock(&sess->sctx_lock);
+						  (void *)sid);
+		pthread_mutex_unlock(&sess->paren_conn->ctx_lock);
 		if (res < 0)
 			log_ppp_warn("deleting session without notifying L2TP layer:"
 				     " call to L2TP control channel context failed\n");
@@ -1055,22 +1062,14 @@ static struct l2tp_sess_t *l2tp_tunnel_new_session(struct l2tp_conn_t *conn)
 		goto out_err;
 	}
 
+	++conn->sess_count;
+
 	return sess;
 
 out_err:
 	if (sess)
 		mempool_free(sess);
 	return NULL;
-}
-
-static void l2tp_sess_close(struct triton_context_t *ctx)
-{
-	struct l2tp_sess_t *sess = container_of(ctx, typeof(*sess), sctx);
-
-	log_session(log_info1, sess, "context thread is closing,"
-		    " disconnecting session\n");
-	if (l2tp_session_disconnect(sess, 3, 0) < 0)
-		log_session(log_error, sess, "session disconnection failed\n");
 }
 
 static struct l2tp_sess_t *l2tp_tunnel_alloc_session(struct l2tp_conn_t *conn)
@@ -1083,17 +1082,13 @@ static struct l2tp_sess_t *l2tp_tunnel_alloc_session(struct l2tp_conn_t *conn)
 
 	sess->paren_conn = conn;
 	sess->peer_sid = 0;
-	sess->state1 = STATE_CLOSE;
+	sess->state1 = STATE_INIT;
 	sess->lns_mode = conn->lns_mode;
 	sess->hide_avps = conn->hide_avps;
 	sess->send_seq = (conf_dataseq == L2TP_DATASEQ_PREFER) ||
 			 (conf_dataseq == L2TP_DATASEQ_REQUIRE);
 	sess->recv_seq = (conf_dataseq == L2TP_DATASEQ_REQUIRE);
 	sess->reorder_timeout = conf_reorder_timeout;
-
-	pthread_mutex_init(&sess->sctx_lock, NULL);
-	sess->sctx.before_switch = log_switch;
-	sess->sctx.close = l2tp_sess_close;
 
 	sess->timeout_timer.expire = l2tp_session_timeout;
 	sess->timeout_timer.period = conf_timeout * 1000;
@@ -1114,45 +1109,22 @@ static int l2tp_tunnel_start_session(struct l2tp_sess_t *sess,
 				     triton_event_func start_func,
 				     void *start_param)
 {
-	struct l2tp_conn_t *conn = l2tp_tunnel_self();
-
-	if (triton_context_register(&sess->sctx, &sess->ppp.ses) < 0) {
-		log_tunnel(log_error, conn, "impossible to start new session:"
-			   " context registration failed\n");
-		goto err;
-	}
-	triton_context_wakeup(&sess->sctx);
-	if (triton_timer_add(&sess->sctx, &sess->timeout_timer, 0) < 0) {
-		log_tunnel(log_error, conn, "impossible to start new session:"
-			   " setting session establishment timer failed\n");
-		goto err_ctx;
-	}
-	if (triton_context_call(&sess->sctx, start_func, start_param) < 0) {
-		log_tunnel(log_error, conn, "impossible to start new session:"
-			   " call to session context failed\n");
-		goto err_ctx_timer;
+	if (triton_timer_add(&sess->paren_conn->ctx,
+			     &sess->timeout_timer, 0) < 0) {
+		log_session(log_error, sess,
+			    "impossible to reply to incoming call:"
+			    " setting establishment timer failed\n");
+		return -1;
 	}
 
-	++conn->sess_count;
+	start_func(start_param);
 
 	return 0;
-
-err_ctx_timer:
-	triton_timer_del(&sess->timeout_timer);
-err_ctx:
-	triton_context_unregister(&sess->sctx);
-err:
-	return -1;
 }
 
 static void l2tp_tunnel_cancel_session(struct l2tp_sess_t *sess)
 {
-	tdelete(sess, &sess->paren_conn->sessions, sess_cmp);
-	if (sess->ctrl.calling_station_id)
-		_free(sess->ctrl.calling_station_id);
-	if (sess->ctrl.called_station_id)
-		_free(sess->ctrl.called_station_id);
-	mempool_free(sess);
+	l2tp_session_free(sess);
 }
 
 static void l2tp_conn_close(struct triton_context_t *ctx)
@@ -1223,6 +1195,7 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 	}
 
 	memset(conn, 0, sizeof(*conn));
+	pthread_mutex_init(&conn->ctx_lock, NULL);
 	INIT_LIST_HEAD(&conn->send_queue);
 
 	conn->hnd.fd = socket(PF_INET, SOCK_DGRAM, 0);
@@ -1319,6 +1292,7 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 		goto out_err;
 	}
 
+	conn->state = STATE_INIT;
 	conn->framing_cap = framing_cap;
 
 	conn->ctx.before_switch = log_switch;
@@ -1749,27 +1723,12 @@ out_err:
 	return -1;
 }
 
-static void __l2tp_tunnel_send(void *pack)
-{
-	l2tp_tunnel_send(l2tp_tunnel_self(), pack);
-}
-
 static int l2tp_session_send(struct l2tp_sess_t *sess,
 			     struct l2tp_packet_t *pack)
 {
 	pack->hdr.sid = htons(sess->peer_sid);
-	if (triton_context_call(&sess->paren_conn->ctx,
-				__l2tp_tunnel_send, pack) < 0) {
-		log_session(log_error, sess, "impossible to send packet:"
-			    " call to parent tunnel failed\n");
-		goto out_err;
-	}
 
-	return 0;
-
-out_err:
-	l2tp_packet_free(pack);
-	return -1;
+	return l2tp_tunnel_send(sess->paren_conn, pack);
 }
 
 static int l2tp_send_ZLB(struct l2tp_conn_t *conn)
@@ -3415,11 +3374,7 @@ static int l2tp_recv_CDN(struct l2tp_sess_t *sess,
 	if (l2tp_send_ZLB(sess->paren_conn) < 0)
 		log_session(log_warn, sess, "acknowledging CDN failed\n");
 
-	if (l2tp_session_free(sess) < 0) {
-		log_session(log_error, sess, "impossible to free session,"
-			    " session data have been kept\n");
-		return -1;
-	}
+	l2tp_session_free(sess);
 
 	return 0;
 }
@@ -3478,10 +3433,7 @@ static void l2tp_session_place_call(void *data)
 			    " sending %cCRQ failed, freeing session\n",
 			    sess->lns_mode ? "outgoing" : "incoming",
 			    sess->lns_mode ? 'O' : 'I');
-		if (l2tp_session_free(sess) < 0)
-			log_session(log_error, sess,
-				    "impossible to free session,"
-				    " session data have been kept\n");
+		l2tp_session_free(sess);
 		return;
 	}
 
@@ -3520,10 +3472,9 @@ static void l2tp_tunnel_create_session(void *data)
 		   " request from command line interface\n", sid);
 }
 
-static void l2tp_session_recv(void *data)
+static void l2tp_session_recv(struct l2tp_sess_t *sess,
+			      struct l2tp_packet_t *pack)
 {
-	struct l2tp_sess_t *sess = l2tp_session_self();
-	struct l2tp_packet_t *pack = data;
 	const struct l2tp_attr_t *msg_type = NULL;
 
 	msg_type = list_entry(pack->attrs.next, typeof(*msg_type), entry);
@@ -3731,13 +3682,7 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 					l2tp_packet_free(pack);
 					continue;
 				}
-				if (triton_context_call(&sess->sctx, l2tp_session_recv, pack) < 0) {
-					log_tunnel(log_warn, conn,
-						   "impossible to handle message for session %hu:"
-						   " call to child session failed\n",
-						   sess->sid);
-					l2tp_packet_free(pack);
-				}
+				l2tp_session_recv(sess, pack);
 				continue;
 			case Message_Type_WAN_Error_Notify:
 				l2tp_recv_WEN(conn, pack);
