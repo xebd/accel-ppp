@@ -806,8 +806,8 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 	tunnel_put(conn);
 }
 
-static int l2tp_session_disconnect(struct l2tp_sess_t *sess,
-				   uint16_t res, uint16_t err)
+static void l2tp_session_disconnect(struct l2tp_sess_t *sess,
+				    uint16_t res, uint16_t err)
 {
 	if (l2tp_send_CDN(sess, res, err) < 0)
 		log_session(log_error, sess,
@@ -815,8 +815,6 @@ static int l2tp_session_disconnect(struct l2tp_sess_t *sess,
 			    " disconnection, disconnecting anyway\n");
 
 	l2tp_session_free(sess);
-
-	return 0;
 }
 
 static void l2tp_session_apses_finished(void *data)
@@ -1020,8 +1018,7 @@ static void l2tp_session_timeout(struct triton_timer_t *t)
 
 	log_session(log_info1, sess, "session establishment timeout,"
 		    " disconnecting session\n");
-	if (l2tp_session_disconnect(sess, 10, 0) < 0)
-		log_session(log_error, sess, "session disconnection failed\n");
+	l2tp_session_disconnect(sess, 10, 0);
 }
 
 static struct l2tp_sess_t *l2tp_tunnel_new_session(struct l2tp_conn_t *conn)
@@ -1120,11 +1117,6 @@ static int l2tp_tunnel_start_session(struct l2tp_sess_t *sess,
 	start_func(start_param);
 
 	return 0;
-}
-
-static void l2tp_tunnel_cancel_session(struct l2tp_sess_t *sess)
-{
-	l2tp_session_free(sess);
 }
 
 static void l2tp_conn_close(struct triton_context_t *ctx)
@@ -2735,9 +2727,8 @@ static void l2tp_session_incall_reply(void *data)
 		log_session(log_error, sess,
 			    "impossible to reply to incoming call:"
 			    " sending ICRP failed, disconnecting session\n");
-		if (l2tp_session_disconnect(sess, 2, 6) < 0)
-			log_session(log_error, sess,
-				    "session disconnection failed\n");
+		l2tp_session_disconnect(sess, 2, 6);
+
 		return;
 	}
 
@@ -2856,7 +2847,8 @@ out_reject:
 			   "impossible to reject ICRQ:"
 			   " sending CDN failed\n");
 	if (sess)
-		l2tp_tunnel_cancel_session(sess);
+		l2tp_session_free(sess);
+
 	return -1;
 }
 
@@ -2897,9 +2889,8 @@ static int l2tp_recv_ICRP(struct l2tp_sess_t *sess,
 		log_session(log_error, sess, "impossible to handle ICRP:"
 			    " no Assigned Session ID present in message,"
 			    " disconnecting session\n");
-		if (l2tp_session_disconnect(sess, 2, 6) < 0)
-			log_session(log_error, sess,
-				    "session disconnection failed\n");
+		l2tp_session_disconnect(sess, 2, 6);
+
 		return -1;
 	}
 
@@ -2914,9 +2905,8 @@ static int l2tp_recv_ICRP(struct l2tp_sess_t *sess,
 			    " unknown mandatory attribute type %i,"
 			    " disconnecting session\n",
 			    unknown_attr->attr->id);
-		if (l2tp_session_disconnect(sess, 2, 8) < 0)
-			log_session(log_error, sess,
-				    "session disconnection failed\n");
+		l2tp_session_disconnect(sess, 2, 8);
+
 		return -1;
 	}
 
@@ -2924,9 +2914,8 @@ static int l2tp_recv_ICRP(struct l2tp_sess_t *sess,
 		log_session(log_error, sess, "impossible to handle ICRP:"
 			    " sending ICCN failed,"
 			    " disconnecting session\n");
-		if (l2tp_session_disconnect(sess, 2, 6) < 0)
-			log_session(log_error, sess,
-				    "session disconnection failed\n");
+		l2tp_session_disconnect(sess, 2, 6);
+
 		return -1;
 	}
 
@@ -2934,9 +2923,8 @@ static int l2tp_recv_ICRP(struct l2tp_sess_t *sess,
 		log_session(log_error, sess, "impossible to handle ICRP:"
 			    " connecting session failed,"
 			    " disconnecting session\n");
-		if (l2tp_session_disconnect(sess, 2, 6) < 0)
-			log_session(log_error, sess,
-				"session disconnection failed\n");
+		l2tp_session_disconnect(sess, 2, 6);
+
 		return -1;
 	}
 
@@ -2993,9 +2981,8 @@ static int l2tp_recv_ICCN(struct l2tp_sess_t *sess,
 			    " unknown mandatory attribute type %i,"
 			    " disconnecting session\n",
 			    unknown_attr->attr->id);
-		if (l2tp_session_disconnect(sess, 2, 8) < 0)
-			log_session(log_error, sess,
-				    "session disconnection failed\n");
+		l2tp_session_disconnect(sess, 2, 8);
+
 		return -1;
 	}
 
@@ -3003,18 +2990,16 @@ static int l2tp_recv_ICCN(struct l2tp_sess_t *sess,
 		log_session(log_error, sess, "impossible to handle ICCN:"
 			    " connecting session failed,"
 			    " disconnecting session\n");
-		if (l2tp_session_disconnect(sess, 2, 6) < 0)
-			log_session(log_error, sess,
-				    "session disconnection failed\n");
+		l2tp_session_disconnect(sess, 2, 6);
+
 		return -1;
 	}
 
 	if (l2tp_send_ZLB(sess->paren_conn) < 0) {
 		log_session(log_error, sess, "impossible to handle ICCN:"
 			    " sending ZLB failed, disconnecting session\n");
-		if (l2tp_session_disconnect(sess, 2, 6) < 0)
-			log_session(log_error, sess,
-				    "session disconnection failed\n");
+		l2tp_session_disconnect(sess, 2, 6);
+
 		return -1;
 	}
 
@@ -3049,8 +3034,7 @@ static void l2tp_session_outcall_reply(void *data)
 	return;
 
 out_err:
-	if (l2tp_session_disconnect(sess, 2, 6) < 0)
-		log_session(log_error, sess, "session disconnection failed\n");
+	l2tp_session_disconnect(sess, 2, 6);
 }
 
 static int l2tp_recv_OCRQ(struct l2tp_conn_t *conn,
@@ -3167,7 +3151,8 @@ out_cancel:
 			   "impossible to reject OCRQ:"
 			   " sending CDN failed\n");
 	if (sess)
-		l2tp_tunnel_cancel_session(sess);
+		l2tp_session_free(sess);
+
 	return -1;
 }
 
@@ -3208,9 +3193,8 @@ static int l2tp_recv_OCRP(struct l2tp_sess_t *sess,
 		log_session(log_error, sess, "impossible to handle OCRP:"
 			    " no Assigned Session ID present in message,"
 			    " disconnecting session\n");
-		if (l2tp_session_disconnect(sess, 2, 6) < 0)
-			log_session(log_error, sess,
-				    "session disconnection failed\n");
+		l2tp_session_disconnect(sess, 2, 6);
+
 		return -1;
 	}
 
@@ -3225,9 +3209,8 @@ static int l2tp_recv_OCRP(struct l2tp_sess_t *sess,
 			    " unknown mandatory attribute type %i,"
 			    " disconnecting session\n",
 			    unknown_attr->attr->id);
-		if (l2tp_session_disconnect(sess, 2, 8) < 0)
-			log_session(log_error, sess,
-				    "session disconnection failed\n");
+		l2tp_session_disconnect(sess, 2, 8);
+
 		return -1;
 	}
 
@@ -3276,9 +3259,8 @@ static int l2tp_recv_OCCN(struct l2tp_sess_t *sess,
 			    " unknown mandatory attribute type %i,"
 			    " disconnecting session\n",
 			    unknown_attr->attr->id);
-		if (l2tp_session_disconnect(sess, 2, 8) < 0)
-			log_session(log_error, sess,
-				    "session disconnection failed\n");
+		l2tp_session_disconnect(sess, 2, 8);
+
 		return -1;
 	}
 
@@ -3286,18 +3268,16 @@ static int l2tp_recv_OCCN(struct l2tp_sess_t *sess,
 		log_session(log_error, sess, "impossible to handle OCCN:"
 			    " connecting session failed,"
 			    " disconnecting session\n");
-		if (l2tp_session_disconnect(sess, 2, 6) < 0)
-			log_session(log_error, sess,
-				    "session disconnection failed\n");
+		l2tp_session_disconnect(sess, 2, 6);
+
 		return -1;
 	}
 
 	if (l2tp_send_ZLB(sess->paren_conn) < 0) {
 		log_session(log_error, sess, "impossible to handle OCCN:"
 			    " sending ZLB failed, disconnecting session\n");
-		if (l2tp_session_disconnect(sess, 2, 6) < 0)
-			log_session(log_error, sess,
-				    "session disconnection failed\n");
+		l2tp_session_disconnect(sess, 2, 6);
+
 		return -1;
 	}
 
@@ -3464,7 +3444,8 @@ static void l2tp_tunnel_create_session(void *data)
 				      l2tp_session_place_call, sess) < 0) {
 		log_tunnel(log_error, conn, "impossible to create session:"
 			   " starting session failed\n");
-		l2tp_tunnel_cancel_session(sess);
+		l2tp_session_free(sess);
+
 		return;
 	}
 
@@ -3501,9 +3482,7 @@ static void l2tp_session_recv(struct l2tp_sess_t *sess,
 				    "impossible to handle unknown message type"
 				    " %i, disconnecting session\n",
 				    msg_type->val.uint16);
-			if (l2tp_session_disconnect(sess, 2, 8) < 0)
-				log_session(log_error, sess,
-					    "session disconnection failed\n");
+			l2tp_session_disconnect(sess, 2, 8);
 		} else
 			log_session(log_warn, sess,
 				    "discarding unknown message type %i\n",
