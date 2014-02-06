@@ -932,30 +932,10 @@ static struct l2tp_sess_t *l2tp_tunnel_alloc_session(struct l2tp_conn_t *conn)
 	sess->sctx.before_switch = log_switch;
 	sess->sctx.close = l2tp_sess_close;
 
-	sess->ctrl.ctx = &sess->sctx;
-	sess->ctrl.type = CTRL_TYPE_L2TP;
-	sess->ctrl.ppp = 1;
-	sess->ctrl.name = "l2tp";
-	sess->ctrl.started = l2tp_ppp_started;
-	sess->ctrl.finished = l2tp_ppp_finished;
-	sess->ctrl.terminate = ppp_terminate;
-	sess->ctrl.max_mtu = conf_ppp_max_mtu;
-	sess->ctrl.mppe = conf_mppe;
-	sess->ctrl.calling_station_id = _malloc(17);
-	sess->ctrl.called_station_id = _malloc(17);
-	u_inet_ntoa(conn->peer_addr.sin_addr.s_addr,
-		    sess->ctrl.calling_station_id);
-	u_inet_ntoa(conn->host_addr.sin_addr.s_addr,
-		    sess->ctrl.called_station_id);
 	sess->timeout_timer.expire = l2tp_session_timeout;
 	sess->timeout_timer.period = conf_timeout * 1000;
 
 	ppp_init(&sess->ppp);
-	sess->ppp.ses.ctrl = &sess->ctrl;
-	sess->ppp.fd = -1;
-
-	if (conf_ip_pool)
-		sess->ppp.ses.ipv4_pool_name = _strdup(conf_ip_pool);
 
 	/* The tunnel holds a reference to the session */
 	session_hold(sess);
@@ -1222,6 +1202,79 @@ static inline int l2tp_tunnel_update_peerport(struct l2tp_conn_t *conn,
 	return res;
 }
 
+static int l2tp_session_start_data_channel(struct l2tp_sess_t *sess)
+{
+	sess->ctrl.ctx = &sess->sctx;
+	sess->ctrl.type = CTRL_TYPE_L2TP;
+	sess->ctrl.ppp = 1;
+	sess->ctrl.name = "l2tp";
+	sess->ctrl.started = l2tp_ppp_started;
+	sess->ctrl.finished = l2tp_ppp_finished;
+	sess->ctrl.terminate = ppp_terminate;
+	sess->ctrl.max_mtu = conf_ppp_max_mtu;
+	sess->ctrl.mppe = conf_mppe;
+
+	sess->ctrl.calling_station_id = _malloc(17);
+	if (sess->ctrl.calling_station_id == NULL) {
+		log_session(log_error, sess,
+			    "impossible to start data channel:"
+			    " allocation of calling station ID failed\n");
+		goto err;
+	}
+	u_inet_ntoa(sess->paren_conn->peer_addr.sin_addr.s_addr,
+		    sess->ctrl.calling_station_id);
+
+	sess->ctrl.called_station_id = _malloc(17);
+	if (sess->ctrl.called_station_id == NULL) {
+		log_session(log_error, sess,
+			    "impossible to start data channel:"
+			    " allocation of called station ID failed\n");
+		goto err;
+	}
+	u_inet_ntoa(sess->paren_conn->host_addr.sin_addr.s_addr,
+		    sess->ctrl.called_station_id);
+
+	if (conf_ip_pool) {
+		sess->ppp.ses.ipv4_pool_name = _strdup(conf_ip_pool);
+		if (sess->ppp.ses.ipv4_pool_name == NULL) {
+			log_session(log_error, sess,
+				    "impossible to start data channel:"
+				    " allocation of IPv4 pool name failed\n");
+			goto err;
+		}
+	}
+
+	sess->ppp.ses.ctrl = &sess->ctrl;
+
+	if (establish_ppp(&sess->ppp) < 0) {
+		log_session(log_error, sess,
+			    "impossible to start data channel:"
+			    " PPP establishment failed\n");
+		goto err;
+	}
+
+	__sync_sub_and_fetch(&stat_starting, 1);
+	__sync_add_and_fetch(&stat_active, 1);
+
+	return 0;
+
+err:
+	if (sess->ppp.ses.ipv4_pool_name) {
+		_free(sess->ppp.ses.ipv4_pool_name);
+		sess->ppp.ses.ipv4_pool_name = NULL;
+	}
+	if (sess->ctrl.called_station_id) {
+		_free(sess->ctrl.called_station_id);
+		sess->ctrl.called_station_id = NULL;
+	}
+	if (sess->ctrl.calling_station_id) {
+		_free(sess->ctrl.calling_station_id);
+		sess->ctrl.calling_station_id = NULL;
+	}
+
+	return -1;
+}
+
 static int l2tp_session_connect(struct l2tp_sess_t *sess)
 {
 	struct sockaddr_pppol2tp pppox_addr;
@@ -1230,6 +1283,9 @@ static int l2tp_session_connect(struct l2tp_sess_t *sess)
 	int flg;
 	uint16_t peer_port;
 	char addr[17];
+
+	if (sess->timeout_timer.tpd)
+		triton_timer_del(&sess->timeout_timer);
 
 	sess->ppp.fd = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OL2TP);
 	if (sess->ppp.fd < 0) {
@@ -1314,17 +1370,12 @@ static int l2tp_session_connect(struct l2tp_sess_t *sess)
 
 	triton_event_fire(EV_CTRL_STARTED, &sess->ppp.ses);
 
-	if (sess->timeout_timer.tpd)
-		triton_timer_del(&sess->timeout_timer);
-
-	if (establish_ppp(&sess->ppp)) {
+	if (l2tp_session_start_data_channel(sess) < 0) {
 		log_session(log_error, sess, "impossible to connect session:"
-			    "PPP establishment failed\n");
+			    " starting data channel failed\n");
 		goto out_err;
 	}
 
-	__sync_sub_and_fetch(&stat_starting, 1);
-	__sync_add_and_fetch(&stat_active, 1);
 
 	sess->state1 = STATE_PPP;
 
