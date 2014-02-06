@@ -1102,23 +1102,6 @@ static struct l2tp_sess_t *l2tp_tunnel_alloc_session(struct l2tp_conn_t *conn)
 	return sess;
 }
 
-static int l2tp_tunnel_start_session(struct l2tp_sess_t *sess,
-				     triton_event_func start_func,
-				     void *start_param)
-{
-	if (triton_timer_add(&sess->paren_conn->ctx,
-			     &sess->timeout_timer, 0) < 0) {
-		log_session(log_error, sess,
-			    "impossible to reply to incoming call:"
-			    " setting establishment timer failed\n");
-		return -1;
-	}
-
-	start_func(start_param);
-
-	return 0;
-}
-
 static void l2tp_conn_close(struct triton_context_t *ctx)
 {
 	struct l2tp_conn_t *conn = container_of(ctx, typeof(*conn), ctx);
@@ -2719,20 +2702,31 @@ static int l2tp_recv_HELLO(struct l2tp_conn_t *conn,
 	return 0;
 }
 
-static void l2tp_session_incall_reply(void *data)
+static int l2tp_session_incall_reply(struct l2tp_sess_t *sess)
 {
-	struct l2tp_sess_t *sess = data;
+	if (triton_timer_add(&sess->paren_conn->ctx,
+			     &sess->timeout_timer, 0) < 0) {
+		log_session(log_error, sess,
+			    "impossible to reply to incoming call:"
+			    " setting establishment timer failed\n");
+		goto err;
+	}
 
 	if (l2tp_send_ICRP(sess) < 0) {
 		log_session(log_error, sess,
 			    "impossible to reply to incoming call:"
-			    " sending ICRP failed, disconnecting session\n");
-		l2tp_session_disconnect(sess, 2, 6);
-
-		return;
+			    " sending ICRP failed\n");
+		goto err_timer;
 	}
 
 	sess->state1 = STATE_WAIT_ICCN;
+
+	return 0;
+
+err_timer:
+	triton_timer_del(&sess->timeout_timer);
+err:
+	return -1;
 }
 
 static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
@@ -2826,8 +2820,7 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
 		goto out_reject;
 	}
 
-	if (l2tp_tunnel_start_session(sess, l2tp_session_incall_reply,
-				      sess) < 0) {
+	if (l2tp_session_incall_reply(sess) < 0) {
 		log_tunnel(log_error, conn, "impossible to handle ICRQ:"
 			   " starting session failed,"
 			   " disconnecting session\n");
@@ -3006,35 +2999,42 @@ static int l2tp_recv_ICCN(struct l2tp_sess_t *sess,
 	return 0;
 }
 
-static void l2tp_session_outcall_reply(void *data)
+static int l2tp_session_outcall_reply(struct l2tp_sess_t *sess)
 {
-	struct l2tp_sess_t *sess = data;
+	if (triton_timer_add(&sess->paren_conn->ctx,
+			     &sess->timeout_timer, 0) < 0) {
+		log_session(log_error, sess,
+			    "impossible to reply to outgoing call:"
+			    " setting establishment timer failed\n");
+		goto err;
+	}
 
 	if (l2tp_send_OCRP(sess) < 0) {
 		log_session(log_error, sess,
 			    "impossible to reply to outgoing call:"
-			    " sending OCRP failed, disconnecting session\n");
-		goto out_err;
+			    " sending OCRP failed\n");
+		goto err_timer;
 	}
 	if (l2tp_send_OCCN(sess) < 0) {
 		log_session(log_error, sess,
 			    "impossible to reply to outgoing call:"
-			    " sending OCCN failed, disconnecting session\n");
-		goto out_err;
+			    " sending OCCN failed\n");
+		goto err_timer;
 	}
 
 	if (l2tp_session_connect(sess) < 0) {
 		log_session(log_error, sess,
 			    "impossible to reply to outgoing call:"
-			    " connecting session failed,"
-			    " disconnecting session\n");
-		goto out_err;
+			    " connecting session failed\n");
+		goto err_timer;
 	}
 
-	return;
+	return 0;
 
-out_err:
-	l2tp_session_disconnect(sess, 2, 6);
+err_timer:
+	triton_timer_del(&sess->timeout_timer);
+err:
+	return -1;
 }
 
 static int l2tp_recv_OCRQ(struct l2tp_conn_t *conn,
@@ -3130,8 +3130,7 @@ static int l2tp_recv_OCRQ(struct l2tp_conn_t *conn,
 		goto out_cancel;
 	}
 
-	if (l2tp_tunnel_start_session(sess, l2tp_session_outcall_reply,
-				      sess) < 0) {
+	if (l2tp_session_outcall_reply(sess) < 0) {
 		log_tunnel(log_error, conn, "impossible to handle OCRQ:"
 			   " starting session failed,"
 			   " disconnecting session\n");
@@ -3397,10 +3396,18 @@ static int l2tp_recv_SLI(struct l2tp_conn_t *conn,
 	return 0;
 }
 
-static void l2tp_session_place_call(void *data)
+static int l2tp_session_place_call(struct l2tp_sess_t *sess)
 {
-	struct l2tp_sess_t *sess = data;
 	int res;
+
+	if (triton_timer_add(&sess->paren_conn->ctx,
+			     &sess->timeout_timer, 0) < 0) {
+		log_session(log_error, sess,
+			    "impossible to place %s call:"
+			    " setting establishment timer failed\n",
+			    sess->lns_mode ? "outgoing" : "incoming");
+		goto err;
+	}
 
 	if (sess->lns_mode)
 		res = l2tp_send_OCRQ(sess);
@@ -3410,14 +3417,20 @@ static void l2tp_session_place_call(void *data)
 	if (res < 0) {
 		log_session(log_error, sess,
 			    "impossible to place %s call:"
-			    " sending %cCRQ failed, freeing session\n",
+			    " sending %cCRQ failed\n",
 			    sess->lns_mode ? "outgoing" : "incoming",
 			    sess->lns_mode ? 'O' : 'I');
-		l2tp_session_free(sess);
-		return;
+		goto err_timer;
 	}
 
 	sess->state1 = sess->lns_mode ? STATE_WAIT_OCRP : STATE_WAIT_ICRP;
+
+	return 0;
+
+err_timer:
+	triton_timer_del(&sess->timeout_timer);
+err:
+	return -1;
 }
 
 static void l2tp_tunnel_create_session(void *data)
@@ -3440,8 +3453,7 @@ static void l2tp_tunnel_create_session(void *data)
 	}
 	sid = sess->sid;
 
-	if (l2tp_tunnel_start_session(sess,
-				      l2tp_session_place_call, sess) < 0) {
+	if (l2tp_session_place_call(sess) < 0) {
 		log_tunnel(log_error, conn, "impossible to create session:"
 			   " starting session failed\n");
 		l2tp_session_free(sess);
