@@ -1134,7 +1134,7 @@ static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packe
 			opt82_match = 0;
 	}
 
-	if (!opt82_match) {
+	if (pack->relay_agent && !opt82_match) {
 		log_ppp_info2("port change detected\n");
 		if (pack->msg_type == DHCPREQUEST)
 			dhcpv4_send_nak(dhcpv4, pack);
