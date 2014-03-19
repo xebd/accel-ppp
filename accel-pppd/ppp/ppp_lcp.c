@@ -604,7 +604,7 @@ static void lcp_recv_echo_repl(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 		if (conf_ppp_verbose)
 			log_ppp_debug("recv [LCP EchoRep id=%x]\n", lcp->fsm.recv_id);
 	} else {
-		magic = *(uint32_t *)data;
+		magic = ntohl(*(uint32_t *)data);
 
 		if (conf_ppp_verbose)
 			log_ppp_debug("recv [LCP EchoRep id=%x <magic %08x>]\n", lcp->fsm.recv_id, magic);
@@ -651,7 +651,7 @@ static void send_echo_request(struct triton_timer_t *t)
 		.hdr.code = ECHOREQ,
 		.hdr.id = lcp->fsm.id++,
 		.hdr.len = htons(8),
-		.magic = lcp->magic,
+		.magic = htonl(lcp->magic),
 	};
 
 	++lcp->echo_sent;
