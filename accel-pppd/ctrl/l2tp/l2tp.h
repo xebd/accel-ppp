@@ -14,7 +14,6 @@
 #define ATTR_TYPE_STRING  5
 
 #define L2TP_MAX_PACKET_SIZE 65536
-#define L2TP_MAX_TID 65534
 
 #define L2TP_V2_PROTOCOL_VERSION ( 1 << 8 | 0 )
 

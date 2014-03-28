@@ -151,7 +151,6 @@ struct l2tp_conn_t
 
 static pthread_mutex_t l2tp_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct l2tp_conn_t **l2tp_conn;
-static uint16_t l2tp_tid;
 
 static mempool_t l2tp_conn_pool;
 static mempool_t l2tp_sess_pool;
@@ -1197,7 +1196,8 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 {
 	struct l2tp_conn_t *conn;
 	socklen_t hostaddrlen = sizeof(conn->host_addr);
-	uint16_t tid;
+	uint16_t count;
+	ssize_t rdlen;
 	int flag;
 
 	conn = mempool_alloc(l2tp_conn_pool);
@@ -1274,24 +1274,6 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 		goto out_err;
 	}
 
-	pthread_mutex_lock(&l2tp_lock);
-	for (tid = l2tp_tid + 1; tid != l2tp_tid; tid++) {
-		if (tid == L2TP_MAX_TID)
-			tid = 1;
-		if (!l2tp_conn[tid]) {
-			l2tp_conn[tid] = conn;
-			conn->tid = tid;
-			break;
-		}
-	}
-	pthread_mutex_unlock(&l2tp_lock);
-
-	if (!conn->tid) {
-		log_error("l2tp: impossible to allocate new tunnel:"
-			  " no more tunnel available\n");
-		goto out_err;
-	}
-
 	if (getsockname(conn->hnd.fd, &conn->host_addr, &hostaddrlen) < 0) {
 		log_error("l2tp: impossible to allocate new tunnel:"
 			  " getsockname() failed: %s\n", strerror(errno));
@@ -1302,6 +1284,35 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 			  " inconsistent address length returned by"
 			  " getsockname(): %i bytes instead of %zu\n",
 			  hostaddrlen, sizeof(conn->host_addr));
+		goto out_err;
+	}
+
+	for (count = UINT16_MAX; count > 0; --count) {
+		rdlen = read(urandom_fd, &conn->tid, sizeof(conn->tid));
+		if (rdlen != sizeof(conn->tid)) {
+			log_error("l2tp: impossible to allocate new tunnel:"
+				  " reading from urandom failed: %s\n",
+				  (rdlen < 0) ? strerror(errno) : "short read");
+			goto out_err;
+		}
+
+		if (conn->tid == 0)
+			continue;
+
+		pthread_mutex_lock(&l2tp_lock);
+		if (l2tp_conn[conn->tid]) {
+			pthread_mutex_unlock(&l2tp_lock);
+			continue;
+		}
+		l2tp_conn[conn->tid] = conn;
+		pthread_mutex_unlock(&l2tp_lock);
+
+		break;
+	}
+
+	if (count == 0) {
+		log_error("l2tp: impossible to allocate new tunnel:"
+			   " could not find any unused tunnel ID\n");
 		goto out_err;
 	}
 
@@ -4149,7 +4160,7 @@ static int l2tp_create_session_exec(const char *cmd, char * const *fields,
 		return CLI_CMD_SYNTAX;
 	}
 
-	if (u_readlong(&tid, fields[4], 1, L2TP_MAX_TID - 1) < 0) {
+	if (u_readlong(&tid, fields[4], 1, UINT16_MAX) < 0) {
 		cli_sendv(client, "invalid Tunnel ID: \"%s\"\r\n", fields[4]);
 		return CLI_CMD_INVAL;
 	}
@@ -4307,8 +4318,8 @@ static void l2tp_init(void)
 	else if (system("modprobe -q pppol2tp || modprobe -q l2tp_ppp"))
 		log_warn("unable to load l2tp kernel module\n");
 
-	l2tp_conn = _malloc(L2TP_MAX_TID * sizeof(void *));
-	memset(l2tp_conn, 0, L2TP_MAX_TID * sizeof(void *));
+	l2tp_conn = _malloc((UINT16_MAX + 1) * sizeof(struct l2tp_conn_t *));
+	memset(l2tp_conn, 0, (UINT16_MAX + 1) * sizeof(struct l2tp_conn_t *));
 
 	l2tp_conn_pool = mempool_create(sizeof(struct l2tp_conn_t));
 	l2tp_sess_pool = mempool_create(sizeof(struct l2tp_sess_t));
