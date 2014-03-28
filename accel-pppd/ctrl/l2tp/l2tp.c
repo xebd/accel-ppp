@@ -440,7 +440,7 @@ static int l2tp_send_StopCCN(struct l2tp_conn_t *conn,
 	struct l2tp_packet_t *pack = NULL;
 	struct l2tp_avp_result_code rc = {htons(res), htons(err)};
 
-	log_tunnel(log_info2, conn, "sending StopCCN (res: %hu, err:%hu)\n",
+	log_tunnel(log_info2, conn, "sending StopCCN (res: %hu, err: %hu)\n",
 		   res, err);
 
 	pack = l2tp_packet_alloc(2, Message_Type_Stop_Ctrl_Conn_Notify,
@@ -3482,7 +3482,7 @@ static void l2tp_tunnel_create_session(void *data)
 	sess = l2tp_tunnel_alloc_session(conn);
 	if (sess == NULL) {
 		log_tunnel(log_error, conn, "impossible to create session:"
-			   " session allocation failed");
+			   " session allocation failed\n");
 		return;
 	}
 	sid = sess->sid;
