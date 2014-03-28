@@ -4174,10 +4174,15 @@ static void l2tp_create_tunnel_help(char * const *fields, int fields_cnt,
 				    void *client)
 {
 	cli_send(client,
-		 "l2tp create tunnel peer-addr <ip_addr> [peer-port <port>]"
-		 " [host-addr <ip_addr>] [host-port <port>]"
-		 " [hide-avps <0|1>] [mode <lac|lns>]"
-		 " - initiate new tunnel to peer\r\n");
+		 "l2tp create tunnel peer-addr <ip_addr> [OPTIONS...]"
+		 " - initiate new tunnel to peer\r\n"
+		 "\tOPTIONS:\r\n"
+		 "\t\tpeer-port <port> - destination port (default 1701)\r\n"
+		 "\t\thost-addr <ip_addr> - source address\r\n"
+		 "\t\thost-port <port> - source port\r\n"
+		 "\t\tsecret <secret> - tunnel secret\r\n"
+		 "\t\thide-avps <0|1> - activation of AVP hiding\r\n"
+		 "\t\tmode <lac|lns> - tunnel mode\r\n");
 }
 
 static void l2tp_create_session_help(char * const *fields, int fields_cnt,
