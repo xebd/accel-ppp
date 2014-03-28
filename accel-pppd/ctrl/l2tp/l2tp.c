@@ -156,7 +156,7 @@ static uint16_t l2tp_tid;
 static mempool_t l2tp_conn_pool;
 static mempool_t l2tp_sess_pool;
 
-static void l2tp_timeout(struct triton_timer_t *t);
+static void l2tp_tunnel_timeout(struct triton_timer_t *t);
 static void l2tp_rtimeout(struct triton_timer_t *t);
 static void l2tp_send_HELLO(struct triton_timer_t *t);
 static int l2tp_tunnel_send(struct l2tp_conn_t *conn,
@@ -1044,6 +1044,7 @@ static void l2tp_session_timeout(struct triton_timer_t *t)
 	struct l2tp_sess_t *sess = container_of(t, typeof(*sess),
 						timeout_timer);
 
+	triton_timer_del(t);
 	log_session(log_info1, sess, "session establishment timeout,"
 		    " disconnecting session\n");
 	l2tp_session_disconnect(sess, 10, 0);
@@ -1303,7 +1304,7 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 	conn->ctx.before_switch = log_switch;
 	conn->ctx.close = l2tp_conn_close;
 	conn->hnd.read = l2tp_conn_read;
-	conn->timeout_timer.expire = l2tp_timeout;
+	conn->timeout_timer.expire = l2tp_tunnel_timeout;
 	conn->timeout_timer.period = conf_timeout * 1000;
 	conn->rtimeout_timer.expire = l2tp_rtimeout;
 	conn->rtimeout_timer.period = conf_rtimeout * 1000;
@@ -1673,11 +1674,12 @@ static void l2tp_rtimeout(struct triton_timer_t *t)
 	}
 }
 
-static void l2tp_timeout(struct triton_timer_t *t)
+static void l2tp_tunnel_timeout(struct triton_timer_t *t)
 {
 	struct l2tp_conn_t *conn = container_of(t, typeof(*conn),
 						timeout_timer);
 
+	triton_timer_del(t);
 	log_tunnel(log_info1, conn, "tunnel establishment timeout,"
 		   " disconnecting tunnel\n");
 	l2tp_tunnel_disconnect(conn, 1, 0);
