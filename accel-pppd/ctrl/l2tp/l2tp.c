@@ -1010,7 +1010,9 @@ static void apses_started(struct ap_session *apses)
 	__sync_add_and_fetch(&stat_active, 1);
 	sess->apses_state = APSTATE_STARTED;
 
-	log_ppp_info1("session started\n");
+	log_ppp_info1("session started over l2tp session %hu-%hu, %hu-%hu\n",
+		      sess->paren_conn->tid, sess->paren_conn->peer_tid,
+		      sess->sid, sess->peer_sid);
 }
 
 static void apses_start(void *data)
