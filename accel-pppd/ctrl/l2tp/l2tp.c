@@ -1526,8 +1526,11 @@ static int l2tp_session_connect(struct l2tp_sess_t *sess)
 
 	u_inet_ntoa(conn->peer_addr.sin_addr.s_addr, addr);
 	peer_port = ntohs(conn->peer_addr.sin_port);
-	if (_asprintf(&sess->ppp.ses.chan_name, "%s:%i session %i",
-		      addr, peer_port, sess->peer_sid) < 0) {
+	if (_asprintf(&sess->ppp.ses.chan_name,
+		      "%s:%hu session %hu-%hu, %hu-%hu",
+		      addr, peer_port,
+		      sess->paren_conn->tid, sess->paren_conn->peer_tid,
+		      sess->sid, sess->peer_sid) < 0) {
 		log_session(log_error, sess, "impossible to connect session:"
 			    " setting session's channel name failed\n");
 		goto out_err;
