@@ -3507,7 +3507,7 @@ static void l2tp_tunnel_create_session(void *data)
 }
 
 static void l2tp_session_recv(struct l2tp_sess_t *sess,
-			      struct l2tp_packet_t *pack)
+			      const struct l2tp_packet_t *pack)
 {
 	const struct l2tp_attr_t *msg_type = NULL;
 
@@ -3542,8 +3542,6 @@ static void l2tp_session_recv(struct l2tp_sess_t *sess,
 				    msg_type->val.uint16);
 		break;
 	}
-
-	l2tp_packet_free(pack);
 }
 
 static int l2tp_conn_read(struct triton_md_handler_t *h)
@@ -3715,7 +3713,7 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 					continue;
 				}
 				l2tp_session_recv(sess, pack);
-				continue;
+				break;
 			case Message_Type_WAN_Error_Notify:
 				l2tp_recv_WEN(conn, pack);
 				break;
