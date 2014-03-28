@@ -2666,6 +2666,12 @@ static int l2tp_recv_StopCCN(struct l2tp_conn_t *conn,
 	uint16_t res = 0;
 	uint16_t err = 0;
 
+	if (conn->state == STATE_CLOSE) {
+		log_tunnel(log_warn, conn, "discarding unexpected StopCCN\n");
+
+		return 0;
+	}
+
 	log_tunnel(log_info2, conn, "handling StopCCN\n");
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
@@ -2732,6 +2738,12 @@ static int l2tp_recv_StopCCN(struct l2tp_conn_t *conn,
 static int l2tp_recv_HELLO(struct l2tp_conn_t *conn,
 			   const struct l2tp_packet_t *pack)
 {
+	if (conn->state != STATE_ESTB) {
+		log_tunnel(log_warn, conn, "discarding unexpected HELLO\n");
+
+		return 0;
+	}
+
 	log_tunnel(log_debug, conn, "handling HELLO\n");
 
 	if (l2tp_send_ZLB(conn) < 0) {
@@ -3333,6 +3345,12 @@ static int l2tp_recv_CDN(struct l2tp_sess_t *sess,
 	char *err_msg = NULL;
 	uint16_t res = 0;
 	uint16_t err = 0;
+
+	if (sess->state1 == STATE_CLOSE) {
+		log_session(log_warn, sess, "discarding unexpected CDN\n");
+
+		return 0;
+	}
 
 	log_session(log_info2, sess, "handling CDN\n");
 
