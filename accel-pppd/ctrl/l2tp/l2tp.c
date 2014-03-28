@@ -1057,6 +1057,7 @@ static struct l2tp_sess_t *l2tp_tunnel_new_session(struct l2tp_conn_t *conn)
 	struct l2tp_sess_t *sess = NULL;
 	struct l2tp_sess_t **sess_search = NULL;
 	ssize_t rdlen = 0;
+	uint16_t count;
 
 	sess = mempool_alloc(l2tp_sess_pool);
 	if (sess == NULL) {
@@ -1067,23 +1068,27 @@ static struct l2tp_sess_t *l2tp_tunnel_new_session(struct l2tp_conn_t *conn)
 	}
 	memset(sess, 0, sizeof(*sess));
 
-	rdlen = read(urandom_fd, &sess->sid, sizeof(sess->sid));
-	if (rdlen != sizeof(sess->sid)) {
-		log_tunnel(log_error, conn,
-			   "impossible to allocate new session:"
-			   " reading from urandom failed: %s\n",
-			   (rdlen < 0) ? strerror(errno) : "short read");
-		goto out_err;
-	}
-	if (sess->sid == 0) {
-		log_tunnel(log_error, conn,
-			   "impossible to allocate new session:"
-			   " session ID generation failed\n");
-		goto out_err;
+	for (count = UINT16_MAX; count > 0; --count) {
+		rdlen = read(urandom_fd, &sess->sid, sizeof(sess->sid));
+		if (rdlen != sizeof(sess->sid)) {
+			log_tunnel(log_error, conn,
+				   "impossible to allocate new session:"
+				   " reading from urandom failed: %s\n",
+				   (rdlen < 0) ? strerror(errno) : "short read");
+			goto out_err;
+		}
+
+		if (sess->sid == 0)
+			continue;
+
+		sess_search = tsearch(sess, &conn->sessions, sess_cmp);
+		if (*sess_search != sess)
+			continue;
+
+		break;
 	}
 
-	sess_search = tsearch(sess, &conn->sessions, sess_cmp);
-	if (*sess_search != sess) {
+	if (count == 0) {
 		log_tunnel(log_error, conn,
 			   "impossible to allocate new session:"
 			   " could not find any unused session ID\n");
