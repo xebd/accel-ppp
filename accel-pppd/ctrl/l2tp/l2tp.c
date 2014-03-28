@@ -4086,12 +4086,12 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 	}
 
 	if (indx != fields_cnt) {
-		cli_sendv(client, "argument missing for last option\r\n");
+		cli_send(client, "argument missing for last option\r\n");
 		return CLI_CMD_SYNTAX;
 	}
 
 	if (peer_indx < 0) {
-		cli_sendv(client, "missing option \"peer-addr\"\r\n");
+		cli_send(client, "missing option \"peer-addr\"\r\n");
 		return CLI_CMD_SYNTAX;
 	}
 
@@ -4105,7 +4105,7 @@ static int l2tp_create_tunnel_exec(const char *cmd, char * const *fields,
 	if (secret) {
 		conn->secret = _strdup(secret);
 		if (conn->secret == NULL) {
-			cli_sendv(client, "secret allocation failed\r\n");
+			cli_send(client, "secret allocation failed\r\n");
 			l2tp_tunnel_free(conn);
 			return CLI_CMD_FAILED;
 		}
