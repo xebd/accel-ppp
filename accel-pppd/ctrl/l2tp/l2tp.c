@@ -3399,38 +3399,42 @@ static int l2tp_recv_CDN(struct l2tp_sess_t *sess,
 	return 0;
 }
 
-static int l2tp_recv_WEN(struct l2tp_conn_t *conn,
+static int l2tp_recv_WEN(struct l2tp_sess_t *sess,
 			 const struct l2tp_packet_t *pack)
 {
-	if (!conn->lns_mode) {
-		log_tunnel(log_warn, conn, "discarding unexpected WEN\n");
+	if (sess->state1 != STATE_ESTB || !sess->paren_conn->lns_mode) {
+		log_session(log_warn, sess, "discarding unexpected WEN\n");
+
 		return 0;
 	}
 
-	log_tunnel(log_info2, conn, "handling WEN\n");
+	log_session(log_info2, sess, "handling WEN\n");
 
-	if (l2tp_send_ZLB(conn) < 0) {
-		log_tunnel(log_error, conn, "impossible to handle WEN:"
-			   " sending ZLB failed\n");
+	if (l2tp_send_ZLB(sess->paren_conn) < 0) {
+		log_session(log_error, sess, "impossible to handle WEN:"
+			    " sending ZLB failed\n");
+
 		return -1;
 	}
 
 	return 0;
 }
 
-static int l2tp_recv_SLI(struct l2tp_conn_t *conn,
+static int l2tp_recv_SLI(struct l2tp_sess_t *sess,
 			 const struct l2tp_packet_t *pack)
 {
-	if (conn->lns_mode) {
-		log_tunnel(log_warn, conn, "discarding unexpected SLI\n");
+	if (sess->state1 != STATE_ESTB || sess->paren_conn->lns_mode) {
+		log_session(log_warn, sess, "discarding unexpected SLI\n");
+
 		return 0;
 	}
 
-	log_tunnel(log_info2, conn, "handling SLI\n");
+	log_session(log_info2, sess, "handling SLI\n");
 
-	if (l2tp_send_ZLB(conn) < 0) {
-		log_tunnel(log_error, conn, "impossible to handle SLI:"
-			   " sending ZLB failed\n");
+	if (l2tp_send_ZLB(sess->paren_conn) < 0) {
+		log_session(log_error, sess, "impossible to handle SLI:"
+			    " sending ZLB failed\n");
+
 		return -1;
 	}
 
@@ -3528,6 +3532,12 @@ static void l2tp_session_recv(struct l2tp_sess_t *sess,
 		break;
 	case Message_Type_Call_Disconnect_Notify:
 		l2tp_recv_CDN(sess, pack);
+		break;
+	case Message_Type_WAN_Error_Notify:
+		l2tp_recv_WEN(sess, pack);
+		break;
+	case Message_Type_Set_Link_Info:
+		l2tp_recv_SLI(sess, pack);
 		break;
 	default:
 		if (msg_type->M) {
@@ -3703,6 +3713,8 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 			case Message_Type_Outgoing_Call_Reply:
 			case Message_Type_Outgoing_Call_Connected:
 			case Message_Type_Call_Disconnect_Notify:
+			case Message_Type_WAN_Error_Notify:
+			case Message_Type_Set_Link_Info:
 				sess = l2tp_tunnel_get_session(conn, ntohs(pack->hdr.sid));
 				if (sess == NULL) {
 					log_tunnel(log_warn, conn,
@@ -3713,12 +3725,6 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 					continue;
 				}
 				l2tp_session_recv(sess, pack);
-				break;
-			case Message_Type_WAN_Error_Notify:
-				l2tp_recv_WEN(conn, pack);
-				break;
-			case Message_Type_Set_Link_Info:
-				l2tp_recv_SLI(conn, pack);
 				break;
 			case Message_Type_Start_Ctrl_Conn_Request:
 				log_tunnel(log_warn, conn,
