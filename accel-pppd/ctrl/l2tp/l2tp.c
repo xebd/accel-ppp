@@ -163,6 +163,8 @@ static int l2tp_tunnel_send(struct l2tp_conn_t *conn,
 static int l2tp_session_send(struct l2tp_sess_t *sess,
 			     struct l2tp_packet_t *pack);
 static int l2tp_conn_read(struct triton_md_handler_t *);
+static void l2tp_session_free(struct l2tp_sess_t *sess);
+static void l2tp_tunnel_free(struct l2tp_conn_t *conn);
 static void apses_stop(void *data);
 
 
@@ -567,7 +569,19 @@ out_err:
 	return -1;
 }
 
-static void l2tp_tunnel_disconnect(struct l2tp_conn_t *conn, int res, int err)
+static void l2tp_tunnel_free_sessions(struct l2tp_conn_t *conn)
+{
+	void *sessions = conn->sessions;
+
+	conn->sessions = NULL;
+	tdestroy(sessions, (__free_fn_t)l2tp_session_free);
+	/* Let l2tp_session_free() handle the session counter and
+	 * the reference held by the tunnel.
+	 */
+}
+
+static int l2tp_tunnel_disconnect(struct l2tp_conn_t *conn,
+				  uint16_t res, uint16_t err)
 {
 	switch (conn->state) {
 	case STATE_INIT:
@@ -582,21 +596,38 @@ static void l2tp_tunnel_disconnect(struct l2tp_conn_t *conn, int res, int err)
 		break;
 	case STATE_FIN:
 	case STATE_CLOSE:
-		return;
+		return 0;
 	default:
 		log_tunnel(log_error, conn,
 			   "impossible to disconnect tunnel:"
 			   " invalid state %i\n",
 			   conn->state);
-		return;
+		return 0;
 	}
 
-	if (l2tp_send_StopCCN(conn, res, err) < 0)
+	if (l2tp_send_StopCCN(conn, res, err) < 0) {
 		log_tunnel(log_error, conn,
-			   "impossible to notify peer of tunnel disconnection,"
-			   " disconnecting anyway\n");
+			   "impossible to notify peer of tunnel disconnection:"
+			   " sending StopCCN failed,"
+			   " deleting tunnel anyway\n");
+
+		conn->state = STATE_FIN;
+		l2tp_tunnel_free(conn);
+
+		return -1;
+	}
 
 	conn->state = STATE_FIN;
+
+	if (conn->timeout_timer.tpd)
+		triton_timer_del(&conn->timeout_timer);
+	if (conn->hello_timer.tpd)
+		triton_timer_del(&conn->hello_timer);
+
+	if (conn->sessions)
+		l2tp_tunnel_free_sessions(conn);
+
+	return 0;
 }
 
 static void __tunnel_destroy(struct l2tp_conn_t *conn)
@@ -812,15 +843,8 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 		l2tp_packet_free(pack);
 	}
 
-	if (conn->sessions) {
-		void *sessions = conn->sessions;
-
-		conn->sessions = NULL;
-		tdestroy(sessions, (__free_fn_t)l2tp_session_free);
-		/* Let l2tp_session_free() handle the session counter and
-		 * the reference held by the tunnel.
-		 */
-	}
+	if (conn->sessions)
+		l2tp_tunnel_free_sessions(conn);
 
 	pthread_mutex_lock(&conn->ctx_lock);
 	if (conn->ctx.tpd)
@@ -1144,7 +1168,6 @@ static void l2tp_conn_close(struct triton_context_t *ctx)
 	log_tunnel(log_info1, conn, "context thread is closing,"
 		   " disconnecting tunnel\n");
 	l2tp_tunnel_disconnect(conn, 0, 0);
-	l2tp_tunnel_free(conn);
 }
 
 static int l2tp_tunnel_start(struct l2tp_conn_t *conn,
@@ -1702,7 +1725,6 @@ static void l2tp_tunnel_timeout(struct triton_timer_t *t)
 	log_tunnel(log_info1, conn, "tunnel establishment timeout,"
 		   " disconnecting tunnel\n");
 	l2tp_tunnel_disconnect(conn, 1, 0);
-	l2tp_tunnel_free(conn);
 }
 
 static int l2tp_tunnel_send(struct l2tp_conn_t *conn,
