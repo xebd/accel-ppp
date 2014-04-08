@@ -3723,6 +3723,21 @@ static int l2tp_recv_CDN(struct l2tp_sess_t *sess,
 	return 0;
 }
 
+static int l2tp_tunnel_recv_CDN(struct l2tp_conn_t *conn,
+				const struct l2tp_packet_t *pack)
+{
+	if (conn->state != STATE_ESTB) {
+		log_tunnel(log_warn, conn, "discarding unexpected CDN\n");
+
+		return 0;
+	}
+
+	log_tunnel(log_warn, conn, "discarding CDN with no Session ID:"
+		   " disconnecting sessions using Assigned Session ID is currently not supported\n");
+
+	return 0;
+}
+
 static int l2tp_recv_WEN(struct l2tp_sess_t *sess,
 			 const struct l2tp_packet_t *pack)
 {
@@ -3907,6 +3922,8 @@ static void l2tp_tunnel_recv(struct l2tp_conn_t *conn,
 		l2tp_recv_ICRQ(conn, pack);
 		break;
 	case Message_Type_Call_Disconnect_Notify:
+		l2tp_tunnel_recv_CDN(conn, pack);
+		break;
 	case Message_Type_Outgoing_Call_Reply:
 	case Message_Type_Outgoing_Call_Connected:
 	case Message_Type_Incoming_Call_Reply:
