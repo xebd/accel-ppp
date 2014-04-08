@@ -563,7 +563,7 @@ static int l2tp_tunnel_push_sendqueue(struct l2tp_conn_t *conn)
 		}
 	}
 
-	return 0;
+	return 1;
 }
 
 static int l2tp_tunnel_send(struct l2tp_conn_t *conn,
@@ -2776,14 +2776,6 @@ static int l2tp_recv_SCCCN(struct l2tp_conn_t *conn,
 		return -1;
 	}
 
-	if (l2tp_send_ZLB(conn) < 0) {
-		log_tunnel(log_error, conn, "impossible to handle SCCCN:"
-			   " sending ZLB failed,"
-			   " disconnecting tunnel\n");
-		l2tp_tunnel_disconnect(conn, 2, 0);
-		return -1;
-	}
-
 	u_inet_ntoa(conn->host_addr.sin_addr.s_addr, host_addr);
 	log_tunnel(log_info1, conn, "established at %s:%hu\n",
 		   host_addr, ntohs(conn->host_addr.sin_port));
@@ -2895,9 +2887,6 @@ static int l2tp_recv_StopCCN(struct l2tp_conn_t *conn,
 	if (err_msg)
 		_free(err_msg);
 
-	if (l2tp_send_ZLB(conn) < 0)
-		log_tunnel(log_warn, conn, "acknowledging StopCCN failed\n");
-
 	l2tp_tunnel_free(conn);
 
 	return -1;
@@ -2913,12 +2902,6 @@ static int l2tp_recv_HELLO(struct l2tp_conn_t *conn,
 	}
 
 	log_tunnel(log_debug, conn, "handling HELLO\n");
-
-	if (l2tp_send_ZLB(conn) < 0) {
-		log_tunnel(log_error, conn, "impossible to handle HELLO:"
-			   " sending ZLB failed\n");
-		return -1;
-	}
 
 	return 0;
 }
@@ -3209,14 +3192,6 @@ static int l2tp_recv_ICCN(struct l2tp_sess_t *sess,
 		return -1;
 	}
 
-	if (l2tp_send_ZLB(sess->paren_conn) < 0) {
-		log_session(log_error, sess, "impossible to handle ICCN:"
-			    " sending ZLB failed, disconnecting session\n");
-		l2tp_session_disconnect(sess, 2, 6);
-
-		return -1;
-	}
-
 	return 0;
 }
 
@@ -3493,14 +3468,6 @@ static int l2tp_recv_OCCN(struct l2tp_sess_t *sess,
 		return -1;
 	}
 
-	if (l2tp_send_ZLB(sess->paren_conn) < 0) {
-		log_session(log_error, sess, "impossible to handle OCCN:"
-			    " sending ZLB failed, disconnecting session\n");
-		l2tp_session_disconnect(sess, 2, 6);
-
-		return -1;
-	}
-
 	return 0;
 }
 
@@ -3577,9 +3544,6 @@ static int l2tp_recv_CDN(struct l2tp_sess_t *sess,
 	if (err_msg)
 		_free(err_msg);
 
-	if (l2tp_send_ZLB(sess->paren_conn) < 0)
-		log_session(log_warn, sess, "acknowledging CDN failed\n");
-
 	l2tp_session_free(sess);
 
 	return 0;
@@ -3596,13 +3560,6 @@ static int l2tp_recv_WEN(struct l2tp_sess_t *sess,
 
 	log_session(log_info2, sess, "handling WEN\n");
 
-	if (l2tp_send_ZLB(sess->paren_conn) < 0) {
-		log_session(log_error, sess, "impossible to handle WEN:"
-			    " sending ZLB failed\n");
-
-		return -1;
-	}
-
 	return 0;
 }
 
@@ -3616,13 +3573,6 @@ static int l2tp_recv_SLI(struct l2tp_sess_t *sess,
 	}
 
 	log_session(log_info2, sess, "handling SLI\n");
-
-	if (l2tp_send_ZLB(sess->paren_conn) < 0) {
-		log_session(log_error, sess, "impossible to handle SLI:"
-			    " sending ZLB failed\n");
-
-		return -1;
-	}
 
 	return 0;
 }
@@ -3957,12 +3907,20 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 			l2tp_tunnel_recv(conn, pack, m_type, msg_type->M);
 		}
 
-		if (l2tp_tunnel_push_sendqueue(conn) < 0) {
+		res = l2tp_tunnel_push_sendqueue(conn);
+		if (res < 0) {
 			log_tunnel(log_error, conn,
 				   "impossible to reply to incoming message:"
 				   " transmitting messages from send queue failed,"
 				   " deleting tunnel\n");
 			goto drop;
+		} else if (res == 0) {
+			if (l2tp_send_ZLB(conn) < 0) {
+				log_tunnel(log_error, conn,
+					   "impossible to acknowledge messages from peer:"
+					   " sending ZBL failed\n");
+				goto drop;
+			}
 		}
 
 		l2tp_packet_free(pack);
