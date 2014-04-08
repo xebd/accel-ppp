@@ -46,7 +46,8 @@
 #define STATE_WAIT_OCCN  7
 #define STATE_ESTB       8
 #define STATE_FIN        9
-#define STATE_CLOSE      10
+#define STATE_FIN_WAIT   10
+#define STATE_CLOSE      11
 
 #define APSTATE_INIT      1
 #define APSTATE_STARTING  2
@@ -660,7 +661,8 @@ static int l2tp_tunnel_push_sendqueue(struct l2tp_conn_t *conn)
 static int l2tp_tunnel_send(struct l2tp_conn_t *conn,
 			    struct l2tp_packet_t *pack)
 {
-	if (conn->state == STATE_FIN || conn->state == STATE_CLOSE) {
+	if (conn->state == STATE_FIN || conn->state == STATE_FIN_WAIT ||
+	    conn->state == STATE_CLOSE) {
 		log_tunnel(log_info2, conn,
 			   "discarding outgoing message, tunnel is closing\n");
 		l2tp_packet_free(pack);
@@ -856,6 +858,7 @@ static int l2tp_tunnel_disconnect(struct l2tp_conn_t *conn,
 		__sync_add_and_fetch(&stat_conn_finishing, 1);
 		break;
 	case STATE_FIN:
+	case STATE_FIN_WAIT:
 	case STATE_CLOSE:
 		return 0;
 	default:
@@ -1074,6 +1077,7 @@ static void l2tp_session_free(struct l2tp_sess_t *sess)
 			l2tp_tunnel_disconnect_push(sess->paren_conn, 1, 0);
 			break;
 		case STATE_FIN:
+		case STATE_FIN_WAIT:
 		case STATE_CLOSE:
 			break;
 		default:
@@ -1108,6 +1112,7 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 		__sync_add_and_fetch(&stat_conn_finishing, 1);
 		break;
 	case STATE_FIN:
+	case STATE_FIN_WAIT:
 		break;
 	case STATE_CLOSE:
 		/* Tunnel already removed. Will be freed once its reference
@@ -2616,6 +2621,84 @@ out_err:
 	return -1;
 }
 
+static void l2tp_tunnel_finwait_timeout(struct triton_timer_t *tm)
+{
+	struct l2tp_conn_t *conn = container_of(tm, typeof(*conn),
+						timeout_timer);
+
+	triton_timer_del(tm);
+	log_tunnel(log_info2, conn, "tunnel disconnection timeout\n");
+	l2tp_tunnel_free(conn);
+}
+
+static void l2tp_tunnel_finwait(struct l2tp_conn_t *conn)
+{
+	int rtimeout;
+	int indx;
+
+	switch (conn->state) {
+	case STATE_WAIT_SCCRP:
+	case STATE_WAIT_SCCCN:
+		__sync_sub_and_fetch(&stat_conn_starting, 1);
+		__sync_add_and_fetch(&stat_conn_finishing, 1);
+		break;
+	case STATE_ESTB:
+		__sync_sub_and_fetch(&stat_conn_active, 1);
+		__sync_add_and_fetch(&stat_conn_finishing, 1);
+		break;
+	case STATE_FIN:
+		break;
+	case STATE_FIN_WAIT:
+	case STATE_CLOSE:
+		return;
+	default:
+		log_tunnel(log_error, conn,
+			   "impossible to disconnect tunnel:"
+			   " invalid state %i\n",
+			   conn->state);
+		return;
+	}
+
+	conn->state = STATE_FIN_WAIT;
+
+	if (conn->timeout_timer.tpd)
+		triton_timer_del(&conn->timeout_timer);
+	if (conn->hello_timer.tpd)
+		triton_timer_del(&conn->hello_timer);
+
+	/* Too late to send outstanding messages */
+	l2tp_tunnel_clear_sendqueue(conn);
+
+	if (conn->sessions)
+		l2tp_tunnel_free_sessions(conn);
+
+	/* Keep tunnel up during a full retransmission cycle */
+	conn->timeout_timer.period = 0;
+	rtimeout = conn->rtimeout;
+	for (indx = 0; indx < conn->max_retransmit; ++indx) {
+		conn->timeout_timer.period += rtimeout;
+		rtimeout *= 2;
+		if (rtimeout > conn->rtimeout_cap)
+			rtimeout = conn->rtimeout_cap;
+	}
+	conn->timeout_timer.expire = l2tp_tunnel_finwait_timeout;
+
+	if (triton_timer_add(&conn->ctx, &conn->timeout_timer, 0) < 0) {
+		log_tunnel(log_warn, conn,
+			   "impossible to start the disconnection timer,"
+			   " disconnecting immediately\n");
+
+		/* FIN-WAIT state occurs upon reception of a StopCCN message
+		 * which has to be acknowledged. This is normally handled by
+		 * the caller, but here l2tp_tunnel_free() will close the L2TP
+		 * socket. So we have to manually send the acknowledgement
+		 * first.
+		 */
+		l2tp_send_ZLB(conn);
+		l2tp_tunnel_free(conn);
+	}
+}
+
 static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 			   const struct l2tp_packet_t *pack,
 			   const struct in_pktinfo *pkt_info)
@@ -3035,7 +3118,7 @@ static int l2tp_recv_StopCCN(struct l2tp_conn_t *conn,
 	uint16_t res = 0;
 	uint16_t err = 0;
 
-	if (conn->state == STATE_CLOSE) {
+	if (conn->state == STATE_CLOSE || conn->state == STATE_FIN_WAIT) {
 		log_tunnel(log_warn, conn, "discarding unexpected StopCCN\n");
 
 		return 0;
@@ -3098,7 +3181,7 @@ static int l2tp_recv_StopCCN(struct l2tp_conn_t *conn,
 	if (err_msg)
 		_free(err_msg);
 
-	l2tp_tunnel_free(conn);
+	l2tp_tunnel_finwait(conn);
 
 	return -1;
 }
@@ -4100,13 +4183,15 @@ static int l2tp_tunnel_reply(struct l2tp_conn_t *conn, int need_ack)
 
 		/* We may receive packets even while disconnecting (e.g.
 		 * packets sent by peer before we disconnect, but received
-		 * later on).
+		 * later on, or peer retransmissions due to our acknowledgement
+		 * getting lost).
 		 * We don't have to process these messages, but we still
 		 * dequeue them all to send proper acknowledgement (to avoid
 		 * useless retransmissions from peer). Log with log_info2 since
 		 * there's nothing wrong with receiving messages at this stage.
 		 */
-		if (conn->state == STATE_FIN) {
+		if (conn->state == STATE_FIN ||
+		    conn->state == STATE_FIN_WAIT) {
 			log_tunnel(log_info2, conn,
 				   "discarding message received while disconnecting\n");
 			l2tp_packet_free(pack);
