@@ -2746,6 +2746,8 @@ static int l2tp_recv_StopCCN(struct l2tp_conn_t *conn,
 	if (l2tp_send_ZLB(conn) < 0)
 		log_tunnel(log_warn, conn, "acknowledging StopCCN failed\n");
 
+	l2tp_tunnel_free(conn);
+
 	return -1;
 }
 
@@ -3732,7 +3734,7 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 				break;
 			case Message_Type_Stop_Ctrl_Conn_Notify:
 				l2tp_recv_StopCCN(conn, pack);
-				goto drop;
+				break;
 			case Message_Type_Hello:
 				l2tp_recv_HELLO(conn, pack);
 				break;
