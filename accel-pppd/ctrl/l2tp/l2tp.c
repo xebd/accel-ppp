@@ -1517,7 +1517,7 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 	if (!conn) {
 		log_error("l2tp: impossible to allocate new tunnel:"
 			  " memory allocation failed\n");
-		return NULL;
+		goto err;
 	}
 
 	memset(conn, 0, sizeof(*conn));
@@ -1529,22 +1529,21 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 	if (conn->hnd.fd < 0) {
 		log_error("l2tp: impossible to allocate new tunnel:"
 			  " socket(PF_INET) failed: %s\n", strerror(errno));
-		mempool_free(conn);
-		return NULL;
+		goto err_conn;
 	}
 
 	flag = fcntl(conn->hnd.fd, F_GETFD);
 	if (flag < 0) {
 		log_error("l2tp: impossible to allocate new tunnel:"
 			  " fcntl(F_GETFD) failed: %s\n", strerror(errno));
-		goto out_err;
+		goto err_conn_fd;
 	}
 	flag = fcntl(conn->hnd.fd, F_SETFD, flag | FD_CLOEXEC);
 	if (flag < 0) {
 		log_error("l2tp: impossible to allocate new tunnel:"
 			  " fcntl(F_SETFD) failed: %s\n",
 			  strerror(errno));
-		goto out_err;
+		goto err_conn_fd;
 	}
 
 	flag = 1;
@@ -1553,12 +1552,12 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 		log_error("l2tp: impossible to allocate new tunnel:"
 			  " setsockopt(SO_REUSEADDR) failed: %s\n",
 			  strerror(errno));
-		goto out_err;
+		goto err_conn_fd;
 	}
 	if (bind(conn->hnd.fd, host, sizeof(*host))) {
 		log_error("l2tp: impossible to allocate new tunnel:"
 			  " bind() failed: %s\n", strerror(errno));
-		goto out_err;
+		goto err_conn_fd;
 	}
 
 	memcpy(&conn->peer_addr, peer, sizeof(*peer));
@@ -1570,7 +1569,7 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 		    sizeof(conn->peer_addr))) {
 		log_error("l2tp: impossible to allocate new tunnel:"
 			  " connect() failed: %s\n", strerror(errno));
-		goto out_err;
+		goto err_conn_fd;
 	}
 	if (!port_set)
 		conn->peer_addr.sin_port = peer->sin_port;
@@ -1579,26 +1578,26 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 	if (flag < 0) {
 		log_error("l2tp: impossible to allocate new tunnel:"
 			  " fcntl(F_GETFL) failed: %s\n", strerror(errno));
-		goto out_err;
+		goto err_conn_fd;
 	}
 	flag = fcntl(conn->hnd.fd, F_SETFL, flag | O_NONBLOCK);
 	if (flag < 0) {
 		log_error("l2tp: impossible to allocate new tunnel:"
 			  " fcntl(F_SETFL) failed: %s\n", strerror(errno));
-		goto out_err;
+		goto err_conn_fd;
 	}
 
 	if (getsockname(conn->hnd.fd, &conn->host_addr, &hostaddrlen) < 0) {
 		log_error("l2tp: impossible to allocate new tunnel:"
 			  " getsockname() failed: %s\n", strerror(errno));
-		goto out_err;
+		goto err_conn_fd;
 	}
 	if (hostaddrlen != sizeof(conn->host_addr)) {
 		log_error("l2tp: impossible to allocate new tunnel:"
 			  " inconsistent address length returned by"
 			  " getsockname(): %i bytes instead of %zu\n",
 			  hostaddrlen, sizeof(conn->host_addr));
-		goto out_err;
+		goto err_conn_fd;
 	}
 
 	for (count = UINT16_MAX; count > 0; --count) {
@@ -1607,7 +1606,7 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 			log_error("l2tp: impossible to allocate new tunnel:"
 				  " reading from urandom failed: %s\n",
 				  (rdlen < 0) ? strerror(errno) : "short read");
-			goto out_err;
+			goto err_conn_fd;
 		}
 
 		if (conn->tid == 0)
@@ -1627,7 +1626,7 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 	if (count == 0) {
 		log_error("l2tp: impossible to allocate new tunnel:"
 			   " could not find any unused tunnel ID\n");
-		goto out_err;
+		goto err_conn_fd;
 	}
 
 	conn->state = STATE_INIT;
@@ -1655,9 +1654,11 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 
 	return conn;
 
-out_err:
+err_conn_fd:
 	close(conn->hnd.fd);
+err_conn:
 	mempool_free(conn);
+err:
 	return NULL;
 }
 
