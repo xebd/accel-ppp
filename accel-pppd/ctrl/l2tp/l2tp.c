@@ -3723,12 +3723,10 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 
 		switch (msg_type->val.uint16) {
 			case Message_Type_Start_Ctrl_Conn_Reply:
-				if (l2tp_recv_SCCRP(conn, pack))
-					goto drop;
+				l2tp_recv_SCCRP(conn, pack);
 				break;
 			case Message_Type_Start_Ctrl_Conn_Connected:
-				if (l2tp_recv_SCCCN(conn, pack))
-					goto drop;
+				l2tp_recv_SCCCN(conn, pack);
 				break;
 			case Message_Type_Stop_Ctrl_Conn_Notify:
 				l2tp_recv_StopCCN(conn, pack);
@@ -3771,7 +3769,6 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 						   " %i, disconnecting tunnel\n",
 						   msg_type->val.uint16);
 					l2tp_tunnel_disconnect(conn, 2, 8);
-					goto drop;
 				} else
 					log_tunnel(log_warn, conn,
 						   "discarding unknown message type %i\n",
