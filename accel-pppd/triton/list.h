@@ -135,7 +135,7 @@ static inline void list_move_tail(struct list_head *list,
  * list_empty - tests whether a list is empty
  * @head: the list to test.
  */
-static inline int list_empty(struct list_head *head)
+static inline int list_empty(const struct list_head *head)
 {
 	return head->next == head;
 }
@@ -189,6 +189,17 @@ static inline void list_splice_init(struct list_head *list,
  */
 #define list_entry(ptr, type, member) \
 	((type *)((char *)(ptr)-(unsigned long)(&((type *)0)->member)))
+
+/**
+ * list_first_entry - get the first element from a list
+ * @ptr:	the list head to take the element from.
+ * @type:	the type of the struct this is embedded in.
+ * @member:	the name of the list_struct within the struct.
+ *
+ * Note, that list is expected to be not empty.
+ */
+#define list_first_entry(ptr, type, member) \
+	list_entry((ptr)->next, type, member)
 
 /**
  * list_for_each	-	iterate over a list
