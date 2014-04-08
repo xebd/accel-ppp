@@ -603,6 +603,8 @@ static void __tunnel_destroy(struct l2tp_conn_t *conn)
 {
 	pthread_mutex_destroy(&conn->ctx_lock);
 
+	if (conn->hnd.fd >= 0)
+		close(conn->hnd.fd);
 	if (conn->challenge)
 		_free(conn->challenge);
 	if (conn->secret)
@@ -797,10 +799,6 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 
 	if (conn->hnd.tpd)
 		triton_md_unregister_handler(&conn->hnd);
-	if (conn->hnd.fd >= 0) {
-		close(conn->hnd.fd);
-		conn->hnd.fd = -1;
-	}
 	if (conn->timeout_timer.tpd)
 		triton_timer_del(&conn->timeout_timer);
 	if (conn->rtimeout_timer.tpd)
@@ -3596,6 +3594,11 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 	const struct l2tp_attr_t *msg_type;
 	int res;
 
+	/* Hold the tunnel. This allows any function we call to free the
+	 * tunnel while still keeping the tunnel valid until we return.
+	 */
+	tunnel_hold(conn);
+
 	while (1) {
 		res = l2tp_recv(h->fd, &pack, NULL,
 				conn->secret, conn->secret_len);
@@ -3604,11 +3607,10 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 				log_tunnel(log_info1, conn,
 					   "peer is unreachable,"
 					   " disconnecting tunnel\n");
-				l2tp_tunnel_free(conn);
-
-				return -1;
+				goto err_tunfree;
 			}
-			return 0;
+
+			break;
 		}
 
 		if (!pack)
@@ -3779,9 +3781,21 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 		l2tp_packet_free(pack);
 	}
 
+	/* Use conn->state to detect tunnel deletion */
+	if (conn->state == STATE_CLOSE)
+		goto err;
+
+	tunnel_put(conn);
+
+	return 0;
+
 drop:
 	l2tp_packet_free(pack);
+err_tunfree:
 	l2tp_tunnel_free(conn);
+err:
+	tunnel_put(conn);
+
 	return -1;
 }
 
