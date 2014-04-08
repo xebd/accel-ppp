@@ -64,6 +64,7 @@ struct l2tp_attr_t
 struct l2tp_packet_t
 {
 	struct list_head entry;
+	struct list_head sess_entry;
 	struct sockaddr_in addr;
 	struct l2tp_hdr_t hdr;
 	struct list_head attrs;

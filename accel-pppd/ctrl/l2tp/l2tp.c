@@ -108,6 +108,7 @@ struct l2tp_sess_t
 	int reorder_timeout;
 
 	struct triton_timer_t timeout_timer;
+	struct list_head send_queue;
 
 	pthread_mutex_t apses_lock;
 	struct triton_context_t apses_ctx;
@@ -433,6 +434,33 @@ static int l2tp_tunnel_checkchallresp(uint8_t msgident,
 	return 0;
 }
 
+static void l2tp_tunnel_clear_sendqueue(struct l2tp_conn_t *conn)
+{
+	struct l2tp_packet_t *pack;
+
+	while (!list_empty(&conn->send_queue)) {
+		pack = list_first_entry(&conn->send_queue, typeof(*pack),
+					entry);
+		if (pack->sess_entry.next)
+			list_del(&pack->sess_entry);
+		list_del(&pack->entry);
+		l2tp_packet_free(pack);
+	}
+}
+
+static void l2tp_session_clear_sendqueue(struct l2tp_sess_t *sess)
+{
+	struct l2tp_packet_t *pack;
+
+	while (!list_empty(&sess->send_queue)) {
+		pack = list_first_entry(&sess->send_queue, typeof(*pack),
+					sess_entry);
+		list_del(&pack->sess_entry);
+		list_del(&pack->entry);
+		l2tp_packet_free(pack);
+	}
+}
+
 static int __l2tp_tunnel_send(const struct l2tp_conn_t *conn,
 			      struct l2tp_packet_t *pack)
 {
@@ -537,6 +565,11 @@ static int l2tp_tunnel_push_sendqueue(struct l2tp_conn_t *conn)
 			return -1;
 		}
 
+		if (pack->sess_entry.next) {
+			list_del(&pack->sess_entry);
+			pack->sess_entry.next = NULL;
+			pack->sess_entry.prev = NULL;
+		}
 		list_move_tail(&pack->entry, &conn->rtms_queue);
 		++conn->Ns;
 		++pkt_sent;
@@ -597,7 +630,12 @@ static int l2tp_session_send(struct l2tp_sess_t *sess,
 
 	pack->hdr.sid = htons(sess->peer_sid);
 
-	return l2tp_tunnel_send(sess->paren_conn, pack);
+	if (l2tp_tunnel_send(sess->paren_conn, pack) < 0)
+		return -1;
+
+	list_add_tail(&pack->sess_entry, &sess->send_queue);
+
+	return 0;
 }
 
 static int l2tp_send_StopCCN(struct l2tp_conn_t *conn,
@@ -758,6 +796,11 @@ static int l2tp_tunnel_disconnect(struct l2tp_conn_t *conn,
 		return 0;
 	}
 
+	/* Discard unsent messages so that StopCCN will be the only one in the
+	 * send queue (to minimise delay in case of congestion).
+	 */
+	l2tp_tunnel_clear_sendqueue(conn);
+
 	if (l2tp_send_StopCCN(conn, res, err) < 0) {
 		log_tunnel(log_error, conn,
 			   "impossible to notify peer of tunnel disconnection:"
@@ -871,6 +914,7 @@ static void session_hold(struct l2tp_sess_t *sess)
 
 static void l2tp_session_free(struct l2tp_sess_t *sess)
 {
+	struct l2tp_packet_t *pack;
 	intptr_t cause = TERM_NAS_REQUEST;
 	int res = 1;
 
@@ -922,6 +966,19 @@ static void l2tp_session_free(struct l2tp_sess_t *sess)
 
 	if (sess->timeout_timer.tpd)
 		triton_timer_del(&sess->timeout_timer);
+
+	/* Packets in the send queue must not reference the session anymore.
+	 * They aren't removed from tunnel's queue because they have to be sent
+	 * even though session is getting destroyed (useless messages are
+	 * dropped from send queues before calling l2tp_session_free()).
+	 */
+	while (!list_empty(&sess->send_queue)) {
+		pack = list_first_entry(&sess->send_queue, typeof(*pack),
+					sess_entry);
+		list_del(&pack->sess_entry);
+		pack->sess_entry.next = NULL;
+		pack->sess_entry.prev = NULL;
+	}
 
 	if (sess->paren_conn->sessions) {
 		if (!tdelete(sess, &sess->paren_conn->sessions, sess_cmp)) {
@@ -1015,11 +1072,7 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 		list_del(&pack->entry);
 		l2tp_packet_free(pack);
 	}
-	while (!list_empty(&conn->send_queue)) {
-		pack = list_entry(conn->send_queue.next, typeof(*pack), entry);
-		list_del(&pack->entry);
-		l2tp_packet_free(pack);
-	}
+	l2tp_tunnel_clear_sendqueue(conn);
 
 	if (conn->sessions)
 		l2tp_tunnel_free_sessions(conn);
@@ -1036,10 +1089,13 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 static void l2tp_session_disconnect(struct l2tp_sess_t *sess,
 				    uint16_t res, uint16_t err)
 {
+	/* Session is closing, unsent messages are now useless */
+	l2tp_session_clear_sendqueue(sess);
+
 	if (l2tp_send_CDN(sess, res, err) < 0)
 		log_session(log_error, sess,
-			    "impossible to notify peer of session"
-			    " disconnection, disconnecting anyway\n");
+			    "impossible to notify peer of session disconnection:"
+			    " sending CDN failed, deleting session anyway\n");
 
 	l2tp_session_free(sess);
 }
@@ -1337,6 +1393,7 @@ static struct l2tp_sess_t *l2tp_tunnel_alloc_session(struct l2tp_conn_t *conn)
 			 (conf_dataseq == L2TP_DATASEQ_REQUIRE);
 	sess->recv_seq = (conf_dataseq == L2TP_DATASEQ_REQUIRE);
 	sess->reorder_timeout = conf_reorder_timeout;
+	INIT_LIST_HEAD(&sess->send_queue);
 
 	sess->timeout_timer.expire = l2tp_session_timeout;
 	sess->timeout_timer.period = conf_timeout * 1000;
@@ -3543,6 +3600,9 @@ static int l2tp_recv_CDN(struct l2tp_sess_t *sess,
 
 	if (err_msg)
 		_free(err_msg);
+
+	/* Too late to send outstanding messages */
+	l2tp_session_clear_sendqueue(sess);
 
 	l2tp_session_free(sess);
 
