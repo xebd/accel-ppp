@@ -67,6 +67,7 @@
  */
 #define RECV_WINDOW_SIZE_MAX 32768
 
+#define DEFAULT_RECV_WINDOW 16
 #define DEFAULT_PPP_MAX_MTU 1420
 
 int conf_verbose = 0;
@@ -160,6 +161,9 @@ struct l2tp_conn_t
 	struct list_head send_queue;
 	struct list_head rtms_queue;
 	unsigned int send_queue_len;
+	struct l2tp_packet_t **recv_queue;
+	uint16_t recv_queue_sz;
+	uint16_t recv_queue_offt;
 	uint16_t peer_rcv_wnd_sz;
 
 	unsigned int ref_count;
@@ -448,6 +452,21 @@ static int l2tp_tunnel_checkchallresp(uint8_t msgident,
 	}
 
 	return 0;
+}
+
+static void l2tp_tunnel_clear_recvqueue(struct l2tp_conn_t *conn)
+{
+	struct l2tp_packet_t *pack;
+	uint16_t id;
+
+	for (id = 0; id < conn->recv_queue_sz; ++id) {
+		pack = conn->recv_queue[id];
+		if (pack) {
+			l2tp_packet_free(pack);
+			conn->recv_queue[id] = NULL;
+		}
+	}
+	conn->recv_queue_offt = 0;
 }
 
 static void l2tp_tunnel_clear_sendqueue(struct l2tp_conn_t *conn)
@@ -896,6 +915,8 @@ static void __tunnel_destroy(struct l2tp_conn_t *conn)
 		_free(conn->challenge);
 	if (conn->secret)
 		_free(conn->secret);
+	if (conn->recv_queue)
+		_free(conn->recv_queue);
 
 	log_tunnel(log_info2, conn, "tunnel destroyed\n");
 
@@ -1114,6 +1135,9 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 		l2tp_packet_free(pack);
 	}
 	l2tp_tunnel_clear_sendqueue(conn);
+
+	if (conn->recv_queue)
+		l2tp_tunnel_clear_recvqueue(conn);
 
 	if (conn->sessions)
 		l2tp_tunnel_free_sessions(conn);
@@ -1600,13 +1624,26 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 		goto err_conn_fd;
 	}
 
+	conn->recv_queue_sz = DEFAULT_RECV_WINDOW;
+	conn->recv_queue = _malloc(conn->recv_queue_sz *
+				   sizeof(*conn->recv_queue));
+	if (conn->recv_queue == NULL) {
+		log_error("l2tp: impossible to allocate new tunnel:"
+			  " allocating reception queue (%zu bytes) failed\n",
+			  conn->recv_queue_sz * sizeof(*conn->recv_queue));
+		goto err_conn_fd;
+	}
+	memset(conn->recv_queue, 0,
+	       conn->recv_queue_sz * sizeof(*conn->recv_queue));
+	conn->recv_queue_offt = 0;
+
 	for (count = UINT16_MAX; count > 0; --count) {
 		rdlen = read(urandom_fd, &conn->tid, sizeof(conn->tid));
 		if (rdlen != sizeof(conn->tid)) {
 			log_error("l2tp: impossible to allocate new tunnel:"
 				  " reading from urandom failed: %s\n",
 				  (rdlen < 0) ? strerror(errno) : "short read");
-			goto err_conn_fd;
+			goto err_conn_fd_queue;
 		}
 
 		if (conn->tid == 0)
@@ -1626,7 +1663,7 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 	if (count == 0) {
 		log_error("l2tp: impossible to allocate new tunnel:"
 			   " could not find any unused tunnel ID\n");
-		goto err_conn_fd;
+		goto err_conn_fd_queue;
 	}
 
 	conn->state = STATE_INIT;
@@ -1654,6 +1691,8 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 
 	return conn;
 
+err_conn_fd_queue:
+	_free(conn->recv_queue);
 err_conn_fd:
 	close(conn->hnd.fd);
 err_conn:
@@ -1962,26 +2001,6 @@ err:
 	return -1;
 }
 
-static int l2tp_retransmit(struct l2tp_conn_t *conn)
-{
-	struct l2tp_packet_t *pack;
-
-	pack = list_first_entry(&conn->rtms_queue, typeof(*pack), entry);
-	log_tunnel(log_info2, conn, "retransmitting packet %hu\n",
-		   ntohs(pack->hdr.Ns));
-	if (conf_verbose) {
-		log_tunnel(log_info2, conn, "retransmit (duplicate) ");
-		l2tp_packet_print(pack, log_info2);
-	}
-	if (__l2tp_tunnel_send(conn, pack) < 0) {
-		log_tunnel(log_error, conn,
-			   "packet retransmission failure\n");
-		return -1;
-	}
-
-	return 0;
-}
-
 static void l2tp_rtimeout(struct triton_timer_t *t)
 {
 	struct l2tp_conn_t *conn = container_of(t, typeof(*conn), rtimeout_timer);
@@ -2130,6 +2149,12 @@ static void l2tp_send_SCCRQ(void *peer_addr)
 			   " adding data to packet failed\n");
 		goto pack_err;
 	}
+	if (l2tp_packet_add_int16(pack, Recv_Window_Size, conn->recv_queue_sz,
+				  1) < 0) {
+		log_tunnel(log_error, conn, "impossible to send SCCRQ:"
+			   " adding data to packet failed\n");
+		goto pack_err;
+	}
 
 	if (u_randbuf(&chall_len, sizeof(chall_len), &err) < 0) {
 		if (err)
@@ -2208,6 +2233,12 @@ static void l2tp_send_SCCRP(struct l2tp_conn_t *conn)
 		goto out_err;
 	}
 	if (l2tp_packet_add_string(pack, Vendor_Name, "accel-ppp", 0) < 0) {
+		log_tunnel(log_error, conn, "impossible to send SCCRP:"
+			   " adding data to packet failed\n");
+		goto out_err;
+	}
+	if (l2tp_packet_add_int16(pack, Recv_Window_Size, conn->recv_queue_sz,
+				  1) < 0) {
 		log_tunnel(log_error, conn, "impossible to send SCCRP:"
 			   " adding data to packet failed\n");
 		goto out_err;
@@ -3900,14 +3931,191 @@ static void l2tp_tunnel_recv(struct l2tp_conn_t *conn,
 	}
 }
 
+static int l2tp_tunnel_store_msg(struct l2tp_conn_t *conn,
+				 struct l2tp_packet_t *pack,
+				 int *need_ack)
+{
+	uint16_t pack_Ns = ntohs(pack->hdr.Ns);
+	uint16_t pack_Nr = ntohs(pack->hdr.Nr);
+	uint16_t indx;
+
+	/* Drop packets which acknowledge more packets than have actually
+	 * been sent.
+	 */
+	if (nsnr_cmp(conn->Ns, pack_Nr) < 0) {
+		log_tunnel(log_warn, conn,
+			   "discarding message acknowledging unsent packets"
+			   " (packet Ns/Nr: %hu/%hu, tunnel Ns/Nr: %hu/%hu)\n",
+			   pack_Ns, pack_Nr, conn->Ns, conn->Nr);
+
+		return -1;
+	}
+
+	/* Update peer Nr only when new packets are acknowledged */
+	if (nsnr_cmp(pack_Nr, conn->peer_Nr) > 0)
+		conn->peer_Nr = pack_Nr;
+
+	if (l2tp_packet_is_ZLB(pack)) {
+		log_tunnel(log_debug, conn, "handling ZLB\n");
+		if (conf_verbose) {
+			log_tunnel(log_debug, conn, "recv ");
+			l2tp_packet_print(pack, log_debug);
+		}
+
+		return -1;
+	}
+
+	/* From now on, acknowledgement has to be sent in any case:
+	 * -If the received packet is a duplicated message, the ack will
+	 *  let the peer know we received its message (in case our
+	 *  previous ack was lost).
+	 *
+	 * -If the received packet is an out of order message (whether or not
+	 *  it fits in our reception window), the ack will explicitly tell the
+	 *  peer which message number we're missing.
+	 */
+	*need_ack = 1;
+
+	/* Drop duplicate messages */
+	if (nsnr_cmp(pack_Ns, conn->Nr) < 0) {
+		log_tunnel(log_info2, conn, "handling duplicate message"
+			   " (packet Ns/Nr: %hu/%hu, tunnel Ns/Nr: %hu/%hu)\n",
+			   pack_Ns, pack_Nr, conn->Ns, conn->Nr);
+
+		return -1;
+	}
+
+	/* Drop out of order messages which don't fit in our reception queue.
+	 * This means that the peer doesn't respect our receive window, so use
+	 * log_warn.
+	 */
+	indx = pack_Ns - conn->Nr;
+	if (indx >= conn->recv_queue_sz) {
+		log_tunnel(log_warn, conn, "discarding out of order message"
+			   " (packet Ns/Nr: %hu/%hu, tunnel Ns/Nr: %hu/%hu,"
+			   " tunnel reception window size: %hu bytes)\n",
+			   pack_Ns, pack_Nr, conn->Ns, conn->Nr,
+			   conn->recv_queue_sz);
+
+		return -1;
+	}
+
+	/* Drop duplicate out of order messages */
+	indx = (indx + conn->recv_queue_offt) % conn->recv_queue_sz;
+	if (conn->recv_queue[indx]) {
+		log_tunnel(log_info2, conn,
+			   "discarding duplicate out of order message"
+			   " (packet Ns/Nr: %hu/%hu, tunnel Ns/Nr: %hu/%hu)\n",
+			   pack_Ns, pack_Nr, conn->Ns, conn->Nr);
+
+		return -1;
+	}
+
+	conn->recv_queue[indx] = pack;
+
+	return 0;
+}
+
+static int l2tp_tunnel_reply(struct l2tp_conn_t *conn, int need_ack)
+{
+	const struct l2tp_attr_t *msg_attr;
+	struct l2tp_packet_t *pack;
+	struct l2tp_sess_t *sess;
+	uint16_t msg_sid;
+	uint16_t msg_type;
+	uint16_t id = conn->recv_queue_offt;
+	unsigned int pkt_count = 0;
+	int res;
+
+	/* Loop over reception queue, break as as soon as there is no more
+	 * message to process or if tunnel gets closed.
+	 */
+	do {
+		if (conn->recv_queue[id] == NULL || conn->state == STATE_CLOSE)
+			break;
+
+		pack = conn->recv_queue[id];
+		conn->recv_queue[id] = NULL;
+		++conn->Nr;
+		++pkt_count;
+		id = (id + 1) % conn->recv_queue_sz;
+
+		/* We may receive packets even while disconnecting (e.g.
+		 * packets sent by peer before we disconnect, but received
+		 * later on).
+		 * We don't have to process these messages, but we still
+		 * dequeue them all to send proper acknowledgement (to avoid
+		 * useless retransmissions from peer). Log with log_info2 since
+		 * there's nothing wrong with receiving messages at this stage.
+		 */
+		if (conn->state == STATE_FIN) {
+			log_tunnel(log_info2, conn,
+				   "discarding message received while disconnecting\n");
+			l2tp_packet_free(pack);
+			continue;
+		}
+
+		/* ZLB aren't stored in the reception queue, so we're sure that
+		 * pack->attrs isn't an empty list.
+		 */
+		msg_attr = list_first_entry(&pack->attrs, typeof(*msg_attr),
+					    entry);
+		if (msg_attr->attr->id != Message_Type) {
+			log_tunnel(log_warn, conn,
+				   "discarding message with invalid first attribute type %hu\n",
+				   msg_attr->attr->id);
+			l2tp_packet_free(pack);
+			continue;
+		}
+		msg_type = msg_attr->val.uint16;
+
+		if (conf_verbose) {
+			if (msg_type == Message_Type_Hello) {
+				log_tunnel(log_debug, conn, "recv ");
+				l2tp_packet_print(pack, log_debug);
+			} else {
+				log_tunnel(log_info2, conn, "recv ");
+				l2tp_packet_print(pack, log_info2);
+			}
+		}
+
+		msg_sid = ntohs(pack->hdr.sid);
+		if (msg_sid) {
+			sess = l2tp_tunnel_get_session(conn, msg_sid);
+			if (sess == NULL) {
+				log_tunnel(log_warn, conn,
+					   "discarding message with invalid Session ID %hu\n",
+					   msg_sid);
+				l2tp_packet_free(pack);
+				continue;
+			}
+			l2tp_session_recv(sess, pack, msg_type, msg_attr->M);
+		} else {
+			l2tp_tunnel_recv(conn, pack, msg_type, msg_attr->M);
+		}
+
+		l2tp_packet_free(pack);
+	} while (id != conn->recv_queue_offt);
+
+	conn->recv_queue_offt = (conn->recv_queue_offt + pkt_count) % conn->recv_queue_sz;
+
+	log_tunnel(log_debug, conn,
+		   "%u message%s processed from reception queue\n",
+		   pkt_count, pkt_count > 1 ? "s" : "");
+
+	res = l2tp_tunnel_push_sendqueue(conn);
+	if (res == 0 && need_ack)
+		res = l2tp_send_ZLB(conn);
+
+	return res;
+}
+
 static int l2tp_conn_read(struct triton_md_handler_t *h)
 {
 	struct l2tp_conn_t *conn = container_of(h, typeof(*conn), hnd);
-	struct l2tp_sess_t *sess = NULL;
 	struct l2tp_packet_t *pack;
-	const struct l2tp_attr_t *msg_type;
-	uint16_t m_type;
-	uint16_t m_sid;
+	unsigned int pkt_count = 0;
+	int need_ack = 0;
 	int res;
 
 	/* Hold the tunnel. This allows any function we call to free the
@@ -3944,7 +4152,8 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 				log_tunnel(log_error, conn,
 					   "peer port update failed,"
 					   " disconnecting tunnel\n");
-				goto drop;
+				l2tp_packet_free(pack);
+				goto err_tunfree;
 			}
 			conn->port_set = 1;
 		}
@@ -3957,115 +4166,40 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 			continue;
 		}
 
-		if (nsnr_cmp(ntohs(pack->hdr.Nr), conn->peer_Nr) > 0)
-			conn->peer_Nr = ntohs(pack->hdr.Nr);
-
-		/* Drop acknowledged packets from retransmission queue */
-		if (l2tp_tunnel_clean_rtmsqueue(conn) < 0) {
-			log_tunnel(log_error, conn,
-				   "impossible to handle incoming message:"
-				   " cleaning retransmission queue failed\n");
-			goto drop;
-		}
-
-		res = nsnr_cmp(ntohs(pack->hdr.Ns), conn->Nr);
-		if (res < 0) {
-			/* Duplicate message */
-			log_tunnel(log_info2, conn,
-				   "handling duplicate message (packet Ns/Nr:"
-				   " %hu/%hu, tunnel Ns/Nr: %hu/%hu)\n",
-				   ntohs(pack->hdr.Ns), ntohs(pack->hdr.Nr),
-				   conn->Ns, conn->Nr);
-			if (!list_empty(&conn->rtms_queue))
-				res = l2tp_retransmit(conn);
-			else
-				res = l2tp_send_ZLB(conn);
-			if (res < 0)
-				log_tunnel(log_warn, conn,
-					   "replying to duplicate message"
-					   " failed, continuing anyway\n");
-			l2tp_packet_free(pack);
-			continue;
-		} else if (res > 0) {
-			/* Out of order message */
-			log_tunnel(log_info2, conn,
-				   "discarding reordered message (packet Ns/Nr:"
-				   " %hu/%hu, tunnel Ns/Nr: %hu/%hu)\n",
-				   ntohs(pack->hdr.Ns), ntohs(pack->hdr.Nr),
-				   conn->Ns, conn->Nr);
-			l2tp_packet_free(pack);
-			continue;
-		} else {
-			if (!list_empty(&pack->attrs))
-				conn->Nr++;
-
-			if (conn->state == STATE_FIN)
-				goto drop;
-		}
-
-		if (list_empty(&pack->attrs)) {
-			log_tunnel(log_debug, conn, "handling ZLB\n");
-			if (conf_verbose) {
-				log_tunnel(log_debug, conn, "recv ");
-				l2tp_packet_print(pack, log_debug);
-			}
+		if (l2tp_tunnel_store_msg(conn, pack, &need_ack) < 0) {
 			l2tp_packet_free(pack);
 			continue;
 		}
 
-		msg_type = list_entry(pack->attrs.next, typeof(*msg_type), entry);
+		++pkt_count;
+	}
 
-		if (msg_type->attr->id != Message_Type) {
-			log_tunnel(log_warn, conn,
-				   "discarding message with invalid first"
-				   " attribute type %i\n", msg_type->attr->id);
-			l2tp_packet_free(pack);
-			continue;
-		}
-		m_type = msg_type->val.uint16;
+	log_tunnel(log_debug, conn, "%u message%s added to reception queue\n",
+		   pkt_count, pkt_count > 1 ? "s" : "");
 
-		if (conf_verbose) {
-			if (m_type == Message_Type_Hello) {
-				log_tunnel(log_debug, conn, "recv ");
-				l2tp_packet_print(pack, log_debug);
-			} else {
-				log_tunnel(log_info2, conn, "recv ");
-				l2tp_packet_print(pack, log_info2);
-			}
-		}
+	/* Drop acknowledged packets from retransmission queue */
+	if (l2tp_tunnel_clean_rtmsqueue(conn) < 0) {
+		log_tunnel(log_error, conn,
+			   "impossible to handle incoming message:"
+			   " cleaning retransmission queue failed,"
+			   " deleting tunnel\n");
+		goto err_tunfree;
+	}
 
-		m_sid = ntohs(pack->hdr.sid);
-		if (m_sid) {
-			sess = l2tp_tunnel_get_session(conn, m_sid);
-			if (sess == NULL) {
-				log_tunnel(log_warn, conn,
-					   "discarding message with invalid Session ID %hu\n",
-					   m_sid);
-				l2tp_packet_free(pack);
-				continue;
-			}
-			l2tp_session_recv(sess, pack, m_type, msg_type->M);
-		} else {
-			l2tp_tunnel_recv(conn, pack, m_type, msg_type->M);
-		}
+	if (l2tp_tunnel_reply(conn, need_ack) < 0) {
+		log_tunnel(log_error, conn,
+			   "impossible to reply to incoming messages:"
+			   " message transmission failed,"
+			   " deleting tunnel\n");
+		goto err_tunfree;
+	}
 
-		res = l2tp_tunnel_push_sendqueue(conn);
-		if (res < 0) {
-			log_tunnel(log_error, conn,
-				   "impossible to reply to incoming message:"
-				   " transmitting messages from send queue failed,"
-				   " deleting tunnel\n");
-			goto drop;
-		} else if (res == 0) {
-			if (l2tp_send_ZLB(conn) < 0) {
-				log_tunnel(log_error, conn,
-					   "impossible to acknowledge messages from peer:"
-					   " sending ZBL failed\n");
-				goto drop;
-			}
-		}
-
-		l2tp_packet_free(pack);
+	if (conn->state == STATE_FIN && list_empty(&conn->send_queue) &&
+	    list_empty(&conn->rtms_queue)) {
+		log_tunnel(log_info2, conn,
+			   "tunnel disconnection acknowledged by peer,"
+			   " deleting tunnel\n");
+		goto err_tunfree;
 	}
 
 	/* Use conn->state to detect tunnel deletion */
@@ -4076,8 +4210,6 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 
 	return 0;
 
-drop:
-	l2tp_packet_free(pack);
 err_tunfree:
 	l2tp_tunnel_free(conn);
 err:
