@@ -488,6 +488,18 @@ Specifies timeout (in seconds) to wait peer completes tunnel and session negotia
 .TP
 .BI "rtimeout=" n
 Specifies timeout (in seconds) to wait message acknowledge, if elapsed message retransmition will be performed.
+Timeout is multiplied by two after each retransmission. So if
+.BR rtimeout " is set to 1, first retransmission will occur after one second,"
+second retransmission two seconds later, third one four seconds later, and so
+on, until a reply is received or the
+.BR retransmit " value is reached. Default value is 1."
+.TP
+.BI "rtimeout-cap=" n
+Set the maximum interval between retransmissions. The exponential backoff
+.RB "interval used by " rtimeout " will never grow above " rtimeout-cap .
+.BR rtimeout-cap " must be higher than " rtimeout " and, according to RFC 2661,
+must be no less than 8 (though accel-ppp doesn't enforce this rule).
+Default value is 16.
 .TP
 .BI "retransmit=" n
 Specifies maximum number of message retransmission, if exceeds connection will be terminated.

@@ -69,7 +69,9 @@
 
 #define DEFAULT_RECV_WINDOW 16
 #define DEFAULT_PPP_MAX_MTU 1420
+#define DEFAULT_RTIMEOUT 1
 #define DEFAULT_RTIMEOUT_CAP 16
+#define DEFAULT_RETRANSMIT 5
 
 int conf_verbose = 0;
 int conf_hide_avps = 0;
@@ -79,8 +81,9 @@ static int conf_ppp_max_mtu = DEFAULT_PPP_MAX_MTU;
 static int conf_port = L2TP_PORT;
 static int conf_ephemeral_ports = 0;
 static int conf_timeout = 60;
-static int conf_rtimeout = 5;
-static int conf_retransmit = 5;
+static int conf_rtimeout = DEFAULT_RTIMEOUT;
+static int conf_rtimeout_cap = DEFAULT_RTIMEOUT_CAP;
+static int conf_retransmit = DEFAULT_RETRANSMIT;
 static int conf_hello_interval = 60;
 static int conf_dir300_quirk = 0;
 static const char *conf_host_name = "accel-ppp";
@@ -145,6 +148,7 @@ struct l2tp_conn_t
 	struct triton_timer_t hello_timer;
 	int rtimeout;
 	int rtimeout_cap;
+	int max_retransmit;
 
 	struct sockaddr_in peer_addr;
 	struct sockaddr_in host_addr;
@@ -1686,7 +1690,8 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 	conn->hello_timer.period = conf_hello_interval * 1000;
 
 	conn->rtimeout = conf_rtimeout * 1000;
-	conn->rtimeout_cap = DEFAULT_RTIMEOUT_CAP * 1000;
+	conn->rtimeout_cap = conf_rtimeout_cap * 1000;
+	conn->max_retransmit = conf_retransmit;
 
 	conn->sessions = NULL;
 	conn->sess_count = 0;
@@ -2026,7 +2031,7 @@ static void l2tp_rtimeout(struct triton_timer_t *tm)
 
 	pack = list_first_entry(&conn->rtms_queue, typeof(*pack), entry);
 
-	if (++conn->retransmit > conf_retransmit) {
+	if (++conn->retransmit > conn->max_retransmit) {
 		log_tunnel(log_warn, conn,
 			   "no acknowledgement from peer after %i retransmissions,"
 			   " deleting tunnel\n", conn->retransmit - 1);
@@ -4745,10 +4750,26 @@ static void load_config(void)
 	opt = conf_get_opt("l2tp", "rtimeout");
 	if (opt && atoi(opt) > 0)
 		conf_rtimeout = atoi(opt);
+	else
+		conf_rtimeout = DEFAULT_RTIMEOUT;
+
+	opt = conf_get_opt("l2tp", "rtimeout-cap");
+	if (opt && atoi(opt) > 0)
+		conf_rtimeout_cap = atoi(opt);
+	else
+		conf_rtimeout_cap = DEFAULT_RTIMEOUT_CAP;
+	if (conf_rtimeout_cap < conf_rtimeout) {
+		log_warn("l2tp: rtimeout-cap (%i) is smaller than rtimeout (%i),"
+			 " resetting rtimeout-cap to %i\n",
+			 conf_rtimeout_cap, conf_rtimeout, conf_rtimeout);
+		conf_rtimeout_cap = conf_rtimeout;
+	}
 
 	opt = conf_get_opt("l2tp", "retransmit");
 	if (opt && atoi(opt) > 0)
 		conf_retransmit = atoi(opt);
+	else
+		conf_retransmit = DEFAULT_RETRANSMIT;
 
 	opt = conf_get_opt("l2tp", "recv-window");
 	if (opt && atoi(opt) > 0 && atoi(opt) <= RECV_WINDOW_SIZE_MAX)
