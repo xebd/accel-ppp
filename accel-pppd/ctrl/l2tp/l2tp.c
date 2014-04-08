@@ -73,6 +73,7 @@
 int conf_verbose = 0;
 int conf_hide_avps = 0;
 int conf_avp_permissive = 0;
+static uint16_t conf_recv_window = DEFAULT_RECV_WINDOW;
 static int conf_ppp_max_mtu = DEFAULT_PPP_MAX_MTU;
 static int conf_port = L2TP_PORT;
 static int conf_ephemeral_ports = 0;
@@ -1624,7 +1625,7 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 		goto err_conn_fd;
 	}
 
-	conn->recv_queue_sz = DEFAULT_RECV_WINDOW;
+	conn->recv_queue_sz = conf_recv_window;
 	conn->recv_queue = _malloc(conn->recv_queue_sz *
 				   sizeof(*conn->recv_queue));
 	if (conn->recv_queue == NULL) {
@@ -4696,6 +4697,12 @@ static void load_config(void)
 	opt = conf_get_opt("l2tp", "retransmit");
 	if (opt && atoi(opt) > 0)
 		conf_retransmit = atoi(opt);
+
+	opt = conf_get_opt("l2tp", "recv-window");
+	if (opt && atoi(opt) > 0 && atoi(opt) <= RECV_WINDOW_SIZE_MAX)
+		conf_recv_window = atoi(opt);
+	else
+		conf_recv_window = DEFAULT_RECV_WINDOW;
 
 	opt = conf_get_opt("l2tp", "ppp-max-mtu");
 	if (opt && atoi(opt) > 0)

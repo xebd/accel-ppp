@@ -477,6 +477,12 @@ This name will be sent to clients in Host-Name attribute.
 .BI "hello-interval=" n
 Specifies interval (in seconds) to send Hello control message. Its used for keep alive connection. If peer will not respond to Hello connection will be terminated.
 .TP
+.BI "recv-window=" n
+Set the size of the local receive window. Only received messages whose sequence
+number is in the range [last-Nr + 1, last-Nr + recv-window] are accepted
+(where last-Nr is the sequence number of the last acknowledged message).
+Minimum value is 1, maximum is 32768, default is 16.
+.TP
 .BI "timeout=" n
 Specifies timeout (in seconds) to wait peer completes tunnel and session negotiation.
 .TP
