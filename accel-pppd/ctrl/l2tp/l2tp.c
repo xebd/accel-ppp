@@ -69,6 +69,7 @@
 
 #define DEFAULT_RECV_WINDOW 16
 #define DEFAULT_PPP_MAX_MTU 1420
+#define DEFAULT_RTIMEOUT_CAP 16
 
 int conf_verbose = 0;
 int conf_hide_avps = 0;
@@ -142,6 +143,8 @@ struct l2tp_conn_t
 	struct triton_timer_t timeout_timer;
 	struct triton_timer_t rtimeout_timer;
 	struct triton_timer_t hello_timer;
+	int rtimeout;
+	int rtimeout_cap;
 
 	struct sockaddr_in peer_addr;
 	struct sockaddr_in host_addr;
@@ -562,6 +565,7 @@ static int l2tp_tunnel_clean_rtmsqueue(struct l2tp_conn_t *conn)
 	}
 
 	/* Some messages haven't been acknowledged yet, restart timer */
+	conn->rtimeout_timer.period = conn->rtimeout;
 	if (conn->rtimeout_timer.tpd) {
 		if (triton_timer_mod(&conn->rtimeout_timer, 0) < 0) {
 			log_tunnel(log_error, conn,
@@ -635,6 +639,7 @@ static int l2tp_tunnel_push_sendqueue(struct l2tp_conn_t *conn)
 	 * retransmission queue).
 	 */
 	if (conn->rtimeout_timer.tpd == NULL) {
+		conn->rtimeout_timer.period = conn->rtimeout;
 		if (triton_timer_add(&conn->ctx,
 				     &conn->rtimeout_timer, 0) < 0) {
 			log_tunnel(log_error, conn,
@@ -1680,6 +1685,9 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 	conn->hello_timer.expire = l2tp_send_HELLO;
 	conn->hello_timer.period = conf_hello_interval * 1000;
 
+	conn->rtimeout = conf_rtimeout * 1000;
+	conn->rtimeout_cap = DEFAULT_RTIMEOUT_CAP * 1000;
+
 	conn->sessions = NULL;
 	conn->sess_count = 0;
 	conn->lns_mode = lns_mode;
@@ -2002,32 +2010,59 @@ err:
 	return -1;
 }
 
-static void l2tp_rtimeout(struct triton_timer_t *t)
+static void l2tp_rtimeout(struct triton_timer_t *tm)
 {
-	struct l2tp_conn_t *conn = container_of(t, typeof(*conn), rtimeout_timer);
+	struct l2tp_conn_t *conn = container_of(tm, typeof(*conn),
+						rtimeout_timer);
 	struct l2tp_packet_t *pack;
 
-	if (!list_empty(&conn->rtms_queue)) {
-		if (++conn->retransmit <= conf_retransmit) {
-			pack = list_first_entry(&conn->rtms_queue,
-						typeof(*pack), entry);
-			log_tunnel(log_info2, conn,
-				   "retransmission %i (packet %hu)\n",
-				   conn->retransmit, ntohs(pack->hdr.Ns));
-			if (conf_verbose) {
-				log_tunnel(log_info2, conn,
-					   "retransmit (timeout) ");
-				l2tp_packet_print(pack, log_info2);
-			}
-			if (__l2tp_tunnel_send(conn, pack) < 0)
-				log_tunnel(log_error, conn,
-					   "packet retransmission failure\n");
-		} else {
-			log_tunnel(log_info1, conn, "too many retransmissions,"
-				   " disconnecting tunnel\n");
-			l2tp_tunnel_free(conn);
-		}
+	if (list_empty(&conn->rtms_queue)) {
+		log_tunnel(log_warn, conn,
+			   "impossible to handle retransmission:"
+			   " retransmission queue is empty\n");
+
+		return;
 	}
+
+	pack = list_first_entry(&conn->rtms_queue, typeof(*pack), entry);
+
+	if (++conn->retransmit > conf_retransmit) {
+		log_tunnel(log_warn, conn,
+			   "no acknowledgement from peer after %i retransmissions,"
+			   " deleting tunnel\n", conn->retransmit - 1);
+		goto err;
+	}
+
+	log_tunnel(log_info2, conn, "retransmission #%i\n", conn->retransmit);
+	if (conf_verbose) {
+		log_tunnel(log_info2, conn, "retransmit (timeout) ");
+		l2tp_packet_print(pack, log_info2);
+	}
+
+	if (__l2tp_tunnel_send(conn, pack) < 0) {
+		log_tunnel(log_error, conn,
+			   "impossible to handle retransmission:"
+			   " sending packet failed, deleting tunnel\n");
+		goto err;
+	}
+
+	conn->rtimeout_timer.period *= 2;
+	if (conn->rtimeout_timer.period > conn->rtimeout_cap)
+		conn->rtimeout_timer.period = conn->rtimeout_cap;
+
+	if (triton_timer_mod(&conn->rtimeout_timer, 0) < 0) {
+		log_tunnel(log_error, conn,
+			   "impossible to handle retransmission:"
+			   " updating retransmission timer failed,"
+			   " deleting tunnel\n");
+		goto err;
+	}
+
+	return;
+
+err:
+	triton_timer_del(tm);
+	l2tp_tunnel_free(conn);
 }
 
 static void l2tp_tunnel_timeout(struct triton_timer_t *t)
