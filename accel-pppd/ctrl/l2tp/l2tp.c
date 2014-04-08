@@ -3567,24 +3567,32 @@ static void l2tp_tunnel_create_session(void *data)
 }
 
 static void l2tp_session_recv(struct l2tp_sess_t *sess,
-			      const struct l2tp_packet_t *pack)
+			      const struct l2tp_packet_t *pack,
+			      uint16_t msg_type, int mandatory)
 {
-	const struct l2tp_attr_t *msg_type = NULL;
-
-	msg_type = list_entry(pack->attrs.next, typeof(*msg_type), entry);
-
-	switch (msg_type->val.uint16) {
-	case Message_Type_Incoming_Call_Connected:
-		l2tp_recv_ICCN(sess, pack);
-		break;
-	case Message_Type_Incoming_Call_Reply:
-		l2tp_recv_ICRP(sess, pack);
+	switch (msg_type) {
+	case Message_Type_Start_Ctrl_Conn_Request:
+	case Message_Type_Start_Ctrl_Conn_Reply:
+	case Message_Type_Start_Ctrl_Conn_Connected:
+	case Message_Type_Stop_Ctrl_Conn_Notify:
+	case Message_Type_Hello:
+	case Message_Type_Outgoing_Call_Request:
+	case Message_Type_Incoming_Call_Request:
+		log_session(log_warn, sess,
+			    "discarding tunnel specific message type %hu\n",
+			    msg_type);
 		break;
 	case Message_Type_Outgoing_Call_Reply:
 		l2tp_recv_OCRP(sess, pack);
 		break;
 	case Message_Type_Outgoing_Call_Connected:
 		l2tp_recv_OCCN(sess, pack);
+		break;
+	case Message_Type_Incoming_Call_Reply:
+		l2tp_recv_ICRP(sess, pack);
+		break;
+	case Message_Type_Incoming_Call_Connected:
+		l2tp_recv_ICCN(sess, pack);
 		break;
 	case Message_Type_Call_Disconnect_Notify:
 		l2tp_recv_CDN(sess, pack);
@@ -3596,16 +3604,68 @@ static void l2tp_session_recv(struct l2tp_sess_t *sess,
 		l2tp_recv_SLI(sess, pack);
 		break;
 	default:
-		if (msg_type->M) {
+		if (mandatory) {
 			log_session(log_error, sess,
-				    "impossible to handle unknown message type"
-				    " %i, disconnecting session\n",
-				    msg_type->val.uint16);
+				    "impossible to handle unknown mandatory message type %hu,"
+				    " disconnecting session\n", msg_type);
 			l2tp_session_disconnect(sess, 2, 8);
-		} else
+		} else {
 			log_session(log_warn, sess,
-				    "discarding unknown message type %i\n",
-				    msg_type->val.uint16);
+				    "discarding unknown message type %hu\n",
+				    msg_type);
+		}
+		break;
+	}
+}
+
+static void l2tp_tunnel_recv(struct l2tp_conn_t *conn,
+			     const struct l2tp_packet_t *pack,
+			     uint16_t msg_type, int mandatory)
+{
+	switch (msg_type) {
+	case Message_Type_Start_Ctrl_Conn_Request:
+		log_tunnel(log_warn, conn, "discarding unexpected SCCRQ\n");
+		break;
+	case Message_Type_Start_Ctrl_Conn_Reply:
+		l2tp_recv_SCCRP(conn, pack);
+		break;
+	case Message_Type_Start_Ctrl_Conn_Connected:
+		l2tp_recv_SCCCN(conn, pack);
+		break;
+	case Message_Type_Stop_Ctrl_Conn_Notify:
+		l2tp_recv_StopCCN(conn, pack);
+		break;
+	case Message_Type_Hello:
+		l2tp_recv_HELLO(conn, pack);
+		break;
+	case Message_Type_Outgoing_Call_Request:
+		l2tp_recv_OCRQ(conn, pack);
+		break;
+	case Message_Type_Incoming_Call_Request:
+		l2tp_recv_ICRQ(conn, pack);
+		break;
+	case Message_Type_Call_Disconnect_Notify:
+	case Message_Type_Outgoing_Call_Reply:
+	case Message_Type_Outgoing_Call_Connected:
+	case Message_Type_Incoming_Call_Reply:
+	case Message_Type_Incoming_Call_Connected:
+	case Message_Type_WAN_Error_Notify:
+	case Message_Type_Set_Link_Info:
+		log_tunnel(log_warn, conn,
+			   "discarding session specific message type %hu\n",
+			   msg_type);
+		break;
+	default:
+		if (mandatory) {
+			log_tunnel(log_error, conn,
+				   "impossible to handle unknown mandatory message type %hu,"
+				   " disconnecting tunnel\n", msg_type);
+			l2tp_tunnel_disconnect(conn, 2, 8);
+		} else {
+			log_tunnel(log_warn, conn,
+				   "discarding unknown message type %hu\n",
+				   msg_type);
+		}
 		break;
 	}
 }
@@ -3616,6 +3676,8 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 	struct l2tp_sess_t *sess = NULL;
 	struct l2tp_packet_t *pack, *p;
 	const struct l2tp_attr_t *msg_type;
+	uint16_t m_type;
+	uint16_t m_sid;
 	int res;
 
 	/* Hold the tunnel. This allows any function we call to free the
@@ -3736,9 +3798,10 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 			l2tp_packet_free(pack);
 			continue;
 		}
+		m_type = msg_type->val.uint16;
 
 		if (conf_verbose) {
-			if (msg_type->val.uint16 == Message_Type_Hello) {
+			if (m_type == Message_Type_Hello) {
 				log_tunnel(log_debug, conn, "recv ");
 				l2tp_packet_print(pack, log_debug);
 			} else {
@@ -3747,61 +3810,20 @@ static int l2tp_conn_read(struct triton_md_handler_t *h)
 			}
 		}
 
-		switch (msg_type->val.uint16) {
-			case Message_Type_Start_Ctrl_Conn_Reply:
-				l2tp_recv_SCCRP(conn, pack);
-				break;
-			case Message_Type_Start_Ctrl_Conn_Connected:
-				l2tp_recv_SCCCN(conn, pack);
-				break;
-			case Message_Type_Stop_Ctrl_Conn_Notify:
-				l2tp_recv_StopCCN(conn, pack);
-				break;
-			case Message_Type_Hello:
-				l2tp_recv_HELLO(conn, pack);
-				break;
-			case Message_Type_Incoming_Call_Request:
-				l2tp_recv_ICRQ(conn, pack);
-				break;
-			case Message_Type_Outgoing_Call_Request:
-				l2tp_recv_OCRQ(conn, pack);
-				break;
-			case Message_Type_Incoming_Call_Connected:
-			case Message_Type_Incoming_Call_Reply:
-			case Message_Type_Outgoing_Call_Reply:
-			case Message_Type_Outgoing_Call_Connected:
-			case Message_Type_Call_Disconnect_Notify:
-			case Message_Type_WAN_Error_Notify:
-			case Message_Type_Set_Link_Info:
-				sess = l2tp_tunnel_get_session(conn, ntohs(pack->hdr.sid));
-				if (sess == NULL) {
-					log_tunnel(log_warn, conn,
-						   "discarding message with"
-						   " invalid sid %hu\n",
-						   ntohs(pack->hdr.sid));
-					l2tp_packet_free(pack);
-					continue;
-				}
-				l2tp_session_recv(sess, pack);
-				break;
-			case Message_Type_Start_Ctrl_Conn_Request:
+		m_sid = ntohs(pack->hdr.sid);
+		if (m_sid) {
+			sess = l2tp_tunnel_get_session(conn, m_sid);
+			if (sess == NULL) {
 				log_tunnel(log_warn, conn,
-					   "discarding unexpected SCCRQ\n");
-				break;
-			default:
-				if (msg_type->M) {
-					log_tunnel(log_error, conn,
-						   "impossible to handle unknown message type"
-						   " %i, disconnecting tunnel\n",
-						   msg_type->val.uint16);
-					l2tp_tunnel_disconnect(conn, 2, 8);
-				} else
-					log_tunnel(log_warn, conn,
-						   "discarding unknown message type %i\n",
-						   msg_type->val.uint16);
-				break;
+					   "discarding message with invalid Session ID %hu\n",
+					   m_sid);
+				l2tp_packet_free(pack);
+				continue;
+			}
+			l2tp_session_recv(sess, pack, m_type, msg_type->M);
+		} else {
+			l2tp_tunnel_recv(conn, pack, m_type, msg_type->M);
 		}
-
 		l2tp_packet_free(pack);
 	}
 
