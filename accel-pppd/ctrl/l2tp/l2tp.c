@@ -53,6 +53,20 @@
 #define APSTATE_STARTED   3
 #define APSTATE_FINISHING 4
 
+/* Default size of receive window for peer not sending the
+ * Receive Window Size AVP (defined in RFC 2661 section 4.4.3).
+ */
+#define DEFAULT_PEER_RECV_WINDOW_SIZE 4
+
+/* Maximum value of the Receive Window Size AVP.
+ * The Ns field value of received messages must lie in the range of the tunnel
+ * Nr field and the following 32768 values inclusive. Other values mean that
+ * the message is a duplicate (see comment in nsnr_cmp()).
+ * So it wouldn't make sense to have a receive window larger than 32768, as
+ * messages that could fill the 32768+ slots would be rejected as duplicates.
+ */
+#define RECV_WINDOW_SIZE_MAX 32768
+
 #define DEFAULT_PPP_MAX_MTU 1420
 
 int conf_verbose = 0;
@@ -145,6 +159,8 @@ struct l2tp_conn_t
 	uint16_t peer_Nr;
 	struct list_head send_queue;
 	struct list_head rtms_queue;
+	unsigned int send_queue_len;
+	uint16_t peer_rcv_wnd_sz;
 
 	unsigned int ref_count;
 	int state;
@@ -446,6 +462,7 @@ static void l2tp_tunnel_clear_sendqueue(struct l2tp_conn_t *conn)
 		list_del(&pack->entry);
 		l2tp_packet_free(pack);
 	}
+	conn->send_queue_len = 0;
 }
 
 static void l2tp_session_clear_sendqueue(struct l2tp_sess_t *sess)
@@ -457,6 +474,7 @@ static void l2tp_session_clear_sendqueue(struct l2tp_sess_t *sess)
 					sess_entry);
 		list_del(&pack->sess_entry);
 		list_del(&pack->entry);
+		--sess->paren_conn->send_queue_len;
 		l2tp_packet_free(pack);
 	}
 }
@@ -549,11 +567,14 @@ static int l2tp_tunnel_clean_rtmsqueue(struct l2tp_conn_t *conn)
 static int l2tp_tunnel_push_sendqueue(struct l2tp_conn_t *conn)
 {
 	struct l2tp_packet_t *pack;
+	uint16_t Nr_max = conn->peer_Nr + conn->peer_rcv_wnd_sz;
 	unsigned int pkt_sent = 0;
 
 	while (!list_empty(&conn->send_queue)) {
 		pack = list_first_entry(&conn->send_queue, typeof(*pack),
 					entry);
+		if (nsnr_cmp(conn->Ns, Nr_max) >= 0)
+			break;
 
 		pack->hdr.Ns = htons(conn->Ns);
 
@@ -571,6 +592,7 @@ static int l2tp_tunnel_push_sendqueue(struct l2tp_conn_t *conn)
 			pack->sess_entry.prev = NULL;
 		}
 		list_move_tail(&pack->entry, &conn->rtms_queue);
+		--conn->send_queue_len;
 		++conn->Ns;
 		++pkt_sent;
 	}
@@ -578,8 +600,15 @@ static int l2tp_tunnel_push_sendqueue(struct l2tp_conn_t *conn)
 	log_tunnel(log_debug, conn, "%u message%s sent from send queue\n",
 		   pkt_sent, pkt_sent > 1 ? "s" : "");
 
-	if (pkt_sent == 0)
+	if (pkt_sent == 0) {
+		if (!list_empty(&conn->send_queue))
+			log_tunnel(log_info2, conn,
+				   "no message sent while processing the send queue (%u outstanding messages):"
+				   " peer's receive window is full (%hu messages)\n",
+				   conn->send_queue_len, conn->peer_rcv_wnd_sz);
+
 		return 0;
+	}
 
 	/* At least one message sent, restart retransmission timer if necessary
 	 * (timer may be stopped, e.g. because there was no message left in the
@@ -612,6 +641,7 @@ static int l2tp_tunnel_send(struct l2tp_conn_t *conn,
 
 	pack->hdr.tid = htons(conn->peer_tid);
 	list_add_tail(&pack->entry, &conn->send_queue);
+	++conn->send_queue_len;
 
 	return 0;
 }
@@ -1607,6 +1637,7 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 	conn->lns_mode = lns_mode;
 	conn->port_set = port_set;
 	conn->hide_avps = hide_avps;
+	conn->peer_rcv_wnd_sz = DEFAULT_PEER_RECV_WINDOW_SIZE;
 	tunnel_hold(conn);
 
 	__sync_add_and_fetch(&stat_conn_starting, 1);
@@ -2503,6 +2534,7 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 	const struct l2tp_attr_t *assigned_cid = NULL;
 	const struct l2tp_attr_t *framing_cap = NULL;
 	const struct l2tp_attr_t *router_id = NULL;
+	const struct l2tp_attr_t *recv_window_size = NULL;
 	const struct l2tp_attr_t *challenge = NULL;
 	struct l2tp_conn_t *conn = NULL;
 	struct sockaddr_in host_addr = { 0 };
@@ -2538,6 +2570,9 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 				break;
 			case Assigned_Tunnel_ID:
 				assigned_tid = attr;
+				break;
+			case Recv_Window_Size:
+				recv_window_size = attr;
 				break;
 			case Challenge:
 				challenge = attr;
@@ -2594,6 +2629,18 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 		}
 		tid = conn->tid;
 
+		if (recv_window_size) {
+			conn->peer_rcv_wnd_sz = recv_window_size->val.uint16;
+			if (conn->peer_rcv_wnd_sz == 0 ||
+			    conn->peer_rcv_wnd_sz > RECV_WINDOW_SIZE_MAX) {
+				log_error("l2tp: impossible to handle SCCRQ from %s:"
+					  " invalid Receive Window Size %hu\n",
+					  src_addr, conn->peer_rcv_wnd_sz);
+				l2tp_tunnel_free(conn);
+				return -1;
+			}
+		}
+
 		if (conf_secret) {
 			conn->secret = _strdup(conf_secret);
 			if (conn->secret == NULL) {
@@ -2647,6 +2694,7 @@ static int l2tp_recv_SCCRP(struct l2tp_conn_t *conn,
 	const struct l2tp_attr_t *protocol_version = NULL;
 	const struct l2tp_attr_t *assigned_tid = NULL;
 	const struct l2tp_attr_t *framing_cap = NULL;
+	const struct l2tp_attr_t *recv_window_size = NULL;
 	const struct l2tp_attr_t *challenge = NULL;
 	const struct l2tp_attr_t *challenge_resp = NULL;
 	const struct l2tp_attr_t *unknown_attr = NULL;
@@ -2668,7 +2716,6 @@ static int l2tp_recv_SCCRP(struct l2tp_conn_t *conn,
 		case Bearer_Capabilities:
 		case Firmware_Revision:
 		case Vendor_Name:
-		case Recv_Window_Size:
 			break;
 		case Protocol_Version:
 			protocol_version = attr;
@@ -2678,6 +2725,9 @@ static int l2tp_recv_SCCRP(struct l2tp_conn_t *conn,
 			break;
 		case Assigned_Tunnel_ID:
 			assigned_tid = attr;
+			break;
+		case Recv_Window_Size:
+			recv_window_size = attr;
 			break;
 		case Challenge:
 			challenge = attr;
@@ -2740,6 +2790,18 @@ static int l2tp_recv_SCCRP(struct l2tp_conn_t *conn,
 			   protocol_version->val.uint16 & 0x00FF);
 		l2tp_tunnel_disconnect(conn, 5, 0);
 		return -1;
+	}
+	if (recv_window_size) {
+		conn->peer_rcv_wnd_sz = recv_window_size->val.uint16;
+		if (conn->peer_rcv_wnd_sz == 0 ||
+		    conn->peer_rcv_wnd_sz > RECV_WINDOW_SIZE_MAX) {
+			log_error("impossible to handle SCCRP:"
+				  " invalid Receive Window Size %hu\n",
+				  conn->peer_rcv_wnd_sz);
+			conn->peer_rcv_wnd_sz = DEFAULT_PEER_RECV_WINDOW_SIZE;
+			l2tp_tunnel_disconnect(conn, 2, 3);
+			return -1;
+		}
 	}
 
 	if (l2tp_tunnel_checkchallresp(Message_Type_Start_Ctrl_Conn_Reply,
