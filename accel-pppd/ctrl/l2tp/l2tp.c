@@ -630,11 +630,7 @@ static int l2tp_send_StopCCN(struct l2tp_conn_t *conn,
 		goto out_err;
 	}
 
-	if (l2tp_tunnel_send(conn, pack) < 0) {
-		log_tunnel(log_error, conn, "impossible to send StopCCN:"
-			   " sending packet failed\n");
-		return -1;
-	}
+	l2tp_tunnel_send(conn, pack);
 
 	return 0;
 
@@ -674,11 +670,7 @@ static int l2tp_send_CDN(struct l2tp_sess_t *sess, uint16_t res, uint16_t err)
 		goto out_err;
 	}
 
-	if (l2tp_session_send(sess, pack) < 0) {
-		log_session(log_error, sess, "impossible to send CDN:"
-			    " sending packet failed\n");
-		return -1;
-	}
+	l2tp_session_send(sess, pack);
 
 	return 0;
 
@@ -720,11 +712,7 @@ static int l2tp_tunnel_send_CDN(uint16_t sid, uint16_t peer_sid,
 
 	pack->hdr.sid = htons(peer_sid);
 
-	if (l2tp_tunnel_send(conn, pack) < 0) {
-		log_tunnel(log_error, conn, "impossible to send CDN:"
-			   " sending packet failed\n");
-		return -1;
-	}
+	l2tp_tunnel_send(conn, pack);
 
 	return 0;
 
@@ -2191,11 +2179,7 @@ static int l2tp_send_SCCCN(struct l2tp_conn_t *conn)
 	}
 	l2tp_tunnel_storechall(conn, NULL);
 
-	if (l2tp_tunnel_send(conn, pack) < 0) {
-		log_tunnel(log_error, conn, "impossible to send SCCCN:"
-			   " sending packet failed\n");
-		goto err;
-	}
+	l2tp_tunnel_send(conn, pack);
 
 	return 0;
 
@@ -2233,11 +2217,7 @@ static int l2tp_send_ICRQ(struct l2tp_sess_t *sess)
 		goto out_err;
 	}
 
-	if (l2tp_session_send(sess, pack) < 0) {
-		log_session(log_error, sess, "impossible to send ICRQ:"
-			    " sending packet failed\n");
-		return -1;
-	}
+	l2tp_session_send(sess, pack);
 
 	return 0;
 
@@ -2269,11 +2249,7 @@ static int l2tp_send_ICRP(struct l2tp_sess_t *sess)
 		goto out_err;
 	}
 
-	if (l2tp_session_send(sess, pack) < 0) {
-		log_session(log_error, sess, "impossible to send ICRP:"
-			    " sending packet failed\n");
-		return -1;
-	}
+	l2tp_session_send(sess, pack);
 
 	return 0;
 
@@ -2315,11 +2291,7 @@ static int l2tp_send_ICCN(struct l2tp_sess_t *sess)
 		goto out_err;
 	}
 
-	if (l2tp_session_send(sess, pack) < 0) {
-		log_session(log_error, sess, "impossible to send ICCN:"
-			    " sending packet failed\n");
-		return -1;
-	}
+	l2tp_session_send(sess, pack);
 
 	return 0;
 
@@ -2381,11 +2353,7 @@ static int l2tp_send_OCRQ(struct l2tp_sess_t *sess)
 		goto out_err;
 	}
 
-	if (l2tp_session_send(sess, pack) < 0) {
-		log_session(log_error, sess, "impossible to send OCRQ:"
-			    " sending packet failed\n");
-		return -1;
-	}
+	l2tp_session_send(sess, pack);
 
 	return 0;
 
@@ -2417,11 +2385,7 @@ static int l2tp_send_OCRP(struct l2tp_sess_t *sess)
 		goto out_err;
 	}
 
-	if (l2tp_session_send(sess, pack) < 0) {
-		log_session(log_error, sess, "impossible to send OCRP:"
-			    " sending packet failed\n");
-		return -1;
-	}
+	l2tp_session_send(sess, pack);
 
 	return 0;
 
@@ -2463,11 +2427,7 @@ static int l2tp_send_OCCN(struct l2tp_sess_t *sess)
 		goto out_err;
 	}
 
-	if (l2tp_session_send(sess, pack) < 0) {
-		log_session(log_error, sess, "impossible to send OCCN:"
-			    " sending packet failed\n");
-		return -1;
-	}
+	l2tp_session_send(sess, pack);
 
 	return 0;
 
