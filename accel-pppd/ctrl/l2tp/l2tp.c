@@ -668,6 +668,17 @@ static int l2tp_session_send(struct l2tp_sess_t *sess,
 	return 0;
 }
 
+static int l2tp_session_try_send(struct l2tp_sess_t *sess,
+				 struct l2tp_packet_t *pack)
+{
+	if (sess->paren_conn->send_queue_len >= sess->paren_conn->peer_rcv_wnd_sz)
+		return -1;
+
+	l2tp_session_send(sess, pack);
+
+	return 0;
+}
+
 static int l2tp_send_StopCCN(struct l2tp_conn_t *conn,
 			     uint16_t res, uint16_t err)
 {
@@ -2305,7 +2316,11 @@ static int l2tp_send_ICRQ(struct l2tp_sess_t *sess)
 		goto out_err;
 	}
 
-	l2tp_session_send(sess, pack);
+	if (l2tp_session_try_send(sess, pack) < 0) {
+		log_session(log_error, sess, "impossible to send ICRQ:"
+			    " too many outstanding packets in send queue\n");
+		goto out_err;
+	}
 
 	return 0;
 
@@ -2441,7 +2456,11 @@ static int l2tp_send_OCRQ(struct l2tp_sess_t *sess)
 		goto out_err;
 	}
 
-	l2tp_session_send(sess, pack);
+	if (l2tp_session_try_send(sess, pack) < 0) {
+		log_session(log_error, sess, "impossible to send OCRQ:"
+			    " too many outstanding packets in send queue\n");
+		goto out_err;
+	}
 
 	return 0;
 
