@@ -163,6 +163,7 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 static void ipoe_session_keepalive(struct dhcpv4_packet *pack);
 static void add_interface(const char *ifname, int ifindex, const char *opt, int parent_ifindex, int vid);
 static int get_offer_delay();
+static void __ipoe_session_start(struct ipoe_session *ses);
 
 static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct dhcpv4_packet *pack, struct ipoe_session **opt82_ses)
 {
@@ -447,13 +448,50 @@ static void ipoe_change_addr(struct ipoe_session *ses, in_addr_t newaddr)
 
 }
 
-static void __ipoe_session_start(struct ipoe_session *ses);
+static int ipoe_create_interface(struct ipoe_session *ses)
+{
+	struct unit_cache *uc;
+	struct ifreq ifr;
+
+	pthread_mutex_lock(&uc_lock);
+	if (!list_empty(&uc_list)) {
+		uc = list_entry(uc_list.next, typeof(*uc), entry);
+		ses->ifindex = uc->ifindex;
+		list_del(&uc->entry);
+		--uc_size;
+		pthread_mutex_unlock(&uc_lock);
+		mempool_free(uc);
+	} else {
+		pthread_mutex_unlock(&uc_lock);
+		ses->ifindex = ipoe_nl_create(0, 0, ses->serv->opt_mode == MODE_L2 ? ses->serv->ifname : NULL, ses->hwaddr);
+		if (ses->ifindex == -1) {
+			log_ppp_error("ipoe: failed to create interface\n");
+			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 1);
+			return -1;
+		}
+	}
+
+	memset(&ifr, 0, sizeof(ifr));
+	ifr.ifr_ifindex = ses->ifindex;
+	if (ioctl(sock_fd, SIOCGIFNAME, &ifr, sizeof(ifr))) {
+		log_ppp_error("ipoe: failed to get interface name\n");
+		ses->ifindex = -1;
+		ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 1);
+		return -1;
+	}
+
+	strncpy(ses->ses.ifname, ifr.ifr_name, AP_IFNAME_LEN);
+	ses->ses.ifindex = ses->ifindex;
+	ses->ses.unit_idx = ses->ifindex;
+	ses->ctrl.dont_ifcfg = 0;
+
+	return 0;
+}
+
 static void ipoe_session_start(struct ipoe_session *ses)
 {
 	int r;
 	char *passwd;
-	struct ifreq ifr;
-	struct unit_cache *uc;
 
 	__sync_add_and_fetch(&stat_starting, 1);
 	
@@ -476,6 +514,9 @@ static void ipoe_session_start(struct ipoe_session *ses)
 	ap_session_starting(&ses->ses);
 	
 	if (!conf_noauth) {
+		if (ses->serv->opt_shared && ipoe_create_interface(ses))
+			return;
+
 		r = pwdb_check(&ses->ses, ses->ses.username, PPP_PAP, conf_password ? conf_password : ses->ses.username);
 		if (r == PWDB_NO_IMPL) {
 			passwd = pwdb_get_passwd(&ses->ses, ses->ses.username);
@@ -509,37 +550,8 @@ static void ipoe_session_start(struct ipoe_session *ses)
 		strncpy(ses->ses.ifname, ses->serv->ifname, AP_IFNAME_LEN);
 		ses->ses.ifindex = ses->serv->ifindex;
 	} else if (ses->ifindex == -1) {
-		pthread_mutex_lock(&uc_lock);
-		if (!list_empty(&uc_list)) {
-			uc = list_entry(uc_list.next, typeof(*uc), entry);
-			ses->ifindex = uc->ifindex;
-			list_del(&uc->entry);
-			--uc_size;
-			pthread_mutex_unlock(&uc_lock);
-			mempool_free(uc);
-		} else {
-			pthread_mutex_unlock(&uc_lock);
-			ses->ifindex = ipoe_nl_create(0, 0, ses->serv->opt_mode == MODE_L2 ? ses->serv->ifname : NULL, ses->hwaddr);
-			if (ses->ifindex == -1) {
-				log_ppp_error("ipoe: failed to create interface\n");
-				ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 1);
-				return;
-			}
-		}
-
-		memset(&ifr, 0, sizeof(ifr));
-		ifr.ifr_ifindex = ses->ifindex;
-		if (ioctl(sock_fd, SIOCGIFNAME, &ifr, sizeof(ifr))) {
-			log_ppp_error("ipoe: failed to get interface name\n");
-			ses->ifindex = -1;
-			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 1);
+		if (ipoe_create_interface(ses))
 			return;
-		}
-
-		strncpy(ses->ses.ifname, ifr.ifr_name, AP_IFNAME_LEN);
-		ses->ses.ifindex = ses->ifindex;
-		ses->ses.unit_idx = ses->ifindex;
-		ses->ctrl.dont_ifcfg = 0;
 	}
 
 	ap_session_set_ifindex(&ses->ses);
