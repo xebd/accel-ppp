@@ -204,6 +204,7 @@ out_err:
 	log_ppp_error("ipoe: lua: %s\n", lua_tostring(L, -1));
 	lua_close(L);
 	L = NULL;
+	pthread_setspecific(__key, L);
 }
 
 /*static void stackDump (lua_State *L) {
@@ -266,6 +267,7 @@ out_err:
 	file_error = 1;
 	lua_close(L);
 	L = NULL;
+	pthread_setspecific(__key, L);
 	return -1;
 }
 
