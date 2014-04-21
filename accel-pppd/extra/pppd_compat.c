@@ -140,25 +140,24 @@ static void ev_ses_pre_up(struct ap_session *ses)
 	
 	if (!pd)
 		return;
-	
-#ifdef RADIUS
-	{
-	char *fname = _malloc(PATH_MAX);
-	if (!fname) {
-		log_emerg("pppd_compat: out of memory\n");
-		return;
-	}
-	
-	sprintf(fname, "%s.%s", conf_radattr_prefix, ses->ifname);
 
-	rename(pd->tmp_fname, fname);
-	
-	_free(fname);
-	_free(pd->tmp_fname);
-	pd->tmp_fname = NULL;
+#ifdef RADIUS
+	if (pd->tmp_fname) {
+		char *fname = _malloc(PATH_MAX);
+
+		if (!fname) {
+			log_emerg("pppd_compat: out of memory\n");
+			return;
+		}
+
+		sprintf(fname, "%s.%s", conf_radattr_prefix, ses->ifname);
+		rename(pd->tmp_fname, fname);
+
+		_free(fname);
+		_free(pd->tmp_fname);
+		pd->tmp_fname = NULL;
 	}
 #endif
-	
 
 	if (ses->ipv4) {
 		pd->ipv4_addr = ses->ipv4->addr;
