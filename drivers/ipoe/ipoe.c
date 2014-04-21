@@ -166,7 +166,7 @@ static void ipoe_update_stats(struct sk_buff *skb, struct ipoe_stats *st, int co
 #endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,0,0)
-static void __kfree_rcu(struct rcu_head *head)
+static void ipoe_kfree_rcu(struct rcu_head *head)
 {
 	kfree(head);
 }
@@ -659,7 +659,7 @@ nl_err:
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
 			kfree_rcu(e, rcu_head);
 #else
-			call_rcu(&e->rcu_head, __kfree_rcu);
+			call_rcu(&e->rcu_head, ipoe_kfree_rcu);
 #endif
 		}
 
@@ -1547,7 +1547,7 @@ static int ipoe_nl_cmd_del_net(struct sk_buff *skb, struct genl_info *info)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
 			kfree_rcu(n, rcu_head);
 #else
-			call_rcu(&n->rcu_head, __kfree_rcu);
+			call_rcu(&n->rcu_head, ipoe_kfree_rcu);
 #endif
 		}
 	}
@@ -1596,7 +1596,7 @@ static int ipoe_nl_cmd_del_interface(struct sk_buff *skb, struct genl_info *info
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
 			kfree_rcu(i, rcu_head);
 #else
-			call_rcu(&i->rcu_head, __kfree_rcu);
+			call_rcu(&i->rcu_head, ipoe_kfree_rcu);
 #endif
 		}
 	}
@@ -1735,7 +1735,7 @@ static int ipoe_nl_cmd_del_vlan_mon(struct sk_buff *skb, struct genl_info *info)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
 			kfree_rcu(d, rcu_head);
 #else
-			call_rcu(&d->rcu_head, __kfree_rcu);
+			call_rcu(&d->rcu_head, ipoe_kfree_rcu);
 #endif
 		}
 	}
