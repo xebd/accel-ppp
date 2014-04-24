@@ -108,6 +108,11 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ad
 		log_emerg("out of memory\n");
 		return;
 	}
+	
+	if (!h->ses->ipv6) {
+		triton_timer_del(&h->timer);
+		return;
+	}
 
 	memset(adv, 0, sizeof(*adv));
 	adv->nd_ra_type = ND_ROUTER_ADVERT;
