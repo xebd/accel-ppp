@@ -141,6 +141,8 @@ static unsigned int stat_delayed_offer;
 static mempool_t ses_pool;
 static mempool_t disc_item_pool;
 
+static int connlimit_loaded;
+
 static LIST_HEAD(serv_list);
 static pthread_mutex_t serv_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -1105,6 +1107,9 @@ static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packe
 
 	if (ap_shutdown)
 		return;
+	
+	if (connlimit_loaded && connlimit_check(cl_key_from_mac(pack->hdr->chaddr)))
+		return;
 			
 	if (conf_verbose) {
 		log_ppp_info2("recv ");
@@ -1273,6 +1278,9 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 		triton_timer_mod(&serv->timer, 0);
 
 	if (ap_shutdown)
+		return;
+	
+	if (connlimit_loaded && connlimit_check(cl_key_from_mac(pack->hdr->chaddr)))
 		return;
 
 	pthread_mutex_lock(&serv->lock);
@@ -2978,6 +2986,8 @@ static void ipoe_init(void)
 		triton_event_register_handler(EV_RADIUS_COA, (triton_event_func)ev_radius_coa);
 	}
 #endif
+	
+	connlimit_loaded = triton_module_loaded("connlimit");
 }
 
 DEFINE_INIT(52, ipoe_init);
