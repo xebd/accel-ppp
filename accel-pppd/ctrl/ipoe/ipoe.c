@@ -315,8 +315,8 @@ static void ipoe_relay_timeout(struct triton_timer_t *t)
 static void ipoe_session_set_username(struct ipoe_session *ses)
 {
 #ifdef USE_LUA
-	if (conf_username == USERNAME_LUA) {
-		ipoe_lua_set_username(ses, conf_lua_username_func);
+	if (ses->serv->opt_username == USERNAME_LUA) {
+		ipoe_lua_set_username(ses, ses->serv->opt_lua_username_func ? : conf_lua_username_func);
 	} else
 #endif
 	ses->ses.username = _strdup(ses->ses.ifname);
@@ -1982,6 +1982,10 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	int opt_mode = conf_mode;
 	int opt_ifcfg = conf_ifcfg;
 	int opt_nat = conf_nat;
+	int opt_username = conf_username;
+#ifdef USE_LUA
+	char *opt_lua_username_func = NULL;
+#endif
 	const char *opt_relay = conf_relay;
 	in_addr_t relay_addr = conf_relay ? inet_addr(conf_relay) : 0;
 	in_addr_t opt_giaddr = 0;
@@ -2041,6 +2045,17 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 				opt_src = inet_addr(ptr1);
 			} else if (strcmp(str, "proxy-arp") == 0) {
 				opt_arp = atoi(ptr1);
+			} else if (strcmp(str, "username") == 0) {
+				if (strcmp(ptr1, "ifname") == 0)
+					opt_username = USERNAME_IFNAME;
+#ifdef USE_LUA
+				else if (strlen(ptr1) > 4 && memcmp(ptr1, "lua:", 4) == 0) {
+					opt_username = USERNAME_LUA;
+					opt_lua_username_func = _strdup(ptr1 + 4);
+				} 
+#endif
+				else
+					log_error("ipoe: unknown username value '%s'\n", ptr1);
 			}
 
 			if (end)
@@ -2129,6 +2144,18 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 		serv->opt_nat = opt_nat;
 		serv->opt_src = opt_src;
 		serv->opt_arp = opt_arp;
+		serv->opt_username = opt_username;
+#ifdef USE_LUA
+		if (serv->opt_lua_username_func && (!opt_lua_username_func || strcmp(serv->opt_lua_username_func, opt_lua_username_func))) {
+			_free(serv->opt_lua_username_func);
+			serv->opt_lua_username_func = NULL;
+		}
+		
+		if (!serv->opt_lua_username_func && opt_lua_username_func)
+			serv->opt_lua_username_func = opt_lua_username_func;
+		else if (opt_lua_username_func)
+			_free(opt_lua_username_func);
+#endif
 
 		if (str0)
 			_free(str0);
@@ -2174,6 +2201,10 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	serv->opt_nat = opt_nat;
 	serv->opt_src = opt_src;
 	serv->opt_arp = opt_arp;
+	serv->opt_username = opt_username;
+#ifdef USE_LUA
+	serv->opt_lua_username_func = opt_lua_username_func;
+#endif
 	serv->parent_ifindex = parent_ifindex = parent_ifindex;
 	serv->vid = vid;
 	serv->active = 1;

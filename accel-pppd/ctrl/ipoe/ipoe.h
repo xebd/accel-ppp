@@ -35,6 +35,10 @@ struct ipoe_serv {
 	int opt_mode;
 	uint32_t opt_src;
 	int opt_arp;
+	int opt_username;
+#ifdef USE_LUA
+	char *opt_lua_username_func;
+#endif
 	int opt_shared:1;
 	int opt_dhcpv4:1;
 	int opt_up:1;
