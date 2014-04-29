@@ -1108,9 +1108,6 @@ static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packe
 	if (ap_shutdown)
 		return;
 	
-	if (connlimit_loaded && connlimit_check(cl_key_from_mac(pack->hdr->chaddr)))
-		return;
-			
 	if (conf_verbose) {
 		log_ppp_info2("recv ");
 		dhcpv4_print_packet(pack, 0, log_info2);
@@ -1280,7 +1277,7 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 	if (ap_shutdown)
 		return;
 	
-	if (connlimit_loaded && connlimit_check(cl_key_from_mac(pack->hdr->chaddr)))
+	if (connlimit_loaded && pack->msg_type == DHCPDISCOVER && connlimit_check(cl_key_from_mac(pack->hdr->chaddr)))
 		return;
 
 	pthread_mutex_lock(&serv->lock);
