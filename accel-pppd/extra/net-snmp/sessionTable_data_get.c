@@ -12,6 +12,7 @@
 /* include our parent header */
 #include "sessionTable.h"
 
+#include "memdebug.h"
 
 /** @defgroup data_get data_get: Routines to get data
  *

@@ -17,6 +17,7 @@
 
 #include "ppp.h"
 #include "ipdb.h"
+#include "memdebug.h"
 
 /** @ingroup interface
  * @addtogroup data_access data_access: Routines to access data
