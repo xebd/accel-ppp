@@ -73,13 +73,13 @@ sessionTable_release_data(sessionTable_data *data)
     DEBUGMSGTL(("verbose:sessionTable:sessionTable_release_data","called\n"));
 
 		if (data->username)
-			free(data->username);
+			_free(data->username);
 
 		if (data->calling_sid)
-			free(data->calling_sid);
+			_free(data->calling_sid);
 
 		if (data->called_sid)
-			free(data->called_sid);
+			_free(data->called_sid);
 
     free(data);
 } /* sessionTable_release_data */
