@@ -18,7 +18,7 @@ if test -f /etc/default/accel-ppp; then
     . /etc/default/accel-ppp
 fi
 
-if [ -z $ACCEL_PPPD_OPTS ]; then
+if [ -z "${ACCEL_PPPD_OPTS}" ]; then
   ACCEL_PPPD_OPTS="-c /etc/accel-ppp.conf"
 fi
 

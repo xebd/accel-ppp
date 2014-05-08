@@ -13,13 +13,10 @@ if (BUILD_DRIVER_ONLY)
 	#INSTALL(DIRECTORY lib/modules/${DEBIAN_KDIR}/extra)
 	INSTALL(FILES ${CMAKE_CURRENT_BINARY_DIR}/driver/driver/pptp.ko DESTINATION lib/modules/${DEBIAN_KDIR}/extra)
 	#SET(CPACK_DEBIAN_PACKAGE_DEPENDS "linux-image (= ${LINUX_IMAGE})")
-else (BUILD_DRIVER_ONLY)
-	#SET(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.7), libssl0.9.8 (>= 0.9.8), libpcre3 (>= 7.6)")
-	
+else (BUILD_DRIVER_ONLY)	
 	SET(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_CURRENT_SOURCE_DIR}/cmake/debian/postinst;${CMAKE_CURRENT_SOURCE_DIR}/cmake/debian/conffiles")
 
-	INSTALL(FILES ${CMAKE_HOME_DIRECTORY}/accel-pppd/accel-ppp.conf DESTINATION ${CMAKE_BINARY_DIR}/_CPack_Packages/Linux/DEB/${CPACK_PACKAGE_FILE_NAME}/etc RENAME accel-ppp.conf.dist)
-	INSTALL(FILES ${CMAKE_HOME_DIRECTORY}/contrib/debian/accel-ppp-init DESTINATION ${CMAKE_BINARY_DIR}/_CPack_Packages/Linux/DEB/${CPACK_PACKAGE_FILE_NAME}/etc/init.d RENAME accel-ppp)
-	INSTALL(FILES ${CMAKE_HOME_DIRECTORY}/contrib/debian/accel-ppp-default DESTINATION ${CMAKE_BINARY_DIR}/_CPack_Packages/Linux/DEB/${CPACK_PACKAGE_FILE_NAME}/etc/default RENAME accel-ppp)
-
+	INSTALL(FILES ${CMAKE_HOME_DIRECTORY}/accel-pppd/accel-ppp.conf DESTINATION /etc RENAME accel-ppp.conf.dist)
+	INSTALL(FILES ${CMAKE_HOME_DIRECTORY}/contrib/debian/accel-ppp-init DESTINATION /etc/init.d RENAME accel-ppp)
+	INSTALL(FILES ${CMAKE_HOME_DIRECTORY}/contrib/debian/accel-ppp-default DESTINATION /etc/default RENAME accel-ppp)
 endif (BUILD_DRIVER_ONLY)

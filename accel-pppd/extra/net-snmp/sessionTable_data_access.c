@@ -17,6 +17,7 @@
 
 #include "ppp.h"
 #include "ipdb.h"
+#include "memdebug.h"
 
 /** @ingroup interface
  * @addtogroup data_access data_access: Routines to access data
@@ -224,16 +225,16 @@ sessionTable_container_load(netsnmp_container *container)
 				strcpy(rowreq_ctx->data->ifname, ppp->ifname);
 
 				if (ppp->username)
-					rowreq_ctx->data->username = strdup(ppp->username);
+					rowreq_ctx->data->username = _strdup(ppp->username);
 				else
-					ppp->username = strdup("");
+					rowreq_ctx->data->username = _strdup("");
 
 				rowreq_ctx->data->peer_addr = ppp->ipv4 ? ppp->ipv4->peer_addr : 0;
 				rowreq_ctx->data->type = ppp->ctrl->type;
 				rowreq_ctx->data->state = ppp->state;
 				rowreq_ctx->data->uptime = (ppp->stop_time ? ppp->stop_time : t) - ppp->start_time;
-				rowreq_ctx->data->calling_sid = strdup(ppp->ctrl->calling_station_id);
-				rowreq_ctx->data->called_sid = strdup(ppp->ctrl->called_station_id);
+				rowreq_ctx->data->calling_sid = _strdup(ppp->ctrl->calling_station_id);
+				rowreq_ctx->data->called_sid = _strdup(ppp->ctrl->called_station_id);
 
         CONTAINER_INSERT(container, rowreq_ctx);
         ++count;
