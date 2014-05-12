@@ -324,7 +324,6 @@ int rad_auth_chap_md5(struct radius_pd_t *rpd, const char *username, va_list arg
 		rpd->auth_req->pack->id++;
 	}
 
-	return r;
 out:
 	rad_req_free(rpd->auth_req);
 	rpd->auth_req = NULL;
@@ -448,7 +447,6 @@ int rad_auth_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list ar
 			*mschap_error = ra->val.string;
 	}
 
-	return r;
 out:
 	rad_req_free(rpd->auth_req);
 	rpd->auth_req = NULL;
@@ -540,9 +538,6 @@ int rad_auth_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list ar
 			*reply_msg = ra->val.string;
 	}
 
-
-
-	return r;
 out:
 	rad_req_free(rpd->auth_req);
 	rpd->auth_req = NULL;
