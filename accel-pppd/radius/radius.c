@@ -142,11 +142,15 @@ int rad_proc_attrs(struct rad_req_t *req)
 				a->addr = attr->val.ipv6prefix.prefix;
 				list_add_tail(&a->entry, &req->rpd->ipv6_dp.prefix_list);
 				break;
+			case NAS_Port_Id:
+				ap_session_rename(req->rpd->ses, attr->val.string, attr->len);
+				break;
 		}
 	}
 
 	if (dns.ses)
 		triton_event_fire(EV_DNS, &dns);
+
 	if (wins.ses)
 		triton_event_fire(EV_WINS, &wins);
 

@@ -230,3 +230,28 @@ void __export ap_session_ifdown(struct ap_session *ses)
 	}
 }
 
+void __export ap_session_rename(struct ap_session *ses, const char *ifname, int len)
+{
+	struct ifreq ifr;
+
+	if (len == -1)
+		len = strlen(ifname);
+	
+	if (len >= IFNAMSIZ - 1) {
+		log_ppp_warn("cannot rename interface (name it too long)\n");
+		return;
+	}
+
+	ifr.ifr_ifindex = ses->ifindex;
+	strcpy(ifr.ifr_name, ses->ifname);
+	memcpy(ifr.ifr_newname, ifname, len);
+	ifr.ifr_newname[len] = 0;
+
+	if (ioctl(sock_fd, SIOCSIFNAME, &ifr))
+		log_ppp_warn("interface rename failed: %s\n", strerror(errno));
+	else {
+		memcpy(ses->ifname, ifname, len);
+		ses->ifname[len] = 0;
+	}
+}
+

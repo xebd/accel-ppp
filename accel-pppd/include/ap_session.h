@@ -128,6 +128,7 @@ int ap_session_check_single(const char *username);
 
 void ap_session_ifup(struct ap_session *ses);
 void ap_session_ifdown(struct ap_session *ses);
+void ap_session_rename(struct ap_session *ses, const char *ifname, int len);
 
 int ap_session_read_stats(struct ap_session *ses, struct rtnl_link_stats *stats);
 
