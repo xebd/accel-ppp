@@ -51,6 +51,7 @@ static struct ipdb_t ipdb;
 static in_addr_t conf_gw_ip_address;
 static int conf_vendor = 0;
 static int conf_attr = 88; // Framed-Pool
+static int conf_shuffle;
 
 static int cnt;
 static LIST_HEAD(pool_list);
@@ -175,18 +176,71 @@ static void add_range(struct ippool_t *p, struct list_head *list, const char *na
 	p->generate = generate;
 }
 
+static uint8_t get_random()
+{
+	static uint8_t buf[128];
+	static int pos = 0;
+	int r;
+
+	if (pos == 0)
+		read(urandom_fd, buf, 128);
+	
+	r = buf[pos++];
+
+	if (pos == 128)
+		pos = 0;
+	
+	return r;
+}
+
 static void generate_pool_p2p(struct ippool_t *p)
 {
 	struct ippool_item_t *it;
 	struct ipaddr_t *addr = NULL;
 	struct ipaddr_t *peer_addr;
+	struct list_head *pos, *pos1 = p->tunnel_list.next, *pos2 = p->tunnel_list.prev;
+	uint8_t r, t = 0;
 
 	while (1) {
 		if (list_empty(&p->tunnel_list))
 			break;
 		else {
-			peer_addr = list_entry(p->tunnel_list.next, typeof(*peer_addr), entry);
-			list_del(&peer_addr->entry);
+			if (conf_shuffle) {
+				if (pos1 == &p->tunnel_list)
+					pos1 = pos1->next;
+
+				if (pos2 == &p->tunnel_list)
+					pos2 = pos2->prev;
+
+				if (t++ < 10)
+					r = get_random();
+				else
+					r = get_random()%64;
+
+				if (r < 32)
+					pos = pos1;
+				else if (r < 64)
+					pos = pos2;
+
+				pos1 = pos1->next;
+				pos2 = pos2->prev;
+				
+				if (r >= 64)
+					continue;
+				
+				peer_addr = list_entry(pos, typeof(*peer_addr), entry);
+				if (pos == pos1)
+					pos1 = pos1->next;
+				
+				if (pos == pos2)
+					pos2 = pos2->prev;
+				
+				list_del(&peer_addr->entry);
+				t = 0;
+			} else {
+				peer_addr = list_entry(p->tunnel_list.next, typeof(*peer_addr), entry);
+				list_del(&peer_addr->entry);
+			}
 		}
 
 		if (!conf_gw_ip_address) {
@@ -536,6 +590,8 @@ static void ippool_init2(void)
 #endif
 		if (!strcmp(opt->name, "gw-ip-address"))
 			parse_gw_ip_address(opt->val);
+		else if (!strcmp(opt->name, "shuffle"))
+			conf_shuffle = atoi(opt->val);
 		else {
 			pool_name = NULL;
 			allocator = NULL;
