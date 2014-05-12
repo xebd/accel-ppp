@@ -447,8 +447,17 @@ Specifies mac-filter filename and type, type maybe
 or
 .B deny
 .TP
-.BI "ifname-in-sid=" called-sid|calling-sid|both
-Specifies that interface name should be present in Called-Station-ID or in Calling-Station-ID or in both attributes.
+.BI "called-sid=" ifname|mac|ifname:mac
+Specifies how to represent Called-Station-ID.
+.br
+.B ifname 
+- Called-Station-ID will contain name of interface accepted request.
+.br
+.B mac
+- Called-Station-ID will contain mac address of interface accepted request.
+.br
+.B ifname:mac
+- Called-Station-Id will contain both name and mac of interface.
 .TP
 .BI "verbose=" n
 If this option is given and 
