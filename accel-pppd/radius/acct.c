@@ -107,7 +107,9 @@ static int rad_acct_read(struct triton_md_handler_t *h)
 			triton_timer_del(&req->timeout);
 	}
 
-	return 0;
+	triton_md_unregister_handler(h, 1);
+
+	return 1;
 }
 
 static void __rad_req_send(struct rad_req_t *req)
@@ -148,6 +150,7 @@ static void rad_acct_timeout(struct triton_timer_t *t)
 	if (conf_acct_timeout == 0) {
 		rad_server_timeout(req->serv);
 		triton_timer_del(t);
+		triton_md_unregister_handler(&req->hnd, 1);
 		return;
 	}
 
@@ -368,7 +371,9 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 		triton_timer_del(&rpd->acct_interim_timer);
 
 	if (rpd->acct_req) {
-		triton_md_unregister_handler(&rpd->acct_req->hnd, 0);
+		if (rpd->acct_req->hnd.tpd)
+			triton_md_unregister_handler(&rpd->acct_req->hnd, 0);
+	
 		if (rpd->acct_req->timeout.tpd)
 			triton_timer_del(&rpd->acct_req->timeout);
 
