@@ -47,8 +47,7 @@ static LIST_HEAD(targets);
 
 static void disconnect(struct tcp_target_t *t)
 {
-	triton_md_unregister_handler(&t->hnd);
-	close(t->hnd.fd);
+	triton_md_unregister_handler(&t->hnd, 1);
 
 	start_connect(t);
 }
@@ -170,8 +169,7 @@ static int log_tcp_connect(struct triton_md_handler_t *h)
 		if (errno == EINPROGRESS)
 			return 0;
 		log_emerg("log-tcp: connect: %s\n", strerror(errno));
-		triton_md_unregister_handler(&t->hnd);
-		close(t->hnd.fd);
+		triton_md_unregister_handler(&t->hnd, 1);
 		triton_timer_add(&tcp_ctx, &t->conn_timer, 0);
 		return 0;
 	}
@@ -241,8 +239,7 @@ static void log_tcp_close(struct triton_context_t *ctx)
 			triton_timer_del(&t->conn_timer);
 		else {
 			t->connected = 0;
-			triton_md_unregister_handler(&t->hnd);
-			close(t->hnd.fd);
+			triton_md_unregister_handler(&t->hnd, 1);
 		}
 	}
 

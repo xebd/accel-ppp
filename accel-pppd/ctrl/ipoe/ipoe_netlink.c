@@ -638,7 +638,7 @@ static int ipoe_mc_read(struct triton_md_handler_t *h)
 
 static void ipoe_mc_close(struct triton_context_t *ctx)
 {
-	triton_md_unregister_handler(&mc_hnd);
+	triton_md_unregister_handler(&mc_hnd, 0);
 	triton_context_unregister(ctx);
 }
 

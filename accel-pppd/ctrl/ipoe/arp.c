@@ -183,8 +183,7 @@ struct arp_serv *arpd_start(struct ipoe_serv *ipoe)
 
 void arpd_stop(struct arp_serv *arp)
 {
-	triton_md_unregister_handler(&arp->h);
-	close(arp->h.fd);
+	triton_md_unregister_handler(&arp->h, 1);
 	_free(arp);
 }
 

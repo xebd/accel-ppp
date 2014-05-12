@@ -185,13 +185,14 @@ exit_close_chan:
 static void destablish_ppp(struct ppp_t *ppp)
 {
 	struct pppunit_cache *uc;
+	int close_unit = uc_size >= conf_unit_cache;
 
 	triton_event_fire(EV_SES_PRE_FINISHED, &ppp->ses);
 
-	triton_md_unregister_handler(&ppp->chan_hnd);
-	triton_md_unregister_handler(&ppp->unit_hnd);
+	triton_md_unregister_handler(&ppp->chan_hnd, 1);
+	triton_md_unregister_handler(&ppp->unit_hnd, close_unit);
 	
-	if (uc_size < conf_unit_cache) {
+	if (!close_unit) {
 		uc = mempool_alloc(uc_pool);
 		uc->fd = ppp->unit_fd;
 		uc->unit_idx = ppp->ses.unit_idx;
@@ -200,14 +201,11 @@ static void destablish_ppp(struct ppp_t *ppp)
 		list_add_tail(&uc->entry, &uc_list);
 		++uc_size;
 		pthread_mutex_unlock(&uc_lock);
-	} else
-		close(ppp->unit_fd);
+	
+		ppp->chan_fd = -1;
+	}
 
-	close(ppp->chan_fd);
 	close(ppp->fd);
-
-	ppp->unit_fd = -1;
-	ppp->chan_fd = -1;
 	ppp->fd = -1;
 
 	_free_layers(ppp);

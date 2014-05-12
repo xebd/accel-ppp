@@ -796,8 +796,7 @@ static int dhcpv6_read(struct triton_md_handler_t *h)
 
 static void dhcpv6_close(struct triton_context_t *ctx)
 {
-	triton_md_unregister_handler(&dhcpv6_hnd);
-	close(dhcpv6_hnd.fd);
+	triton_md_unregister_handler(&dhcpv6_hnd, 1);
 	triton_context_unregister(ctx);
 }
 

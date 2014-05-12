@@ -183,6 +183,7 @@ static void ctx_thread(struct _triton_context_t *ctx)
 	struct _triton_timer_t *t;
 	struct _triton_ctx_call_t *call;
 	uint64_t tt;
+	int events;
 
 	log_debug2("ctx %p %p: enter\n", ctx, ctx->thread);
 
@@ -199,23 +200,33 @@ static void ctx_thread(struct _triton_context_t *ctx)
 				t->ud->expire(t->ud);
 			continue;
 		}
+
 		if (!list_empty(&ctx->pending_handlers)) {
 			h = list_entry(ctx->pending_handlers.next, typeof(*h), entry2);
 			list_del(&h->entry2);
 			h->pending = 0;
+			events = h->trig_epoll_events;
 			spin_unlock(&ctx->lock);
+			
 			__sync_sub_and_fetch(&triton_stat.md_handler_pending, 1);
-			if (h->trig_epoll_events & (EPOLLIN | EPOLLERR | EPOLLHUP))
-				if (h->ud && h->ud->read)
+			
+			if ((events & (EPOLLIN | EPOLLERR | EPOLLHUP)) && (h->epoll_event.events & EPOLLIN)) {
+				if (h->ud && h->ud->read) {
 					if (h->ud->read(h->ud))
 						continue;
-			if (h->trig_epoll_events & (EPOLLOUT | EPOLLERR | EPOLLHUP))
-				if (h->ud && h->ud->write)
+				}
+			}
+
+			if ((events & (EPOLLOUT | EPOLLERR | EPOLLHUP)) && (h->epoll_event.events & EPOLLOUT)) {
+				if (h->ud && h->ud->write) {
 					if (h->ud->write(h->ud))
 						continue;
-			h->trig_epoll_events = 0;
+				}
+			}
+
 			continue;
 		}
+
 		if (!list_empty(&ctx->pending_calls)) {
 			call = list_entry(ctx->pending_calls.next, typeof(*call), entry);
 			list_del(&call->entry);
@@ -224,6 +235,7 @@ static void ctx_thread(struct _triton_context_t *ctx)
 			mempool_free(call);
 			continue;
 		}
+
 		ctx->pending = 0;
 		spin_unlock(&ctx->lock);
 		break;	

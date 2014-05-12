@@ -1399,8 +1399,7 @@ void pppoe_server_free(struct pppoe_serv_t *serv)
 		free_delayed_pado(pado);
 	}
 
-	triton_md_unregister_handler(&serv->hnd);
-	close(serv->hnd.fd);
+	triton_md_unregister_handler(&serv->hnd, 1);
 	triton_context_unregister(&serv->ctx);
 	_free(serv->ifname);
 	_free(serv);

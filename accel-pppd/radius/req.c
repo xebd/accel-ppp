@@ -287,7 +287,7 @@ static void req_wakeup(struct rad_req_t *req)
 	struct triton_context_t *ctx = req->wait_ctx;
 	if (req->timeout.tpd)
 		triton_timer_del(&req->timeout);
-	triton_md_unregister_handler(&req->hnd);
+	triton_md_unregister_handler(&req->hnd, 0);
 	triton_context_unregister(&req->ctx);
 	triton_context_wakeup(ctx);
 }

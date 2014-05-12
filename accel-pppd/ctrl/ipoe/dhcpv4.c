@@ -229,8 +229,7 @@ out_err:
 
 void dhcpv4_free(struct dhcpv4_serv *serv)
 {
-	triton_md_unregister_handler(&serv->hnd);
-	close(serv->hnd.fd);
+	triton_md_unregister_handler(&serv->hnd, 1);
 	if (serv->range)
 		_free(serv->range);
 	_free(serv);
@@ -911,8 +910,7 @@ out_err_unlock:
 
 static void __dhcpv4_relay_free(struct dhcpv4_relay *r)
 {
-	triton_md_unregister_handler(&r->hnd);
-	close(r->hnd.fd);
+	triton_md_unregister_handler(&r->hnd, 1);
 	triton_context_unregister(&r->ctx);
 	_free(r);
 }

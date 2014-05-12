@@ -54,8 +54,7 @@ static void disconnect(struct tcp_client_t *cln)
 
 	list_del(&cln->entry);
 
-	triton_md_unregister_handler(&cln->hnd);
-	close(cln->hnd.fd);
+	triton_md_unregister_handler(&cln->hnd, 1);
 
 	if (cln->xmit_buf)
 		_free(cln->xmit_buf);
@@ -283,8 +282,7 @@ static void serv_close(struct triton_context_t *ctx)
 		disconnect(cln);
 	}
 
-	triton_md_unregister_handler(&serv_hnd);
-	close(serv_hnd.fd);
+	triton_md_unregister_handler(&serv_hnd, 1);
 	triton_context_unregister(ctx);
 }
 

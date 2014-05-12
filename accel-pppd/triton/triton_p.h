@@ -53,6 +53,7 @@ struct _triton_md_handler_t
 	struct _triton_context_t *ctx;
 	struct epoll_event epoll_event;
 	uint32_t trig_epoll_events;
+	int fd;
 	int pending:1;
 	int trig_level:1;
 	struct triton_md_handler_t *ud;

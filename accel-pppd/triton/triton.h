@@ -85,7 +85,7 @@ struct triton_context_t *triton_context_self(void);
 #define MD_TRIG_LEVEL 1
 
 void triton_md_register_handler(struct triton_context_t *, struct triton_md_handler_t *);
-void triton_md_unregister_handler(struct triton_md_handler_t *h);
+void triton_md_unregister_handler(struct triton_md_handler_t *h, int close);
 int triton_md_enable_handler(struct triton_md_handler_t *h, int mode);
 int triton_md_disable_handler(struct triton_md_handler_t *h,int mode);
 void triton_md_set_trig(struct triton_md_handler_t *h, int mode);

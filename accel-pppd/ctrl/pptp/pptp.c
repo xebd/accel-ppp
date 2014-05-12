@@ -77,8 +77,7 @@ static void disconnect(struct pptp_conn_t *conn)
 {
 	log_ppp_debug("pptp: disconnect\n");
 
-	triton_md_unregister_handler(&conn->hnd);
-	close(conn->hnd.fd);
+	triton_md_unregister_handler(&conn->hnd, 1);
 	
 	if (conn->timeout_timer.tpd)
 		triton_timer_del(&conn->timeout_timer);
@@ -704,8 +703,7 @@ static int pptp_connect(struct triton_md_handler_t *h)
 static void pptp_serv_close(struct triton_context_t *ctx)
 {
 	struct pptp_serv_t *s=container_of(ctx,typeof(*s),ctx);
-	triton_md_unregister_handler(&s->hnd);
-	close(s->hnd.fd);
+	triton_md_unregister_handler(&s->hnd, 1);
 	triton_context_unregister(ctx);
 }
 

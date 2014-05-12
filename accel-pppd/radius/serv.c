@@ -175,9 +175,11 @@ int rad_server_realloc(struct rad_req_t *req)
 
 	if (req->hnd.fd != -1) {
 		if (req->hnd.tpd)
-			triton_md_unregister_handler(&req->hnd);
-		close(req->hnd.fd);
-		req->hnd.fd = -1;
+			triton_md_unregister_handler(&req->hnd, 1);
+		else {
+			close(req->hnd.fd);
+			req->hnd.fd = -1;
+		}
 	}
 
 	req->server_addr = req->serv->addr;

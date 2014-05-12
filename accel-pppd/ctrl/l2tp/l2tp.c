@@ -1135,7 +1135,7 @@ static void l2tp_tunnel_free(struct l2tp_conn_t *conn)
 	pthread_mutex_unlock(&l2tp_lock);
 
 	if (conn->hnd.tpd)
-		triton_md_unregister_handler(&conn->hnd);
+		triton_md_unregister_handler(&conn->hnd, 0);
 	if (conn->timeout_timer.tpd)
 		triton_timer_del(&conn->timeout_timer);
 	if (conn->rtimeout_timer.tpd)
@@ -1533,7 +1533,7 @@ static int l2tp_tunnel_start(struct l2tp_conn_t *conn,
 err_ctx_md_timer:
 	triton_timer_del(&conn->timeout_timer);
 err_ctx_md:
-	triton_md_unregister_handler(&conn->hnd);
+	triton_md_unregister_handler(&conn->hnd, 0);
 err_ctx:
 	triton_context_unregister(&conn->ctx);
 err:
@@ -4428,8 +4428,7 @@ skip:
 static void l2tp_udp_close(struct triton_context_t *ctx)
 {
 	struct l2tp_serv_t *serv = container_of(ctx, typeof(*serv), ctx);
-	triton_md_unregister_handler(&serv->hnd);
-	close(serv->hnd.fd);
+	triton_md_unregister_handler(&serv->hnd, 1);
 	triton_context_unregister(&serv->ctx);
 }
 
@@ -4551,8 +4550,11 @@ static int start_udp_server(void)
 	return 0;
 
 err_hnd:
-	triton_md_unregister_handler(&udp_serv.hnd);
+	triton_md_unregister_handler(&udp_serv.hnd, 1);
 	triton_context_unregister(&udp_serv.ctx);
+	
+	return -1;
+
 err_fd:
 	close(udp_serv.hnd.fd);
 	udp_serv.hnd.fd = -1;

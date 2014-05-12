@@ -375,8 +375,7 @@ static void ev_ses_finishing(struct ap_session *ses)
 	if (h->timer.tpd)
 		triton_timer_del(&h->timer);
 
-	triton_md_unregister_handler(&h->hnd);
-	close(h->hnd.fd);
+	triton_md_unregister_handler(&h->hnd, 1);
 
 	list_del(&h->pd.entry);
 	

@@ -343,7 +343,7 @@ out:
 	rpd->acct_interim_timer.expire = rad_acct_interim_update;
 	rpd->acct_interim_timer.period = rpd->acct_interim_interval ? rpd->acct_interim_interval * 1000 : STAT_UPDATE_INTERVAL;
 	if (rpd->acct_interim_interval && triton_timer_add(rpd->ses->ctrl->ctx, &rpd->acct_interim_timer, 0)) {
-		triton_md_unregister_handler(&rpd->acct_req->hnd);
+		triton_md_unregister_handler(&rpd->acct_req->hnd, 0);
 		triton_timer_del(&rpd->acct_req->timeout);
 		goto out_err;
 	}
@@ -368,7 +368,7 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 		triton_timer_del(&rpd->acct_interim_timer);
 
 	if (rpd->acct_req) {
-		triton_md_unregister_handler(&rpd->acct_req->hnd);
+		triton_md_unregister_handler(&rpd->acct_req->hnd, 0);
 		if (rpd->acct_req->timeout.tpd)
 			triton_timer_del(&rpd->acct_req->timeout);
 
