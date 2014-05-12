@@ -138,7 +138,7 @@ extern int conf_fail_time;
 extern int conf_req_limit;
 
 int rad_check_nas_pack(struct rad_packet_t *pack);
-struct radius_pd_t *rad_find_session(const char *sessionid, const char *username, int port_id, in_addr_t ipaddr, const char *csid);
+struct radius_pd_t *rad_find_session(const char *sessionid, const char *username, const char *port_id, int port, in_addr_t ipaddr, const char *csid);
 struct radius_pd_t *rad_find_session_pack(struct rad_packet_t *pack);
 
 int rad_dict_load(const char *fname);

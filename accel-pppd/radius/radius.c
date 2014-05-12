@@ -401,7 +401,7 @@ struct radius_pd_t *find_pd(struct ap_session *ses)
 }
 
 
-struct radius_pd_t *rad_find_session(const char *sessionid, const char *username, int port_id, in_addr_t ipaddr, const char *csid)
+struct radius_pd_t *rad_find_session(const char *sessionid, const char *username, const char *port_id, int port, in_addr_t ipaddr, const char *csid)
 {
 	struct radius_pd_t *rpd;
 	
@@ -413,7 +413,9 @@ struct radius_pd_t *rad_find_session(const char *sessionid, const char *username
 			continue;
 		if (username && strcmp(username, rpd->ses->username))
 			continue;
-		if (port_id >= 0 && port_id != rpd->ses->unit_idx)
+		if (port >= 0 && port != rpd->ses->unit_idx)
+			continue;
+		if (port_id && strcmp(port_id, rpd->ses->ifname))
 			continue;
 		if (ipaddr && rpd->ses->ipv4 && ipaddr != rpd->ses->ipv4->peer_addr)
 			continue;
@@ -433,7 +435,8 @@ struct radius_pd_t *rad_find_session_pack(struct rad_packet_t *pack)
 	const char *sessionid = NULL;
 	const char *username = NULL;
 	const char *csid = NULL;
-	int port_id = -1;
+	int port = -1;
+	const char *port_id = NULL;
 	in_addr_t ipaddr = 0;
 	
 	list_for_each_entry(attr, &pack->attrs, entry) {
@@ -447,7 +450,10 @@ struct radius_pd_t *rad_find_session_pack(struct rad_packet_t *pack)
 				username = attr->val.string;
 				break;
 			case NAS_Port:
-				port_id = attr->val.integer;
+				port = attr->val.integer;
+				break;
+			case NAS_Port_Id:
+				port_id = attr->val.string;
 				break;
 			case Framed_IP_Address:
 				ipaddr = attr->val.ipaddr;
@@ -458,13 +464,13 @@ struct radius_pd_t *rad_find_session_pack(struct rad_packet_t *pack)
 		}
 	}
 
-	if (!sessionid && !username && port_id == -1 && ipaddr == 0 && !csid)
+	if (!sessionid && !username && !port_id && port == -1 && ipaddr == 0 && !csid)
 		return NULL;
 
-	if (username && !sessionid && port_id == -1 && ipaddr == 0)
+	if (username && !sessionid && port == -1 && ipaddr == 0 && !port_id)
 		return NULL;
 	
-	return rad_find_session(sessionid, username, port_id, ipaddr, csid);
+	return rad_find_session(sessionid, username, port_id, port, ipaddr, csid);
 }
 
 int rad_check_nas_pack(struct rad_packet_t *pack)
