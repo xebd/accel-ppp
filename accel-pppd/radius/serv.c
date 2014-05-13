@@ -63,7 +63,7 @@ static struct rad_server_t *__rad_server_get(int type, struct rad_server_t *excl
 			continue;
 		}
 
-		if (s->client_cnt[type] < s0->client_cnt[type])
+		if (s0->backup || s->weight*s->client_cnt[type] < s0->weight*s0->client_cnt[type])
 			s0 = s;
 	}
 
@@ -648,6 +648,18 @@ static int parse_server2(const char *_opt, struct rad_server_t *s)
 			goto out;
 	} else
 		s->conf_fail_time = conf_fail_time;
+	
+	ptr3 = strstr(ptr2, ",weight=");
+	if (ptr3)
+		s->weight = 1.0/atoi(ptr3 + 8);
+	else
+		s->weight = 1;
+	
+	ptr3 = strstr(ptr2, ",backup");
+	if (ptr3)
+		s->backup = 1;
+	else
+		s->backup = 0;
 
 	if (ptr2)
 		*ptr2 = 0;

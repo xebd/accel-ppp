@@ -82,6 +82,7 @@ struct rad_server_t {
 	time_t fail_time;
 	int conf_fail_time;
 	int timeout_cnt;
+	double weight;
 	pthread_mutex_t lock;
 
 	unsigned long stat_auth_sent;
@@ -107,6 +108,7 @@ struct rad_server_t {
 	struct stat_accm_t *stat_interim_query_1m;
 	struct stat_accm_t *stat_interim_query_5m;
 
+	int backup:1;
 	int starting:1;
 	int acct_on:1;
 	int need_free:1;
