@@ -16,6 +16,10 @@
 
 #include "memdebug.h"
 
+#ifndef min
+#define min(x,y) ((x)<(y)?(x):(y))
+#endif
+
 #define LOG_MSG   0
 #define LOG_ERROR 1
 #define LOG_WARN  2
@@ -306,9 +310,22 @@ static struct log_msg_t *clone_msg(struct _log_msg_t *msg)
 static int add_msg(struct _log_msg_t *msg, const char *buf)
 {
 	struct log_chunk_t *chunk;
-	int i, len, chunk_cnt;
+	int i, chunk_cnt, len = strlen(buf);
 	
-	len = strlen(buf);
+	if (!list_empty(&msg->chunks)) {
+		chunk = list_entry(msg->chunks.prev, typeof(*chunk), entry);
+		i = min(len, LOG_CHUNK_SIZE - chunk->len);
+		memcpy(chunk->msg + chunk->len, buf, i);
+		chunk->len += i;
+		chunk->msg[chunk->len] = 0;
+		
+		if (i == len)
+			return 0;
+
+		buf += i;
+		len -= i;
+	}
+
 	chunk_cnt = (len - 1)/LOG_CHUNK_SIZE + 1;
 
 	for (i = 0; i < chunk_cnt; i++) {
@@ -316,7 +333,7 @@ static int add_msg(struct _log_msg_t *msg, const char *buf)
 		if (!chunk)
 			return -1;
 
-		chunk->len = i == chunk_cnt -1 ? len - i * LOG_CHUNK_SIZE : LOG_CHUNK_SIZE;
+		chunk->len = i == chunk_cnt - 1 ? len - i * LOG_CHUNK_SIZE : LOG_CHUNK_SIZE;
 		memcpy(chunk->msg, buf + i * LOG_CHUNK_SIZE, chunk->len);
 		chunk->msg[chunk->len] = 0;
 
