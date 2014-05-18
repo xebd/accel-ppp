@@ -100,6 +100,7 @@ static void *md_thread(void *arg)
 		while (!list_empty(&freed_list2)) {
 			h = list_entry(freed_list2.next, typeof(*h), entry);
 			list_del(&h->entry);
+			triton_context_release(h->ctx);
 			mempool_free(h);
 		}
 		
@@ -125,6 +126,7 @@ void __export triton_md_register_handler(struct triton_context_t *ctx, struct tr
 		h->ctx = (struct _triton_context_t *)ctx->tpd;
 	else
 		h->ctx = (struct _triton_context_t *)default_ctx.tpd;
+	__sync_add_and_fetch(&h->ctx->refs, 1);
 	ud->tpd = h;
 	spin_lock(&h->ctx->lock);
 	list_add_tail(&h->entry, &h->ctx->handlers);

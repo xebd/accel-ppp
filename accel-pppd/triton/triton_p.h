@@ -41,6 +41,7 @@ struct _triton_context_t
 	int need_free;
 	int pending;
 	int priority;
+	int refs;
 
 	struct triton_context_t *ud;
 	void *bf_arg;
@@ -107,5 +108,6 @@ int conf_reload(const char *fname);
 void triton_log_error(const char *fmt, ...) __attribute__((format(gnu_printf, 1, 2)));
 void triton_log_debug(const char *fmt, ...) __attribute__((format(gnu_printf, 1, 2)));
 int load_modules(const char *name);
+void triton_context_release(struct _triton_context_t *ctx);
 
 #endif

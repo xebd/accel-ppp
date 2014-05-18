@@ -107,15 +107,12 @@ void *timer_thread(void *arg)
 		while (!list_empty(&freed_list2)) {
 			t = list_entry(freed_list2.next, typeof(*t), entry);
 			list_del(&t->entry);
+			triton_context_release(t->ctx);
 			mempool_free(t);
 		}
 
 		pthread_mutex_lock(&freed_list_lock);
-		while (!list_empty(&freed_list)) {
-			t = list_entry(freed_list.next, typeof(*t), entry);
-			list_del(&t->entry);
-			list_add(&t->entry, &freed_list2);
-		}
+		list_splice_init(&freed_list, &freed_list2);
 		pthread_mutex_unlock(&freed_list_lock);
 	}
 
@@ -147,6 +144,7 @@ int __export triton_timer_add(struct triton_context_t *ctx, struct triton_timer_
     goto out_err;
 	}
 	
+	__sync_add_and_fetch(&t->ctx->refs, 1);
 	ud->tpd = t;
 
 	if (triton_timer_mod(ud, abs_time))
