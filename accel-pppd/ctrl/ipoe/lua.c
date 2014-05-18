@@ -232,6 +232,8 @@ out_err:
 
 int ipoe_lua_set_username(struct ipoe_session *ses, const char *func)
 {
+	int r;
+
 	if (file_error && serial == __serial)
 		return -1;
 
@@ -257,11 +259,11 @@ int ipoe_lua_set_username(struct ipoe_session *ses, const char *func)
 		goto out_err;
 	}
 
-	ses->ses.username = _strdup(lua_tostring(L, -1));
+	r = ap_session_set_username(&ses->ses, _strdup(lua_tostring(L, -1)));
 
 	lua_settop(L, 0);
 
-	return 0;
+	return r;
 	
 out_err:
 	file_error = 1;

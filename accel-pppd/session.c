@@ -159,6 +159,9 @@ void __export ap_session_finished(struct ap_session *ses)
 	triton_event_fire(EV_SES_FINISHED, ses);
 	ses->ctrl->finished(ses);
 
+	if (ses->wakeup)
+		triton_context_wakeup(ses->wakeup);
+
 	if (ses->username) {
 		_free(ses->username);
 		ses->username = NULL;
@@ -310,12 +313,13 @@ static void __terminate_sec(struct ap_session *ses)
 	ap_session_terminate(ses, TERM_NAS_REQUEST, 0);
 }
 
-int __export ap_session_check_single(const char *username)
+int __export ap_session_set_username(struct ap_session *s, char *username)
 {
 	struct ap_session *ses;
+	int wait = 0;
 
+	pthread_rwlock_wrlock(&ses_lock);
 	if (conf_single_session >= 0) {
-		pthread_rwlock_rdlock(&ses_lock);
 		list_for_each_entry(ses, &ses_list, entry) {
 			if (ses->username && !strcmp(ses->username, username)) {
 				if (conf_single_session == 0) {
@@ -324,14 +328,23 @@ int __export ap_session_check_single(const char *username)
 					return -1;
 				} else {
 					if (conf_single_session == 1) {
-						ap_session_ifdown(ses);
+						if (ses->wakeup)
+							continue;
+						//ap_session_ifdown(ses);
+						ses->wakeup = s->ctrl->ctx;
+						wait = 1;
 						triton_context_call(ses->ctrl->ctx, (triton_event_func)__terminate_sec, ses);
 					}
 				}
 			}
 		}
-		pthread_rwlock_unlock(&ses_lock);
-	}
+		s->username = username;
+	} else
+		s->username = username;
+	pthread_rwlock_unlock(&ses_lock);
+
+	if (wait)
+		triton_context_schedule();
 
 	return 0;
 }

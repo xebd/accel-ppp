@@ -336,10 +336,10 @@ int __export ppp_auth_succeeded(struct ppp_t *ppp, char *username)
 {
 	struct auth_layer_data_t *ad = container_of(ppp_find_layer_data(ppp, &auth_layer), typeof(*ad), ld);
 
-	if (ap_session_check_single(username))
+	if (ap_session_set_username(&ppp->ses, username)) {
+		_free(username);
 		return -1;
-
-	ppp->ses.username = username;
+	}
 
 	triton_context_call(ppp->ses.ctrl->ctx, (triton_event_func)__ppp_auth_started, ppp);
 

@@ -321,7 +321,8 @@ static void ipoe_session_set_username(struct ipoe_session *ses)
 		ipoe_lua_set_username(ses, ses->serv->opt_lua_username_func ? : conf_lua_username_func);
 	} else
 #endif
-	ses->ses.username = _strdup(ses->ses.ifname);
+
+	ap_session_set_username(&ses->ses, _strdup(ses->ses.ifname));
 }
 
 static void l4_redirect_list_add(in_addr_t addr, int ifindex)
@@ -1547,7 +1548,7 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 	ses->ses.chan_name = ses->ctrl.calling_station_id;
 
 	if (conf_username == USERNAME_UNSET)
-		ses->ses.username = _strdup(ses->ctrl.calling_station_id);
+		ap_session_set_username(&ses->ses, _strdup(ses->ctrl.calling_station_id));
 	
 	if (conf_ip_pool)
 		ses->ses.ipv4_pool_name = _strdup(conf_ip_pool);
