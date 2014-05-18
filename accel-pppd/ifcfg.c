@@ -18,6 +18,7 @@
 #include "ipdb.h"
 #include "log.h"
 #include "backup.h"
+#include "memdebug.h"
 
 // from /usr/include/linux/ipv6.h
 struct in6_ifreq {
@@ -63,6 +64,12 @@ void ap_session_ifup(struct ap_session *ses)
 	struct sockaddr_in addr;
 	struct ppp_t *ppp;
 	
+	if (ses->ifname_rename) {
+		ap_session_rename(ses, ses->ifname_rename, -1);
+		_free(ses->ifname_rename);
+		ses->ifname_rename = NULL;
+	}
+
 	triton_event_fire(EV_SES_ACCT_START, ses);
 	if (ses->stop_time)
 		return;
@@ -246,10 +253,14 @@ void __export ap_session_rename(struct ap_session *ses, const char *ifname, int 
 	strcpy(ifr.ifr_name, ses->ifname);
 	memcpy(ifr.ifr_newname, ifname, len);
 	ifr.ifr_newname[len] = 0;
-
-	if (ioctl(sock_fd, SIOCSIFNAME, &ifr))
-		log_ppp_warn("interface rename failed: %s\n", strerror(errno));
-	else {
+	
+	if (ioctl(sock_fd, SIOCSIFNAME, &ifr)) {
+		if (!ses->ifname_rename)
+			ses->ifname_rename = _strdup(ifr.ifr_newname);
+		else
+			log_ppp_warn("interface rename failed: %s\n", strerror(errno));
+	} else {
+		log_ppp_info2("rename interface to '%s'\n", ifr.ifr_newname);	
 		memcpy(ses->ifname, ifname, len);
 		ses->ifname[len] = 0;
 	}

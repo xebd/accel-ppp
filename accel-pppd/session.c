@@ -176,6 +176,11 @@ void __export ap_session_finished(struct ap_session *ses)
 		_free(ses->ipv6_pool_name);
 		ses->ipv6_pool_name = NULL;
 	}
+	
+	if (ses->ifname_rename) {
+		_free(ses->ifname_rename);
+		ses->ifname_rename = NULL;
+	}
 
 #ifdef USE_BACKUP
 	if (ses->backup)

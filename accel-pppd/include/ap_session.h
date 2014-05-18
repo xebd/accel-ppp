@@ -66,6 +66,7 @@ struct ap_session
 	int state;
 	char *chan_name;
 	char ifname[AP_IFNAME_LEN];
+	char *ifname_rename;
 	int unit_idx;
 	int ifindex;
 	char sessionid[AP_SESSIONID_LEN+1];
