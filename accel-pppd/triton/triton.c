@@ -170,7 +170,7 @@ cont:
 
 		if (thread->ctx->need_free) {
 			log_debug2("- context %p removed\n", thread->ctx);
-			mempool_free(thread->ctx);
+			triton_context_release(thread->ctx);
 		}
 
 		thread->ctx = NULL;
@@ -309,6 +309,12 @@ int triton_queue_ctx(struct _triton_context_t *ctx)
 	return 1;
 }
 
+void triton_context_release(struct _triton_context_t *ctx)
+{
+	if (__sync_sub_and_fetch(&ctx->refs, 1) == 0)
+		mempool_free(ctx);
+}
+
 int __export triton_context_register(struct triton_context_t *ud, void *bf_arg)
 {
 	struct _triton_context_t *ctx = mempool_alloc(ctx_pool);
@@ -321,6 +327,7 @@ int __export triton_context_register(struct triton_context_t *ud, void *bf_arg)
 	ctx->ud = ud;
 	ctx->bf_arg = bf_arg;
 	ctx->init = 1;
+	ctx->refs = 1;
 	spinlock_init(&ctx->lock);
 	INIT_LIST_HEAD(&ctx->handlers);
 	INIT_LIST_HEAD(&ctx->timers);
