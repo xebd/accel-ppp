@@ -1278,7 +1278,7 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 	if (ap_shutdown)
 		return;
 	
-	if (connlimit_loaded && pack->msg_type == DHCPDISCOVER && connlimit_check(cl_key_from_mac(pack->hdr->chaddr)))
+	if (connlimit_loaded && pack->msg_type == DHCPDISCOVER && connlimit_check(serv->opt_shared ? cl_key_from_mac(pack->hdr->chaddr) : serv->ifindex))
 		return;
 
 	pthread_mutex_lock(&serv->lock);
