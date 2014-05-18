@@ -9,6 +9,7 @@
 #include <signal.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/uio.h>
 
 #include "log.h"
 #include "events.h"
@@ -26,8 +27,7 @@
 #define BLUE_COLOR  	"\033[1;34m"
 #define NORMAL_COLOR  "\033[0;39m"
 
-struct log_file_t
-{
+struct log_file_t {
 	struct list_head entry;
 	struct list_head msgs;
 	spinlock_t lock;
@@ -37,23 +37,18 @@ struct log_file_t
 
 	int fd;
 	int new_fd;
-	off_t offset;
-	unsigned long magic;
 };
 
-struct log_file_pd_t
-{
+struct log_file_pd_t {
 	struct ap_private pd;
 	struct log_file_t lf;
 	unsigned long tmp;
 };
 
-struct fail_log_pd_t
-{
+struct fail_log_pd_t {
 	struct ap_private pd;
 	struct list_head msgs;
 };
-
 
 static int conf_color;
 static int conf_per_session;
@@ -61,6 +56,7 @@ static char *conf_per_user_dir;
 static char *conf_per_session_dir;
 static int conf_copy;
 static int conf_fail_log;
+static pthread_t log_thr;
 
 static const char* level_name[]={"  msg", "error", " warn", " info", " info", "debug"};
 static const char* level_color[]={NORMAL_COLOR, RED_COLOR, YELLOW_COLOR, GREEN_COLOR, GREEN_COLOR, BLUE_COLOR};
@@ -74,22 +70,12 @@ static struct log_file_t *fail_log_file;
 
 static mempool_t lpd_pool;
 static mempool_t fpd_pool;
-static char *log_buf;
-
-static struct aiocb aiocb = {
-	.aio_lio_opcode = LIO_WRITE,
-	.aio_sigevent.sigev_notify = SIGEV_SIGNAL,
-	.aio_sigevent.sigev_signo = SIGIO,
-};
 
 static LIST_HEAD(lf_queue);
-static spinlock_t lf_queue_lock = SPINLOCK_INITIALIZER;
-static int lf_queue_sleeping = 1;
+static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
 static unsigned long temp_seq;
-
-static void send_next_chunk();
-
 
 static void log_file_init(struct log_file_t *lf)
 {
@@ -101,147 +87,84 @@ static void log_file_init(struct log_file_t *lf)
 
 static int log_file_open(struct log_file_t *lf, const char *fname)
 {
-	lf->fd = open(fname, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
+	lf->fd = open(fname, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, S_IRUSR | S_IWUSR);
 	if (lf->fd < 0) {
 		log_emerg("log_file: open '%s': %s\n", fname, strerror(errno));
 		return -1;
 	} 
 	
-	fcntl(lf->fd, F_SETFD, fcntl(lf->fd, F_GETFD) | FD_CLOEXEC);
-	
-	lf->offset = lseek(lf->fd, 0, SEEK_END);
-	
 	return 0;
 }
 
-static void sigio(int num, siginfo_t *si, void *uc)
+static void *log_thread(void *unused)
 {
 	struct log_file_t *lf;
-	int n;
-
-	if (si->si_signo != SIGIO)
-		return;
-
-	if (si->si_code != SI_ASYNCIO) {
-		if (aio_write(&aiocb))
-			log_emerg("log_file: aio_write: %s\n", strerror(errno));
-		return;
-	}
-
-	lf = (struct log_file_t *)si->si_ptr;
-
-	n = aio_return(&aiocb);
-	if (n < 0)
-		log_emerg("log_file: %s\n", strerror(aio_error(&aiocb)));
-	else if (n != aiocb.aio_nbytes)
-		log_emerg("log_file: short write %p %i %lu\n", lf, n, aiocb.aio_nbytes);
-
-	spin_lock(&lf->lock);
-	lf->offset += n;
-	if (list_empty(&lf->msgs)) {
-		if (lf->need_free) {
-			spin_unlock(&lf->lock);
-			close(lf->fd);
-			mempool_free(lf->lpd);
-		} else {
-			lf->queued = 0;
-			spin_unlock(&lf->lock);
-		}
-	} else {
-		spin_unlock(&lf->lock);
-
-		spin_lock(&lf_queue_lock);
-		list_add_tail(&lf->entry, &lf_queue);
-		spin_unlock(&lf_queue_lock);
-	}
-	
-	send_next_chunk();
-}
-
-static int dequeue_log(struct log_file_t *lf)
-{
-	int n, pos = 0;
-	struct log_msg_t *msg;
+	struct iovec iov[IOV_MAX];
 	struct log_chunk_t *chunk;
+	struct log_msg_t *msg;
+	int iov_cnt = 0;
 
 	while (1) {
-		spin_lock(&lf->lock);
-		if (list_empty(&lf->msgs)) {
+		pthread_mutex_lock(&lock);
+		if (list_empty(&lf_queue))
+			pthread_cond_wait(&cond, &lock);
+		lf = list_first_entry(&lf_queue, typeof(*lf), entry);
+		list_del(&lf->entry);
+		pthread_mutex_unlock(&lock);
+
+		iov_cnt = 0;
+		
+		while (1) {
+			spin_lock(&lf->lock);
+			if (list_empty(&lf->msgs)) {
+				lf->queued = 0;
+				if (lf->need_free) {
+					spin_unlock(&lf->lock);
+					close(lf->fd);
+					if (lf->new_fd != -1)
+						close(lf->new_fd);
+					mempool_free(lf->lpd);
+				} else {
+					spin_unlock(&lf->lock);
+		
+					if (iov_cnt)
+						writev(lf->fd, iov, iov_cnt);
+		
+					if (lf->new_fd != -1) {
+						close(lf->fd);
+						lf->fd = lf->new_fd;
+						lf->new_fd = -1;
+					}
+				}
+				break;
+			}
+			
+			msg = list_first_entry(&lf->msgs, typeof(*msg), entry);
+			list_del(&msg->entry);
 			spin_unlock(&lf->lock);
-			return pos;
+
+			list_for_each_entry(chunk, msg->chunks, entry) {
+				iov[iov_cnt].iov_base = chunk->msg;
+				iov[iov_cnt].iov_len = chunk->len;
+				if (++iov_cnt == IOV_MAX) {
+					writev(lf->fd, iov, iov_cnt);
+					iov_cnt = 0;
+				}
+			}
+		
+			log_free_msg(msg);
 		}
-		msg = list_entry(lf->msgs.next, typeof(*msg), entry);
-		list_del(&msg->entry);
-		spin_unlock(&lf->lock);
-
-		if (pos + msg->hdr->len > LOG_BUF_SIZE)
-			goto overrun;
-		memcpy(log_buf + pos, msg->hdr->msg, msg->hdr->len);
-		n = msg->hdr->len;
-
-		list_for_each_entry(chunk, msg->chunks, entry) {
-			if (pos + n + chunk->len > LOG_BUF_SIZE)
-				goto overrun;
-			memcpy(log_buf + pos + n, chunk->msg, chunk->len);
-			n += chunk->len;
-		}
-
-		log_free_msg(msg);
-		pos += n;
 	}
 
-overrun:
-	spin_lock(&lf->lock);
-	list_add(&msg->entry, &lf->msgs);
-	spin_unlock(&lf->lock);
-
-	return pos;
-}
-
-static void send_next_chunk(void)
-{
-	struct log_file_t *lf;
-
-	spin_lock(&lf_queue_lock);
-	if (list_empty(&lf_queue)) {
-		lf_queue_sleeping = 1;
-		spin_unlock(&lf_queue_lock);
-		return;
-	}
-	lf = list_entry(lf_queue.next, typeof(*lf), entry);
-	
-	list_del(&lf->entry);
-
-	spin_unlock(&lf_queue_lock);
-
-	if (lf->new_fd != -1) {
-		close(lf->fd);
-		lf->fd = lf->new_fd;
-		lf->new_fd = -1;
-		lf->offset = 0;
-	}
-
-	aiocb.aio_fildes = lf->fd;
-	aiocb.aio_offset = lf->offset;
-	aiocb.aio_sigevent.sigev_value.sival_ptr = lf;
-	aiocb.aio_nbytes = dequeue_log(lf);
-
-	if (aio_write(&aiocb))
-		log_emerg("log_file: aio_write: %s\n", strerror(errno));
+	return NULL;
 }
 
 static void queue_lf(struct log_file_t *lf)
 {
-	int r;
-
-	spin_lock(&lf_queue_lock);
+	pthread_mutex_lock(&lock);
 	list_add_tail(&lf->entry, &lf_queue);
-	r = lf_queue_sleeping;
-	lf_queue_sleeping = 0;
-	spin_unlock(&lf_queue_lock);
-
-	if (r)
-		send_next_chunk();
+	pthread_cond_signal(&cond);
+	pthread_mutex_unlock(&lock);
 }
 
 static void queue_log(struct log_file_t *lf, struct log_msg_t *msg)
@@ -264,14 +187,9 @@ static void queue_log(struct log_file_t *lf, struct log_msg_t *msg)
 static void queue_log_list(struct log_file_t *lf, struct list_head *l)
 {
 	int r;
-	struct log_msg_t *msg;
 
 	spin_lock(&lf->lock);
-	while (!list_empty(l)) {
-		msg = list_entry(l->next, typeof(*msg), entry);
-		list_del(&msg->entry);
-		list_add_tail(&msg->entry, &lf->msgs);
-	}
+	list_splice_init(l, &lf->msgs);
 	if (lf->fd != -1) {
 		r = lf->queued;
 		lf->queued = 1;
@@ -407,27 +325,48 @@ static void fail_log(struct log_target_t *t, struct log_msg_t *msg, struct ap_se
 
 static void fail_reopen(void)
 {
-	char *fname = conf_get_opt("log", "log-fail-file");
- 	int fd = open(fname, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
+	const char *fname = conf_get_opt("log", "log-fail-file");
+	int old_fd = -1;
+ 	int fd = open(fname, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, S_IRUSR | S_IWUSR);
 	if (fd < 0) {
 		log_emerg("log_file: open '%s': %s\n", fname, strerror(errno));
 		return;
 	}
-	fcntl(fd, F_SETFD, fcntl(fd, F_GETFD) | FD_CLOEXEC);
-	fail_log_file->new_fd = fd;
-}
+	
+	spin_lock(&fail_log_file->lock);
+	if (fail_log_file->queued)
+		fail_log_file->new_fd = fd;
+	else {
+		old_fd = fail_log_file->fd;
+		fail_log_file->fd = fd;
+	}
+	spin_unlock(&fail_log_file->lock);
 
+	if (old_fd != -1)
+		close(old_fd);
+}
 
 static void general_reopen(void)
 {
-	char *fname = conf_get_opt("log", "log-file");
- 	int fd = open(fname, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR);
+	const char *fname = conf_get_opt("log", "log-file");
+	int old_fd = -1;
+ 	int fd = open(fname, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC, S_IRUSR | S_IWUSR);
 	if (fd < 0) {
 		log_emerg("log_file: open '%s': %s\n", fname, strerror(errno));
 		return;
 	}
-	fcntl(fd, F_SETFD, fcntl(fd, F_GETFD) | FD_CLOEXEC);
-	log_file->new_fd = fd;
+
+	spin_lock(&log_file->lock);
+	if (log_file->queued)
+		log_file->new_fd = fd;
+	else {
+		old_fd = log_file->fd;
+		log_file->fd = fd;
+	}
+	spin_unlock(&log_file->lock);
+
+	if (old_fd != -1)
+		close(old_fd);
 }
 
 static void free_lpd(struct log_file_pd_t *lpd)
@@ -446,6 +385,8 @@ static void free_lpd(struct log_file_pd_t *lpd)
 			log_free_msg(msg);
 		}
 		if (lpd->lf.fd != -1)
+			close(lpd->lf.fd);
+		if (lpd->lf.new_fd != -1)
 			close(lpd->lf.fd);
 		spin_unlock(&lpd->lf.lock);
 		mempool_free(lpd);
@@ -682,27 +623,12 @@ static struct log_target_t fail_log_target =
 
 static void init(void)
 {
-	char *opt;
+	const char *opt;
+
+	pthread_create(&log_thr, NULL, log_thread, NULL);
 	
-	sigset_t set;
-	sigemptyset(&set);
-	sigaddset(&set, SIGIO);
-
-	struct sigaction sa = {
-		.sa_sigaction = sigio,
-		.sa_flags = SA_SIGINFO,
-		.sa_mask = set,
-	};
-
 	lpd_pool = mempool_create(sizeof(struct log_file_pd_t));
 	fpd_pool = mempool_create(sizeof(struct fail_log_pd_t));
-	log_buf = malloc(LOG_BUF_SIZE);
-	aiocb.aio_buf = log_buf;
-
-	if (sigaction(SIGIO, &sa, NULL)) {
-		log_emerg("log_file: sigaction: %s\n", strerror(errno));
-		return;
-	}
 
 	opt = conf_get_opt("log", "log-file");
 	if (opt) {
