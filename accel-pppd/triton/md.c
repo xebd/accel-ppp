@@ -96,23 +96,16 @@ static void *md_thread(void *arg)
 			if (r)
 				triton_thread_wakeup(h->ctx->thread);
 		}
-
-		pthread_mutex_lock(&freed_list_lock);
-		while (!list_empty(&freed_list)) {
-			h = list_entry(freed_list.next, typeof(*h), entry);
-			list_move(&h->entry, &freed_list2);
-		}
-		pthread_mutex_unlock(&freed_list_lock);
 		
 		while (!list_empty(&freed_list2)) {
 			h = list_entry(freed_list2.next, typeof(*h), entry);
 			list_del(&h->entry);
-			if (h->fd != -1) {
-				r = epoll_ctl(epoll_fd, EPOLL_CTL_DEL, h->fd, NULL);
-				close(h->fd);
-			}
 			mempool_free(h);
 		}
+
+		pthread_mutex_lock(&freed_list_lock);
+		list_splice_init(&freed_list, &freed_list2);
+		pthread_mutex_unlock(&freed_list_lock);
 	}
 
 	return NULL;
@@ -139,14 +132,12 @@ void __export triton_md_register_handler(struct triton_context_t *ctx, struct tr
 void __export triton_md_unregister_handler(struct triton_md_handler_t *ud, int c)
 {
 	struct _triton_md_handler_t *h = (struct _triton_md_handler_t *)ud->tpd;
+
 	triton_md_disable_handler(ud, MD_MODE_READ | MD_MODE_WRITE);
-	
+
 	if (c) {
-		h->fd = ud->fd;
+		close(ud->fd);
 		ud->fd = -1;
-	} else {
-		triton_md_disable_handler(ud, MD_MODE_READ | MD_MODE_WRITE);
-		h->fd = -1;
 	}
 	
 	spin_lock(&h->ctx->lock);
