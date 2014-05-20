@@ -483,12 +483,12 @@ static int ipoe_create_interface(struct ipoe_session *ses)
 		return -1;
 	}
 
-	log_ppp_info2("create interface %s parent %s\n", ifr.ifr_name, ses->serv->ifname);
-
 	strncpy(ses->ses.ifname, ifr.ifr_name, AP_IFNAME_LEN);
 	ses->ses.ifindex = ses->ifindex;
 	ses->ses.unit_idx = ses->ifindex;
 	ses->ctrl.dont_ifcfg = 0;
+
+	log_ppp_info2("create interface %s parent %s\n", ifr.ifr_name, ses->serv->ifname);
 
 	return 0;
 }
@@ -1025,6 +1025,7 @@ static struct ipoe_session *ipoe_session_create_dhcpv4(struct ipoe_serv *serv, s
 
 	ses->serv = serv;
 	ses->dhcpv4_request = pack;
+	strncpy(ses->ses.ifname, serv->ifname, AP_IFNAME_LEN);
 	
 	ses->xid = pack->hdr->xid;
 	memcpy(ses->hwaddr, pack->hdr->chaddr, 6);
