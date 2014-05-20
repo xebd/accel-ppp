@@ -102,7 +102,7 @@ static void *log_thread(void *unused)
 	struct iovec iov[IOV_MAX];
 	struct log_chunk_t *chunk;
 	struct log_msg_t *msg;
-	int iov_cnt = 0;
+	int iov_cnt;
 
 	while (1) {
 		pthread_mutex_lock(&lock);
@@ -115,8 +115,17 @@ static void *log_thread(void *unused)
 		iov_cnt = 0;
 		
 		while (1) {
+			if (lf->new_fd != -1) {
+				close(lf->fd);
+				lf->fd = lf->new_fd;
+				lf->new_fd = -1;
+			}
+
 			spin_lock(&lf->lock);
 			if (list_empty(&lf->msgs)) {
+				if (iov_cnt)
+					writev(lf->fd, iov, iov_cnt);
+
 				lf->queued = 0;
 				if (lf->need_free) {
 					spin_unlock(&lf->lock);
@@ -124,24 +133,22 @@ static void *log_thread(void *unused)
 					if (lf->new_fd != -1)
 						close(lf->new_fd);
 					mempool_free(lf->lpd);
-				} else {
+				} else
 					spin_unlock(&lf->lock);
 		
-					if (iov_cnt)
-						writev(lf->fd, iov, iov_cnt);
-		
-					if (lf->new_fd != -1) {
-						close(lf->fd);
-						lf->fd = lf->new_fd;
-						lf->new_fd = -1;
-					}
-				}
 				break;
 			}
 			
 			msg = list_first_entry(&lf->msgs, typeof(*msg), entry);
 			list_del(&msg->entry);
 			spin_unlock(&lf->lock);
+
+			iov[iov_cnt].iov_base = msg->hdr->msg;
+			iov[iov_cnt].iov_len = msg->hdr->len;
+			if (++iov_cnt == IOV_MAX) {
+				writev(lf->fd, iov, iov_cnt);
+				iov_cnt = 0;
+			}
 
 			list_for_each_entry(chunk, msg->chunks, entry) {
 				iov[iov_cnt].iov_base = chunk->msg;
