@@ -483,6 +483,8 @@ static int ipoe_create_interface(struct ipoe_session *ses)
 		return -1;
 	}
 
+	log_ppp_info2("create interface %s parent %s\n", ifr.ifr_name, ses->serv->ifname);
+
 	strncpy(ses->ses.ifname, ifr.ifr_name, AP_IFNAME_LEN);
 	ses->ses.ifindex = ses->ifindex;
 	ses->ses.unit_idx = ses->ifindex;
@@ -1922,7 +1924,7 @@ void ipoe_vlan_notify(int ifindex, int vid)
 	strcpy(ifr.ifr_name, ifname);
 	len = strlen(ifr.ifr_name);
 
-	log_info2("ipoe: create vlan %s\n", ifr.ifr_name);
+	log_info2("ipoe: create vlan %s parent %s\n", ifr.ifr_name, ifname);
 
 	if (iplink_vlan_add(ifr.ifr_name, ifindex, vid)) {
 		log_warn("ipoe: vlan-mon: %s: failed to add vlan\n", ifr.ifr_name);
