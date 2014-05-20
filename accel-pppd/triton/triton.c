@@ -149,24 +149,23 @@ static void* triton_thread(struct _triton_thread_t *thread)
 			spin_unlock(&threads_lock);
 		}
 
-cont:
 		log_debug2("thread %p: ctx=%p %p\n", thread, thread->ctx, thread->ctx ? thread->ctx->thread : NULL);
 		this_ctx = thread->ctx->ud;
 		if (thread->ctx->ud->before_switch)
 			thread->ctx->ud->before_switch(thread->ctx->ud, thread->ctx->bf_arg);
 
+cont:
 		log_debug2("thread %p: switch to %p\n", thread, thread->ctx);
 		ctx_thread(thread->ctx);
 		log_debug2("thread %p: switch from %p %p\n", thread, thread->ctx, thread->ctx->thread);
 
-		spin_lock(&thread->ctx->lock);
+		spin_lock(&threads_lock);
 		if (thread->ctx->pending) {
-			spin_unlock(&thread->ctx->lock);
+			spin_unlock(&threads_lock);
 			goto cont;
 		}
 		thread->ctx->thread = NULL;
-
-		spin_unlock(&thread->ctx->lock);
+		spin_unlock(&threads_lock);
 
 		if (thread->ctx->need_free) {
 			log_debug2("- context %p removed\n", thread->ctx);
@@ -282,11 +281,13 @@ struct _triton_thread_t *create_thread()
 
 int triton_queue_ctx(struct _triton_context_t *ctx)
 {
-	ctx->pending = 1;
-	if (ctx->thread || ctx->queued || ctx->init)
-		return 0;
-
 	spin_lock(&threads_lock);
+	ctx->pending = 1;
+	if (ctx->thread || ctx->queued || ctx->init) {
+		spin_unlock(&threads_lock);
+		return 0;
+	}
+
 	if (list_empty(&sleep_threads) || need_config_reload || triton_stat.thread_active > thread_count || 
 		(ctx->priority == 0 && triton_stat.thread_count > thread_count_max)) {
 		if (ctx->priority)
