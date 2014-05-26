@@ -50,6 +50,7 @@
 struct ifaddr {
 	struct list_head entry;
 	in_addr_t addr;
+	int mask;
 	int refs;
 };
 
@@ -141,6 +142,7 @@ static const char *conf_agent_remote_id;
 static int conf_proto;
 static LIST_HEAD(conf_offer_delay);
 static const char *conf_vlan_name;
+static int conf_ip_unnumbered;
 
 static unsigned int stat_starting;
 static unsigned int stat_active;
@@ -495,7 +497,7 @@ static int ipoe_create_interface(struct ipoe_session *ses)
 	strncpy(ses->ses.ifname, ifr.ifr_name, AP_IFNAME_LEN);
 	ses->ses.ifindex = ses->ifindex;
 	ses->ses.unit_idx = ses->ifindex;
-	ses->ctrl.dont_ifcfg = 0;
+	ses->ctrl.dont_ifcfg = !conf_ip_unnumbered;
 
 	log_ppp_info2("create interface %s parent %s\n", ifr.ifr_name, ses->serv->ifname);
 
@@ -690,27 +692,30 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 	}
 }
 
-static void ipoe_serv_add_addr(struct ipoe_serv *serv, in_addr_t addr)
+static void ipoe_serv_add_addr(struct ipoe_serv *serv, in_addr_t addr, int mask)
 {
 	struct ifaddr *a;
 
 	pthread_mutex_lock(&serv->lock);
 	
-	list_for_each_entry(a, &serv->addr_list, entry) {
-		if (a->addr == addr) {
-			a->refs++;
-			pthread_mutex_unlock(&serv->lock);
+	if (serv->opt_shared) {
+		list_for_each_entry(a, &serv->addr_list, entry) {
+			if (a->addr == addr) {
+				a->refs++;
+				pthread_mutex_unlock(&serv->lock);
 
-			return;
+				return;
+			}
 		}
 	}
 
 	a = _malloc(sizeof(*a));
 	a->addr = addr;
+	a->mask = mask;
 	a->refs = 1;
 	list_add_tail(&a->entry, &serv->addr_list);
 
-	if (ipaddr_add(serv->ifindex, a->addr, 32))
+	if (ipaddr_add(serv->ifindex, a->addr, mask))
 		log_warn("ipoe: failed to add addess to interface '%s'\n", serv->ifname);
 
 	pthread_mutex_unlock(&serv->lock);
@@ -725,7 +730,7 @@ static void ipoe_serv_del_addr(struct ipoe_serv *serv, in_addr_t addr)
 	list_for_each_entry(a, &serv->addr_list, entry) {
 		if (a->addr == addr) {
 			if (--a->refs == 0) {
-				if (ipaddr_del(serv->ifindex, a->addr))
+				if (ipaddr_del(serv->ifindex, a->addr, a->mask))
 					log_warn("ipoe: failed to delete addess from interface '%s'\n", serv->ifname);
 				list_del(&a->entry);
 				_free(a);
@@ -741,19 +746,13 @@ static void ipoe_ifcfg_add(struct ipoe_session *ses)
 {
 	struct ipoe_serv *serv = ses->serv;
 
-	if (ses->serv->opt_ifcfg) {
-		if (ses->serv->opt_shared)
-			ipoe_serv_add_addr(ses->serv, ses->siaddr);
-		else {
-			pthread_mutex_lock(&serv->lock);
-			if (ipaddr_add(serv->ifindex, ses->siaddr, 32))
-				log_ppp_warn("ipoe: failed to add addess to interface '%s'\n", serv->ifname);
-			pthread_mutex_unlock(&serv->lock);
-		}
+	if (ses->serv->opt_ifcfg)
+		ipoe_serv_add_addr(ses->serv, ses->siaddr, conf_ip_unnumbered ? 32 : ses->mask);
+	
+	if (conf_ip_unnumbered) {
 		if (iproute_add(serv->ifindex, ses->serv->opt_src ? ses->serv->opt_src : ses->router, ses->yiaddr, conf_proto))
 			log_ppp_warn("ipoe: failed to add route to interface '%s'\n", serv->ifname);
-	} else if (iproute_add(serv->ifindex, ses->serv->opt_src ? ses->serv->opt_src : ses->router, ses->yiaddr, conf_proto))
-		log_ppp_warn("ipoe: failed to add route to interface '%s'\n", serv->ifname);
+	}
 
 	ses->ifcfg = 1;
 }
@@ -762,23 +761,13 @@ static void ipoe_ifcfg_del(struct ipoe_session *ses, int lock)
 {
 	struct ipoe_serv *serv = ses->serv;
 	
-	if (iproute_del(serv->ifindex, ses->yiaddr, conf_proto))
-		log_ppp_warn("ipoe: failed to delete route from interface '%s'\n", serv->ifname);
-
-	if (ses->serv->opt_ifcfg) {
-		if (ses->serv->opt_shared) {
-			ipoe_serv_del_addr(ses->serv, ses->siaddr);
-		} else {
-			if (lock)
-				pthread_mutex_lock(&serv->lock);
-			if (ipaddr_del(serv->ifindex, ses->siaddr)) {
-				if (lock)
-					log_ppp_warn("ipoe: failed to remove addess from interface '%s'\n", serv->ifname);
-			}
-			if (lock)
-				pthread_mutex_unlock(&serv->lock);
-		}
+	if (conf_ip_unnumbered) {
+		if (iproute_del(serv->ifindex, ses->yiaddr, conf_proto))
+			log_ppp_warn("ipoe: failed to delete route from interface '%s'\n", serv->ifname);
 	}
+
+	if (ses->serv->opt_ifcfg)
+		ipoe_serv_del_addr(ses->serv, ses->siaddr);
 }
 
 static void __ipoe_session_activate(struct ipoe_session *ses)
@@ -797,6 +786,8 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 			}
 		} else if (ses->ses.ipv4->peer_addr != ses->yiaddr)
 			addr = ses->ses.ipv4->peer_addr;
+		else if (!conf_ip_unnumbered)
+			ses->ctrl.dont_ifcfg = 1;
 		
 		if (ipoe_nl_modify(ses->ifindex, ses->yiaddr, addr, NULL, NULL)) {
 			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 0);
@@ -811,8 +802,11 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 		ses->ipv4.addr = ses->siaddr;
 	}
 	
-	if (ses->ifindex == -1 && (ses->serv->opt_ifcfg || (ses->serv->opt_mode == MODE_L2)))
-		ipoe_ifcfg_add(ses);
+	if (ses->ifindex == -1) {
+		if (ses->serv->opt_ifcfg || (ses->serv->opt_mode == MODE_L2))
+			ipoe_ifcfg_add(ses);
+	} else if (ses->ctrl.dont_ifcfg)
+		ipaddr_add(ses->ifindex, ses->siaddr, ses->mask);
 	
 	if (ses->l4_redirect)
 		ipoe_change_l4_redirect(ses, 0);
@@ -2189,7 +2183,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 
 		if (!serv->dhcpv4_relay && serv->opt_dhcpv4 && opt_relay) {
 			if (opt_ifcfg)
-				ipoe_serv_add_addr(serv, opt_giaddr);
+				ipoe_serv_add_addr(serv, opt_giaddr, 32);
 			serv->dhcpv4_relay = dhcpv4_relay_create(opt_relay, opt_giaddr, &serv->ctx, (triton_event_func)ipoe_recv_dhcpv4_relay);
 		}
 
@@ -2285,7 +2279,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	
 		if (opt_relay) {
 			if (opt_ifcfg)
-				ipoe_serv_add_addr(serv, opt_giaddr);
+				ipoe_serv_add_addr(serv, opt_giaddr, 32);
 			serv->dhcpv4_relay = dhcpv4_relay_create(opt_relay, opt_giaddr, &serv->ctx, (triton_event_func)ipoe_recv_dhcpv4_relay);
 		}
 	}
@@ -2994,6 +2988,12 @@ static void load_config(void)
 	conf_vlan_name = conf_get_opt("ipoe", "vlan-name");
 	if (!conf_vlan_name)
 		conf_vlan_name = "%I.%N";
+	
+	opt = conf_get_opt("ipoe", "ip-unnumbered");
+	if (opt)
+		conf_ip_unnumbered = atoi(opt);
+	else
+		conf_ip_unnumbered = 1;
 	
 #ifdef RADIUS
 	if (triton_module_loaded("radius"))

@@ -274,7 +274,7 @@ int __export ipaddr_add(int ifindex, in_addr_t addr, int mask)
 	return 0;
 }
 
-int __export ipaddr_del(int ifindex, in_addr_t addr)
+int __export ipaddr_del(int ifindex, in_addr_t addr, int mask)
 {
 	struct ipaddr_req {
 		struct nlmsghdr n;
@@ -295,7 +295,7 @@ int __export ipaddr_del(int ifindex, in_addr_t addr)
 	req.n.nlmsg_type = RTM_DELADDR;
 	req.i.ifa_family = AF_INET;
 	req.i.ifa_index = ifindex;
-	req.i.ifa_prefixlen = 32;
+	req.i.ifa_prefixlen = mask;
 
 	addattr32(&req.n, sizeof(req), IFA_LOCAL, addr);
 
