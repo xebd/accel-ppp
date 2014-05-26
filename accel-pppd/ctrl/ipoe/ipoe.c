@@ -90,6 +90,13 @@ struct delay {
 	int delay;
 };
 
+struct request_item {
+	struct list_head entry;
+	uint32_t xid;
+	time_t expire;
+	int cnt;
+};
+
 static int conf_dhcpv4 = 1;
 static int conf_up = 0;
 static int conf_mode = 0;
@@ -114,6 +121,7 @@ static int conf_l4_redirect_table;
 static int conf_l4_redirect_on_reject;
 static const char *conf_l4_redirect_ipset;
 static int conf_vlan_timeout = 30;
+static int conf_max_request = 3;
 
 static const char *conf_relay;
 
@@ -140,6 +148,7 @@ static unsigned int stat_delayed_offer;
 
 static mempool_t ses_pool;
 static mempool_t disc_item_pool;
+static mempool_t req_item_pool;
 
 static int connlimit_loaded;
 
@@ -1114,7 +1123,7 @@ static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packe
 	
 	if (conf_verbose) {
 		log_ppp_info2("recv ");
-		dhcpv4_print_packet(pack, 0, log_info2);
+		dhcpv4_print_packet(pack, 0, log_ppp_info2);
 	}
 
 	if (pack->relay_agent && dhcpv4_parse_opt82(pack->relay_agent, &agent_circuit_id, &agent_remote_id)) {
@@ -1268,6 +1277,42 @@ static void ipoe_serv_check_disc(struct ipoe_serv *serv, struct dhcpv4_packet *p
 	}
 }
 
+static int ipoe_serv_request_check(struct ipoe_serv *serv, uint32_t xid)
+{
+	struct request_item *r;
+	struct list_head *pos, *n;
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+
+	list_for_each_safe(pos, n, &serv->req_list) {
+		r = list_entry(pos, typeof(*r), entry);
+		if (r->xid == xid) {
+			if (++r->cnt == conf_max_request) {
+				list_del(&r->entry);
+				mempool_free(r);
+				return 1;
+			}
+
+			r->expire = ts.tv_sec + 30;
+			return 0;
+		}
+
+		if (ts.tv_sec > r->expire) {
+			list_del(&r->entry);
+			mempool_free(r);
+		}
+	}
+	
+	r = mempool_alloc(req_item_pool);
+	r->xid = xid;
+	r->expire = ts.tv_sec + 30;
+	r->cnt = 0;
+	list_add_tail(&r->entry, &serv->req_list);
+
+	return 0;
+}
+
 static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *pack, int force)
 {
 	struct ipoe_serv *serv = container_of(dhcpv4->ctx, typeof(*serv), ctx);
@@ -1346,7 +1391,7 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 
 		if (!ses) {
 			if (conf_verbose) {
-				log_debug("recv ");
+				log_debug("%s: recv ", serv->ifname);
 				dhcpv4_print_packet(pack, 0, log_debug);
 			}
 
@@ -1362,7 +1407,8 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 				}
 				
 				triton_context_call(&opt82_ses->ctx, (triton_event_func)__ipoe_session_terminate, &opt82_ses->ses);
-			}
+			} else if (list_empty(&conf_offer_delay) || ipoe_serv_request_check(serv, pack->hdr->xid))
+				dhcpv4_send_nak(dhcpv4, pack);
 		} else {
 			ses->xid = pack->hdr->xid;
 
@@ -1373,7 +1419,7 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 				if (conf_verbose) {
 					log_switch(dhcpv4->ctx, &ses->ses);
 					log_ppp_info2("recv ");
-					dhcpv4_print_packet(pack, 0, log_info2);
+					dhcpv4_print_packet(pack, 0, log_ppp_info2);
 					if ((opt82_ses && ses != opt82_ses) || (!opt82_ses && pack->relay_agent))
 						log_ppp_warn("port change detected\n");
 				}
@@ -1734,6 +1780,12 @@ static void ipoe_serv_release(struct ipoe_serv *serv)
 		dhcpv4_packet_free(d->pack);
 		mempool_free(d);
 		__sync_sub_and_fetch(&stat_delayed_offer, 1);
+	}
+	
+	while (!list_empty(&serv->req_list)) {
+		struct request_item *r = list_first_entry(&serv->req_list, typeof(*r), entry);
+		list_del(&r->entry);
+		mempool_free(r);
 	}
 
 	if (serv->disc_timer.tpd)
@@ -2220,6 +2272,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	INIT_LIST_HEAD(&serv->sessions);
 	INIT_LIST_HEAD(&serv->addr_list);
 	INIT_LIST_HEAD(&serv->disc_list);
+	INIT_LIST_HEAD(&serv->req_list);
 	memcpy(serv->hwaddr, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
 	serv->disc_timer.expire = ipoe_serv_disc_timer;
 	
@@ -2967,6 +3020,7 @@ static void ipoe_init(void)
 {
 	ses_pool = mempool_create(sizeof(struct ipoe_session));
 	disc_item_pool = mempool_create(sizeof(struct disc_item));
+	req_item_pool = mempool_create(sizeof(struct request_item));
 	uc_pool = mempool_create(sizeof(struct unit_cache));
 	
 	triton_context_register(&l4_redirect_ctx, NULL);
