@@ -183,7 +183,7 @@ struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifna
 	serv->hnd.read = dhcpv4_read;
 	serv->ifindex = ifindex;
 
-	if (opt) {
+	if (opt && *opt) {
 		str0 = _strdup(opt);
 		str = str0;
 	
