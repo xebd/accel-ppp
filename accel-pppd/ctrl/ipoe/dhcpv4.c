@@ -241,34 +241,42 @@ void dhcpv4_print_packet(struct dhcpv4_packet *pack, int relay, void (*print)(co
 
 	print("[DHCPv4 %s%s xid=%x ", relay ? "relay " : "", msg_name[pack->msg_type - 1], pack->hdr->xid);
 
-	if (pack->hdr->ciaddr)
+	if (pack->hdr->ciaddr) {
+		in_addr_t addr = ntohl(pack->hdr->ciaddr);
 		print("ciaddr=%i.%i.%i.%i ",
-			pack->hdr->ciaddr & 0xff,
-			(pack->hdr->ciaddr >> 8) & 0xff,
-			(pack->hdr->ciaddr >> 16) & 0xff,
-			(pack->hdr->ciaddr >> 24) & 0xff);
-	
-	if (pack->hdr->yiaddr)
+			(addr >> 24) & 0xff,
+			(addr >> 16) & 0xff,
+			(addr >> 8) & 0xff,
+			addr & 0xff);
+	}
+
+	if (pack->hdr->yiaddr) {
+		in_addr_t addr = ntohl(pack->hdr->yiaddr);
 		print("yiaddr=%i.%i.%i.%i ",
-			pack->hdr->yiaddr & 0xff,
-			(pack->hdr->yiaddr >> 8) & 0xff,
-			(pack->hdr->yiaddr >> 16) & 0xff,
-			(pack->hdr->yiaddr >> 24) & 0xff);
-	
-	if (pack->hdr->siaddr)
+			(addr >> 24) & 0xff,
+			(addr >> 16) & 0xff,
+			(addr >> 8) & 0xff,
+			addr & 0xff);
+	}
+
+	if (pack->hdr->siaddr) {
+		in_addr_t addr = ntohl(pack->hdr->siaddr);
 		print("siaddr=%i.%i.%i.%i ",
-			pack->hdr->siaddr & 0xff,
-			(pack->hdr->siaddr >> 8) & 0xff,
-			(pack->hdr->siaddr >> 16) & 0xff,
-			(pack->hdr->siaddr >> 24) & 0xff);
-	
-	if (pack->hdr->giaddr)
+			(addr >> 24) & 0xff,
+			(addr >> 16) & 0xff,
+			(addr >> 8) & 0xff,
+			addr & 0xff);
+	}
+
+	if (pack->hdr->giaddr) {
+		in_addr_t addr = ntohl(pack->hdr->giaddr);
 		print("giaddr=%i.%i.%i.%i ",
-			pack->hdr->giaddr & 0xff,
-			(pack->hdr->giaddr >> 8) & 0xff,
-			(pack->hdr->giaddr >> 16) & 0xff,
-			(pack->hdr->giaddr >> 24) & 0xff);
-	
+			(addr >> 24) & 0xff,
+			(addr >> 16) & 0xff,
+			(addr >> 8) & 0xff,
+			addr & 0xff);
+	}
+
 	print("chaddr=%02x:%02x:%02x:%02x:%02x:%02x ",
 		pack->hdr->chaddr[0],
 		pack->hdr->chaddr[1],
