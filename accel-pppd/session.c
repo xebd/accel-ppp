@@ -43,7 +43,7 @@ int __export urandom_fd;
 int __export ap_shutdown;
 
 #if __WORDSIZE == 32
-static spinlock_t seq_lock = SPINLOCK_INITIALIZER;
+static spinlock_t seq_lock;
 #endif
 static long long unsigned seq;
 static struct timespec seq_ts;
@@ -418,6 +418,10 @@ static void load_config(void)
 static void init(void)
 {
 	FILE *f;
+
+#if __WORDSIZE == 32
+	spinlock_init(&seq_lock);
+#endif
 
 	sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (sock_fd < 0) {

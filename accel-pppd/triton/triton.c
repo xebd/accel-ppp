@@ -16,13 +16,13 @@ int thread_count = 2;
 int thread_count_max = 200;
 int max_events = 64;
 
-static spinlock_t threads_lock = SPINLOCK_INITIALIZER;
+static spinlock_t threads_lock;
 static LIST_HEAD(threads);
 static LIST_HEAD(sleep_threads);
 
 static LIST_HEAD(ctx_queue);
 
-static spinlock_t ctx_list_lock = SPINLOCK_INITIALIZER;
+static spinlock_t ctx_list_lock;
 static LIST_HEAD(ctx_list);
 
 static LIST_HEAD(init_list);
@@ -581,6 +581,9 @@ void __export triton_register_init(int order, void (*func)(void))
 
 int __export triton_init(const char *conf_file)
 {
+	spinlock_init(&threads_lock);
+	spinlock_init(&ctx_list_lock);
+
 	ctx_pool = mempool_create(sizeof(struct _triton_context_t));
 	call_pool = mempool_create(sizeof(struct _triton_ctx_call_t));
 

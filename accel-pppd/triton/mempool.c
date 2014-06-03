@@ -53,8 +53,8 @@ struct _item_t
 };
 
 static LIST_HEAD(pools);
-static spinlock_t pools_lock = SPINLOCK_INITIALIZER;
-static spinlock_t mmap_lock = SPINLOCK_INITIALIZER;
+static spinlock_t pools_lock;
+static spinlock_t mmap_lock;
 static void *mmap_ptr;
 static void *mmap_endptr;
 
@@ -343,7 +343,10 @@ static void __init init(void)
 {
 	sigset_t set;
 	sigfillset(&set);
-	
+
+	spinlock_init(&pools_lock);
+	spinlock_init(&mmap_lock);
+
 	struct sigaction sa = {
 		.sa_handler = sigclean,
 		.sa_mask = set,

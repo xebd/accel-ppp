@@ -40,7 +40,7 @@ struct mem_t
 };
 
 static LIST_HEAD(mem_list);
-static spinlock_t mem_list_lock = SPINLOCK_INITIALIZER;
+static spinlock_t mem_list_lock;
 
 static struct mem_t *_md_malloc(size_t size, const char *fname, int line)
 {
@@ -242,6 +242,8 @@ void __export md_check(void *ptr)
 
 static void __init init(void)
 {
+	spinlock_init(&mem_list_lock);
+
 	signal(36, siginfo);
 	signal(37, siginfo2);
 }

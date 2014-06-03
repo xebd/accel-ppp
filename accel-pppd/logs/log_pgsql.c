@@ -36,7 +36,7 @@ static PGconn *conn;
 static LIST_HEAD(msg_queue);
 static int queue_size;
 static int sleeping = 0;
-static spinlock_t queue_lock = SPINLOCK_INITIALIZER;
+static spinlock_t queue_lock;
 static char *log_buf;
 static int need_close;
 
@@ -283,6 +283,8 @@ static struct log_target_t target = {
 static void init(void)
 {
 	char *opt;
+
+	spinlock_init(&queue_lock);
 
 	opt = conf_get_opt("log-pgsql", "conninfo");
 	if (!opt)

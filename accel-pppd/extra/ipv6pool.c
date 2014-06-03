@@ -31,7 +31,7 @@ struct dppool_item_t
 
 static LIST_HEAD(ippool);
 static LIST_HEAD(dppool);
-static spinlock_t pool_lock = SPINLOCK_INITIALIZER;
+static spinlock_t pool_lock;
 static struct ipdb_t ipdb;
 
 static void generate_ippool(struct in6_addr *addr, int mask, int prefix_len)
@@ -190,7 +190,9 @@ static void ippool_init(void)
 {
 	struct conf_sect_t *s = conf_get_section("ipv6-pool");
 	struct conf_option_t *opt;
-	
+
+	spinlock_init(&pool_lock);
+
 	if (!s)
 		return;
 	

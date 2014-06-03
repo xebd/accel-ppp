@@ -25,7 +25,7 @@ static struct triton_context_t syslog_ctx = {
 static LIST_HEAD(msg_queue);
 static int queue_size;
 static int sleeping = 1;
-static spinlock_t queue_lock = SPINLOCK_INITIALIZER;
+static spinlock_t queue_lock;
 static char *log_buf;
 static int need_close;
 static char *ident;
@@ -180,6 +180,8 @@ static void load_config()
 
 static void init(void)
 {
+	spinlock_init(&queue_lock);
+
 	log_buf = malloc(LOG_MAX_SIZE + 1);
 
 	load_config();
