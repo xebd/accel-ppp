@@ -12,7 +12,7 @@ int iplink_vlan_add(const char *ifname, int ifindex, int vid);
 int iplink_vlan_del(int ifindex);
 
 int ipaddr_add(int ifindex, in_addr_t addr, int mask);
-int ipaddr_del(int ifindex, in_addr_t addr);
+int ipaddr_del(int ifindex, in_addr_t addr, int mask);
 
 int iproute_add(int ifindex, in_addr_t src, in_addr_t dst, int proto);
 int iproute_del(int ifindex, in_addr_t dst, int proto);

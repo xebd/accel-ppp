@@ -27,6 +27,7 @@ struct ipoe_serv {
 	struct dhcpv4_relay *dhcpv4_relay;
 	struct arp_serv *arp;
 	struct list_head disc_list;
+	struct list_head req_list;
 	struct triton_timer_t disc_timer;
 	struct triton_timer_t timer;
 	pthread_mutex_t lock;
