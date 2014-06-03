@@ -383,6 +383,7 @@ static void write_radattr(struct ppp_t *ppp, struct rad_packet_t *pack, int save
 	FILE *f;
 	char *fname1, *fname2 = NULL;
 	int i;
+	in_addr_t addr;
 
 	fname1 = _malloc(PATH_MAX);
 	if (!fname1) {
@@ -428,7 +429,8 @@ static void write_radattr(struct ppp_t *ppp, struct rad_packet_t *pack, int save
 					fprintf(f, "\n");
 					break;
 				case ATTR_TYPE_IPADDR:
-					fprintf(f, "%i.%i.%i.%i\n", attr->val.ipaddr & 0xff, (attr->val.ipaddr >> 8) & 0xff, (attr->val.ipaddr >> 16) & 0xff, (attr->val.ipaddr >> 24) & 0xff);
+					addr = ntohl(attr->val.ipaddr);
+					fprintf(f, "%i.%i.%i.%i\n", (addr >> 24) & 0xff, (addr >> 16) & 0xff, (addr >> 8) & 0xff, addr & 0xff);
 					break;
 				case ATTR_TYPE_DATE:
 					fprintf(f, "%lu\n", attr->val.date);
