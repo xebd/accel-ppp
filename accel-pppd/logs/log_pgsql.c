@@ -86,7 +86,7 @@ static void write_next_msg(void)
 		sleeping = 1;
 		spin_unlock(&queue_lock);
 		if (need_close) {
-			triton_md_unregister_handler(&pgsql_hnd);
+			triton_md_unregister_handler(&pgsql_hnd, 0);
 			PQfinish(conn);
 			conn = NULL;
 			triton_context_unregister(&pgsql_ctx);
@@ -267,7 +267,7 @@ static void pgsql_close(struct triton_context_t *ctx)
 {
 	spin_lock(&queue_lock);
 	if (sleeping) {
-		triton_md_unregister_handler(&pgsql_hnd);
+		triton_md_unregister_handler(&pgsql_hnd, 0);
 		PQfinish(conn);
 		conn = NULL;
 		triton_context_unregister(&pgsql_ctx);
