@@ -323,6 +323,8 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		else
 			ppp_auth_failed(ad->ppp, name);
 		_free(name);
+		if (mschap_error != conf_msg_failure)
+			_free(mschap_error);
 	} else {
 		if (!ad->started) {
 			if (ppp_auth_succeeded(ad->ppp, name)) {
