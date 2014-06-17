@@ -96,6 +96,17 @@ static int log_file_open(struct log_file_t *lf, const char *fname)
 	return 0;
 }
 
+static void purge(struct list_head *list)
+{
+	struct log_msg_t *msg;
+	
+	while (!list_empty(list)) {
+		msg = list_first_entry(list, typeof(*msg), entry);
+		list_del(&msg->entry);
+		log_free_msg(msg);
+	}
+}
+
 static void *log_thread(void *unused)
 {
 	struct log_file_t *lf;
@@ -103,6 +114,8 @@ static void *log_thread(void *unused)
 	struct log_chunk_t *chunk;
 	struct log_msg_t *msg;
 	int iov_cnt;
+	LIST_HEAD(msg_list);
+	LIST_HEAD(free_list);
 
 	while (1) {
 		pthread_mutex_lock(&lock);
@@ -123,8 +136,10 @@ static void *log_thread(void *unused)
 
 			spin_lock(&lf->lock);
 			if (list_empty(&lf->msgs)) {
-				if (iov_cnt)
+				if (iov_cnt) {
 					writev(lf->fd, iov, iov_cnt);
+					purge(&free_list);
+				}
 
 				lf->queued = 0;
 				if (lf->need_free) {
@@ -139,27 +154,32 @@ static void *log_thread(void *unused)
 				break;
 			}
 			
-			msg = list_first_entry(&lf->msgs, typeof(*msg), entry);
-			list_del(&msg->entry);
+			list_splice_init(&lf->msgs, &msg_list);
 			spin_unlock(&lf->lock);
+			
+			while (!list_empty(&msg_list)) {
+				msg = list_first_entry(&msg_list, typeof(*msg), entry);
 
-			iov[iov_cnt].iov_base = msg->hdr->msg;
-			iov[iov_cnt].iov_len = msg->hdr->len;
-			if (++iov_cnt == IOV_MAX) {
-				writev(lf->fd, iov, iov_cnt);
-				iov_cnt = 0;
-			}
-
-			list_for_each_entry(chunk, msg->chunks, entry) {
-				iov[iov_cnt].iov_base = chunk->msg;
-				iov[iov_cnt].iov_len = chunk->len;
+				iov[iov_cnt].iov_base = msg->hdr->msg;
+				iov[iov_cnt].iov_len = msg->hdr->len;
 				if (++iov_cnt == IOV_MAX) {
 					writev(lf->fd, iov, iov_cnt);
+					purge(&free_list);
 					iov_cnt = 0;
 				}
+
+				list_for_each_entry(chunk, msg->chunks, entry) {
+					iov[iov_cnt].iov_base = chunk->msg;
+					iov[iov_cnt].iov_len = chunk->len;
+					if (++iov_cnt == IOV_MAX) {
+						writev(lf->fd, iov, iov_cnt);
+						iov_cnt = 0;
+						purge(&free_list);
+					}
+				}
+				
+				list_move_tail(&msg->entry, &free_list);
 			}
-		
-			log_free_msg(msg);
 		}
 	}
 
