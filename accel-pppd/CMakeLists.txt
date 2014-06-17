@@ -50,6 +50,7 @@ INCLUDE(CheckIncludeFile)
 CHECK_INCLUDE_FILE("linux/netfilter/ipset/ip_set.h" HAVE_IPSET)
 
 ADD_EXECUTABLE(accel-pppd
+	memdebug.c
 	session.c
 	session_backup.c
 	ifcfg.c
@@ -93,7 +94,6 @@ ADD_EXECUTABLE(accel-pppd
 
 	log.c
 	main.c
-	memdebug.c
 )
 
 TARGET_LINK_LIBRARIES(accel-pppd triton rt pthread ${crypto_lib} pcre)

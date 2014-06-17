@@ -109,6 +109,10 @@ static struct rad_req_t *__rad_req_alloc(struct radius_pd_t *rpd, int code, cons
 	if (rpd->attr_class)
 		if (rad_packet_add_octets(req->pack, NULL, "Class", rpd->attr_class, rpd->attr_class_len))
 			goto out_err;
+	
+	if (conf_attr_tunnel_type)
+		if (rad_packet_add_str(req->pack, NULL, conf_attr_tunnel_type, rpd->ses->ctrl->name))
+			goto out_err;
 
 	list_for_each_entry(plugin, &req->rpd->plugin_list, entry) {
 		switch (code) {

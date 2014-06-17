@@ -45,6 +45,8 @@ int conf_req_limit;
 static const char *conf_default_realm;
 static int conf_default_realm_len;
 
+const char *conf_attr_tunnel_type;
+
 static LIST_HEAD(sessions);
 static pthread_rwlock_t sessions_lock = PTHREAD_RWLOCK_INITIALIZER;
 
@@ -631,6 +633,8 @@ static int load_config(void)
 	opt = conf_get_opt("radius", "req-limit");
 	if (opt)
 		conf_req_limit = atoi(opt);
+	
+	conf_attr_tunnel_type = conf_get_opt("radius", "attr-tunnel-type");
 	
 	conf_default_realm = conf_get_opt("radius", "default-realm");
 	if (conf_default_realm)

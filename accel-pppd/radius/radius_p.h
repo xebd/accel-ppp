@@ -138,6 +138,7 @@ extern int conf_acct_interim_interval;
 extern int conf_accounting;
 extern int conf_fail_time;
 extern int conf_req_limit;
+extern const char *conf_attr_tunnel_type;
 
 int rad_check_nas_pack(struct rad_packet_t *pack);
 struct radius_pd_t *rad_find_session(const char *sessionid, const char *username, const char *port_id, int port, in_addr_t ipaddr, const char *csid);
