@@ -441,8 +441,11 @@ int rad_auth_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list ar
 		rpd->auth_req->pack->id++;
 	} else if (rpd->auth_req->reply) {
 		ra = rad_packet_find_attr(rpd->auth_req->reply, "Microsoft", "MS-CHAP-Error");
-		if (ra)
-			*mschap_error = ra->val.string;
+		if (ra) {
+			*mschap_error = _malloc(ra->len + 1);
+			memcpy(*mschap_error, ra->val.string, ra->len);
+			(*mschap_error)[ra->len] = 0;
+		}
 	}
 
 	return r;
@@ -530,11 +533,17 @@ int rad_auth_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list ar
 		rpd->auth_req->pack->id++;
 	} else if (rpd->auth_req->reply) {
 		ra = rad_packet_find_attr(rpd->auth_req->reply, "Microsoft", "MS-CHAP-Error");
-		if (ra)
-			*mschap_error = ra->val.string;
+		if (ra) {
+			*mschap_error = _malloc(ra->len + 1);
+			memcpy(*mschap_error, ra->val.string, ra->len);
+			(*mschap_error)[ra->len] = 0;
+		}
 		ra = rad_packet_find_attr(rpd->auth_req->reply, NULL, "Reply-Message");
-		if (ra)
-			*reply_msg = ra->val.string;
+		if (ra) {
+			*reply_msg = _malloc(ra->len + 1);
+			memcpy(*reply_msg, ra->val.string, ra->len);
+			(*reply_msg)[ra->len] = 0;
+		}
 	}
 
 
