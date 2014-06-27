@@ -116,6 +116,12 @@ static void *log_thread(void *unused)
 	int iov_cnt;
 	LIST_HEAD(msg_list);
 	LIST_HEAD(free_list);
+	sigset_t set;
+	
+	sigfillset(&set);
+	sigdelset(&set, SIGKILL);
+	sigdelset(&set, SIGSTOP);
+	pthread_sigmask(SIG_BLOCK, &set, NULL);
 
 	while (1) {
 		pthread_mutex_lock(&lock);
