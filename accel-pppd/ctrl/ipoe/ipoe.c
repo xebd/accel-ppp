@@ -1967,16 +1967,20 @@ void ipoe_vlan_notify(int ifindex, int vid)
 		log_error("ipoe: vlan-mon: %s.%i: interface name is too long\n", ifr.ifr_name, vid);
 		return;
 	}
+	
+	log_info2("ipoe: create vlan %s parent %s\n", ifname, ifr.ifr_name);
 
 	strcpy(ifr.ifr_name, ifname);
 	len = strlen(ifr.ifr_name);
-
-	log_info2("ipoe: create vlan %s parent %s\n", ifr.ifr_name, ifname);
 
 	if (iplink_vlan_add(ifr.ifr_name, ifindex, vid)) {
 		log_warn("ipoe: vlan-mon: %s: failed to add vlan\n", ifr.ifr_name);
 		return;
 	}
+	
+	ioctl(sock_fd, SIOCGIFFLAGS, &ifr, sizeof(ifr));
+	ifr.ifr_flags |= IFF_UP;
+	ioctl(sock_fd, SIOCSIFFLAGS, &ifr, sizeof(ifr));
 	
 	if (ioctl(sock_fd, SIOCGIFINDEX, &ifr, sizeof(ifr))) {
 		log_error("ipoe: vlan-mon: %s: failed to get interface index\n", ifr.ifr_name);
