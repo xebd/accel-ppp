@@ -860,12 +860,16 @@ static int vlan_pt_recv(struct sk_buff *skb, struct net_device *dev, struct pack
 	if (!dev->ml_priv)
 		goto out;
 
-	d = dev->ml_priv;
-	if (d->magic != IPOE_MAGIC2 || d->ifindex != dev->ifindex)
-		goto out;
-
 	if (!vlan_tx_tag_present(skb))
 		goto out;
+
+	rcu_read_lock();
+
+	d = rcu_dereference(dev->ml_priv);
+	if (!d || d->magic != IPOE_MAGIC2 || d->ifindex != dev->ifindex) {
+		rcu_read_unlock();
+		goto out;
+	}
 
 	vid = skb->vlan_tci & VLAN_VID_MASK;
 	//pr_info("vid %i\n", vid);
@@ -1627,14 +1631,17 @@ static int ipoe_nl_cmd_add_vlan_mon(struct sk_buff *skb, struct genl_info *info)
 
 	if (!dev)
 		return -ENODEV;
-	
+
+	down(&ipoe_wlock);
 	if (dev->ml_priv) {
+		up(&ipoe_wlock);
 		dev_put(dev);
 		return -EBUSY;
 	}
-	
+
 	d = kzalloc(sizeof(*d), GFP_KERNEL);
 	if (!d) {
+		up(&ipoe_wlock);
 		dev_put(dev);
 		return -ENOMEM;
 	}
@@ -1642,8 +1649,6 @@ static int ipoe_nl_cmd_add_vlan_mon(struct sk_buff *skb, struct genl_info *info)
 	d->magic = IPOE_MAGIC2;
 	d->ifindex = ifindex;
 	spin_lock_init(&d->lock);
-
-	dev->ml_priv = d;
 
 	if (info->attrs[IPOE_ATTR_VLAN_MASK]) {
 		memcpy(d->vid, nla_data(info->attrs[IPOE_ATTR_VLAN_MASK]), min((int)nla_len(info->attrs[IPOE_ATTR_VLAN_MASK]), (int)sizeof(d->vid)));
@@ -1665,11 +1670,12 @@ static int ipoe_nl_cmd_add_vlan_mon(struct sk_buff *skb, struct genl_info *info)
 #endif
 	}
 
-	dev_put(dev);
+	rcu_assign_pointer(dev->ml_priv, d);
 
-	down(&ipoe_wlock);
 	list_add_tail_rcu(&d->entry, &vlan_devices);
 	up(&ipoe_wlock);
+
+	dev_put(dev);
 
 	return 0;
 }
@@ -1697,14 +1703,17 @@ static int ipoe_nl_cmd_add_vlan_mon_vid(struct sk_buff *skb, struct genl_info *i
 
 	if (!dev)
 		return -ENODEV;
-	
+
+	down(&ipoe_wlock);
+
 	if (!dev->ml_priv) {
+		up(&ipoe_wlock);
 		dev_put(dev);
 		return -EINVAL;
 	}
 
 	d = dev->ml_priv;
-	
+
 	spin_lock_irqsave(&d->lock, flags);
 	d->vid[vid / (8*sizeof(long))] &= ~(1lu << (vid % (8*sizeof(long))));
 	spin_unlock_irqrestore(&d->lock, flags);
@@ -1715,7 +1724,9 @@ static int ipoe_nl_cmd_add_vlan_mon_vid(struct sk_buff *skb, struct genl_info *i
 	if (dev->features & NETIF_F_HW_VLAN_CTAG_FILTER)
 		dev->netdev_ops->ndo_vlan_rx_add_vid(dev, htons(ETH_P_8021Q), vid);
 #endif
-	
+
+	up(&ipoe_wlock);
+
 	dev_put(dev);
 
 	return 0;
@@ -1749,7 +1760,7 @@ static int ipoe_nl_cmd_del_vlan_mon(struct sk_buff *skb, struct genl_info *info)
 
 			if (dev) {
 				if (dev->ml_priv == d)
-					dev->ml_priv = NULL;
+					rcu_assign_pointer(dev->ml_priv, NULL);
 				dev_put(dev);
 			}
 
@@ -1924,7 +1935,7 @@ static int __init ipoe_init(void)
 {
 	int err, i;
 
-	printk("IPoE session driver v1.8.0.1\n");
+	printk("IPoE session driver v1.8.0.2\n");
 
 	/*err = register_pernet_device(&ipoe_net_ops);
 	if (err < 0)
