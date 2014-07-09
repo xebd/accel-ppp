@@ -5,6 +5,7 @@
 #include <string.h>
 #include <errno.h>
 #include <pthread.h>
+#include <sched.h>
 #include <netinet/in.h>
 #include <netinet/icmp6.h>
 #include <arpa/inet.h>
@@ -276,8 +277,8 @@ static int ipv6_nd_start(struct ap_session *ses)
 	addr.sin6_scope_id = ses->ifindex;
 
 	if (bind(sock, (struct sockaddr *)&addr, sizeof(addr))) {
-		log_ppp_error("ipv6_nd: bind: %s %i\n", strerror(errno), errno);
-		goto out_err;
+		close(sock);
+		return 1;
 	}
 
 	val = 2;
@@ -357,12 +358,19 @@ static struct ipv6_nd_handler_t *find_pd(struct ap_session *ses)
 	return NULL;
 }
 
+static void ipv6_nd_start_later(struct ap_session *ses)
+{
+	while (ipv6_nd_start(ses) == 1)
+		sched_yield();
+}
+
 static void ev_ses_started(struct ap_session *ses)
 {
 	if (!ses->ipv6)
 		return;
 
-	ipv6_nd_start(ses);
+	if (ipv6_nd_start(ses) == 1)
+		triton_context_call(triton_context_self(), (triton_event_func)ipv6_nd_start_later, ses);
 }
 
 static void ev_ses_finishing(struct ap_session *ses)
