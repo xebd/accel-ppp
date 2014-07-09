@@ -146,7 +146,9 @@ static const struct net_device_ops ipoe_netdev_ops;
 #endif
 
 static struct genl_family ipoe_nl_family;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 static struct genl_multicast_group ipoe_nl_mcg;
+#endif
 
 static inline int hash_addr(__be32 addr)
 {
@@ -611,7 +613,11 @@ static void ipoe_process_queue(struct work_struct *w)
 			if (!report_skb) {
 				report_skb = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
 				if (report_skb)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 					header = genlmsg_put(report_skb, 0, ipoe_nl_mcg.id, &ipoe_nl_family, 0, IPOE_REP_PKT);
+#else
+					header = genlmsg_put(report_skb, 0, ipoe_nl_family.mcgrp_offset, &ipoe_nl_family, 0, IPOE_REP_PKT);
+#endif
 			}
 
 			if (report_skb) {
@@ -634,7 +640,11 @@ static void ipoe_process_queue(struct work_struct *w)
 
 				if (nla_nest_end(report_skb, ns) >= IPOE_NLMSG_SIZE) {
 					genlmsg_end(report_skb, header);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 					genlmsg_multicast(report_skb, 0, ipoe_nl_mcg.id, GFP_KERNEL);
+#else
+					genlmsg_multicast(&ipoe_nl_family, report_skb, 0, 0, GFP_KERNEL);
+#endif
 					report_skb = NULL;
 					id = 1;
 				}
@@ -670,7 +680,11 @@ nl_err:
 
 	if (report_skb) {
 		genlmsg_end(report_skb, header);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 		genlmsg_multicast(report_skb, 0, ipoe_nl_mcg.id, GFP_KERNEL);
+#else
+		genlmsg_multicast(&ipoe_nl_family, report_skb, 0, 0, GFP_KERNEL);
+#endif
 	}
 
 	if (!list_empty(&ipoe_list2_u))
@@ -701,7 +715,11 @@ static struct ipoe_session *ipoe_lookup(__be32 addr)
 	return NULL;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 static unsigned int ipt_in_hook(unsigned int hook, struct sk_buff *skb, const struct net_device *in, const struct net_device *out, int (*okfn)(struct sk_buff *skb))
+#else
+static unsigned int ipt_in_hook(const struct nf_hook_ops *ops, struct sk_buff *skb, const struct net_device *in, const struct net_device *out, int (*okfn)(struct sk_buff *skb))
+#endif
 {
 	struct ipoe_session *ses = NULL;
 	struct iphdr *iph;
@@ -803,7 +821,11 @@ out:
 	return ret;
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 static unsigned int ipt_out_hook(unsigned int hook, struct sk_buff *skb, const struct net_device *in, const struct net_device *out, int (*okfn)(struct sk_buff *skb))
+#else
+static unsigned int ipt_out_hook(const struct nf_hook_ops *ops, struct sk_buff *skb, const struct net_device *in, const struct net_device *out, int (*okfn)(struct sk_buff *skb))
+#endif
 {
 	int noff, iif;
 	struct iphdr *iph;
@@ -886,7 +908,7 @@ static int vlan_pt_recv(struct sk_buff *skb, struct net_device *dev, struct pack
 	if (vid == -1)
 		goto out;
 	
-	//pr_info("queue %i %i\n", d->ifindex, vid);
+	//pr_info("queue %i %i\n", dev->ifindex, vid);
 	
 	n = kmalloc(sizeof(*n), GFP_ATOMIC);
 	if (!n)
@@ -932,7 +954,11 @@ static void vlan_do_notify(struct work_struct *w)
 	
 		if (!report_skb) {
 			report_skb = nlmsg_new(NLMSG_DEFAULT_SIZE, GFP_KERNEL);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 			header = genlmsg_put(report_skb, 0, ipoe_nl_mcg.id, &ipoe_nl_family, 0, IPOE_VLAN_NOTIFY);
+#else
+			header = genlmsg_put(report_skb, 0, ipoe_nl_family.mcgrp_offset, &ipoe_nl_family, 0, IPOE_VLAN_NOTIFY);
+#endif
 		}
 
 		//pr_info("notify %i vlan %i\n", id, n->vid);
@@ -957,7 +983,11 @@ static void vlan_do_notify(struct work_struct *w)
 				
 		if (nla_nest_end(report_skb, ns) >= IPOE_NLMSG_SIZE) {
 			genlmsg_end(report_skb, header);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 			genlmsg_multicast(report_skb, 0, ipoe_nl_mcg.id, GFP_KERNEL);
+#else
+			genlmsg_multicast(&ipoe_nl_family, report_skb, 0, 0, GFP_KERNEL);
+#endif
 			report_skb = NULL;
 			id = 1;
 		}
@@ -972,7 +1002,11 @@ nl_err:
 
 	if (report_skb) {
 		genlmsg_end(report_skb, header);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 		genlmsg_multicast(report_skb, 0, ipoe_nl_mcg.id, GFP_KERNEL);
+#else
+		genlmsg_multicast(&ipoe_nl_family, report_skb, 0, 0, GFP_KERNEL);
+#endif
 	}
 }
 
@@ -1882,16 +1916,13 @@ static struct genl_family ipoe_nl_family = {
 	.maxattr	= IPOE_ATTR_MAX,
 };
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 static struct genl_multicast_group ipoe_nl_mcg = {
 	.name = IPOE_GENL_MCG_PKT,
 };
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,32)
-static const struct net_device_ops ipoe_netdev_ops = {
-	.ndo_start_xmit	= ipoe_xmit,
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
-	.ndo_get_stats64 = ipoe_stats64,
-#endif
+#else
+static struct genl_multicast_group ipoe_nl_mcgs[] = {
+	{ .name = IPOE_GENL_MCG_PKT, }
 };
 #endif
 
@@ -1923,6 +1954,15 @@ static struct packet_type vlan_pt __read_mostly = {
 	.type = __constant_htons(ETH_P_ALL),
 	.func = vlan_pt_recv,
 };
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,32)
+static const struct net_device_ops ipoe_netdev_ops = {
+	.ndo_start_xmit	= ipoe_xmit,
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,35)
+	.ndo_get_stats64 = ipoe_stats64,
+#endif
+};
+#endif
 
 /*static struct pernet_operations ipoe_net_ops = {
 	.init = ipoe_init_net,
@@ -1968,19 +2008,24 @@ static int __init ipoe_init(void)
 		goto out_unreg;
 	}
 #else
-	err = genl_register_family_with_ops(&ipoe_nl_family, ipoe_nl_ops,
-					    ARRAY_SIZE(ipoe_nl_ops));
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
+	err = genl_register_family_with_ops(&ipoe_nl_family, ipoe_nl_ops, ARRAY_SIZE(ipoe_nl_ops));
+#else
+	err = genl_register_family_with_ops_groups(&ipoe_nl_family, ipoe_nl_ops, ipoe_nl_mcgs);
+#endif
 	if (err < 0) {
 		printk(KERN_INFO "ipoe: can't register netlink interface\n");
 		goto out;
 	}
 #endif
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 	err = genl_register_mc_group(&ipoe_nl_family, &ipoe_nl_mcg);
 	if (err < 0) {
 		printk(KERN_INFO "ipoe: can't register netlink multicast group\n");
 		goto out_unreg;
 	}
+#endif
 
 	err = nf_register_hooks(ipt_ops, ARRAY_SIZE(ipt_ops));
 	if (err < 0) {
@@ -2005,12 +2050,15 @@ static void __exit ipoe_fini(void)
 	struct ipoe_session *ses;
 	struct vlan_dev *d;
 	struct vlan_notify *vn;
+	struct net_device *dev;
 	int i;
 	
 	dev_remove_pack(&vlan_pt);
 	nf_unregister_hooks(ipt_ops, ARRAY_SIZE(ipt_ops));
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 	genl_unregister_mc_group(&ipoe_nl_family, &ipoe_nl_mcg);
+#endif
 	genl_unregister_family(&ipoe_nl_family);
 
 	flush_work(&ipoe_queue_work);
@@ -2050,8 +2098,21 @@ static void __exit ipoe_fini(void)
 
 	while (!list_empty(&vlan_devices)) {
 		d = list_first_entry(&vlan_devices, typeof(*d), entry);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34)
+		rtnl_lock();
+		dev = __dev_get_by_index(&init_net, d->ifindex);
+		rtnl_unlock();
+#else
+		dev = dev_get_by_index(&init_net, d->ifindex);
+#endif
+		if (dev)
+			rcu_assign_pointer(dev->ml_priv, NULL);
 		list_del(&d->entry);
-		kfree(d);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
+		kfree_rcu(d, rcu_head);
+#else
+		call_rcu(&d->rcu_head, ipoe_kfree_rcu);
+#endif
 	}
 	
 	while (!list_empty(&vlan_notifies)) {
@@ -2059,6 +2120,8 @@ static void __exit ipoe_fini(void)
 		list_del(&vn->entry);
 		kfree(vn);
 	}
+
+	synchronize_rcu();
 }
 
 module_init(ipoe_init);
