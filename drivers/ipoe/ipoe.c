@@ -17,6 +17,7 @@
 #include <linux/if_vlan.h>
 #include <linux/semaphore.h>
 #include <linux/netfilter_ipv4.h>
+#include <linux/u64_stats_sync.h>
 #include <linux/version.h>
 
 #include <net/genetlink.h>
