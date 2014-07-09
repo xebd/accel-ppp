@@ -182,6 +182,11 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
 
 	if (conf_ppp_verbose)
 		log_ppp_info2("recv [PAP AuthReq id=%x]\n", hdr->id);
+	
+	if (p->started) {
+		pap_send_ack(p, hdr->id);
+		return 0;
+	}
 
 	peer_id_len = *(uint8_t*)ptr; ptr++;
 	if (peer_id_len > ntohs(hdr->len) - sizeof(*hdr) + 2 - 1) {

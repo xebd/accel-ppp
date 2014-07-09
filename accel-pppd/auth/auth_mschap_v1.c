@@ -37,26 +37,22 @@ static int conf_max_failure = 3;
 static int conf_any_login = 0;
 static char *conf_msg_failure = "E=691 R=0";
 static char *conf_msg_success = "Authentication succeeded";
-;
 
-struct chap_hdr_t
-{
+struct chap_hdr_t {
 	uint16_t proto;
 	uint8_t code;
 	uint8_t id;
 	uint16_t len;
 } __attribute__((packed));
 
-struct chap_challenge_t
-{
+struct chap_challenge_t {
 	struct chap_hdr_t hdr;
 	uint8_t val_size;
 	uint8_t val[VALUE_SIZE];
 	char name[0];
 } __attribute__((packed));
 
-struct chap_response_t
-{
+struct chap_response_t {
 	struct chap_hdr_t hdr;
 	uint8_t val_size;
 	uint8_t lm_hash[24];
@@ -65,12 +61,11 @@ struct chap_response_t
 	char name[0];
 } __attribute__((packed));
 
-struct chap_auth_data_t
-{
+struct chap_auth_data_t {
 	struct auth_data_t auth;
 	struct ppp_handler_t h;
 	struct ppp_t *ppp;
-	int id;
+	uint8_t id;
 	uint8_t val[VALUE_SIZE];
 	struct triton_timer_t timeout;
 	struct triton_timer_t interval;
@@ -132,6 +127,7 @@ static int chap_start(struct ppp_t *ppp, struct auth_data_t *auth)
 	d->timeout.period = conf_timeout * 1000;
 	d->interval.expire = chap_restart_timer;
 	d->interval.period = conf_interval * 1000;
+	d->id = 1;
 
 	ppp_register_chan_handler(ppp, &d->h);
 
@@ -210,12 +206,12 @@ static void chap_send_failure(struct chap_auth_data_t *ad, char *mschap_error)
 	_free(hdr);
 }
 
-static void chap_send_success(struct chap_auth_data_t *ad)
+static void chap_send_success(struct chap_auth_data_t *ad, int id)
 {
 	struct chap_hdr_t *hdr = _malloc(sizeof(*hdr) + strlen(conf_msg_success) + 1);
 	hdr->proto = htons(PPP_CHAP);
 	hdr->code = CHAP_SUCCESS;
-	hdr->id = ad->id;
+	hdr->id = id;
 	hdr->len = htons(HDR_LEN + strlen(conf_msg_success));
 	strcpy((char *)(hdr + 1), conf_msg_success);
 	
@@ -232,7 +228,7 @@ static void chap_send_challenge(struct chap_auth_data_t *ad, int new)
 	struct chap_challenge_t msg = {
 		.hdr.proto = htons(PPP_CHAP),
 		.hdr.code = CHAP_CHALLENGE,
-		.hdr.id = ++ad->id,
+		.hdr.id = ad->id,
 		.hdr.len = htons(sizeof(msg) - 2),
 		.val_size = VALUE_SIZE,
 	};
@@ -274,6 +270,11 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 		log_ppp_info2("\"]\n");
 	}
 
+	if (ad->started && msg->hdr.id == ad->id - 1) {
+		chap_send_success(ad, msg->hdr.id);
+		return;
+	}
+
 	if (msg->hdr.id != ad->id) {
 		if (conf_ppp_verbose)
 			log_ppp_warn("mschap-v1: id mismatch\n");
@@ -306,8 +307,9 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 			_free(name);
 			return;
 		}
-		chap_send_success(ad);
+		chap_send_success(ad, ad->id);
 		ad->started = 1;
+		ad->id++;
 		return;
 	}
 
@@ -332,15 +334,17 @@ static void chap_recv_response(struct chap_auth_data_t *ad, struct chap_hdr_t *h
 				ppp_terminate(ad->ppp, TERM_AUTH_ERROR, 0);
 				_free(name);
 			} else {
-				chap_send_success(ad);
+				chap_send_success(ad, ad->id);
 				ad->started = 1;
 				if (conf_interval)
 					triton_timer_add(ad->ppp->ctrl->ctx, &ad->interval, 0);
 			}
 		} else {
-			chap_send_success(ad);
+			chap_send_success(ad, ad->id);
 			_free(name);
 		}
+
+		ad->id++;
 	}
 }
 
