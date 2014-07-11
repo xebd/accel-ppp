@@ -65,7 +65,10 @@ void ap_session_ifup(struct ap_session *ses)
 	struct ppp_t *ppp;
 	
 	if (ses->ifname_rename) {
-		ap_session_rename(ses, ses->ifname_rename, -1);
+		if (ap_session_rename(ses, ses->ifname_rename, -1)) {
+			ap_session_terminate(ses, TERM_NAS_ERROR, 0);
+			return;
+		}
 		_free(ses->ifname_rename);
 		ses->ifname_rename = NULL;
 	}
@@ -237,7 +240,7 @@ void __export ap_session_ifdown(struct ap_session *ses)
 	}
 }
 
-void __export ap_session_rename(struct ap_session *ses, const char *ifname, int len)
+int __export ap_session_rename(struct ap_session *ses, const char *ifname, int len)
 {
 	struct ifreq ifr;
 
@@ -245,8 +248,8 @@ void __export ap_session_rename(struct ap_session *ses, const char *ifname, int 
 		len = strlen(ifname);
 	
 	if (len >= IFNAMSIZ - 1) {
-		log_ppp_warn("cannot rename interface (name it too long)\n");
-		return;
+		log_ppp_warn("cannot rename interface (name is too long)\n");
+		return -1;
 	}
 
 	ifr.ifr_ifindex = ses->ifindex;
@@ -257,12 +260,16 @@ void __export ap_session_rename(struct ap_session *ses, const char *ifname, int 
 	if (ioctl(sock_fd, SIOCSIFNAME, &ifr)) {
 		if (!ses->ifname_rename)
 			ses->ifname_rename = _strdup(ifr.ifr_newname);
-		else
+		else {
 			log_ppp_warn("interface rename failed: %s\n", strerror(errno));
+			return -1;
+		}
 	} else {
 		log_ppp_info2("rename interface to '%s'\n", ifr.ifr_newname);	
 		memcpy(ses->ifname, ifname, len);
 		ses->ifname[len] = 0;
 	}
+
+	return 0;
 }
 
