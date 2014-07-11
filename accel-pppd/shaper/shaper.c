@@ -236,7 +236,7 @@ static void parse_attr(struct rad_attr_t *attr, int dir, int *speed, int *burst,
 	if (attr->attr->type == ATTR_TYPE_STRING)
 		parse_string(attr->val.string, dir, speed, burst, tr_id);
 	else if (attr->attr->type == ATTR_TYPE_INTEGER)
-		*speed = conf_multiplier * attr->val.integer;
+		*speed = attr->val.integer;
 }
 
 static void check_radius_attrs(struct shaper_pd_t *pd, struct rad_packet_t *pack)
