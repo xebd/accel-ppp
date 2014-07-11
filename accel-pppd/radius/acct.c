@@ -66,6 +66,8 @@ static int rad_acct_read(struct triton_md_handler_t *h)
 	struct rad_packet_t *pack;
 	int r;
 	unsigned int dt;
+		
+	rad_server_req_exit(req);
 
 	if (req->reply) {
 		rad_packet_free(req->reply);
@@ -112,7 +114,7 @@ static int rad_acct_read(struct triton_md_handler_t *h)
 	return 1;
 }
 
-static void __rad_req_send(struct rad_req_t *req)
+static int __rad_req_send(struct rad_req_t *req)
 {
 	while (1) {
 		if (rad_server_req_enter(req)) {
@@ -121,34 +123,41 @@ static void __rad_req_send(struct rad_req_t *req)
 					log_ppp_warn("radius:acct: no servers available, terminating session...\n");
 					ap_session_terminate(req->rpd->ses, TERM_NAS_ERROR, 0);
 				}
-				break;
+				return -1;
 			}
 			continue;
 		}
 
-		rad_req_send(req, conf_interim_verbose ? log_ppp_info2 : NULL);
+		if (rad_req_send(req, conf_interim_verbose ? log_ppp_info2 : NULL)) {
+			rad_server_req_exit(req);
+			rad_server_fail(req->serv);
+			continue;
+		}
+
 		if (!req->hnd.tpd) {
 			triton_md_register_handler(req->rpd->ses->ctrl->ctx, &req->hnd);
 			triton_md_enable_handler(&req->hnd, MD_MODE_READ);
 		}
 
-		rad_server_req_exit(req);
-
 		break;
 	}
+
+	return 0;
 }
 
 static void rad_acct_timeout(struct triton_timer_t *t)
 {
 	struct rad_req_t *req = container_of(t, typeof(*req), timeout);
 	time_t ts, dt;
+			
+	rad_server_req_exit(req);
+	rad_server_timeout(req->serv);
 
 	__sync_add_and_fetch(&req->serv->stat_interim_lost, 1);
 	stat_accm_add(req->serv->stat_interim_lost_1m, 1);
 	stat_accm_add(req->serv->stat_interim_lost_5m, 1);
 
 	if (conf_acct_timeout == 0) {
-		rad_server_timeout(req->serv);
 		triton_timer_del(t);
 		triton_md_unregister_handler(&req->hnd, 1);
 		return;
@@ -183,7 +192,8 @@ static void rad_acct_timeout(struct triton_timer_t *t)
 		req_set_RA(req, req->serv->secret);
 	}
 
-	__rad_req_send(req);
+	if (__rad_req_send(req))
+		return;
 
 	__sync_add_and_fetch(&req->serv->stat_interim_sent, 1);
 }
@@ -211,7 +221,9 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 		rad_packet_change_int(rpd->acct_req->pack, NULL, "Acct-Delay-Time", 0);
 	req_set_RA(rpd->acct_req, rpd->acct_req->serv->secret);
 
-	__rad_req_send(rpd->acct_req);
+	if (__rad_req_send(rpd->acct_req))
+		return;
+
 	/* The above call may set rpd->acct_req to NULL in the following chain of events:
 	   1. __rad_req_send fails (on rad_server_realloc) and calls ppp_terminate;
 	   2. As a result, an EV_PPP_FINISHING event is fired;
@@ -367,8 +379,9 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 	if (!rpd->acct_req || !rpd->acct_req->serv)
 		return;
 
-	if (rpd->acct_interim_timer.tpd)
+	if (rpd->acct_interim_timer.tpd) {
 		triton_timer_del(&rpd->acct_interim_timer);
+	}
 
 	if (rpd->acct_req) {
 		if (rpd->acct_req->hnd.tpd)

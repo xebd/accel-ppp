@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <sched.h>
 #include <time.h>
+#include <assert.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -151,6 +152,7 @@ void rad_server_req_exit(struct rad_req_t *req)
 
 	pthread_mutex_lock(&req->serv->lock);
 	req->serv->req_cnt--;
+	assert(req->serv->req_cnt >= 0);
 	if (req->serv->req_cnt < req->serv->req_limit && !list_empty(&req->serv->req_queue)) {
 		r = list_entry(req->serv->req_queue.next, typeof(*r), entry);
 		list_del(&r->entry);
@@ -200,8 +202,8 @@ void rad_server_fail(struct rad_server_t *s)
 
 	pthread_mutex_lock(&s->lock);
 
-	if (ts.tv_sec > s->fail_time) {
-		s->fail_time = ts.tv_sec + s->conf_fail_time;
+	if (ts.tv_sec >= s->fail_time) {
+		s->fail_time = ts.tv_sec + s->conf_fail_time + 1;
 		log_ppp_warn("radius: server(%i) not responding\n", s->id);
 		log_warn("radius: server(%i) not responding\n", s->id);
 	}

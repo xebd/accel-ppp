@@ -261,8 +261,12 @@ static int make_socket(struct rad_req_t *req)
 	return 0;
 
 out_err:
-	close(req->hnd.fd);
-	req->hnd.fd = -1;
+	if (req->hnd.tpd)
+		triton_md_unregister_handler(&req->hnd, 1);
+	else {
+		close(req->hnd.fd);
+		req->hnd.fd = -1;
+	}
 	return -1;
 }
 
