@@ -163,10 +163,8 @@ static void chap_timeout_timer(struct triton_timer_t *t)
 			ap_session_terminate(&d->ppp->ses, TERM_USER_ERROR, 0);
 		else
 			ppp_auth_failed(d->ppp, NULL);
-	} else {
-		--d->id;
+	} else
 		chap_send_challenge(d, 0);
-	}
 }
 
 static void chap_restart_timer(struct triton_timer_t *t)
