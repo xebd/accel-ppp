@@ -326,7 +326,7 @@ int __export ap_session_set_username(struct ap_session *s, char *username)
 	pthread_rwlock_wrlock(&ses_lock);
 	if (conf_single_session >= 0) {
 		list_for_each_entry(ses, &ses_list, entry) {
-			if (ses->username && !strcmp(ses->username, username)) {
+			if (ses->username && ses->terminate_cause != TERM_AUTH_ERROR && !strcmp(ses->username, username)) {
 				if (conf_single_session == 0) {
 					pthread_rwlock_unlock(&ses_lock);
 					log_ppp_info1("%s: second session denied\n", username);
@@ -341,6 +341,7 @@ int __export ap_session_set_username(struct ap_session *s, char *username)
 						triton_context_call(ses->ctrl->ctx, (triton_event_func)__terminate_sec, ses);
 					}
 				}
+				break;
 			}
 		}
 		s->username = username;

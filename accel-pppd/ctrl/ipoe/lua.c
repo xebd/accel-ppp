@@ -230,12 +230,12 @@ out_err:
     }*/
 
 
-int ipoe_lua_set_username(struct ipoe_session *ses, const char *func)
+char *ipoe_lua_get_username(struct ipoe_session *ses, const char *func)
 {
-	int r;
+	char *r;
 
 	if (file_error && serial == __serial)
-		return -1;
+		return NULL;
 
 	if (L && serial != __serial) {
 		lua_close(L);
@@ -244,7 +244,7 @@ int ipoe_lua_set_username(struct ipoe_session *ses, const char *func)
 		init_lua();
 
 	if (!L)
-		return -1;
+		return NULL;
 
 	lua_getglobal(L, func);
 	lua_pushlightuserdata(L, ses);
@@ -259,7 +259,7 @@ int ipoe_lua_set_username(struct ipoe_session *ses, const char *func)
 		goto out_err;
 	}
 
-	r = ap_session_set_username(&ses->ses, _strdup(lua_tostring(L, -1)));
+	r = _strdup(lua_tostring(L, -1));
 
 	lua_settop(L, 0);
 
@@ -270,7 +270,7 @@ out_err:
 	lua_close(L);
 	L = NULL;
 	pthread_setspecific(__key, L);
-	return -1;
+	return NULL;
 }
 
 static void load_config()

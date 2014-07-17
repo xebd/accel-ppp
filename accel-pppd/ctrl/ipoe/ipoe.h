@@ -98,7 +98,7 @@ struct arp_serv {
 };
 
 #ifdef USE_LUA
-int ipoe_lua_set_username(struct ipoe_session *, const char *func);
+char *ipoe_lua_get_username(struct ipoe_session *, const char *func);
 #endif
 
 struct iphdr;

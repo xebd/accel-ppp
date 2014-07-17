@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <string.h>
 #include <fcntl.h>
+#include <assert.h>
 #include <time.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -325,15 +326,17 @@ static void ipoe_relay_timeout(struct triton_timer_t *t)
 }
 
 
-static void ipoe_session_set_username(struct ipoe_session *ses)
+static char *ipoe_session_get_username(struct ipoe_session *ses)
 {
 #ifdef USE_LUA
-	if (ses->serv->opt_username == USERNAME_LUA) {
-		ipoe_lua_set_username(ses, ses->serv->opt_lua_username_func ? : conf_lua_username_func);
-	} else
+	if (ses->serv->opt_username == USERNAME_LUA)
+		return ipoe_lua_get_username(ses, ses->serv->opt_lua_username_func ? : conf_lua_username_func);
+	else
 #endif
+	if (!ses->dhcpv4_request)
+		return _strdup(ses->ctrl.calling_station_id);
 
-	ap_session_set_username(&ses->ses, _strdup(ses->ses.ifname));
+	return _strdup(ses->ses.ifname);
 }
 
 static void l4_redirect_list_add(in_addr_t addr, int ifindex)
@@ -508,18 +511,19 @@ static void ipoe_session_start(struct ipoe_session *ses)
 {
 	int r;
 	char *passwd;
+	char *username;
 
 	__sync_add_and_fetch(&stat_starting, 1);
 	
-	if (!ses->ses.username) {
-		strncpy(ses->ses.ifname, ses->serv->ifname, AP_IFNAME_LEN);
-		
-		ipoe_session_set_username(ses);
+	assert(!ses->ses.username);
 
-		if (!ses->ses.username) {
-			ipoe_session_finished(&ses->ses);
-			return;
-		}
+	strncpy(ses->ses.ifname, ses->serv->ifname, AP_IFNAME_LEN);
+	
+	username = ipoe_session_get_username(ses);
+
+	if (!username) {
+		ipoe_session_finished(&ses->ses);
+		return;
 	}
 
 	ses->ses.unit_idx = ses->serv->ifindex;
@@ -533,7 +537,7 @@ static void ipoe_session_start(struct ipoe_session *ses)
 		if (ses->serv->opt_shared && ipoe_create_interface(ses))
 			return;
 
-		r = pwdb_check(&ses->ses, ses->ses.username, PPP_PAP, conf_password ? conf_password : ses->ses.username);
+		r = pwdb_check(&ses->ses, username, PPP_PAP, conf_password ? conf_password : username);
 		if (r == PWDB_NO_IMPL) {
 			passwd = pwdb_get_passwd(&ses->ses, ses->ses.username);
 			if (!passwd)
@@ -545,6 +549,10 @@ static void ipoe_session_start(struct ipoe_session *ses)
 		}
 
 		if (r == PWDB_DENIED) {
+			pthread_rwlock_wrlock(&ses_lock);
+			ses->ses.username = username;
+			ses->ses.terminate_cause = TERM_AUTH_ERROR;
+			pthread_rwlock_unlock(&ses_lock);
 			if (conf_ppp_verbose)
 				log_ppp_warn("authentication failed\n");
 			if (conf_l4_redirect_on_reject && !ses->dhcpv4_request && ses->ifindex != -1) {
@@ -556,6 +564,7 @@ static void ipoe_session_start(struct ipoe_session *ses)
 		}
 	}
 
+	ap_session_set_username(&ses->ses, username);
 	log_ppp_info1("%s: authentication succeeded\n", ses->ses.username);
 	triton_event_fire(EV_SES_AUTHORIZED, &ses->ses);
 
@@ -1589,9 +1598,6 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 	u_inet_ntoa(iph->saddr, ses->ctrl.calling_station_id);
 	
 	ses->ses.chan_name = ses->ctrl.calling_station_id;
-
-	if (conf_username == USERNAME_UNSET)
-		ap_session_set_username(&ses->ses, _strdup(ses->ctrl.calling_station_id));
 	
 	if (conf_ip_pool)
 		ses->ses.ipv4_pool_name = _strdup(conf_ip_pool);

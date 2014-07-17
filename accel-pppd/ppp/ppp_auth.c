@@ -352,6 +352,7 @@ void __export ppp_auth_failed(struct ppp_t *ppp, char *username)
 		pthread_rwlock_wrlock(&ses_lock);
 		if (!ppp->ses.username)
 			ppp->ses.username = _strdup(username);
+		ppp->ses.terminate_cause = TERM_AUTH_ERROR;
 		pthread_rwlock_unlock(&ses_lock);
 		log_ppp_info1("%s: authentication failed\n", username);
 		log_info1("%s: authentication failed\n", username);
