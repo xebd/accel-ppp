@@ -66,8 +66,6 @@ static int rad_acct_read(struct triton_md_handler_t *h)
 	struct rad_packet_t *pack;
 	int r;
 	unsigned int dt;
-		
-	rad_server_req_exit(req);
 
 	if (req->reply) {
 		rad_packet_free(req->reply);
@@ -94,6 +92,11 @@ static int rad_acct_read(struct triton_md_handler_t *h)
 
 	if (!req->reply)
 		return 0;
+
+	if (req->reply->id != req->pack->id)
+		return 0;
+
+	rad_server_req_exit(req);
 
 	dt = (req->reply->tv.tv_sec - req->pack->tv.tv_sec) * 1000 + 
 		(req->reply->tv.tv_nsec - req->pack->tv.tv_nsec) / 1000000;
