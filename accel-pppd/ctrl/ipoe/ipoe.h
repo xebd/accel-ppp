@@ -122,6 +122,8 @@ void ipoe_nl_get_sessions(struct list_head *list);
 int ipoe_nl_add_vlan_mon(int ifindex, long *mask, int len);
 int ipoe_nl_add_vlan_mon_vid(int ifindex, int vid);
 int ipoe_nl_del_vlan_mon(int ifindex);
+int ipoe_nl_add_exclude(uint32_t addr, int mask);
+void ipoe_nl_del_exclude(uint32_t addr);
 
 struct arp_serv *arpd_start(struct ipoe_serv *ipoe);
 void arpd_stop(struct arp_serv *arp);

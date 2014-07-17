@@ -74,12 +74,82 @@ void ipoe_nl_add_net(uint32_t addr, int mask)
 
 	ghdr = NLMSG_DATA(&req.n);
 	ghdr->cmd = IPOE_CMD_ADD_NET;
+		
+	mask = ((1 << mask) - 1) << (32 - mask);
 
 	addattr32(nlh, 1024, IPOE_ATTR_ADDR, addr);
 	addattr32(nlh, 1024, IPOE_ATTR_MASK, mask);
 
 	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 )
 		log_error("ipoe: nl_add_net: error talking to kernel\n");
+}
+
+int ipoe_nl_add_exclude(uint32_t addr, int mask)
+{
+	struct rtnl_handle rth;
+	struct nlmsghdr *nlh;
+	struct genlmsghdr *ghdr;
+	struct {
+		struct nlmsghdr n;
+		char buf[1024];
+	} req;
+	int ret = 0;
+	
+	if (rtnl_open_byproto(&rth, 0, NETLINK_GENERIC)) {
+		log_ppp_error("ipoe: cannot open generic netlink socket\n");
+		return -1;
+	}
+	
+	nlh = &req.n;
+	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
+	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+	nlh->nlmsg_type = ipoe_genl_id;
+
+	ghdr = NLMSG_DATA(&req.n);
+	ghdr->cmd = IPOE_CMD_ADD_EXCLUDE;
+
+
+	addattr32(nlh, 1024, IPOE_ATTR_ADDR, addr);
+
+	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 ) {
+		log_ppp_error("ipoe: nl_add_net: error talking to kernel\n");
+		ret = -1;
+	}
+	
+	rtnl_close(&rth);
+	
+	return ret;
+}
+
+void ipoe_nl_del_exclude(uint32_t addr)
+{
+	struct rtnl_handle rth;
+	struct nlmsghdr *nlh;
+	struct genlmsghdr *ghdr;
+	struct {
+		struct nlmsghdr n;
+		char buf[1024];
+	} req;
+	
+	if (rtnl_open_byproto(&rth, 0, NETLINK_GENERIC)) {
+		log_ppp_error("ipoe: cannot open generic netlink socket\n");
+		return;
+	}
+
+	nlh = &req.n;
+	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
+	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+	nlh->nlmsg_type = ipoe_genl_id;
+
+	ghdr = NLMSG_DATA(&req.n);
+	ghdr->cmd = IPOE_CMD_DEL_EXCLUDE;
+
+	addattr32(nlh, 1024, IPOE_ATTR_ADDR, addr);
+
+	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 )
+		log_ppp_error("ipoe: nl_add_net: error talking to kernel\n");
+	
+	rtnl_close(&rth);
 }
 
 void ipoe_nl_delete_interfaces(void)
@@ -673,6 +743,8 @@ static void init(void)
 	triton_md_register_handler(&mc_ctx, &mc_hnd);
 	triton_md_enable_handler(&mc_hnd, MD_MODE_READ);
 	triton_context_wakeup(&mc_ctx);
+
+	ipoe_nl_del_exclude(0);
 }
 
 DEFINE_INIT(19, init);

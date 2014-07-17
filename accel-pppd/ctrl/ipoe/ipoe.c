@@ -68,7 +68,6 @@ struct unit_cache {
 
 struct l4_redirect {
 	struct list_head entry;
-	int ifindex;
 	in_addr_t addr;
 	time_t timeout;
 };
@@ -339,7 +338,7 @@ static char *ipoe_session_get_username(struct ipoe_session *ses)
 	return _strdup(ses->ses.ifname);
 }
 
-static void l4_redirect_list_add(in_addr_t addr, int ifindex)
+static void l4_redirect_list_add(in_addr_t addr)
 {
 	struct l4_redirect *n = _malloc(sizeof(*n));
 	struct timespec ts;
@@ -351,10 +350,9 @@ static void l4_redirect_list_add(in_addr_t addr, int ifindex)
 
 	memset(n, 0, sizeof(*n));
 	n->addr = addr;
-	n->ifindex = ifindex;
 	n->timeout = ts.tv_sec + conf_l4_redirect_on_reject;
 	
-	ipoe_nl_modify(ifindex, addr, 1, NULL, NULL);
+	ipoe_nl_add_exclude(addr, 32);
 
 	if (conf_l4_redirect_table)
 		iprule_add(addr, conf_l4_redirect_table);
@@ -391,7 +389,6 @@ static void l4_redirect_list_timer(struct triton_timer_t *t)
 {
 	struct l4_redirect *n;
 	struct timespec ts;
-	struct unit_cache *uc;
 
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 
@@ -407,16 +404,8 @@ static void l4_redirect_list_timer(struct triton_timer_t *t)
 			
 			if (conf_l4_redirect_ipset)
 				ipset_del(conf_l4_redirect_ipset, n->addr);
-
-			if (uc_size < conf_unit_cache && ipoe_nl_modify(n->ifindex, 0, 0, "", NULL)) {
-				uc = mempool_alloc(uc_pool);
-				uc->ifindex = n->ifindex;
-				pthread_mutex_lock(&uc_lock);
-				list_add_tail(&uc->entry, &uc_list);
-				++uc_size;
-				pthread_mutex_unlock(&uc_lock);
-			} else
-				ipoe_nl_delete(n->ifindex);
+	
+			ipoe_nl_del_exclude(n->addr);
 
 			_free(n);
 			pthread_rwlock_wrlock(&l4_list_lock);
@@ -555,10 +544,8 @@ static void ipoe_session_start(struct ipoe_session *ses)
 			pthread_rwlock_unlock(&ses_lock);
 			if (conf_ppp_verbose)
 				log_ppp_warn("authentication failed\n");
-			if (conf_l4_redirect_on_reject && !ses->dhcpv4_request && ses->ifindex != -1) {
-				l4_redirect_list_add(ses->yiaddr, ses->ifindex);
-				ses->ifindex = -1;
-			}
+			if (conf_l4_redirect_on_reject && !ses->dhcpv4_request)
+				l4_redirect_list_add(ses->yiaddr);
 			ap_session_terminate(&ses->ses, TERM_AUTH_ERROR, 0);
 			return;
 		}
@@ -1836,7 +1823,7 @@ static void l4_redirect_ctx_close(struct triton_context_t *ctx)
 		if (conf_l4_redirect_ipset)
 			ipset_del(conf_l4_redirect_ipset, n->addr);
 		
-		ipoe_nl_delete(n->ifindex);
+		ipoe_nl_del_exclude(n->addr);
 		
 		_free(n);
 	}
@@ -2437,17 +2424,7 @@ static void parse_local_net(const char *opt)
 		mask = 24;
 	}
 
-	if (mask == 32)
-		mask = 0xffffffff;
-	else
-		mask = (1 << (32-mask)) - 1;
-
-	addr = ntohl(addr);
-	mask = ~mask;
-
-	//printf("%x/%x %x\n", htonl(addr), ~mask, htonl(addr)&(~mask));
-
-	ipoe_nl_add_net(addr & mask, mask);
+	ipoe_nl_add_net(addr, mask);
 
 	return;
 

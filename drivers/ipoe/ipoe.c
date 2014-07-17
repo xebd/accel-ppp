@@ -65,7 +65,6 @@ struct ipoe_session {
 
 	__be32 addr;
 	__be32 peer_addr;
-	__be32 l4_redirect;
 	__u8 hwaddr[ETH_ALEN];
 
 	struct net_device *dev;
@@ -121,6 +120,7 @@ struct vlan_notify {
 
 static struct list_head ipoe_list[HASH_BITS + 1];
 static struct list_head ipoe_list1_u[HASH_BITS + 1];
+static struct list_head ipoe_excl_list[HASH_BITS + 1];
 static LIST_HEAD(ipoe_list2);
 static LIST_HEAD(ipoe_list2_u);
 static DEFINE_SEMAPHORE(ipoe_wlock);
@@ -186,6 +186,28 @@ static int ipoe_check_network(__be32 addr)
 
 	list_for_each_entry_rcu(n, &ipoe_networks, entry) {
 		if ((ntohl(addr) & n->mask) == n->addr) {
+			r = 1;
+			break;
+		}
+	}
+
+	rcu_read_unlock();
+
+	return r;
+}
+
+static int ipoe_check_exclude(__be32 addr)
+{
+	struct ipoe_network *n;
+	struct list_head *ht;
+	int r = 0;
+	
+	ht = &ipoe_excl_list[hash_addr(addr)];
+
+	rcu_read_lock();
+
+	list_for_each_entry_rcu(n, ht, entry) {
+		if (addr  == n->addr) {
 			r = 1;
 			break;
 		}
@@ -754,6 +776,9 @@ static unsigned int ipt_in_hook(const struct nf_hook_ops *ops, struct sk_buff *s
 	ses = ipoe_lookup(iph->saddr);
 	
 	if (!ses) {
+		if (ipoe_check_exclude(iph->saddr))
+			return NF_ACCEPT;
+
 		if (!ipoe_check_network(iph->saddr))
 			return NF_ACCEPT;
 	
@@ -846,6 +871,9 @@ static unsigned int ipt_out_hook(const struct nf_hook_ops *ops, struct sk_buff *
 		return NF_ACCEPT;
 	
 	iph = ip_hdr(skb);
+	
+	if (ipoe_check_exclude(iph->daddr))
+		return NF_ACCEPT;
 	
 	if (!ipoe_check_network(iph->daddr))
 		return NF_ACCEPT;
@@ -1558,6 +1586,7 @@ static int ipoe_nl_cmd_add_net(struct sk_buff *skb, struct genl_info *info)
 
 	n->addr = nla_get_u32(info->attrs[IPOE_ATTR_ADDR]);
 	n->mask = nla_get_u32(info->attrs[IPOE_ATTR_MASK]);
+	n->addr = ntohl(n->addr) & n->mask;
 	//pr_info("add net %08x/%08x\n", n->addr, n->mask);
 
 	down(&ipoe_wlock);
@@ -1591,6 +1620,89 @@ static int ipoe_nl_cmd_del_net(struct sk_buff *skb, struct genl_info *info)
 	}
 	rcu_read_unlock();
 
+	synchronize_rcu();
+
+	return 0;
+}
+
+static int ipoe_nl_cmd_add_exclude(struct sk_buff *skb, struct genl_info *info)
+{
+	struct ipoe_network *n;
+	struct list_head *ht;
+
+	if (!info->attrs[IPOE_ATTR_ADDR])
+		return -EINVAL;
+	
+	n = kmalloc(sizeof(*n), GFP_KERNEL);
+	if (!n)
+		return -ENOMEM;
+
+	n->addr = nla_get_u32(info->attrs[IPOE_ATTR_ADDR]);
+
+	ht = &ipoe_excl_list[hash_addr(n->addr)];
+
+	down(&ipoe_wlock);
+	list_add_tail_rcu(&n->entry, ht);
+	up(&ipoe_wlock);
+
+	return 0;
+}
+
+static void clean_excl_list(void)
+{
+	struct ipoe_network *n;
+	struct list_head *ht;
+	int i;
+
+	down(&ipoe_wlock);
+	rcu_read_lock();
+	for (i = 0; i <= HASH_BITS; i++) {
+		ht = &ipoe_excl_list[i];
+		list_for_each_entry_rcu(n, ht, entry) {
+			list_del_rcu(&n->entry);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
+			kfree_rcu(n, rcu_head);
+#else
+			call_rcu(&n->rcu_head, ipoe_kfree_rcu);
+#endif
+		}
+	}
+	rcu_read_unlock();
+	up(&ipoe_wlock);
+}
+
+static int ipoe_nl_cmd_del_exclude(struct sk_buff *skb, struct genl_info *info)
+{
+	struct list_head *ht;
+	struct ipoe_network *n;
+	u32 addr;
+
+	if (!info->attrs[IPOE_ATTR_ADDR])
+		return -EINVAL;
+	
+	addr = ntohl(nla_get_u32(info->attrs[IPOE_ATTR_ADDR]));
+	if (!addr) {
+		clean_excl_list();
+		return 0;
+	}
+
+	ht = &ipoe_excl_list[hash_addr(addr)];
+
+	down(&ipoe_wlock);
+	rcu_read_lock();
+	list_for_each_entry_rcu(n, ht, entry) {
+		if (n->addr == addr) {
+			list_del_rcu(&n->entry);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
+			kfree_rcu(n, rcu_head);
+#else
+			call_rcu(&n->rcu_head, ipoe_kfree_rcu);
+#endif
+		}
+	}
+	rcu_read_unlock();
+	up(&ipoe_wlock);
+	
 	synchronize_rcu();
 
 	return 0;
@@ -1907,6 +2019,18 @@ static struct genl_ops ipoe_nl_ops[] = {
 		.policy = ipoe_nl_policy,
 		.flags = GENL_ADMIN_PERM,
 	},
+	{
+		.cmd = IPOE_CMD_ADD_EXCLUDE,
+		.doit = ipoe_nl_cmd_add_exclude,
+		.policy = ipoe_nl_policy,
+		.flags = GENL_ADMIN_PERM,
+	},
+	{
+		.cmd = IPOE_CMD_DEL_EXCLUDE,
+		.doit = ipoe_nl_cmd_del_exclude,
+		.policy = ipoe_nl_policy,
+		.flags = GENL_ADMIN_PERM,
+	},
 };
 
 static struct genl_family ipoe_nl_family = {
@@ -1976,14 +2100,15 @@ static int __init ipoe_init(void)
 {
 	int err, i;
 
-	printk("IPoE session driver v1.8.0.2\n");
+	printk("IPoE session driver v1.8.0.3\n");
 
 	/*err = register_pernet_device(&ipoe_net_ops);
 	if (err < 0)
 		return err;*/
-	for (i = 0; i < HASH_BITS + 1; i++) {
+	for (i = 0; i <= HASH_BITS; i++) {
 		INIT_LIST_HEAD(&ipoe_list[i]);
 		INIT_LIST_HEAD(&ipoe_list1_u[i]);
+		INIT_LIST_HEAD(&ipoe_excl_list[i]);
 	}
 	
 	skb_queue_head_init(&ipoe_queue);
@@ -2070,7 +2195,7 @@ static void __exit ipoe_fini(void)
 	down(&ipoe_wlock);
 	up(&ipoe_wlock);
 
-	for (i = 0; i < HASH_BITS; i++)
+	for (i = 0; i <= HASH_BITS; i++)
 		rcu_assign_pointer(ipoe_list[i].next, &ipoe_list[i]);
 	
 	rcu_barrier();
@@ -2121,6 +2246,8 @@ static void __exit ipoe_fini(void)
 		list_del(&vn->entry);
 		kfree(vn);
 	}
+
+	clean_excl_list();
 
 	synchronize_rcu();
 }
