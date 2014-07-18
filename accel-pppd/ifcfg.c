@@ -13,6 +13,7 @@
 #include "linux_ppp.h"
 
 #include "triton.h"
+#include "iputils.h"
 #include "events.h"
 #include "ppp.h"
 #include "ipdb.h"
@@ -150,14 +151,15 @@ void ap_session_ifup(struct ap_session *ses)
 				}
 				
 				list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
-					if (a->prefix_len == 128)
-						continue;
+					/*if (a->prefix_len < 128) {
+						build_addr(a, ses->ipv6->intf_id, &ifr6.ifr6_addr);
+						ifr6.ifr6_prefixlen = a->prefix_len;
 
-					build_addr(a, ses->ipv6->intf_id, &ifr6.ifr6_addr);
-					ifr6.ifr6_prefixlen = a->prefix_len;
-
-					if (ioctl(sock6_fd, SIOCSIFADDR, &ifr6))
-						log_ppp_error("failed to add IPv6 address: %s\n", strerror(errno));
+						if (ioctl(sock6_fd, SIOCSIFADDR, &ifr6))
+							log_ppp_error("failed to add IPv6 address: %s\n", strerror(errno));
+					} else*/
+					if (ip6route_add(ses->ifindex, &a->addr, a->prefix_len, 0))
+						log_ppp_error("failed to add IPv6 route: %s\n", strerror(errno));
 				}
 			}
 

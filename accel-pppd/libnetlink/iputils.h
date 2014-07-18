@@ -18,6 +18,8 @@ int iproute_add(int ifindex, in_addr_t src, in_addr_t dst, int proto);
 int iproute_del(int ifindex, in_addr_t dst, int proto);
 in_addr_t iproute_get(in_addr_t dst);
 
+int ip6route_add(int ifindex, struct in6_addr *dst, int prefix_len, int proto);
+
 int iprule_add(uint32_t addr, int table);
 int iprule_del(uint32_t addr, int table);
 #endif

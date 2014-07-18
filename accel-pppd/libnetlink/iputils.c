@@ -377,6 +377,42 @@ int __export iproute_del(int ifindex, in_addr_t dst, int proto)
 	return 0;
 }
 
+int __export ip6route_add(int ifindex, struct in6_addr *dst, int pref_len, int proto)
+{
+	struct ipaddr_req {
+		struct nlmsghdr n;
+		struct rtmsg i;
+		char buf[4096];
+	} req;
+
+	if (!rth)
+		open_rth();
+	
+	if (!rth)
+		return -1;
+
+	memset(&req, 0, sizeof(req) - 4096);
+	
+	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
+	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE;
+	req.n.nlmsg_type = RTM_NEWROUTE;
+	req.i.rtm_family = AF_INET6;
+	req.i.rtm_table = RT_TABLE_MAIN;
+	req.i.rtm_scope = RT_SCOPE_LINK;
+	req.i.rtm_protocol = proto;
+	req.i.rtm_type = RTN_UNICAST;
+	req.i.rtm_dst_len = pref_len;
+
+	addattr_l(&req.n, sizeof(req), RTA_DST, dst, sizeof(*dst));
+	addattr32(&req.n, sizeof(req), RTA_OIF, ifindex);
+
+	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
+		return -1;
+	
+	return 0;
+
+}
+
 in_addr_t __export iproute_get(in_addr_t dst)
 {
 	struct ipaddr_req {

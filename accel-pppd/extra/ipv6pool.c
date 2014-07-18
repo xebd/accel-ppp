@@ -28,55 +28,105 @@ struct dppool_item_t
 	struct ipv6db_prefix_t it;
 };
 
-
 static LIST_HEAD(ippool);
 static LIST_HEAD(dppool);
 static spinlock_t pool_lock;
 static struct ipdb_t ipdb;
 
+static void in6_addr_add(struct in6_addr *res, const struct in6_addr *arg)
+{
+	uint16_t n = 0;
+	int i;
+
+	for (i = 15; i >= 0; i--) {
+		n = (uint16_t)res->s6_addr[i] + arg->s6_addr[i] + (n >> 8);
+		res->s6_addr[i] = n & 0xff;
+	}
+}
+
+static int in6_addr_cmp(const struct in6_addr *n1, const struct in6_addr *n2)
+{
+	int i;
+
+	for (i = 0; i < 16; i++) {
+		if (n1->s6_addr[i] < n2->s6_addr[i])
+			return -1;
+		if (n1->s6_addr[i] > n2->s6_addr[i])
+			return 1;
+	}
+
+	return 0;
+}
+
 static void generate_ippool(struct in6_addr *addr, int mask, int prefix_len)
 {
 	struct ippool_item_t *it;
-	uint64_t ip, endip, step;
 	struct ipv6db_addr_t *a;
+	struct in6_addr ip, end, step;
 
-	ip = be64toh(*(uint64_t *)addr->s6_addr);
-	endip = ip | ((1llu << (64 - mask)) - 1);
-	step = 1 << (64 - prefix_len);
-	
-	for (; ip <= endip; ip += step) {
+	memcpy(&ip, addr, sizeof(ip));
+
+	memcpy(&end, addr, sizeof(end));
+	if (mask > 64)
+		*(uint64_t *)(end.s6_addr + 8) = htobe64(be64toh(*(uint64_t *)(end.s6_addr + 8)) | ((1llu << (128 - mask)) - 1));
+	else {
+		memset(end.s6_addr + 8, 0xff, 8);
+		*(uint64_t *)end.s6_addr = htobe64(be64toh(*(uint64_t *)end.s6_addr) | ((1llu << (64 - mask)) - 1));
+	}
+
+	memset(&step, 0, sizeof(step));
+	if (prefix_len > 64)
+		*(uint64_t *)(step.s6_addr + 8) = htobe64(1llu << (128 - prefix_len));
+	else
+		*(uint64_t *)step.s6_addr = htobe64(1llu << (64 - prefix_len));
+		
+	while (in6_addr_cmp(&ip, &end) <= 0) {
 		it = malloc(sizeof(*it));
 		it->it.owner = &ipdb;
 		INIT_LIST_HEAD(&it->it.addr_list);
 		a = malloc(sizeof(*a));
 		memset(a, 0, sizeof(*a));
-		*(uint64_t *)a->addr.s6_addr = htobe64(ip);
+		memcpy(&a->addr, &ip, sizeof(ip));
 		a->prefix_len = prefix_len;
 		list_add_tail(&a->entry, &it->it.addr_list);
 		list_add_tail(&it->entry, &ippool);
+		in6_addr_add(&ip, &step);
 	}
 }
 
 static void generate_dppool(struct in6_addr *addr, int mask, int prefix_len)
 {
 	struct dppool_item_t *it;
-	uint64_t ip, endip, step;
+	struct in6_addr ip, end, step;
 	struct ipv6db_addr_t *a;
 
-	ip = be64toh(*(uint64_t *)addr->s6_addr);
-	endip = ip | ((1llu << (64 - mask)) - 1);
-	step = 1 << (64 - prefix_len);
+	memcpy(&ip, addr, sizeof(ip));
+
+	memcpy(&end, addr, sizeof(end));
+	if (mask > 64)
+		*(uint64_t *)(end.s6_addr + 8) = htobe64(be64toh(*(uint64_t *)(end.s6_addr + 8)) | ((1llu << (128 - mask)) - 1));
+	else {
+		memset(end.s6_addr + 8, 0xff, 8);
+		*(uint64_t *)end.s6_addr = htobe64(be64toh(*(uint64_t *)end.s6_addr) | ((1llu << (64 - mask)) - 1));
+	}
+
+	memset(&step, 0, sizeof(step));
+	if (prefix_len > 64)
+		*(uint64_t *)(step.s6_addr + 8) = htobe64(1llu << (128 - prefix_len));
+	else
+		*(uint64_t *)step.s6_addr = htobe64(1llu << (64 - prefix_len));
 	
-	for (; ip <= endip; ip += step) {
+	while (in6_addr_cmp(&ip, &end) <= 0) {
 		it = malloc(sizeof(*it));
 		it->it.owner = &ipdb;
 		INIT_LIST_HEAD(&it->it.prefix_list);
 		a = malloc(sizeof(*a));
 		memset(a, 0, sizeof(*a));
-		*(uint64_t *)a->addr.s6_addr = htobe64(ip);
+		memcpy(&a->addr, &ip, sizeof(ip));
 		a->prefix_len = prefix_len;
 		list_add_tail(&a->entry, &it->it.prefix_list);
 		list_add_tail(&it->entry, &dppool);
+		in6_addr_add(&ip, &step);
 	}
 }
 
@@ -107,13 +157,13 @@ static void add_prefix(int type, const char *_val)
 	if (sscanf(ptr1 + 1, "%i", &mask) != 1)
 		goto err;
 	
-	if (mask < 7 || mask > 64)
+	if (mask < 7 || mask > 127)
 		goto err;
 	
 	if (sscanf(ptr2 + 1, "%i", &prefix_len) != 1)
 		goto err;
 	
-	if (prefix_len > 64  || prefix_len < mask)
+	if (prefix_len > 128  || prefix_len < mask)
 		goto err;
 	
 	if (type)

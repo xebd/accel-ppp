@@ -127,7 +127,7 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ad
 	
 	pinfo = (struct nd_opt_prefix_info *)(adv + 1);
 	list_for_each_entry(a, &h->ses->ipv6->addr_list, entry) {
-		if (a->prefix_len > 64)
+		if (a->prefix_len != 64)
 			continue;
 			
 		memset(pinfo, 0, sizeof(*pinfo));
