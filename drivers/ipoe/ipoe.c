@@ -1680,7 +1680,7 @@ static int ipoe_nl_cmd_del_exclude(struct sk_buff *skb, struct genl_info *info)
 	if (!info->attrs[IPOE_ATTR_ADDR])
 		return -EINVAL;
 	
-	addr = ntohl(nla_get_u32(info->attrs[IPOE_ATTR_ADDR]));
+	addr = nla_get_u32(info->attrs[IPOE_ATTR_ADDR]);
 	if (!addr) {
 		clean_excl_list();
 		return 0;
