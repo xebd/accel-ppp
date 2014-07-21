@@ -88,6 +88,7 @@ char *conf_pado_delay;
 int conf_tr101 = 1;
 int conf_padi_limit = 0;
 int conf_mppe = MPPE_UNSET;
+int conf_sid_uppercase = 0;
 static const char *conf_ip_pool;
 enum {CSID_MAC, CSID_IFNAME, CSID_IFNAME_MAC};
 static int conf_called_sid;
@@ -285,25 +286,48 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 		conn->ctrl.called_station_id = _strdup(serv->ifname);
 	else if (conf_called_sid == CSID_IFNAME_MAC) {
 		conn->ctrl.called_station_id = _malloc(IFNAMSIZ + 19);
-		sprintf(conn->ctrl.called_station_id, "%s:%02x:%02x:%02x:%02x:%02x:%02x", serv->ifname,
+		if (conf_sid_uppercase)
+		    sprintf(conn->ctrl.called_station_id, "%s:%02X:%02X:%02X:%02X:%02X:%02X", serv->ifname,
 			serv->hwaddr[0], serv->hwaddr[1], serv->hwaddr[2], serv->hwaddr[3], serv->hwaddr[4], serv->hwaddr[5]);
+		else
+		    sprintf(conn->ctrl.called_station_id, "%s:%02x:%02x:%02x:%02x:%02x:%02x", serv->ifname,
+			serv->hwaddr[0], serv->hwaddr[1], serv->hwaddr[2], serv->hwaddr[3], serv->hwaddr[4], serv->hwaddr[5]);
+
 	} else {
 		conn->ctrl.called_station_id = _malloc(IFNAMSIZ + 19);
 		if (conf_ifname_in_sid == 2 || conf_ifname_in_sid == 3)
-			sprintf(conn->ctrl.called_station_id, "%s:%02x:%02x:%02x:%02x:%02x:%02x", serv->ifname,
+			if (conf_sid_uppercase)
+			    sprintf(conn->ctrl.called_station_id, "%s:%02X:%02X:%02X:%02X:%02X:%02X", serv->ifname,
 				serv->hwaddr[0], serv->hwaddr[1], serv->hwaddr[2], serv->hwaddr[3], serv->hwaddr[4], serv->hwaddr[5]);
+			else
+			    sprintf(conn->ctrl.called_station_id, "%s:%02x:%02x:%02x:%02x:%02x:%02x", serv->ifname,
+				serv->hwaddr[0], serv->hwaddr[1], serv->hwaddr[2], serv->hwaddr[3], serv->hwaddr[4], serv->hwaddr[5]);
+
 		else
-			sprintf(conn->ctrl.called_station_id, "%02x:%02x:%02x:%02x:%02x:%02x",
+			if (conf_sid_uppercase)
+			    sprintf(conn->ctrl.called_station_id, "%02X:%02X:%02X:%02X:%02X:%02X",
 				serv->hwaddr[0], serv->hwaddr[1], serv->hwaddr[2], serv->hwaddr[3], serv->hwaddr[4], serv->hwaddr[5]);
+			else
+			    sprintf(conn->ctrl.called_station_id, "%02x:%02x:%02x:%02x:%02x:%02x",
+				serv->hwaddr[0], serv->hwaddr[1], serv->hwaddr[2], serv->hwaddr[3], serv->hwaddr[4], serv->hwaddr[5]);
+
 	}
 
 	conn->ctrl.calling_station_id = _malloc(IFNAMSIZ + 19);
 
 	if (conf_ifname_in_sid == 1 || conf_ifname_in_sid == 3)
-		sprintf(conn->ctrl.calling_station_id, "%s:%02x:%02x:%02x:%02x:%02x:%02x", serv->ifname,
+		if (conf_sid_uppercase)
+		    sprintf(conn->ctrl.calling_station_id, "%s:%02X:%02X:%02X:%02X:%02X:%02X", serv->ifname,
+			addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+		else
+		    sprintf(conn->ctrl.calling_station_id, "%s:%02x:%02x:%02x:%02x:%02x:%02x", serv->ifname,
 			addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
 	else
-		sprintf(conn->ctrl.calling_station_id, "%02x:%02x:%02x:%02x:%02x:%02x",
+		if (conf_sid_uppercase)
+		    sprintf(conn->ctrl.calling_station_id, "%02X:%02X:%02X:%02X:%02X:%02X",
+			addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
+		else
+		    sprintf(conn->ctrl.calling_station_id, "%02x:%02x:%02x:%02x:%02x:%02x",
 			addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
 	
 	ppp_init(&conn->ppp);
@@ -1502,6 +1526,10 @@ static void load_config(void)
 	opt = conf_get_opt("pppoe", "padi-limit");
 	if (opt)
 		conf_padi_limit = atoi(opt);
+
+	opt = conf_get_opt("pppoe", "sid-uppercase");
+	if (opt)
+		conf_sid_uppercase = atoi(opt);
 
 	conf_mppe = MPPE_UNSET;
 	opt = conf_get_opt("pppoe", "mppe");
