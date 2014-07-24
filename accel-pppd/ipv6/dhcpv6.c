@@ -40,9 +40,10 @@ static int conf_dns_count;
 static void *conf_dnssl;
 static int conf_dnssl_size;
 
-struct dhcpv6_pd
-{
+struct dhcpv6_pd {
 	struct ap_private pd;
+	struct ap_session *ses;
+	struct triton_md_handler_t hnd;
 	struct dhcpv6_opt_clientid *clientid;
 	uint32_t addr_iaid;
 	uint32_t dp_iaid;
@@ -50,19 +51,58 @@ struct dhcpv6_pd
 	int dp_active:1;
 };
 
-static struct triton_md_handler_t dhcpv6_hnd;
-static struct triton_context_t dhcpv6_ctx;
-
-static uint8_t *buf;
 static void *pd_key;
 
-static void ev_ppp_started(struct ap_session *ses)
+static int dhcpv6_read(struct triton_md_handler_t *h);
+
+static void ev_ses_started(struct ap_session *ses)
 {
 	struct ipv6_mreq mreq;
 	struct dhcpv6_pd *pd;
+	struct sockaddr_in6 addr;
+	int sock;
+	int f = 1;
 
 	if (!ses->ipv6)
 		return;
+	
+	sock = socket(AF_INET6, SOCK_DGRAM, 0);
+	if (!sock) {
+		log_ppp_error("dhcpv6: socket: %s\n", strerror(errno));
+		return;
+	}
+  
+	setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &f, sizeof(f));  
+
+	if (setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, ses->ifname, strlen(ses->ifname))) {
+		log_ppp_error("ipv6_nd: setsockopt(SO_BINDTODEVICE): %s\n", strerror(errno));
+		close(sock);
+		return;
+	}
+	
+	memset(&addr, 0, sizeof(addr));
+	addr.sin6_family = AF_INET6;
+	addr.sin6_port = htons(DHCPV6_SERV_PORT);
+	
+	if (bind(sock, (struct sockaddr *)&addr, sizeof(addr))) {
+		log_ppp_error("dhcpv6: bind: %s\n", strerror(errno));
+		close(sock);
+		return;
+	}
+
+	memset(&mreq, 0, sizeof(mreq));
+	mreq.ipv6mr_interface = ses->ifindex;
+	mreq.ipv6mr_multiaddr.s6_addr32[0] = htonl(0xff020000);
+	mreq.ipv6mr_multiaddr.s6_addr32[3] = htonl(0x010002);
+
+	if (setsockopt(sock, SOL_IPV6, IPV6_ADD_MEMBERSHIP, &mreq, sizeof(mreq))) {
+		log_ppp_error("dhcpv6: failed to join to All_DHCP_Relay_Agents_and_Servers\n");
+		close(sock);
+		return;
+	}
+	
+	fcntl(sock, F_SETFL, O_NONBLOCK);
+	fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
 
 	pd = _malloc(sizeof(*pd));
 	memset(pd, 0, sizeof(*pd));
@@ -70,15 +110,12 @@ static void ev_ppp_started(struct ap_session *ses)
 	pd->pd.key = &pd_key;
 	list_add_tail(&pd->pd.entry, &ses->pd_list);
 
-	memset(&mreq, 0, sizeof(mreq));
-	mreq.ipv6mr_interface = ses->ifindex;
-	mreq.ipv6mr_multiaddr.s6_addr32[0] = htonl(0xff020000);
-	mreq.ipv6mr_multiaddr.s6_addr32[3] = htonl(0x010002);
+	pd->ses = ses;
 
-	if (setsockopt(dhcpv6_hnd.fd, SOL_IPV6, IPV6_ADD_MEMBERSHIP, &mreq, sizeof(mreq))) {
-		log_ppp_error("dhcpv6: failed to join to All_DHCP_Relay_Agents_and_Servers\n");
-		return;
-	}
+	pd->hnd.fd = sock;
+	pd->hnd.read = dhcpv6_read;
+	triton_md_register_handler(ses->ctrl->ctx, &pd->hnd);
+	triton_md_enable_handler(&pd->hnd, MD_MODE_READ);
 }
 
 static struct dhcpv6_pd *find_pd(struct ap_session *ses)
@@ -93,7 +130,7 @@ static struct dhcpv6_pd *find_pd(struct ap_session *ses)
 	return NULL;
 }
 
-static void ev_ppp_finished(struct ap_session *ses)
+static void ev_ses_finished(struct ap_session *ses)
 {
 	struct dhcpv6_pd *pd = find_pd(ses);
 
@@ -107,22 +144,10 @@ static void ev_ppp_finished(struct ap_session *ses)
 	
 	if (pd->ipv6_dp)
 		ipdb_put_ipv6_prefix(ses, pd->ipv6_dp);
+	
+	triton_md_unregister_handler(&pd->hnd, 1);
 
 	_free(pd);
-}
-
-static void dhcpv6_send(struct dhcpv6_packet *reply)
-{
-	struct sockaddr_in6 addr;
-
-	memset(&addr, 0, sizeof(addr));
-	addr.sin6_family = AF_INET6;
-	addr.sin6_port = htons(DHCPV6_CLIENT_PORT);
-	addr.sin6_addr.s6_addr32[0] = htons(0xfe80);
-	*(uint64_t *)(addr.sin6_addr.s6_addr + 8) = reply->ses->ipv6->peer_intf_id;
-	addr.sin6_scope_id = reply->ses->ifindex;
-
-	sendto(dhcpv6_hnd.fd, reply->hdr, reply->endptr - (void *)reply->hdr, 0, (struct sockaddr *)&addr, sizeof(addr));
 }
 
 static void build_addr(struct ipv6db_addr_t *a, uint64_t intf_id, struct in6_addr *addr)
@@ -405,7 +430,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 		dhcpv6_packet_print(reply, log_ppp_info2);
 	}
 
-	dhcpv6_send(reply);
+	sendto(pd->hnd.fd, reply->hdr, reply->endptr - (void *)reply->hdr, 0, (struct sockaddr *)&req->addr, sizeof(req->addr));
 
 	dhcpv6_packet_free(reply);
 }
@@ -551,7 +576,7 @@ static void dhcpv6_send_reply2(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, 
 		dhcpv6_packet_print(reply, log_ppp_info2);
 	}
 
-	dhcpv6_send(reply);
+	sendto(pd->hnd.fd, reply->hdr, reply->endptr - (void *)reply->hdr, 0, (struct sockaddr *)&req->addr, sizeof(req->addr));
 
 	dhcpv6_packet_free(reply);
 }
@@ -559,11 +584,8 @@ static void dhcpv6_send_reply2(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, 
 
 static void dhcpv6_recv_solicit(struct dhcpv6_packet *req)
 {
-	struct dhcpv6_pd *pd = find_pd(req->ses);
+	struct dhcpv6_pd *pd = req->pd;
 
-	if (!pd)
-		return;
-	
 	if (!req->clientid) {
 		log_ppp_error("dhcpv6: no Client-ID option\n");
 		return;
@@ -591,11 +613,8 @@ static void dhcpv6_recv_solicit(struct dhcpv6_packet *req)
 
 static void dhcpv6_recv_request(struct dhcpv6_packet *req)
 {
-	struct dhcpv6_pd *pd = find_pd(req->ses);
+	struct dhcpv6_pd *pd = req->pd;
 
-	if (!pd)
-		return;
-	
 	if (!req->clientid) {
 		log_ppp_error("dhcpv6: no Client-ID option\n");
 		return;
@@ -619,11 +638,8 @@ static void dhcpv6_recv_request(struct dhcpv6_packet *req)
 
 static void dhcpv6_recv_renew(struct dhcpv6_packet *req)
 {
-	struct dhcpv6_pd *pd = find_pd(req->ses);
+	struct dhcpv6_pd *pd = req->pd;
 
-	if (!pd)
-		return;
-	
 	if (!req->clientid) {
 		log_ppp_error("dhcpv6: no Client-ID option\n");
 		return;
@@ -656,7 +672,7 @@ static void dhcpv6_recv_renew(struct dhcpv6_packet *req)
 
 static void dhcpv6_recv_information_request(struct dhcpv6_packet *req)
 {
-	struct dhcpv6_pd *pd = find_pd(req->ses);
+	struct dhcpv6_pd *pd = req->pd;
 	
 	if (req->rapid_commit) {
 		log_ppp_error("dhcpv6: unexpected Rapid-Commit option\n");
@@ -670,11 +686,8 @@ static void dhcpv6_recv_information_request(struct dhcpv6_packet *req)
 
 static void dhcpv6_recv_rebind(struct dhcpv6_packet *req)
 {
-	struct dhcpv6_pd *pd = find_pd(req->ses);
+	struct dhcpv6_pd *pd = req->pd;
 
-	if (!pd)
-		return;
-	
 	if (!req->clientid) {
 		log_ppp_error("dhcpv6: no Client-ID option\n");
 		return;
@@ -744,18 +757,21 @@ static void dhcpv6_recv_packet(struct dhcpv6_packet *pkt)
 
 static int dhcpv6_read(struct triton_md_handler_t *h)
 {
+	struct dhcpv6_pd *pd = container_of(h, typeof(*pd), hnd);
+	struct ap_session *ses = pd->ses;
 	int n;
 	struct sockaddr_in6 addr;
 	socklen_t len = sizeof(addr);
 	struct dhcpv6_packet *pkt;
-	struct ap_session *ses;
+	uint8_t *buf = _malloc(BUF_SIZE);
 
 	while (1) {
 		n = recvfrom(h->fd, buf, BUF_SIZE, 0, &addr, &len);
 		if (n == -1) {
 			if (errno == EAGAIN)
-				return 0;
+				break;
 			log_error("dhcpv6: read: %s\n", strerror(errno));
+			continue;
 		}
 
 		if (!IN6_IS_ADDR_LINKLOCAL(&addr.sin6_addr))
@@ -769,44 +785,17 @@ static int dhcpv6_read(struct triton_md_handler_t *h)
 			continue;
 		}
 
-		pthread_rwlock_rdlock(&ses_lock);
-		list_for_each_entry(ses, &ses_list, entry) {
-			if (ses->state != AP_STATE_ACTIVE)
-				continue;
+		pkt->ses = ses;
+		pkt->pd = pd;
+		pkt->addr = addr;
 
-			if (!ses->ipv6)
-				continue;
-
-			if (ses->ifindex != addr.sin6_scope_id)
-				continue;
-
-			if (ses->ipv6->peer_intf_id != *(uint64_t *)(addr.sin6_addr.s6_addr + 8))
-				continue;
-
-			pkt->ses = ses;
-
-			triton_context_call(ses->ctrl->ctx, (triton_event_func)dhcpv6_recv_packet, pkt);
-			break;
-		}
-		pthread_rwlock_unlock(&ses_lock);
+		dhcpv6_recv_packet(pkt);
 	}
+
+	_free(buf);
 
 	return 0;
 }
-
-static void dhcpv6_close(struct triton_context_t *ctx)
-{
-	triton_md_unregister_handler(&dhcpv6_hnd, 1);
-	triton_context_unregister(ctx);
-}
-
-static struct triton_md_handler_t dhcpv6_hnd = {
-	.read = dhcpv6_read,
-};
-
-static struct triton_context_t dhcpv6_ctx = {
-	.close = dhcpv6_close,
-};
 
 static void add_dnssl(const char *val)
 {
@@ -951,48 +940,14 @@ static void load_config(void)
 
 static void init(void)
 {
-	struct sockaddr_in6 addr;
-	int sock;
-	int f = 1;
-
 	if (!triton_module_loaded("ipv6_nd"))
 		log_warn("dhcpv6: ipv6_nd module is not loaded, you probably get misconfigured network environment\n");
 
 	load_config();
 
-	sock = socket(AF_INET6, SOCK_DGRAM, 0);
-	if (!sock) {
-		log_error("dhcpv6: socket: %s\n", strerror(errno));
-		return;
-	}
-	
-	fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
-  setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &f, sizeof(f));  
-
-	memset(&addr, 0, sizeof(addr));
-	addr.sin6_family = AF_INET6;
-	addr.sin6_port = htons(DHCPV6_SERV_PORT);
-	
-	if (bind(sock, (struct sockaddr *)&addr, sizeof(addr))) {
-		log_error("dhcpv6: bind: %s\n", strerror(errno));
-		close(sock);
-		return;
-	}
-
-	fcntl(sock, F_SETFL, O_NONBLOCK);
-
-	dhcpv6_hnd.fd = sock;
-
-	buf = malloc(BUF_SIZE);
-
-	triton_context_register(&dhcpv6_ctx, NULL);
-	triton_md_register_handler(&dhcpv6_ctx, &dhcpv6_hnd);
-	triton_md_enable_handler(&dhcpv6_hnd, MD_MODE_READ);
-	triton_context_wakeup(&dhcpv6_ctx);
-
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
-	triton_event_register_handler(EV_SES_STARTED, (triton_event_func)ev_ppp_started);
-	triton_event_register_handler(EV_SES_FINISHED, (triton_event_func)ev_ppp_finished);
+	triton_event_register_handler(EV_SES_STARTED, (triton_event_func)ev_ses_started);
+	triton_event_register_handler(EV_SES_FINISHED, (triton_event_func)ev_ses_finished);
 }
 
 DEFINE_INIT(10, init);

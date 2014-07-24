@@ -99,12 +99,13 @@ struct request_item {
 };
 
 static int conf_dhcpv4 = 1;
-static int conf_up = 0;
-static int conf_mode = 0;
+static int conf_up;
+static int conf_mode;
 static int conf_shared = 1;
 static int conf_ifcfg = 1;
-static int conf_nat = 0;
-static int conf_arp = 0;
+static int conf_nat;
+static int conf_arp;
+static int conf_ipv6;
 static uint32_t conf_src;
 static const char *conf_ip_pool;
 //static int conf_dhcpv6;
@@ -806,6 +807,14 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 	
 	if (ses->l4_redirect)
 		ipoe_change_l4_redirect(ses, 0);
+	
+	if (ses->serv->opt_mode == MODE_L2 && ses->serv->opt_ipv6 && sock6_fd != -1) {
+		ses->ses.ipv6 = ipdb_get_ipv6(&ses->ses);
+		if (!ses->ses.ipv6)
+			log_ppp_warn("ipoe: no free IPv6 address\n");
+		if (!ses->ses.ipv6->peer_intf_id)
+			ses->ses.ipv6->peer_intf_id = htobe64(1);
+	}
 
 	__sync_sub_and_fetch(&stat_starting, 1);
 	__sync_add_and_fetch(&stat_active, 1);
@@ -2035,6 +2044,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	int opt_ifcfg = conf_ifcfg;
 	int opt_nat = conf_nat;
 	int opt_username = conf_username;
+	int opt_ipv6 = conf_ipv6;
 #ifdef USE_LUA
 	char *opt_lua_username_func = NULL;
 #endif
@@ -2097,6 +2107,8 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 				opt_src = inet_addr(ptr1);
 			} else if (strcmp(str, "proxy-arp") == 0) {
 				opt_arp = atoi(ptr1);
+			} else if (strcmp(str, "ipv6") == 0) {
+				opt_ipv6 = atoi(ptr1);
 			} else if (strcmp(str, "username") == 0) {
 				if (strcmp(ptr1, "ifname") == 0)
 					opt_username = USERNAME_IFNAME;
@@ -2197,6 +2209,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 		serv->opt_src = opt_src;
 		serv->opt_arp = opt_arp;
 		serv->opt_username = opt_username;
+		serv->opt_ipv6 = opt_ipv6;
 #ifdef USE_LUA
 		if (serv->opt_lua_username_func && (!opt_lua_username_func || strcmp(serv->opt_lua_username_func, opt_lua_username_func))) {
 			_free(serv->opt_lua_username_func);
@@ -2254,6 +2267,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	serv->opt_src = opt_src;
 	serv->opt_arp = opt_arp;
 	serv->opt_username = opt_username;
+	serv->opt_ipv6 = opt_ipv6;
 #ifdef USE_LUA
 	serv->opt_lua_username_func = opt_lua_username_func;
 #endif
@@ -2930,6 +2944,12 @@ static void load_config(void)
 		conf_agent_remote_id = opt;
 	else
 		conf_agent_remote_id = "accel-pppd";
+	
+	opt = conf_get_opt("ipoe", "ipv6");
+	if (opt)
+		conf_ipv6 = atoi(opt);
+	else
+		conf_ipv6 = 0;
 	
 	opt = conf_get_opt("ipoe", "noauth");
 	if (opt)

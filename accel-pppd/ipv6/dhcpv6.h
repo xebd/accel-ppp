@@ -61,22 +61,19 @@
 #define DUID_EN  2
 #define DUID_LL  3
 
-struct dhcpv6_opt_hdr
-{
+struct dhcpv6_opt_hdr {
 	uint16_t code;
 	uint16_t len;
 	uint8_t data[0];
 } __packed;
 
-struct dhcpv6_msg_hdr
-{
+struct dhcpv6_msg_hdr {
 	uint32_t type:8;
 	uint32_t trans_id:24;
 	uint8_t data[0];
 } __packed;
 
-struct dhcpv6_duid
-{
+struct dhcpv6_duid {
 	uint16_t type;
 	union {
 		struct {
@@ -96,56 +93,48 @@ struct dhcpv6_duid
 	} u;
 } __packed;
 
-struct dhcpv6_opt_clientid
-{
+struct dhcpv6_opt_clientid {
 	struct dhcpv6_opt_hdr hdr;
 	struct dhcpv6_duid duid;
 } __packed;
 
-struct dhcpv6_opt_serverid
-{
+struct dhcpv6_opt_serverid {
 	struct dhcpv6_opt_hdr hdr;
 	struct dhcpv6_duid duid;
 } __packed;
 
-struct dhcpv6_opt_ia_na
-{
+struct dhcpv6_opt_ia_na {
 	struct dhcpv6_opt_hdr hdr;
 	uint32_t iaid;
 	uint32_t T1;
 	uint32_t T2;
 } __packed;
 
-struct dhcpv6_opt_ia_ta
-{
+struct dhcpv6_opt_ia_ta {
 	struct dhcpv6_opt_hdr hdr;
 	uint32_t iaid;
 } __packed;
 
 
-struct dhcpv6_opt_ia_addr
-{
+struct dhcpv6_opt_ia_addr {
 	struct dhcpv6_opt_hdr hdr;
 	struct in6_addr addr;
 	uint32_t pref_lifetime;
 	uint32_t valid_lifetime;
 } __packed;
 
-struct dhcpv6_opt_oro
-{
+struct dhcpv6_opt_oro {
 	struct dhcpv6_opt_hdr hdr;
 	uint16_t opt[0];
 } __packed;
 
-struct dhcpv6_opt_status
-{
+struct dhcpv6_opt_status {
 	struct dhcpv6_opt_hdr hdr;
 	uint16_t code;
 	char msg[0];
 } __packed;
 
-struct dhcpv6_opt_ia_prefix
-{
+struct dhcpv6_opt_ia_prefix {
 	struct dhcpv6_opt_hdr hdr;
 	uint32_t pref_lifetime;
 	uint32_t valid_lifetime;
@@ -154,8 +143,7 @@ struct dhcpv6_opt_ia_prefix
 } __packed;
 
 
-struct dhcpv6_option
-{
+struct dhcpv6_option {
 	struct list_head entry;
 
 	struct dhcpv6_opt_hdr *hdr;
@@ -164,10 +152,12 @@ struct dhcpv6_option
 	struct list_head opt_list;
 };
 
-struct ppp_t;
-struct dhcpv6_packet
-{
+struct dhcpv6_pd;
+
+struct dhcpv6_packet {
 	struct ap_session *ses;
+	struct dhcpv6_pd *pd;
+	struct sockaddr_in6 addr;
 	
 	struct dhcpv6_msg_hdr *hdr;
 	struct dhcpv6_opt_clientid *clientid;

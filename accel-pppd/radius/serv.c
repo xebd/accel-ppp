@@ -138,6 +138,7 @@ int rad_server_req_enter(struct rad_req_t *req)
 	}
 
 	req->serv->req_cnt++;
+	log_ppp_debug("radius(%i): req_enter %i\n", req->serv->id, req->serv->req_cnt);
 	pthread_mutex_unlock(&req->serv->lock);
 
 	return 0;
@@ -152,6 +153,7 @@ void rad_server_req_exit(struct rad_req_t *req)
 
 	pthread_mutex_lock(&req->serv->lock);
 	req->serv->req_cnt--;
+	log_ppp_debug("radius(%i): req_exit %i\n", req->serv->id, req->serv->req_cnt);
 	assert(req->serv->req_cnt >= 0);
 	if (req->serv->req_cnt < req->serv->req_limit && !list_empty(&req->serv->req_queue)) {
 		r = list_entry(req->serv->req_queue.next, typeof(*r), entry);

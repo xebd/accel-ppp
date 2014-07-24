@@ -256,7 +256,6 @@ static int ipv6_nd_start(struct ap_session *ses)
 {
 	int sock;
 	struct icmp6_filter filter;
-	struct sockaddr_in6 addr;
 	struct ipv6_mreq mreq;
 	int val;
 	struct ipv6_nd_handler_t *h;
@@ -268,17 +267,9 @@ static int ipv6_nd_start(struct ap_session *ses)
 		return -1;
 	}
 
-	fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
-
-	memset(&addr, 0, sizeof(addr));
-	addr.sin6_family = AF_INET6;
-	addr.sin6_addr.s6_addr32[0] = htons(0xfe80);
-	*(uint64_t *)(addr.sin6_addr.s6_addr + 8) = ses->ipv6->intf_id;
-	addr.sin6_scope_id = ses->ifindex;
-
-	if (bind(sock, (struct sockaddr *)&addr, sizeof(addr))) {
-		close(sock);
-		return 1;
+	if (setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, ses->ifname, strlen(ses->ifname))) {
+		log_ppp_error("ipv6_nd: setsockopt(SO_BINDTODEVICE): %s\n", strerror(errno));
+		goto out_err;
 	}
 
 	val = 2;
@@ -322,6 +313,7 @@ static int ipv6_nd_start(struct ap_session *ses)
 		goto out_err;
 	}
 
+	fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
 	fcntl(sock, F_SETFL, O_NONBLOCK);
 
 	h = _malloc(sizeof(*h));
@@ -358,19 +350,19 @@ static struct ipv6_nd_handler_t *find_pd(struct ap_session *ses)
 	return NULL;
 }
 
-static void ipv6_nd_start_later(struct ap_session *ses)
-{
-	while (ipv6_nd_start(ses) == 1)
-		sched_yield();
-}
-
 static void ev_ses_started(struct ap_session *ses)
 {
+	struct ipv6db_addr_t *a;
+
 	if (!ses->ipv6)
 		return;
 
-	if (ipv6_nd_start(ses) == 1)
-		triton_context_call(triton_context_self(), (triton_event_func)ipv6_nd_start_later, ses);
+	list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
+		if (a->prefix_len == 64) {
+			ipv6_nd_start(ses);
+			break;
+		}
+	}
 }
 
 static void ev_ses_finishing(struct ap_session *ses)

@@ -45,6 +45,7 @@ struct ipoe_serv {
 	int opt_up:1;
 	int opt_ifcfg:1;
 	int opt_nat:1;
+	int opt_ipv6:1;
 	int need_close:1;
 	int active:1;
 };

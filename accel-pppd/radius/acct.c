@@ -382,11 +382,12 @@ void rad_acct_stop(struct radius_pd_t *rpd)
 	if (!rpd->acct_req || !rpd->acct_req->serv)
 		return;
 
-	if (rpd->acct_interim_timer.tpd) {
+	if (rpd->acct_interim_timer.tpd)
 		triton_timer_del(&rpd->acct_interim_timer);
-	}
 
-	if (rpd->acct_req) {
+	if (rpd->acct_req->timeout.tpd)
+		rad_server_req_exit(rpd->acct_req);
+
 		if (rpd->acct_req->hnd.tpd)
 			triton_md_unregister_handler(&rpd->acct_req->hnd, 0);
 	
@@ -496,6 +497,5 @@ out:
 
 		rad_req_free(rpd->acct_req);
 		rpd->acct_req = NULL;
-	}
 }
 
