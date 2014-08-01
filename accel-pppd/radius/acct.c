@@ -348,23 +348,18 @@ out:
 #ifdef USE_BACKUP
 	}
 #endif
+	close(rpd->acct_req->hnd.fd);
+	rpd->acct_req->hnd.fd = -1;
 
 	rpd->acct_req->hnd.read = rad_acct_read;
 
-	triton_md_register_handler(rpd->ses->ctrl->ctx, &rpd->acct_req->hnd);
-	if (triton_md_enable_handler(&rpd->acct_req->hnd, MD_MODE_READ))
-		goto out_err;
-	
 	rpd->acct_req->timeout.expire = rad_acct_timeout;
 	rpd->acct_req->timeout.period = conf_timeout * 1000;
-	
+
 	rpd->acct_interim_timer.expire = rad_acct_interim_update;
 	rpd->acct_interim_timer.period = rpd->acct_interim_interval ? rpd->acct_interim_interval * 1000 : STAT_UPDATE_INTERVAL;
-	if (rpd->acct_interim_interval && triton_timer_add(rpd->ses->ctrl->ctx, &rpd->acct_interim_timer, 0)) {
-		triton_md_unregister_handler(&rpd->acct_req->hnd, 0);
-		triton_timer_del(&rpd->acct_req->timeout);
-		goto out_err;
-	}
+	if (rpd->acct_interim_interval)
+		triton_timer_add(rpd->ses->ctrl->ctx, &rpd->acct_interim_timer, 0);
 	return 0;
 
 out_err:
