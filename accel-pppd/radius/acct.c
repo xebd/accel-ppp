@@ -36,12 +36,12 @@ static int req_set_RA(struct rad_req_t *req, const char *secret)
 	return 0;
 }
 
-static void req_set_stat(struct rad_req_t *req, struct ap_session *ses)
+static int req_set_stat(struct rad_req_t *req, struct ap_session *ses)
 {
 	struct rtnl_link_stats stats;
 	struct radius_pd_t *rpd = req->rpd;
-
 	time_t stop_time;
+	int ret = 0;
 	
 	if (ses->stop_time)
 		stop_time = ses->stop_time;
@@ -55,9 +55,12 @@ static void req_set_stat(struct rad_req_t *req, struct ap_session *ses)
 		rad_packet_change_int(req->pack, NULL, "Acct-Output-Packets", stats.tx_packets);
 		rad_packet_change_int(req->pack, NULL, "Acct-Input-Gigawords", rpd->ses->acct_input_gigawords);
 		rad_packet_change_int(req->pack, NULL, "Acct-Output-Gigawords", rpd->ses->acct_output_gigawords);
-	}
+	} else
+		ret = -1;
 
 	rad_packet_change_int(req->pack, NULL, "Acct-Session-Time", stop_time - ses->start_time);
+
+	return ret;
 }
 
 static int rad_acct_read(struct triton_md_handler_t *h)
@@ -212,7 +215,11 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 			rpd->session_timeout.expire_tv.tv_sec - (time(NULL) - rpd->ses->start_time) < INTERIM_SAFE_TIME)
 			return;
 
-	req_set_stat(rpd->acct_req, rpd->ses);
+	if (req_set_stat(rpd->acct_req, rpd->ses)) {
+		ap_session_terminate(rpd->ses, TERM_LOST_CARRIER, 0);
+		return;
+	}
+
 	if (!rpd->acct_interim_interval)
 		return;
 
