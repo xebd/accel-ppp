@@ -124,13 +124,8 @@ static int __rad_req_send(struct rad_req_t *req)
 {
 	while (1) {
 		if (rad_server_req_enter(req)) {
-			if (rad_server_realloc(req)) {
-				if (conf_acct_timeout) {
-					log_ppp_warn("radius:acct: no servers available, terminating session...\n");
-					ap_session_terminate(req->rpd->ses, TERM_NAS_ERROR, 0);
-				}
+			if (rad_server_realloc(req))
 				return -1;
-			}
 			continue;
 		}
 
@@ -177,11 +172,13 @@ static void rad_acct_timeout(struct triton_timer_t *t)
 		rad_server_fail(req->serv);
 		if (rad_server_realloc(req)) {
 			log_ppp_warn("radius:acct: no servers available, terminating session...\n");
+			triton_timer_del(t);
 			ap_session_terminate(req->rpd->ses, TERM_NAS_ERROR, 0);
 			return;
 		}
 		time(&req->rpd->acct_timestamp);
 	}
+
 	if (dt > conf_acct_timeout / 2) {
 		req->timeout.period += 1000;
 		triton_timer_mod(&req->timeout, 0);
@@ -198,8 +195,16 @@ static void rad_acct_timeout(struct triton_timer_t *t)
 		req_set_RA(req, req->serv->secret);
 	}
 
-	if (__rad_req_send(req))
+	if (__rad_req_send(req)) {
+		triton_timer_del(t);
+
+		if (conf_acct_timeout) {
+			log_ppp_warn("radius:acct: no servers available, terminating session...\n");
+			ap_session_terminate(req->rpd->ses, TERM_NAS_ERROR, 0);
+		}
+
 		return;
+	}
 
 	__sync_add_and_fetch(&req->serv->stat_interim_sent, 1);
 }
