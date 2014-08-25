@@ -802,6 +802,12 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 	if (ses->ifindex == -1) {
 		if (ses->serv->opt_ifcfg || (ses->serv->opt_mode == MODE_L2))
 			ipoe_ifcfg_add(ses);
+	
+		ipoe_nl_add_exclude(ses->yiaddr, 32);
+
+		iproute_add(ses->serv->ifindex, ses->siaddr, ses->yiaddr, conf_proto);
+		
+		ses->ctrl.dont_ifcfg = 1;
 	} else if (ses->ctrl.dont_ifcfg)
 		ipaddr_add(ses->ifindex, ses->siaddr, ses->mask);
 	
@@ -976,7 +982,8 @@ static void ipoe_session_finished(struct ap_session *s)
 			pthread_mutex_unlock(&uc_lock);
 		} else
 			ipoe_nl_delete(ses->ifindex);
-	}
+	} else
+		ipoe_nl_del_exclude(ses->yiaddr);
 
 	if (ses->dhcp_addr)
 		dhcpv4_put_ip(ses->serv->dhcpv4, ses->yiaddr);
