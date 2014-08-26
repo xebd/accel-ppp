@@ -117,6 +117,7 @@ static int conf_noauth;
 static int conf_attr_dhcp_client_ip;
 static int conf_attr_dhcp_router_ip;
 static int conf_attr_dhcp_mask;
+static int conf_attr_dhcp_lease_time;
 static int conf_attr_l4_redirect;
 #endif
 static int conf_l4_redirect_table;
@@ -1709,7 +1710,8 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 					ses->l4_redirect = 1;
 			} else if (attr->val.integer != 0)
 				ses->l4_redirect = 1;
-		}
+		} else if (attr->attr->id == conf_attr_dhcp_lease_time)
+			ses->lease_time = attr->val.integer;
 	}
 }
 
@@ -1733,7 +1735,8 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 		} else if (strcmp(attr->attr->name, "Framed-IP-Address") == 0) {
 			if (ses->ses.ipv4 && ses->ses.ipv4->peer_addr != attr->val.ipaddr)
 				ipoe_change_addr(ses, attr->val.ipaddr);
-		}
+		} else if (attr->attr->id == conf_attr_dhcp_lease_time)
+			ses->lease_time = attr->val.integer;
 	}
 
 	//if (l4_redirect && !ses->l4_redirect) || (!l4_redirect && ses->l4_redirect))
@@ -2536,6 +2539,7 @@ static void load_radius_attrs(void)
 	parse_conf_rad_attr("attr-dhcp-client-ip", &conf_attr_dhcp_client_ip);
 	parse_conf_rad_attr("attr-dhcp-router-ip", &conf_attr_dhcp_router_ip);
 	parse_conf_rad_attr("attr-dhcp-mask", &conf_attr_dhcp_mask);
+	parse_conf_rad_attr("attr-dhcp-lease-time", &conf_attr_dhcp_lease_time);
 	parse_conf_rad_attr("attr-l4-redirect", &conf_attr_l4_redirect);
 }
 #endif
