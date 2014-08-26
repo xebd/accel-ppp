@@ -13,6 +13,7 @@ static void magic_free(struct ppp_lcp_t *lcp, struct lcp_option_t *opt);
 static int magic_send_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr);
 static int magic_send_conf_nak(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr);
 static int magic_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr);
+static int magic_recv_conf_rej(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr);
 static void magic_print(void (*print)(const char *fmt,...),struct lcp_option_t*, uint8_t *ptr);
 
 struct magic_option_t
@@ -27,6 +28,7 @@ static struct lcp_option_handler_t magic_opt_hnd=
 	.send_conf_req = magic_send_conf_req,
 	.send_conf_nak = magic_send_conf_nak,
 	.recv_conf_req = magic_recv_conf_req,
+	.recv_conf_rej = magic_recv_conf_rej,
 	.free = magic_free,
 	.print = magic_print,
 };
@@ -35,7 +37,7 @@ static struct lcp_option_t *magic_init(struct ppp_lcp_t *lcp)
 {
 	struct magic_option_t *magic_opt = _malloc(sizeof(*magic_opt));
 	memset(magic_opt, 0, sizeof(*magic_opt));
-	magic_opt->magic = random();
+	do { magic_opt->magic = random(); } while (magic_opt->magic == 0);
 	magic_opt->opt.id = CI_MAGIC;
 	magic_opt->opt.len = 6;
 
@@ -53,21 +55,25 @@ static void magic_free(struct ppp_lcp_t *lcp, struct lcp_option_t *opt)
 
 static int magic_send_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)
 {
-	struct magic_option_t *magic_opt=container_of(opt,typeof(*magic_opt),opt);
+	struct magic_option_t *magic_opt = container_of(opt, typeof(*magic_opt), opt);
 	struct lcp_opt32_t *opt32 = (struct lcp_opt32_t *)ptr;
-	opt32->hdr.id=CI_MAGIC;
-	opt32->hdr.len=6;
-	opt32->val=htonl(magic_opt->magic);
+	
+	if (!magic_opt->magic)
+		return 0;
+
+	opt32->hdr.id = CI_MAGIC;
+	opt32->hdr.len = 6;
+	opt32->val = htonl(magic_opt->magic);
 	return 6;
 }
 
 static int magic_send_conf_nak(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)
 {
-	struct magic_option_t *magic_opt=container_of(opt,typeof(*magic_opt),opt);
+	struct magic_option_t *magic_opt = container_of(opt, typeof(*magic_opt), opt);
 	struct lcp_opt32_t *opt32 = (struct lcp_opt32_t *)ptr;
-	opt32->hdr.id=CI_MAGIC;
-	opt32->hdr.len=6;
-	opt32->val=random();
+	opt32->hdr.id = CI_MAGIC;
+	opt32->hdr.len = 6;
+	do { opt32->val = random(); } while (opt32->val == magic_opt->magic);
 	return 6;
 }
 
@@ -86,6 +92,16 @@ static int magic_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, 
 		return LCP_OPT_NAK;
 
 	return LCP_OPT_ACK;
+}
+
+static int magic_recv_conf_rej(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)
+{
+	struct magic_option_t *magic_opt = container_of(opt, typeof(*magic_opt), opt);
+	
+	magic_opt->magic = 0;
+	lcp->magic = 0;
+
+	return 0;
 }
 
 static void magic_print(void (*print)(const char *fmt,...),struct lcp_option_t *opt, uint8_t *ptr)
