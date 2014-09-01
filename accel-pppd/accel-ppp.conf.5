@@ -95,6 +95,24 @@ MTU which will be negotiated if client's MRU will be not acceptable.
 .BI "mru=" n
 Prefered MRU.
 .TP
+.BI "accomp=" allow|deny|n
+Address/Control compression negotiation.
+.br
+.B allow
+- prefere in send and don't deny in receive directions
+.br
+.B deny
+- disable in both directions, default behavior
+.TP
+.BI "pcomp=" allow|deny|n
+Protocol field compression negotiation.
+.br
+.B allow
+- prefere in send and don't deny in receive directions
+.br
+.B deny
+- disable in both directions, default behavior
+.TP
 .BI "ccp=" n
 Disable CCP negotiation if this parameter is zero.
 .TP
