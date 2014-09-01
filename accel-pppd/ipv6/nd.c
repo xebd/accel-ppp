@@ -192,10 +192,12 @@ static void send_ra_timer(struct triton_timer_t *t)
 	addr.sin6_addr.s6_addr32[3] = htonl(0x1);
 	addr.sin6_scope_id = h->ses->ifindex; 
 
-	if (h->ra_sent++ == conf_init_ra) {
+	if (h->ra_sent == conf_init_ra) {
 		h->timer.period = conf_MaxRtrAdvInterval * 1000;
+		h->timer.period -= (conf_MaxRtrAdvInterval - conf_MinRtrAdvInterval) * random() * 1000 / RAND_MAX;
 		triton_timer_mod(t, 0);
-	}
+	} else
+		h->ra_sent++;
 
 	ipv6_nd_send_ra(h, &addr);
 }
@@ -328,6 +330,7 @@ static int ipv6_nd_start(struct ap_session *ses)
 	triton_md_enable_handler(&h->hnd, MD_MODE_READ);
 
 	triton_timer_add(ses->ctrl->ctx, &h->timer, 0);
+	send_ra_timer(&h->timer);
 
 	return 0;
 
@@ -482,6 +485,13 @@ static void load_config(void)
 	opt = conf_get_opt("ipv6-nd", "MinRtrAdvInterval");
 	if (opt)
 		conf_MinRtrAdvInterval = atoi(opt);
+
+	opt = conf_get_opt("ipv6-nd", "MaxInitialRtrAdvCount");
+	if (opt)
+		conf_init_ra = atoi(opt);
+	opt = conf_get_opt("ipv6-nd", "MaxInitialRtrAdvInterval");
+	if (opt)
+		conf_init_ra_interval = atoi(opt);
 
 	opt = conf_get_opt("ipv6-nd", "AdvManagedFlag");
 	if (opt)
