@@ -609,7 +609,7 @@ static void lcp_recv_echo_repl(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 		if (conf_ppp_verbose)
 			log_ppp_debug("recv [LCP EchoRep id=%x <magic %08x>]\n", lcp->fsm.recv_id, magic);
 
-		if (magic == lcp->magic) {
+		if (lcp->magic && magic == lcp->magic) {
 			log_ppp_error("lcp: echo: loop-back detected\n");
 			ap_session_terminate(&lcp->ppp->ses, TERM_NAS_ERROR, 0);
 		}
