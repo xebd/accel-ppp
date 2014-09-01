@@ -116,9 +116,12 @@ static int post_msg(struct pptp_conn_t *conn, void *buf, int size)
 		return -1;
 	}
 
+again:
 	n=write(conn->hnd.fd, buf, size);
 	if (n < 0) {
-		if (errno == EINTR || errno == EAGAIN)
+		if (errno == EINTR)
+			goto again;
+		else if (errno == EAGAIN)
 			n = 0;
 		else {
 			if (errno != EPIPE) {
