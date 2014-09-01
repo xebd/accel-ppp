@@ -192,8 +192,8 @@ static int send_pptp_start_ctrl_conn_rply(struct pptp_conn_t *conn, int res_code
 		.version = htons(PPTP_VERSION),
 		.result_code = res_code,
 		.error_code = err_code,
-		.framing_cap = htonl(3),
-		.bearer_cap = htonl(3),
+		.framing_cap = htonl(PPTP_FRAME_ANY),
+		.bearer_cap = htonl(PPTP_BEARER_ANY),
 		.max_channels = htons(1),
 		.firmware_rev = htons(PPTP_FIRMWARE_VERSION),
 	};
