@@ -127,14 +127,12 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ad
 	
 	pinfo = (struct nd_opt_prefix_info *)(adv + 1);
 	list_for_each_entry(a, &h->ses->ipv6->addr_list, entry) {
-		if (a->prefix_len != 64)
-			continue;
-			
 		memset(pinfo, 0, sizeof(*pinfo));
 		pinfo->nd_opt_pi_type = ND_OPT_PREFIX_INFORMATION;
 		pinfo->nd_opt_pi_len = 4;
 		pinfo->nd_opt_pi_prefix_len = a->prefix_len;
-		pinfo->nd_opt_pi_flags_reserved = ND_OPT_PI_FLAG_ONLINK | ((a->flag_auto || conf_AdvPrefixAutonomousFlag) ? ND_OPT_PI_FLAG_AUTO : 0);
+		pinfo->nd_opt_pi_flags_reserved = ND_OPT_PI_FLAG_ONLINK |
+			(a->flag_auto || (conf_AdvPrefixAutonomousFlag && a->prefix_len == 64)) ? ND_OPT_PI_FLAG_AUTO : 0;
 		pinfo->nd_opt_pi_valid_time = htonl(conf_AdvPrefixValidLifetime);
 		pinfo->nd_opt_pi_preferred_time = htonl(conf_AdvPrefixPreferredLifetime);
 		memcpy(&pinfo->nd_opt_pi_prefix, &a->addr, 8);
