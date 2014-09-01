@@ -1601,7 +1601,7 @@ static void pppoe_init(void)
 	struct conf_option_t *opt;
 	int fd;
 
-	fd = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OE);
+	fd = socket(AF_PPPOX, SOCK_STREAM, PX_PROTO_OE);
 	if (fd >= 0)
 		close(fd);
 	else if (system("modprobe -q pppoe"))

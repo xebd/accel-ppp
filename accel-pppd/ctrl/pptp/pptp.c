@@ -771,7 +771,7 @@ static void pptp_init(void)
 	char *opt;
 	int fd;
 
-	fd = socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_PPTP);
+	fd = socket(AF_PPPOX, SOCK_STREAM, PX_PROTO_PPTP);
 	if (fd >= 0)
 		close(fd);
 	else if (system("modprobe -q pptp"))
