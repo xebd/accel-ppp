@@ -33,9 +33,6 @@
 #include "ipset.h"
 
 #include "connlimit.h"
-#ifdef RADIUS
-#include "radius.h"
-#endif
 
 #include "ipoe.h"
 
@@ -119,6 +116,7 @@ static int conf_attr_dhcp_router_ip;
 static int conf_attr_dhcp_mask;
 static int conf_attr_dhcp_lease_time;
 static int conf_attr_l4_redirect;
+static const char *conf_attr_dhcp_opt82;
 #endif
 static int conf_l4_redirect_table;
 static int conf_l4_redirect_on_reject;
@@ -155,6 +153,7 @@ static mempool_t disc_item_pool;
 static mempool_t req_item_pool;
 
 static int connlimit_loaded;
+static int radius_loaded;
 
 static LIST_HEAD(serv_list);
 static pthread_mutex_t serv_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -179,6 +178,7 @@ static void ipoe_session_keepalive(struct dhcpv4_packet *pack);
 static void add_interface(const char *ifname, int ifindex, const char *opt, int parent_ifindex, int vid);
 static int get_offer_delay();
 static void __ipoe_session_start(struct ipoe_session *ses);
+static int ipoe_rad_send_request(struct rad_plugin_t *rad, struct rad_packet_t *pack);
 
 static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct dhcpv4_packet *pack, struct ipoe_session **opt82_ses)
 {
@@ -527,6 +527,14 @@ static void ipoe_session_start(struct ipoe_session *ses)
 	if (!conf_noauth) {
 		if (ses->serv->opt_shared && ipoe_create_interface(ses))
 			return;
+
+#ifdef RADIUS
+		if (conf_attr_dhcp_opt82 && ses->relay_agent && radius_loaded) {
+			ses->radius.send_access_request = ipoe_rad_send_request;
+			ses->radius.send_accounting_request = ipoe_rad_send_request;
+			rad_register_plugin(&ses->ses, &ses->radius);
+		}
+#endif
 
 		r = pwdb_check(&ses->ses, username, PPP_PAP, conf_password ? conf_password : username);
 		if (r == PWDB_NO_IMPL) {
@@ -1743,6 +1751,17 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 	if (l4_redirect != ses->l4_redirect && ev->ses->state == AP_STATE_ACTIVE)
 		ipoe_change_l4_redirect(ses, l4_redirect);
 }
+
+static int ipoe_rad_send_request(struct rad_plugin_t *rad, struct rad_packet_t *pack)
+{
+	struct ipoe_session *ses = container_of(rad, typeof(*ses), radius);
+
+	if (!ses->relay_agent)
+		return 0;
+	
+	return rad_packet_add_octets(pack, NULL, conf_attr_dhcp_opt82, ses->relay_agent->data, ses->relay_agent->len); 
+}
+
 #endif
 
 static void ipoe_serv_release(struct ipoe_serv *serv)
@@ -2541,6 +2560,7 @@ static void load_radius_attrs(void)
 	parse_conf_rad_attr("attr-dhcp-mask", &conf_attr_dhcp_mask);
 	parse_conf_rad_attr("attr-dhcp-lease-time", &conf_attr_dhcp_lease_time);
 	parse_conf_rad_attr("attr-l4-redirect", &conf_attr_l4_redirect);
+	conf_attr_dhcp_opt82 = conf_get_opt("ipoe", "attr-dhcp-opt82");
 }
 #endif
 
@@ -3061,6 +3081,7 @@ static void ipoe_init(void)
 #endif
 	
 	connlimit_loaded = triton_module_loaded("connlimit");
+	radius_loaded = triton_module_loaded("radius");
 }
 
 DEFINE_INIT(52, ipoe_init);
