@@ -46,7 +46,7 @@ struct pppoe_conn_t {
 	struct pppoe_tag *host_uniq;
 	struct pppoe_tag *service_name;
 	struct pppoe_tag *tr101;
-	uint8_t cookie[COOKIE_LENGTH];
+	uint8_t cookie[COOKIE_LENGTH - 4];
 	
 	struct ap_ctrl ctrl;
 	struct ppp_t ppp;
@@ -92,6 +92,7 @@ int conf_sid_uppercase = 0;
 static const char *conf_ip_pool;
 enum {CSID_MAC, CSID_IFNAME, CSID_IFNAME_MAC};
 static int conf_called_sid;
+static int conf_cookie_timeout;
 
 static mempool_t conn_pool;
 static mempool_t pado_pool;
@@ -111,6 +112,7 @@ unsigned long stat_filtered;
 
 pthread_rwlock_t serv_lock = PTHREAD_RWLOCK_INITIALIZER;
 LIST_HEAD(serv_list);
+static int connlimit_loaded;
 
 static uint8_t bc_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
@@ -268,7 +270,7 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 	conn->service_name = _malloc(sizeof(*service_name) + ntohs(service_name->tag_len));
 	memcpy(conn->service_name, service_name, sizeof(*service_name) + ntohs(service_name->tag_len));
 
-	memcpy(conn->cookie, cookie, COOKIE_LENGTH);
+	memcpy(conn->cookie, cookie, COOKIE_LENGTH - 4);
 
 	conn->ctx.before_switch = log_switch;
 	conn->ctx.close = pppoe_conn_close;
@@ -404,9 +406,10 @@ static struct pppoe_conn_t *find_channel(struct pppoe_serv_t *serv, const uint8_
 {
 	struct pppoe_conn_t *conn;
 
-	list_for_each_entry(conn, &serv->conn_list, entry)
-		if (!memcmp(conn->cookie, cookie, COOKIE_LENGTH))
+	list_for_each_entry(conn, &serv->conn_list, entry) {
+		if (!memcmp(conn->cookie, cookie, COOKIE_LENGTH - 4))
 			return conn;
+	}
 
 	return NULL;
 }
@@ -515,7 +518,7 @@ static void print_packet(uint8_t *pack)
 	log_info2("]\n");
 }
 
-static void generate_cookie(struct pppoe_serv_t *serv, const uint8_t *src, uint8_t *cookie)
+static void generate_cookie(struct pppoe_serv_t *serv, const uint8_t *src, uint8_t *cookie, const struct pppoe_tag *host_uniq, const struct pppoe_tag *relay_sid)
 {
 	MD5_CTX ctx;
 	DES_cblock key;
@@ -525,20 +528,38 @@ static void generate_cookie(struct pppoe_serv_t *serv, const uint8_t *src, uint8
 		DES_cblock b[3];
 		uint8_t raw[24];
 	} u1, u2;
+	struct timespec ts;
 
-	DES_random_key(&key);
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+
+	memcpy(key, serv->hwaddr, 6);
+	key[6] = src[4];
+	key[7] = src[5];
 	DES_set_key(&key, &ks);
 
 	MD5_Init(&ctx);
 	MD5_Update(&ctx, serv->secret, SECRET_LENGTH);
 	MD5_Update(&ctx, serv->hwaddr, ETH_ALEN);
 	MD5_Update(&ctx, src, ETH_ALEN);
-	MD5_Update(&ctx, &key, 8);
+	if (relay_sid)
+		MD5_Update(&ctx, relay_sid->tag_data, ntohs(relay_sid->tag_len));
 	MD5_Final(u1.raw, &ctx);
 
-	for (i = 0; i < 2; i++)
+	if (host_uniq) {
+		uint8_t buf[16];
+		MD5_Init(&ctx);
+		MD5_Update(&ctx, serv->secret, SECRET_LENGTH);
+		MD5_Update(&ctx, host_uniq->tag_data, ntohs(host_uniq->tag_len));
+		MD5_Final(buf, &ctx);
+		for (i = 0; i < 4; i++)
+			u1.raw[16 + i] = buf[i] ^ buf[i + 4] ^ buf[i + 8] ^ buf[i + 12];
+	} else
+		memset(u1.raw + 16, 0, 4);
+	
+	*(uint32_t *)(u1.raw + 20) = ts.tv_sec + conf_cookie_timeout;
+
+	for (i = 0; i < 3; i++)
 		DES_ecb_encrypt(&u1.b[i], &u2.b[i], &ks, DES_ENCRYPT);
-	memcpy(u2.b[2], &key, 8);
 
 	for (i = 0; i < 3; i++)
 		DES_ecb_encrypt(&u2.b[i], &u1.b[i], &serv->des_ks, DES_ENCRYPT);
@@ -546,32 +567,42 @@ static void generate_cookie(struct pppoe_serv_t *serv, const uint8_t *src, uint8
 	memcpy(cookie, u1.raw, 24);
 }
 
-static int check_cookie(struct pppoe_serv_t *serv, const uint8_t *src, const uint8_t *cookie)
+static int check_cookie(struct pppoe_serv_t *serv, const uint8_t *src, const uint8_t *cookie, const struct pppoe_tag *relay_sid)
 {
 	MD5_CTX ctx;
+	DES_cblock key;
 	DES_key_schedule ks;	
 	int i;
 	union {
 		DES_cblock b[3];
 		uint8_t raw[24];
 	} u1, u2;
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	
+	memcpy(key, serv->hwaddr, 6);
+	key[6] = src[4];
+	key[7] = src[5];
+	DES_set_key(&key, &ks);
 
 	memcpy(u1.raw, cookie, 24);
 
 	for (i = 0; i < 3; i++)
 		DES_ecb_encrypt(&u1.b[i], &u2.b[i], &serv->des_ks, DES_DECRYPT);
 	
-	if (DES_set_key_checked(&u2.b[2], &ks))
-		return -1;
-	
-	for (i = 0; i < 2; i++)
+	for (i = 0; i < 3; i++)
 		DES_ecb_encrypt(&u2.b[i], &u1.b[i], &ks, DES_DECRYPT);
+	
+	if (*(uint32_t *)(u1.raw + 20) < ts.tv_sec)
+		return 1;
 	
 	MD5_Init(&ctx);
 	MD5_Update(&ctx, serv->secret, SECRET_LENGTH);
 	MD5_Update(&ctx, serv->hwaddr, ETH_ALEN);
 	MD5_Update(&ctx, src, ETH_ALEN);
-	MD5_Update(&ctx, u2.b[2], 8);
+	if (relay_sid)
+		MD5_Update(&ctx, relay_sid->tag_data, ntohs(relay_sid->tag_len));
 	MD5_Final(u2.raw, &ctx);
 
 	return memcmp(u1.raw, u2.raw, 16);
@@ -643,7 +674,8 @@ static void pppoe_send_PADO(struct pppoe_serv_t *serv, const uint8_t *addr, cons
 	if (service_name)
 		add_tag2(pack, service_name);
 	
-	generate_cookie(serv, addr, cookie);
+	generate_cookie(serv, addr, cookie, host_uniq, relay_sid);
+
 	add_tag(pack, TAG_AC_COOKIE, cookie, COOKIE_LENGTH);
 
 	if (host_uniq)
@@ -719,9 +751,6 @@ static void pppoe_send_PADT(struct pppoe_conn_t *conn)
 
 	add_tag2(pack, conn->service_name);
 
-	if (conn->host_uniq)
-		add_tag2(pack, conn->host_uniq);
-	
 	if (conn->relay_sid)
 		add_tag2(pack, conn->relay_sid);
 
@@ -804,7 +833,7 @@ static int check_padi_limit(struct pppoe_serv_t *serv, uint8_t *addr)
 	__sync_add_and_fetch(&total_padi_cnt, 1);
 
 connlimit_check:
-	if (triton_module_loaded("connlimit") && connlimit_check(cl_key_from_mac(addr)))
+	if (connlimit_loaded && connlimit_check(cl_key_from_mac(addr)))
 		return -1;
 
 	return 0;
@@ -818,10 +847,9 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	struct pppoe_tag *host_uniq_tag = NULL;
 	struct pppoe_tag *relay_sid_tag = NULL;
 	struct pppoe_tag *service_name_tag = NULL;
-	int n, service_match = 0;
+	int len, n, service_match = 0;
 	struct delayed_pado_t *pado;
 	struct timespec ts;
-	int len;
 
 	__sync_add_and_fetch(&stat_PADI_recv, 1);
 
@@ -940,7 +968,7 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 
 	if (ap_shutdown)
 		return;
-
+	
 	if (!memcmp(ethhdr->h_dest, bc_addr, ETH_ALEN)) {
 		if (conf_verbose)
 			log_warn("pppoe: discard PADR (destination address is broadcast)\n");
@@ -1020,7 +1048,7 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 		return;
 	}
 
-	if (check_cookie(serv, ethhdr->h_source, (uint8_t *)ac_cookie_tag->tag_data)) {
+	if (check_cookie(serv, ethhdr->h_source, (uint8_t *)ac_cookie_tag->tag_data, relay_sid_tag)) {
 		if (conf_verbose)
 			log_warn("pppoe: discard PADR packet (incorrect AC-Cookie)\n");
 		return;
@@ -1530,6 +1558,13 @@ static void load_config(void)
 	opt = conf_get_opt("pppoe", "sid-uppercase");
 	if (opt)
 		conf_sid_uppercase = atoi(opt);
+	
+	opt = conf_get_opt("pppoe", "cookie-timeout");
+	if (opt)
+		conf_cookie_timeout = atoi(opt);
+	else
+		conf_cookie_timeout = 5;
+
 
 	conf_mppe = MPPE_UNSET;
 	opt = conf_get_opt("pppoe", "mppe");
@@ -1589,6 +1624,8 @@ static void pppoe_init(void)
 	}
 
 	load_config();
+
+	connlimit_loaded = triton_module_loaded("connlimit");
 
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
