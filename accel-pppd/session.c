@@ -332,21 +332,14 @@ int __export ap_session_set_username(struct ap_session *s, char *username)
 					log_ppp_info1("%s: second session denied\n", username);
 					return -1;
 				} else {
-					if (conf_single_session == 1) {
-						if (ses->wakeup)
-							continue;
-						//ap_session_ifdown(ses);
-						ses->wakeup = s->ctrl->ctx;
-						wait = 1;
-						triton_context_call(ses->ctrl->ctx, (triton_event_func)__terminate_sec, ses);
-					}
+					ap_session_ifdown(ses);
+					triton_context_call(ses->ctrl->ctx, (triton_event_func)__terminate_sec, ses);
+					continue;
 				}
-				break;
 			}
 		}
-		s->username = username;
-	} else
-		s->username = username;
+	}
+	s->username = username;
 	pthread_rwlock_unlock(&ses_lock);
 
 	if (wait)

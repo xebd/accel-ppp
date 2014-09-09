@@ -55,16 +55,9 @@ static void build_addr(struct ipv6db_addr_t *a, uint64_t intf_id, struct in6_add
 		*(uint64_t *)(addr->s6_addr + 8) |= intf_id & ((1 << (128 - a->prefix_len)) - 1);
 }
 
+static void ifup_continue(struct ap_session *ses);
 void ap_session_ifup(struct ap_session *ses)
 {
-	struct ipv6db_addr_t *a;
-	struct ifreq ifr;
-	//struct rtentry rt;
-	struct in6_ifreq ifr6;
-	struct npioctl np;
-	struct sockaddr_in addr;
-	struct ppp_t *ppp;
-	
 	if (ses->ifname_rename) {
 		if (ap_session_rename(ses, ses->ifname_rename, -1)) {
 			ap_session_terminate(ses, TERM_NAS_ERROR, 0);
@@ -75,6 +68,19 @@ void ap_session_ifup(struct ap_session *ses)
 	}
 
 	triton_event_fire(EV_SES_ACCT_START, ses);
+	triton_context_call(ses->ctrl->ctx, (triton_event_func)ifup_continue, ses);
+}
+
+static void ifup_continue(struct ap_session *ses)
+{
+	struct ipv6db_addr_t *a;
+	struct ifreq ifr;
+	//struct rtentry rt;
+	struct in6_ifreq ifr6;
+	struct npioctl np;
+	struct sockaddr_in addr;
+	struct ppp_t *ppp;
+
 	if (ses->stop_time)
 		return;
 
