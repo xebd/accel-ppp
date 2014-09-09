@@ -80,7 +80,7 @@ static void ctx_thread(struct _triton_context_t *ctx);
 static void* triton_thread(struct _triton_thread_t *thread)
 {
 	sigset_t set;
-	int sig;
+	int sig, need_free;
 
 	sigfillset(&set);
 	sigdelset(&set, SIGKILL);
@@ -160,14 +160,15 @@ cont:
 		log_debug2("thread %p: switch from %p %p\n", thread, thread->ctx, thread->ctx->thread);
 
 		spin_lock(&threads_lock);
-		if (thread->ctx->pending) {
+		if (thread->ctx->pending && !thread->ctx->need_free) {
 			spin_unlock(&threads_lock);
 			goto cont;
 		}
 		thread->ctx->thread = NULL;
+		need_free = thread->ctx->need_free;
 		spin_unlock(&threads_lock);
 
-		if (thread->ctx->need_free) {
+		if (need_free) {
 			log_debug2("- context %p removed\n", thread->ctx);
 			triton_context_release(thread->ctx);
 		}
@@ -283,7 +284,7 @@ int triton_queue_ctx(struct _triton_context_t *ctx)
 {
 	spin_lock(&threads_lock);
 	ctx->pending = 1;
-	if (ctx->thread || ctx->queued || ctx->init) {
+	if (ctx->thread || ctx->queued || ctx->init || ctx->need_free) {
 		spin_unlock(&threads_lock);
 		return 0;
 	}
