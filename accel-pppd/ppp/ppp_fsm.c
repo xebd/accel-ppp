@@ -331,7 +331,6 @@ void ppp_fsm_recv_conf_ack(struct ppp_fsm_t *layer)
 			break;
 		case FSM_Req_Sent:
 			//if (layer->init_req_cnt) layer->init_req_cnt(layer);
-			init_req_counter(layer,layer->max_configure);
 			layer->fsm_state=FSM_Ack_Rcvd;
 			break;
 		case FSM_Ack_Rcvd:
@@ -519,7 +518,7 @@ static void restart_timer_func(struct triton_timer_t *t)
 {
 	struct ppp_fsm_t *layer = container_of(t, typeof(*layer), restart_timer);
 
-	log_ppp_debug("fsm timeout\n");
+	log_ppp_debug("fsm timeout %i\n", layer->restart_counter);
 
 	if (layer->restart_counter>0)
 		ppp_fsm_timeout0(layer);
