@@ -9,6 +9,10 @@
 #include "ipdb.h"
 #include "dhcpv4.h"
 
+#ifdef RADIUS
+#include "radius.h"
+#endif
+
 #ifndef ETH_ALEN
 #define ETH_ALEN 6
 #endif
@@ -77,6 +81,9 @@ struct ipoe_session {
 	int relay_retransmit;
 	int ifindex;
 	struct ipv4db_item_t ipv4;
+#ifdef RADIUS
+	struct rad_plugin_t radius;
+#endif
 	int ifcfg:1;
 	int started:1;
 	int terminating:1;
