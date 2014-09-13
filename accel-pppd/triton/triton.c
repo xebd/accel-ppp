@@ -485,13 +485,18 @@ void __export triton_context_wakeup(struct triton_context_t *ud)
 
 int __export triton_context_call(struct triton_context_t *ud, void (*func)(void *), void *arg)
 {
-	struct _triton_context_t *ctx = (struct _triton_context_t *)ud->tpd;
+	struct _triton_context_t *ctx;
 	struct _triton_ctx_call_t *call = mempool_alloc(call_pool);
 	int r;
 
 	if (!call)
 		return -1;
-	
+
+	if (ud)
+		ctx = (struct _triton_context_t *)ud->tpd;
+	else
+		ctx = (struct _triton_context_t *)default_ctx.tpd;
+
 	call->func = func;
 	call->arg = arg;
 

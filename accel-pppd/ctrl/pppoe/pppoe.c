@@ -232,7 +232,7 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 
 	conn = mempool_alloc(conn_pool);
 	if (!conn) {
-		log_emerg("pppoe: out of memory\n");
+		log_error("pppoe: out of memory\n");
 		return NULL;
 	}
 
@@ -1344,7 +1344,7 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli)
 	if (sock < 0) {
 		if (cli)
 			cli_sendv(cli, "socket: %s\r\n", strerror(errno));
-		log_emerg("pppoe: socket: %s\n", strerror(errno));
+		log_error("pppoe: socket: %s\n", strerror(errno));
 		_free(serv);
 		return;
 	}
@@ -1354,7 +1354,7 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli)
 	if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &f, sizeof(f))) {
 		if (cli)
 			cli_sendv(cli, "setsockopt(SO_BROADCAST): %s\r\n", strerror(errno));
-		log_emerg("pppoe: setsockopt(SO_BROADCAST): %s\n", strerror(errno));
+		log_error("pppoe: setsockopt(SO_BROADCAST): %s\n", strerror(errno));
 		goto out_err;
 	}
 
@@ -1362,13 +1362,13 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli)
 	if (ioctl(sock, SIOCGIFHWADDR, &ifr)) {
 		if (cli)
 			cli_sendv(cli, "ioctl(SIOCGIFHWADDR): %s\r\n", strerror(errno));
-		log_emerg("pppoe: ioctl(SIOCGIFHWADDR): %s\n", strerror(errno));
+		log_error("pppoe: ioctl(SIOCGIFHWADDR): %s\n", strerror(errno));
 		goto out_err;
 	}
 
 #ifdef ARPHDR_ETHER
 	if (ifr.ifr_hwaddr.sa_family != ARPHDR_ETHER) {
-		log_emerg("pppoe: interface %s is not ethernet\n", ifname);
+		log_error("pppoe: interface %s is not ethernet\n", ifname);
 		goto out_err;
 	}
 #endif
@@ -1376,7 +1376,7 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli)
 	if ((ifr.ifr_hwaddr.sa_data[0] & 1) != 0) {
 		if (cli)
 			cli_sendv(cli, "interface %s has not unicast address\r\n", ifname);
-		log_emerg("pppoe: interface %s has not unicast address\n", ifname);
+		log_error("pppoe: interface %s has not unicast address\n", ifname);
 		goto out_err;
 	}
 
@@ -1385,20 +1385,20 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli)
 	if (ioctl(sock, SIOCGIFMTU, &ifr)) {
 		if (cli)
 			cli_sendv(cli, "ioctl(SIOCGIFMTU): %s\r\n", strerror(errno));
-		log_emerg("pppoe: ioctl(SIOCGIFMTU): %s\n", strerror(errno));
+		log_error("pppoe: ioctl(SIOCGIFMTU): %s\n", strerror(errno));
 		goto out_err;
 	}
 
 	if (ifr.ifr_mtu < ETH_DATA_LEN) {
 		if (cli)
 			cli_sendv(cli, "interface %s has MTU of %i, should be %i\r\n", ifname, ifr.ifr_mtu, ETH_DATA_LEN);
-		log_emerg("pppoe: interface %s has MTU of %i, should be %i\n", ifname, ifr.ifr_mtu, ETH_DATA_LEN);
+		log_error("pppoe: interface %s has MTU of %i, should be %i\n", ifname, ifr.ifr_mtu, ETH_DATA_LEN);
 	}
 	
 	if (ioctl(sock, SIOCGIFINDEX, &ifr)) {
 		if (cli)
 			cli_sendv(cli, "ioctl(SIOCGIFINDEX): %s\r\n", strerror(errno));
-		log_emerg("pppoe: ioctl(SIOCGIFINDEX): %s\n", strerror(errno));
+		log_error("pppoe: ioctl(SIOCGIFINDEX): %s\n", strerror(errno));
 		goto out_err;
 	}
 
@@ -1410,14 +1410,14 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli)
 	if (bind(sock, (struct sockaddr *)&sa, sizeof(sa))) {
 		if (cli)
 			cli_sendv(cli, "bind: %s\n", strerror(errno));
-		log_emerg("pppoe: bind: %s\n", strerror(errno));
+		log_error("pppoe: bind: %s\n", strerror(errno));
 		goto out_err;
 	}
 
 	if (fcntl(sock, F_SETFL, O_NONBLOCK)) {
 		if (cli)
 			cli_sendv(cli, "failed to set nonblocking mode: %s\n", strerror(errno));
-    log_emerg("pppoe: failed to set nonblocking mode: %s\n", strerror(errno));
+    log_error("pppoe: failed to set nonblocking mode: %s\n", strerror(errno));
 		goto out_err;
 	}
 
@@ -1519,7 +1519,7 @@ static int init_secret(struct pppoe_serv_t *serv)
 	DES_cblock key;
 
 	if (read(urandom_fd, serv->secret, SECRET_LENGTH) < 0) {
-		log_emerg("pppoe: failed to read /dev/urandom: %s\n", strerror(errno));
+		log_error("pppoe: failed to read /dev/urandom: %s\n", strerror(errno));
 		return -1;
 	}
 
@@ -1623,10 +1623,21 @@ static void load_config(void)
 	}
 }
 
-static void pppoe_init(void)
+static void load_interfaces()
 {
 	struct conf_sect_t *s = conf_get_section("pppoe");
 	struct conf_option_t *opt;
+
+	list_for_each_entry(opt, &s->items, entry) {
+		if (!strcmp(opt->name, "interface")) {
+			if (opt->val)
+				pppoe_server_start(opt->val, NULL);
+		}
+	}
+}
+
+static void pppoe_init(void)
+{
 	int fd;
 	uint8_t *ptr;
 
@@ -1646,23 +1657,18 @@ static void pppoe_init(void)
 	pado_pool = mempool_create(sizeof(struct delayed_pado_t));
 	padi_pool = mempool_create(sizeof(struct padi_t));
 
-	if (!s) {
-		log_emerg("pppoe: no configuration, disabled...\n");
+	if (!conf_get_section("pppoe")) {
+		log_error("pppoe: no configuration, disabled...\n");
 		return;
 	}
 	
-	list_for_each_entry(opt, &s->items, entry) {
-		if (!strcmp(opt->name, "interface")) {
-			if (opt->val)
-				pppoe_server_start(opt->val, NULL);
-		}
-	}
-
 	load_config();
 
 	connlimit_loaded = triton_module_loaded("connlimit");
 
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
+
+	triton_context_call(NULL, (triton_event_func)load_interfaces, NULL);
 }
 
 DEFINE_INIT(21, pppoe_init);
