@@ -43,7 +43,6 @@
 
 #define VENDOR_ADSL_FORUM 0xde9
 
-#define MAX_SID 65534
 #define SECRET_LENGTH 16
 #define COOKIE_LENGTH 24
 
@@ -75,8 +74,6 @@ struct pppoe_serv_t
 	DES_key_schedule des_ks;
 
 	pthread_mutex_t lock;
-	struct pppoe_conn_t *conn[MAX_SID];
-	uint16_t sid;
 	int stopping:1;
 
 	unsigned int conn_cnt;

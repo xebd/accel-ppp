@@ -33,6 +33,8 @@
 
 #include "memdebug.h"
 
+#define SID_MAX 128
+
 struct pppoe_conn_t {
 	struct list_head entry;
 	struct triton_context_t ctx;
@@ -114,6 +116,11 @@ pthread_rwlock_t serv_lock = PTHREAD_RWLOCK_INITIALIZER;
 LIST_HEAD(serv_list);
 static int connlimit_loaded;
 
+static pthread_mutex_t sid_lock = PTHREAD_MUTEX_INITIALIZER;
+static unsigned long *sid_map;
+static unsigned long *sid_ptr;
+static int sid_idx;
+
 static uint8_t bc_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
 static void pppoe_send_PADT(struct pppoe_conn_t *conn);
@@ -140,7 +147,6 @@ static void disconnect(struct pppoe_conn_t *conn)
 	log_ppp_info1("disconnected\n");
 
 	pthread_mutex_lock(&conn->serv->lock);
-	conn->serv->conn[conn->sid] = NULL;
 	list_del(&conn->entry);
 	conn->serv->conn_cnt--;
 	if (conn->serv->stopping && conn->serv->conn_cnt == 0) {
@@ -148,6 +154,10 @@ static void disconnect(struct pppoe_conn_t *conn)
 		pppoe_server_free(conn->serv);
 	} else
 		pthread_mutex_unlock(&conn->serv->lock);
+	
+	pthread_mutex_lock(&sid_lock);
+	sid_map[conn->sid/(8*sizeof(long))] |= 1 << (conn->sid % (8*sizeof(long)));
+	pthread_mutex_unlock(&sid_lock);
 
 	_free(conn->ctrl.calling_station_id);
 	_free(conn->ctrl.called_station_id);
@@ -214,11 +224,11 @@ static int pppoe_rad_send_accounting_request(struct rad_plugin_t *rad, struct ra
 	return 0;
 }
 #endif
-
+	
 static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const uint8_t *addr, const struct pppoe_tag *host_uniq, const struct pppoe_tag *relay_sid, const struct pppoe_tag *service_name, const struct pppoe_tag *tr101, const uint8_t *cookie)
 {
 	struct pppoe_conn_t *conn;
-	int sid;
+	unsigned long *old_sid_ptr;
 
 	conn = mempool_alloc(conn_pool);
 	if (!conn) {
@@ -228,27 +238,36 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 
 	memset(conn, 0, sizeof(*conn));
 
-	pthread_mutex_lock(&serv->lock);
-	for (sid = serv->sid + 1; sid != serv->sid; sid++) {
-		if (sid == MAX_SID)
-			sid = 1;
-		if (!serv->conn[sid]) {
-			conn->sid = sid;
-			serv->sid = sid;
-			serv->conn[sid] = conn;
-			list_add_tail(&conn->entry, &serv->conn_list);
-			serv->conn_cnt++;
-			break;
+	pthread_mutex_lock(&sid_lock);
+	old_sid_ptr = sid_ptr;
+	while (1) {
+		int bit = ffsl(*sid_ptr) - 1;
+		
+		if (bit != -1) {
+			conn->sid = sid_idx*8*sizeof(long) + bit;
+			*sid_ptr &= ~(1lu << bit);
 		}
+		
+		if (++sid_idx == SID_MAX/8/sizeof(long)) {
+			sid_ptr = sid_map;
+			sid_idx = 0;
+		} else
+			sid_ptr++;
+		
+		if (bit != -1)
+			break;
+
+		if (sid_ptr == old_sid_ptr)
+			break;
 	}
-	pthread_mutex_unlock(&serv->lock);
+	pthread_mutex_unlock(&sid_lock);
 
 	if (!conn->sid) {
 		log_warn("pppoe: no free sid available\n");
 		mempool_free(conn);
 		return NULL;
 	}
-	
+
 	conn->serv = serv;
 	memcpy(conn->addr, addr, ETH_ALEN);
 
@@ -340,14 +359,14 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 	if (conf_ip_pool)
 		conn->ppp.ses.ipv4_pool_name = _strdup(conf_ip_pool);
 	
-	triton_context_register(&conn->ctx, &conn->ppp.ses);
-	triton_context_wakeup(&conn->ctx);
-	
-	triton_event_fire(EV_CTRL_STARTING, &conn->ppp.ses);
-	triton_event_fire(EV_CTRL_STARTED, &conn->ppp.ses);
-
 	conn->disc_sock = dup(serv->hnd.fd);
+	
+	triton_context_register(&conn->ctx, &conn->ppp.ses);
 
+	pthread_mutex_lock(&serv->lock);
+	list_add_tail(&conn->entry, &serv->conn_list);
+	pthread_mutex_unlock(&serv->lock);
+	
 	return conn;
 }
 
@@ -355,6 +374,9 @@ static void connect_channel(struct pppoe_conn_t *conn)
 {
 	int sock;
 	struct sockaddr_pppox sp;
+	
+	triton_event_fire(EV_CTRL_STARTING, &conn->ppp.ses);
+	triton_event_fire(EV_CTRL_STARTED, &conn->ppp.ses);
 
 	sock = socket(AF_PPPOX, SOCK_STREAM, PX_PROTO_OE);
 	if (!sock) {
@@ -1078,6 +1100,7 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	else {
 		pppoe_send_PADS(conn);
 		triton_context_call(&conn->ctx, (triton_event_func)connect_channel, conn);
+		triton_context_wakeup(&conn->ctx);
 	}
 }
 
@@ -1086,6 +1109,7 @@ static void pppoe_recv_PADT(struct pppoe_serv_t *serv, uint8_t *pack)
 	struct ethhdr *ethhdr = (struct ethhdr *)pack;
 	struct pppoe_hdr *hdr = (struct pppoe_hdr *)(pack + ETH_HLEN);
 	struct pppoe_conn_t *conn;
+	uint16_t sid = ntohs(hdr->sid);
 	
 	if (!memcmp(ethhdr->h_dest, bc_addr, ETH_ALEN)) {
 		if (conf_verbose)
@@ -1099,9 +1123,13 @@ static void pppoe_recv_PADT(struct pppoe_serv_t *serv, uint8_t *pack)
 	}
 
 	pthread_mutex_lock(&serv->lock);
-	conn = serv->conn[ntohs(hdr->sid)];
-	if (conn && !memcmp(conn->addr, ethhdr->h_source, ETH_ALEN))
-		triton_context_call(&conn->ctx, (void (*)(void *))disconnect, conn);
+	list_for_each_entry(conn, &serv->conn_list, entry) {
+		if (conn->sid == sid) {
+			if (!memcmp(conn->addr, ethhdr->h_source, ETH_ALEN))
+				triton_context_call(&conn->ctx, (void (*)(void *))disconnect, conn);
+			break;
+		}
+	}
 	pthread_mutex_unlock(&serv->lock);
 }
 
@@ -1600,6 +1628,13 @@ static void pppoe_init(void)
 	struct conf_sect_t *s = conf_get_section("pppoe");
 	struct conf_option_t *opt;
 	int fd;
+	uint8_t *ptr;
+
+	ptr = malloc(SID_MAX/8);
+	memset(ptr, 0xff, SID_MAX/8);
+	ptr[0] = 0xfe;
+	ptr[SID_MAX/8-1] = 0x7f;
+	sid_ptr = sid_map = (unsigned long *)ptr;
 
 	fd = socket(AF_PPPOX, SOCK_STREAM, PX_PROTO_OE);
 	if (fd >= 0)
