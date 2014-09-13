@@ -50,6 +50,9 @@ int conf_leaf_qdisc;
 int conf_lq_arg1;
 int conf_lq_arg2;
 int conf_lq_arg3;
+int conf_lq_arg4;
+int conf_lq_arg5;
+int conf_lq_arg6;
 
 static int temp_down_speed;
 static int temp_up_speed;

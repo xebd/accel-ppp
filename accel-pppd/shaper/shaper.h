@@ -6,6 +6,7 @@
 #define LIM_HTB 2
 
 #define LEAF_QDISC_SFQ 1
+#define LEAF_QDISC_FQ_CODEL 2
 
 struct rtnl_handle;
 struct nlmsghdr;
@@ -39,6 +40,9 @@ extern int conf_leaf_qdisc;
 extern int conf_lq_arg1;
 extern int conf_lq_arg2;
 extern int conf_lq_arg3;
+extern int conf_lq_arg4;
+extern int conf_lq_arg5;
+extern int conf_lq_arg6;
 
 int install_limiter(struct ap_session *ses, int down_speed, int down_burst, int up_speed, int up_burst);
 int remove_limiter(struct ap_session *ses);

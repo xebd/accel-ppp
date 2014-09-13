@@ -856,7 +856,11 @@ Specifies downstream rate limiting method.
 .TP
 .BI "leaf-qdisc=" "qdisc parameters"
 In case if htb is used as up-limiter or down-limiter specified leaf qdisc can be attached automaticaly.
-At present only sfq qdisc is implemented. Parameters are same as for tc: [ limit NUMBER ] [ perturn SECS ] [ quantum BYTES ].
+At present sfq and fq_codel qdiscs are implemented. Parameters are same as for tc:
+.br
+sfq [ limit NUMBER ] [ perturn SECS ] [ quantum BYTES ]
+.br
+fq_codel [ limit PACKETS ] [flows NUMBER ] [ target TIME ] [ interval TIME ] [quantum BYTES ] [ [no]ecn ]
 .TP
 .BI "rate-multiplier=" n
 Due to accel-ppp operates with rates in kilobit basis if you send rates in different basis then you can use this option to bring your values to kilobits.
