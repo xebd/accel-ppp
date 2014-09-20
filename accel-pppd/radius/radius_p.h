@@ -9,18 +9,32 @@
 #include "radius.h"
 #include "ppp.h"
 #include "ipdb.h"
+#include "pwdb.h"
 
 struct rad_server_t;
+
+struct radius_auth_ctx {
+	struct rad_req_t *req;
+	pwdb_callback cb;
+	void *cb_arg;
+	int (*recv)(struct rad_req_t *);
+
+	const uint8_t *challenge;
+	uint8_t *authenticator;
+	char **mschap_error;
+	char **reply_msg;
+};
 
 struct radius_pd_t {
 	struct list_head entry;
 	struct ap_private pd;
 	struct ap_session *ses;
 	pthread_mutex_t lock;
+	int refs:8;
 	int authenticated:1;
+	int acct_started:1;
 	int ipv6_dp_assigned:1;
 
-	struct rad_req_t *auth_req;
 	struct rad_req_t *acct_req;
 	struct triton_timer_t acct_interim_timer;
 
@@ -34,7 +48,6 @@ struct radius_pd_t {
 	struct ipv6db_item_t ipv6_addr;
 	struct ipv6db_prefix_t ipv6_dp;
 	int acct_interim_interval;
-	time_t acct_timestamp;
 
 	uint8_t *attr_class;
 	int attr_class_len;
@@ -42,12 +55,13 @@ struct radius_pd_t {
 	int attr_state_len;
 	int termination_action;
 
+	struct radius_auth_ctx *auth_ctx;
+
 	struct list_head plugin_list;
 };
 
 struct rad_req_t {
 	struct list_head entry;
-	struct triton_context_t ctx;
 	struct triton_md_handler_t hnd;
 	struct triton_timer_t timeout;
 	uint8_t RA[16];
@@ -56,11 +70,21 @@ struct rad_req_t {
 
 	struct radius_pd_t *rpd;
 	struct rad_server_t *serv;
-	struct triton_context_t *wait_ctx;
 	
 	in_addr_t server_addr;
-	int server_port;
-	int type;
+	
+	int server_port:16;
+	int type:8;
+	int try:6;
+	int active:1;
+	int async:1;
+
+	time_t ts;
+
+	void (*recv)(struct rad_req_t *);
+	int (*before_send)(struct rad_req_t *);
+	int (*send)(struct rad_req_t *, int async);
+	void (*sent)(struct rad_req_t *, int res);
 
 	void (*log)(const char *fmt, ...);
 };
@@ -149,13 +173,16 @@ void rad_dict_free(struct rad_dict_t *dict);
 
 struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *username);
 struct rad_req_t *rad_req_alloc2(struct radius_pd_t *rpd, int code, const char *username, in_addr_t addr, int port);
+struct rad_req_t *rad_req_alloc_empty();
 int rad_req_acct_fill(struct rad_req_t *);
 void rad_req_free(struct rad_req_t *);
-int rad_req_send(struct rad_req_t *req, void (*log)(const char *fmt, ...));
-int rad_req_wait(struct rad_req_t *, int);
+int rad_req_send(struct rad_req_t *req);
+int rad_req_read(struct triton_md_handler_t *h);
 
 struct radius_pd_t *find_pd(struct ap_session *ses);
 int rad_proc_attrs(struct rad_req_t *req);
+void hold_pd(struct radius_pd_t *rpd);
+void release_pd(struct radius_pd_t *rpd);
 
 int rad_auth_pap(struct radius_pd_t *rpd, const char *username, va_list args);
 int rad_auth_chap_md5(struct radius_pd_t *rpd, const char *username, va_list args);
@@ -164,7 +191,8 @@ int rad_auth_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list ar
 int rad_auth_null(struct radius_pd_t *rpd, const char *username, va_list args);
 
 int rad_acct_start(struct radius_pd_t *rpd);
-void rad_acct_stop(struct radius_pd_t *rpd);
+int rad_acct_stop(struct radius_pd_t *rpd);
+void rad_acct_stop_defer(struct radius_pd_t *rpd);
 
 struct rad_packet_t *rad_packet_alloc(int code);
 int rad_packet_build(struct rad_packet_t *pack, uint8_t *RA);
@@ -180,6 +208,7 @@ struct rad_server_t *rad_server_get2(int, in_addr_t, int);
 void rad_server_put(struct rad_server_t *, int);
 int rad_server_req_enter(struct rad_req_t *);
 void rad_server_req_exit(struct rad_req_t *);
+int rad_server_req_cancel(struct rad_req_t *);
 int rad_server_realloc(struct rad_req_t *);
 void rad_server_fail(struct rad_server_t *);
 void rad_server_timeout(struct rad_server_t *);

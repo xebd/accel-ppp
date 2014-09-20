@@ -8,7 +8,7 @@
 
 static LIST_HEAD(pwdb_handlers);
 
-int __export pwdb_check(struct ap_session *ses, const char *username, int type, ...)
+int __export pwdb_check(struct ap_session *ses, pwdb_callback cb, void *cb_arg, const char *username, int type, ...)
 {
 	struct pwdb_t *pwdb;
 	int r, res = PWDB_NO_IMPL;
@@ -19,11 +19,11 @@ int __export pwdb_check(struct ap_session *ses, const char *username, int type, 
 	list_for_each_entry(pwdb, &pwdb_handlers, entry) {
 		if (!pwdb->check)
 			continue;
-		r = pwdb->check(pwdb, ses, username, type, args);
+		r = pwdb->check(pwdb, ses, cb, cb_arg, username, type, args);
 		if (r == PWDB_NO_IMPL)
 			continue;
 		res = r;
-		if (r == PWDB_SUCCESS)
+		if (r == PWDB_SUCCESS || r == PWDB_WAIT)
 			break;
 	}
 

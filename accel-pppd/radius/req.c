@@ -4,25 +4,26 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <sched.h>
+#include <assert.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
 #include "log.h"
 #include "radius_p.h"
+#include "mempool.h"
 
 #include "memdebug.h"
 
-static int rad_req_read(struct triton_md_handler_t *h);
-static void rad_req_timeout(struct triton_timer_t *t);
 static int make_socket(struct rad_req_t *req);
+static mempool_t req_pool;
 
 static struct rad_req_t *__rad_req_alloc(struct radius_pd_t *rpd, int code, const char *username, in_addr_t addr, int port)
 {
 	struct rad_plugin_t *plugin;
 	struct ppp_t *ppp = NULL;
-	struct rad_req_t *req = _malloc(sizeof(*req));
+	struct rad_req_t *req = mempool_alloc(req_pool);
+	struct timespec ts;
 
 	if (!req) {
 		log_emerg("radius: out of memory\n");
@@ -32,10 +33,13 @@ static struct rad_req_t *__rad_req_alloc(struct radius_pd_t *rpd, int code, cons
 	if (rpd->ses->ctrl->ppp)
 		ppp = container_of(rpd->ses, typeof(*ppp), ses);
 
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+
 	memset(req, 0, sizeof(*req));
 	req->rpd = rpd;
 	req->hnd.fd = -1;
-	req->ctx.before_switch = log_switch;
+	req->hnd.read = rad_req_read;
+	req->ts = ts.tv_sec;
 
 	req->type = code == CODE_ACCESS_REQUEST ? RAD_SERV_AUTH : RAD_SERV_ACCT;
 
@@ -161,6 +165,21 @@ struct rad_req_t *rad_req_alloc2(struct radius_pd_t *rpd, int code, const char *
 	return req;
 }
 
+struct rad_req_t *rad_req_alloc_empty()
+{
+	struct rad_req_t *req = mempool_alloc(req_pool);
+
+	if (!req) {
+		log_emerg("radius: out of memory\n");
+		return NULL;
+	}
+
+	memset(req, 0, sizeof(*req));
+	req->hnd.fd = -1;
+
+	return req;
+}
+
 int rad_req_acct_fill(struct rad_req_t *req)
 {
 	struct ipv6db_addr_t *a;
@@ -211,15 +230,26 @@ int rad_req_acct_fill(struct rad_req_t *req)
 
 void rad_req_free(struct rad_req_t *req)
 {
+	assert(!req->active);
+
 	if (req->serv)
 		rad_server_put(req->serv, req->type);
-	if (req->hnd.fd >= 0 )
+
+	if (req->hnd.tpd)
+		triton_md_unregister_handler(&req->hnd, 1);
+	else if (req->hnd.fd != -1)
 		close(req->hnd.fd);
+	
+	if (req->timeout.tpd)
+		triton_timer_del(&req->timeout);
+
 	if (req->pack)
 		rad_packet_free(req->pack);
+
 	if (req->reply)
 		rad_packet_free(req->reply);
-	_free(req);
+
+	mempool_free(req);
 }
 
 static int make_socket(struct rad_req_t *req)
@@ -231,7 +261,7 @@ static int make_socket(struct rad_req_t *req)
 		log_ppp_error("radius:socket: %s\n", strerror(errno));
 		return -1;
 	}
-	
+
 	fcntl(req->hnd.fd, F_SETFD, fcntl(req->hnd.fd, F_GETFD) | FD_CLOEXEC);
 
 	memset(&addr, 0, sizeof(addr));
@@ -270,95 +300,120 @@ out_err:
 	return -1;
 }
 
-int rad_req_send(struct rad_req_t *req, void (*log)(const char *fmt, ...))
+static int __rad_req_send(struct rad_req_t *req, int async)
 {
+	if (async == -1) {
+		req->try = conf_max_try - 1;
+		rad_req_send(req);
+		return 0;
+	}
+
 	if (req->hnd.fd == -1 && make_socket(req))
 		return -1;
+	
+	if (req->before_send && req->before_send(req))
+		goto out_err;
 
 	if (!req->pack->buf && rad_packet_build(req->pack, req->RA))
 		goto out_err;
 	
-	if (log) {
-		log("send ");
-		rad_packet_print(req->pack, req->serv, log);
+	if (req->log) {
+		req->log("send ");
+		rad_packet_print(req->pack, req->serv, req->log);
 	}
+	
+	if (req->sent)
+		req->sent(req, 0);
 
 	rad_packet_send(req->pack, req->hnd.fd, NULL);
 
 	return 0;
 
 out_err:
-	close(req->hnd.fd);
-	req->hnd.fd = -1;
+	if (req->hnd.tpd)
+		triton_md_unregister_handler(&req->hnd, 1);
+	else {
+		close(req->hnd.fd);
+		req->hnd.fd = -1;
+	}
+	
+	if (async && req->sent)
+		req->sent(req, -1);
+
 	return -1;
 }
 
-static void req_wakeup(struct rad_req_t *req)
+int rad_req_send(struct rad_req_t *req)
 {
-	struct triton_context_t *ctx = req->wait_ctx;
-	if (req->timeout.tpd)
-		triton_timer_del(&req->timeout);
-	triton_md_unregister_handler(&req->hnd, 0);
-	triton_context_unregister(&req->ctx);
-	triton_context_wakeup(ctx);
+	int r;
+
+	req->send = __rad_req_send;
+
+	if (req->try++ == conf_max_try) {
+		rad_server_req_exit(req);
+		rad_server_fail(req->serv);
+			
+		if (rad_server_realloc(req)) {
+			if (req->rpd)
+				log_ppp_warn("radius: no available servers\n");
+			return -1;
+		}
+
+		req->try = 1;
+	}
+
+	if (!req->active) {
+		while (1) {
+			r = rad_server_req_enter(req);
+
+			if (r >= 0)
+				break;
+			
+			if (rad_server_realloc(req)) {
+				if (req->rpd)
+					log_ppp_warn("radius: no available servers\n");
+				return -1;
+			}
+		}
+	} else
+		r = __rad_req_send(req, 0);
+
+	return r;
 }
-static int rad_req_read(struct triton_md_handler_t *h)
+
+int rad_req_read(struct triton_md_handler_t *h)
 {
 	struct rad_req_t *req = container_of(h, typeof(*req), hnd);
 	struct rad_packet_t *pack;
-	int r;
 
 	while (1) {
-		r = rad_packet_recv(h->fd, &pack, NULL);
+		if (rad_packet_recv(h->fd, &pack, NULL))
+			return 0;
 		
-		if (pack) {
-			if (req->reply)
-				rad_packet_free(req->reply);
-			req->reply = pack;
-		}
-
-		if (r)
+		if (pack->id == req->pack->id)
 			break;
+		
+		rad_packet_free(req->reply);
 	}
-
-	req_wakeup(req);
 	
-	return 1;
-}
-static void rad_req_timeout(struct triton_timer_t *t)
-{
-	struct rad_req_t *req = container_of(t, typeof(*req), timeout);
-	
-	req_wakeup(req);
-}
+	req->reply = pack;
 
-int rad_req_wait(struct rad_req_t *req, int timeout)
-{
-	req->wait_ctx = triton_context_self();
-	req->hnd.read = rad_req_read;
-	req->timeout.expire = rad_req_timeout;
+	rad_server_req_exit(req);
 
-	triton_context_register(&req->ctx, req->rpd ? req->rpd->ses : NULL);
-	triton_context_set_priority(&req->ctx, 1);
-	triton_md_register_handler(&req->ctx, &req->hnd);
-	triton_md_enable_handler(&req->hnd, MD_MODE_READ);
-
-	req->timeout.period = timeout * 1000;
-	triton_timer_add(&req->ctx, &req->timeout, 0);
-	
-	triton_context_wakeup(&req->ctx);
-
-	triton_context_schedule();
-
-	if (req->log && req->reply) {
+	if (req->log) {
 		req->log("recv ");
 		rad_packet_print(req->reply, req->serv, req->log);
 	}
-	return 0;
+
+	if (req->recv)
+		req->recv(req);
+
+	return 1;
 }
 
 static void req_init(void)
 {
+	req_pool = mempool_create(sizeof(struct rad_req_t));
 }
 
 DEFINE_INIT(50, req_init);

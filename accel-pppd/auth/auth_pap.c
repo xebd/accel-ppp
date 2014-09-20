@@ -15,11 +15,13 @@
 #define MSG_FAILED "Authentication failed"
 #define MSG_SUCCESSED "Authentication succeeded"
 
-#define HDR_LEN (sizeof(struct pap_hdr_t)-2)
+#define HDR_LEN (sizeof(struct pap_hdr)-2)
 
 #define PAP_REQ 1
 #define PAP_ACK 2
 #define PAP_NAK 3
+
+struct pap_auth_data;
 
 static int conf_timeout = 5;
 static int conf_any_login = 0;
@@ -32,33 +34,32 @@ static int pap_start(struct ppp_t*, struct auth_data_t*);
 static int pap_finish(struct ppp_t*, struct auth_data_t*);
 static void pap_recv(struct ppp_handler_t*h);
 static void pap_timeout(struct triton_timer_t *t);
+static void pap_auth_result(struct pap_auth_data *, int);
 
-struct pap_auth_data_t
-{
+struct pap_auth_data {
 	struct auth_data_t auth;
 	struct ppp_handler_t h;
 	struct ppp_t *ppp;
-	int started:1;
 	struct triton_timer_t timeout;
+	char *peer_id;
+	int req_id;
+	int started:1;
 };
 
-struct pap_hdr_t
-{
+struct pap_hdr {
 	uint16_t proto;
 	uint8_t code;
 	uint8_t id;
 	uint16_t len;
 } __attribute__((packed));
 
-struct pap_ack_t
-{
-	struct pap_hdr_t hdr;
+struct pap_ack {
+	struct pap_hdr hdr;
 	uint8_t msg_len;
 	char msg[0];
 } __attribute__((packed));
 
-static struct ppp_auth_handler_t pap=
-{
+static struct ppp_auth_handler_t pap= {
 	.name          = "PAP",
 	.init          = auth_data_init,
 	.free          = auth_data_free,
@@ -70,7 +71,7 @@ static struct ppp_auth_handler_t pap=
 
 static struct auth_data_t* auth_data_init(struct ppp_t *ppp)
 {
-	struct pap_auth_data_t *d = _malloc(sizeof(*d));
+	struct pap_auth_data *d = _malloc(sizeof(*d));
 
 	memset(d, 0, sizeof(*d));
 	d->auth.proto = PPP_PAP;
@@ -81,14 +82,14 @@ static struct auth_data_t* auth_data_init(struct ppp_t *ppp)
 
 static void auth_data_free(struct ppp_t *ppp, struct auth_data_t *auth)
 {
-	struct pap_auth_data_t *d = container_of(auth, typeof(*d), auth);
+	struct pap_auth_data *d = container_of(auth, typeof(*d), auth);
 
 	_free(d);
 }
 
 static int pap_start(struct ppp_t *ppp, struct auth_data_t *auth)
 {
-	struct pap_auth_data_t *d = container_of(auth, typeof(*d), auth);
+	struct pap_auth_data *d = container_of(auth, typeof(*d), auth);
 
 	d->h.proto = PPP_PAP;
 	d->h.recv = pap_recv;
@@ -103,10 +104,13 @@ static int pap_start(struct ppp_t *ppp, struct auth_data_t *auth)
 }
 static int pap_finish(struct ppp_t *ppp, struct auth_data_t *auth)
 {
-	struct pap_auth_data_t *d = container_of(auth, typeof(*d), auth);
+	struct pap_auth_data *d = container_of(auth, typeof(*d), auth);
 	
 	if (d->timeout.tpd)
 		triton_timer_del(&d->timeout);
+	
+	if (d->peer_id)
+		_free(d->peer_id);
 
 	ppp_unregister_handler(ppp, &d->h);
 
@@ -115,7 +119,7 @@ static int pap_finish(struct ppp_t *ppp, struct auth_data_t *auth)
 
 static void pap_timeout(struct triton_timer_t *t)
 {
-	struct pap_auth_data_t *d = container_of(t, typeof(*d), timeout);
+	struct pap_auth_data *d = container_of(t, typeof(*d), timeout);
 
 	if (conf_ppp_verbose)
 		log_ppp_warn("pap: timeout\n");
@@ -133,10 +137,10 @@ static int lcp_recv_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *
 	return LCP_OPT_ACK;
 }
 
-static void pap_send_ack(struct pap_auth_data_t *p, int id)
+static void pap_send_ack(struct pap_auth_data *p, int id)
 {
 	uint8_t buf[128];
-	struct pap_ack_t *msg = (struct pap_ack_t*)buf;
+	struct pap_ack *msg = (struct pap_ack*)buf;
 	msg->hdr.proto = htons(PPP_PAP);
 	msg->hdr.code = PAP_ACK;
 	msg->hdr.id = id;
@@ -150,10 +154,10 @@ static void pap_send_ack(struct pap_auth_data_t *p, int id)
 	ppp_chan_send(p->ppp, msg, ntohs(msg->hdr.len) + 2);
 }
 
-static void pap_send_nak(struct pap_auth_data_t *p, int id)
+static void pap_send_nak(struct pap_auth_data *p, int id)
 {
 	uint8_t buf[128];
-	struct pap_ack_t *msg = (struct pap_ack_t*)buf;
+	struct pap_ack *msg = (struct pap_ack*)buf;
 	msg->hdr.proto = htons(PPP_PAP);
 	msg->hdr.code = PAP_NAK;
 	msg->hdr.id = id;
@@ -167,7 +171,33 @@ static void pap_send_nak(struct pap_auth_data_t *p, int id)
 	ppp_chan_send(p->ppp, msg, ntohs(msg->hdr.len) + 2);
 }
 
-static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
+static void pap_auth_result(struct pap_auth_data *p, int res)
+{
+	char *peer_id = p->peer_id;
+
+	p->peer_id = NULL;
+
+	if (res == PWDB_DENIED) {
+		pap_send_nak(p, p->req_id);
+		if (p->started)
+			ap_session_terminate(&p->ppp->ses, TERM_AUTH_ERROR, 0);
+		else
+			ppp_auth_failed(p->ppp, peer_id);
+	} else {
+		if (ppp_auth_succeeded(p->ppp, peer_id)) {
+			pap_send_nak(p, p->req_id);
+			ap_session_terminate(&p->ppp->ses, TERM_AUTH_ERROR, 0);
+		} else {
+			pap_send_ack(p, p->req_id);
+			p->started = 1;
+			return;
+		}
+	}
+
+	_free(peer_id);
+}
+
+static int pap_recv_req(struct pap_auth_data *p, struct pap_hdr *hdr)
 {
 	int ret, r;
 	char *peer_id;
@@ -182,17 +212,21 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
 
 	if (conf_ppp_verbose)
 		log_ppp_info2("recv [PAP AuthReq id=%x]\n", hdr->id);
-	
+
 	if (p->started) {
 		pap_send_ack(p, hdr->id);
 		return 0;
 	}
+
+	if (p->peer_id)
+		return 0;
 
 	peer_id_len = *(uint8_t*)ptr; ptr++;
 	if (peer_id_len > ntohs(hdr->len) - sizeof(*hdr) + 2 - 1) {
 		log_ppp_warn("PAP: short packet received\n");
 		return -1;
 	}
+
 	peer_id = (char*)ptr; ptr += peer_id_len;
 
 	passwd_len = *(uint8_t*)ptr; ptr++;
@@ -217,7 +251,14 @@ static int pap_recv_req(struct pap_auth_data_t *p, struct pap_hdr_t *hdr)
 
 	passwd = _strndup((const char*)ptr, passwd_len);
 
-	r = pwdb_check(&p->ppp->ses, peer_id, PPP_PAP, passwd);
+	r = pwdb_check(&p->ppp->ses, (pwdb_callback)pap_auth_result, p, peer_id, PPP_PAP, passwd);
+	if (r == PWDB_WAIT) {
+		p->peer_id = peer_id;
+		p->req_id = hdr->id;
+		_free(passwd);
+		return 0;
+	}
+
 	if (r == PWDB_NO_IMPL) {
 		passwd2 = pwdb_get_passwd(&p->ppp->ses, peer_id);
 		if (!passwd2) {
@@ -268,8 +309,8 @@ failed:
 
 static void pap_recv(struct ppp_handler_t *h)
 {
-	struct pap_auth_data_t *d = container_of(h, typeof(*d), h);
-	struct pap_hdr_t *hdr = (struct pap_hdr_t *)d->ppp->buf;
+	struct pap_auth_data *d = container_of(h, typeof(*d), h);
+	struct pap_hdr *hdr = (struct pap_hdr *)d->ppp->buf;
 
 	if (d->ppp->buf_size < sizeof(*hdr) || ntohs(hdr->len) < HDR_LEN || ntohs(hdr->len) < d->ppp->buf_size - 2)	{
 		log_ppp_warn("PAP: short packet received\n");

@@ -54,6 +54,7 @@ static void *pd_key;
 static struct ipdb_t ipdb;
 
 static mempool_t rpd_pool;
+static mempool_t auth_ctx_pool;
 
 int rad_proc_attrs(struct rad_req_t *req)
 {
@@ -159,7 +160,7 @@ int rad_proc_attrs(struct rad_req_t *req)
 	return res;
 }
 
-static int rad_pwdb_check(struct pwdb_t *pwdb, struct ap_session *ses, const char *username, int type, va_list _args)
+static int rad_pwdb_check(struct pwdb_t *pwdb, struct ap_session *ses, pwdb_callback cb, void *cb_arg, const char *username, int type, va_list _args)
 {
 	int r = PWDB_NO_IMPL;
 	va_list args;
@@ -180,6 +181,12 @@ static int rad_pwdb_check(struct pwdb_t *pwdb, struct ap_session *ses, const cha
 		username1[len + 1 + conf_default_realm_len] = 0;
 		username = username1;
 	}
+	
+	rpd->auth_ctx = mempool_alloc(auth_ctx_pool);
+	memset(rpd->auth_ctx, 0, sizeof(rpd->auth_ctx));
+
+	rpd->auth_ctx->cb = cb;
+	rpd->auth_ctx->cb_arg = cb_arg;
 
 	va_copy(args, _args);
 
@@ -208,8 +215,12 @@ static int rad_pwdb_check(struct pwdb_t *pwdb, struct ap_session *ses, const cha
 
 	va_end(args);
 
-	if (r == PWDB_SUCCESS)
-		rpd->authenticated = 1;
+	if (r == PWDB_DENIED) {
+		if (rpd->auth_ctx->req)
+			rad_req_free(rpd->auth_ctx->req);
+		mempool_free(rpd->auth_ctx);
+		rpd->auth_ctx = NULL;
+	}
 
 	return r;
 }
@@ -246,8 +257,6 @@ static struct ipv6db_prefix_t *get_ipv6_prefix(struct ap_session *ses)
 
 	return NULL;
 }
-
-
 
 static void session_timeout(struct triton_timer_t *t)
 {
@@ -290,6 +299,7 @@ static void ses_starting(struct ap_session *ses)
 	memset(rpd, 0, sizeof(*rpd));
 	rpd->pd.key = &pd_key;
 	rpd->ses = ses;
+	rpd->refs = 1;
 	pthread_mutex_init(&rpd->lock, NULL);
 	INIT_LIST_HEAD(&rpd->plugin_list);
 	INIT_LIST_HEAD(&rpd->ipv6_addr.addr_list);
@@ -315,6 +325,9 @@ static void ses_acct_start(struct ap_session *ses)
 {
 	struct radius_pd_t *rpd = find_pd(ses);
 	
+	if (!conf_accounting)
+		return;
+	
 	if (!rpd->authenticated)
 		return;
 
@@ -322,26 +335,35 @@ static void ses_acct_start(struct ap_session *ses)
 		ap_session_terminate(rpd->ses, TERM_NAS_ERROR, 0);
 		return;
 	}
-	
+
+	ses->acct_start++;
+}
+
+static void ses_started(struct ap_session *ses)
+{
+	struct radius_pd_t *rpd = find_pd(ses);
+
 	if (rpd->session_timeout.expire_tv.tv_sec) {
 		rpd->session_timeout.expire = session_timeout;
 		triton_timer_add(ses->ctrl->ctx, &rpd->session_timeout, 0);
 	}
-	
+
 	if (rpd->idle_timeout.period) {
 		rpd->idle_timeout.expire = idle_timeout;
 		triton_timer_add(ses->ctrl->ctx, &rpd->idle_timeout, 0);
 	}
 }
+
 static void ses_finishing(struct ap_session *ses)
 {
 	struct radius_pd_t *rpd = find_pd(ses);
 
-	if (!rpd->authenticated)
+	if (!rpd->acct_started)
 		return;
 
 	rad_acct_stop(rpd);
 }
+
 static void ses_finished(struct ap_session *ses)
 {
 	struct radius_pd_t *rpd = find_pd(ses);
@@ -353,11 +375,19 @@ static void ses_finished(struct ap_session *ses)
 	pthread_mutex_unlock(&rpd->lock);
 	pthread_rwlock_unlock(&sessions_lock);
 
-	if (rpd->auth_req)
-		rad_req_free(rpd->auth_req);
+	if (rpd->auth_ctx) {
+		rad_server_req_cancel(rpd->auth_ctx->req);
+		rad_req_free(rpd->auth_ctx->req);
+		mempool_free(rpd->auth_ctx);
+		rpd->auth_ctx = NULL;
+	}
 
-	if (rpd->acct_req)
-		rad_req_free(rpd->acct_req);
+	if (rpd->acct_req) {
+		if (rpd->acct_started)
+			rad_acct_stop_defer(rpd);
+		else
+			rad_req_free(rpd->acct_req);
+	}
 
 	if (rpd->dm_coa_req)
 		dm_coa_cancel(rpd);
@@ -373,7 +403,7 @@ static void ses_finished(struct ap_session *ses)
 	
 	if (rpd->attr_state)
 		_free(rpd->attr_state);
-	
+
 	while (!list_empty(&rpd->ipv6_addr.addr_list)) {
 		a = list_entry(rpd->ipv6_addr.addr_list.next, typeof(*a), entry);
 		list_del(&a->entry);
@@ -388,7 +418,7 @@ static void ses_finished(struct ap_session *ses)
 
 	list_del(&rpd->pd.entry);
 	
-	mempool_free(rpd);
+	release_pd(rpd);
 }
 
 struct radius_pd_t *find_pd(struct ap_session *ses)
@@ -406,6 +436,16 @@ struct radius_pd_t *find_pd(struct ap_session *ses)
 	abort();
 }
 
+void hold_pd(struct radius_pd_t *rpd)
+{
+	rpd->refs++;
+}
+
+void release_pd(struct radius_pd_t *rpd)
+{
+	if (--rpd->refs == 0)
+		mempool_free(rpd);
+}
 
 struct radius_pd_t *rad_find_session(const char *sessionid, const char *username, const char *port_id, int port, in_addr_t ipaddr, const char *csid)
 {
@@ -650,6 +690,7 @@ static void radius_init(void)
 	struct conf_option_t *opt1;
 
 	rpd_pool = mempool_create(sizeof(struct radius_pd_t));
+	auth_ctx_pool = mempool_create(sizeof(struct radius_auth_ctx));
 
 	if (load_config())
 		_exit(EXIT_FAILURE);
@@ -670,6 +711,7 @@ static void radius_init(void)
 	ipdb_register(&ipdb);
 
 	triton_event_register_handler(EV_SES_STARTING, (triton_event_func)ses_starting);
+	triton_event_register_handler(EV_SES_STARTED, (triton_event_func)ses_started);
 	triton_event_register_handler(EV_SES_ACCT_START, (triton_event_func)ses_acct_start);
 	triton_event_register_handler(EV_SES_FINISHING, (triton_event_func)ses_finishing);
 	triton_event_register_handler(EV_SES_FINISHED, (triton_event_func)ses_finished);

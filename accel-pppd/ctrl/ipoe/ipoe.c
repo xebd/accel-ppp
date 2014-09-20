@@ -498,67 +498,23 @@ static int ipoe_create_interface(struct ipoe_session *ses)
 	return 0;
 }
 
-static void ipoe_session_start(struct ipoe_session *ses)
+static void auth_result(struct ipoe_session *ses, int r)
 {
-	int r;
-	char *passwd;
-	char *username;
+	char *username = ses->username;
 
-	__sync_add_and_fetch(&stat_starting, 1);
-	
-	assert(!ses->ses.username);
+	ses->username = NULL;
 
-	strncpy(ses->ses.ifname, ses->serv->ifname, AP_IFNAME_LEN);
-	
-	username = ipoe_session_get_username(ses);
-
-	if (!username) {
-		ipoe_session_finished(&ses->ses);
+	if (r == PWDB_DENIED) {
+		pthread_rwlock_wrlock(&ses_lock);
+		ses->ses.username = username;
+		ses->ses.terminate_cause = TERM_AUTH_ERROR;
+		pthread_rwlock_unlock(&ses_lock);
+		if (conf_ppp_verbose)
+			log_ppp_warn("authentication failed\n");
+		if (conf_l4_redirect_on_reject && !ses->dhcpv4_request)
+			l4_redirect_list_add(ses->yiaddr);
+		ap_session_terminate(&ses->ses, TERM_AUTH_ERROR, 0);
 		return;
-	}
-
-	ses->ses.unit_idx = ses->serv->ifindex;
-	
-	triton_event_fire(EV_CTRL_STARTING, &ses->ses);
-	triton_event_fire(EV_CTRL_STARTED, &ses->ses);
-
-	ap_session_starting(&ses->ses);
-	
-	if (!conf_noauth) {
-		if (ses->serv->opt_shared && ipoe_create_interface(ses))
-			return;
-
-#ifdef RADIUS
-		if (conf_attr_dhcp_opt82 && ses->relay_agent && radius_loaded) {
-			ses->radius.send_access_request = ipoe_rad_send_request;
-			ses->radius.send_accounting_request = ipoe_rad_send_request;
-			rad_register_plugin(&ses->ses, &ses->radius);
-		}
-#endif
-
-		r = pwdb_check(&ses->ses, username, PPP_PAP, conf_password ? conf_password : username);
-		if (r == PWDB_NO_IMPL) {
-			passwd = pwdb_get_passwd(&ses->ses, ses->ses.username);
-			if (!passwd)
-				r = PWDB_DENIED;
-			else {
-				r = PWDB_SUCCESS;
-				_free(passwd);
-			}
-		}
-
-		if (r == PWDB_DENIED) {
-			pthread_rwlock_wrlock(&ses_lock);
-			ses->ses.username = username;
-			ses->ses.terminate_cause = TERM_AUTH_ERROR;
-			pthread_rwlock_unlock(&ses_lock);
-			if (conf_ppp_verbose)
-				log_ppp_warn("authentication failed\n");
-			if (conf_l4_redirect_on_reject && !ses->dhcpv4_request)
-				l4_redirect_list_add(ses->yiaddr);
-			ap_session_terminate(&ses->ses, TERM_AUTH_ERROR, 0);
-			return;
-		}
 	}
 
 	ap_session_set_username(&ses->ses, username);
@@ -586,6 +542,66 @@ static void ipoe_session_start(struct ipoe_session *ses)
 		triton_timer_add(&ses->ctx, &ses->timer, 0);
 	} else
 		__ipoe_session_start(ses);
+}
+
+static void ipoe_session_start(struct ipoe_session *ses)
+{
+	int r;
+	char *passwd;
+	char *username;
+
+	__sync_add_and_fetch(&stat_starting, 1);
+	
+	assert(!ses->ses.username);
+
+	strncpy(ses->ses.ifname, ses->serv->ifname, AP_IFNAME_LEN);
+	
+	username = ipoe_session_get_username(ses);
+
+	if (!username) {
+		ipoe_session_finished(&ses->ses);
+		return;
+	}
+
+	ses->ses.unit_idx = ses->serv->ifindex;
+	
+	triton_event_fire(EV_CTRL_STARTING, &ses->ses);
+	triton_event_fire(EV_CTRL_STARTED, &ses->ses);
+
+	ap_session_starting(&ses->ses);
+	
+	if (conf_noauth) 
+		r = PWDB_SUCCESS;
+	else {
+		if (ses->serv->opt_shared && ipoe_create_interface(ses))
+			return;
+
+#ifdef RADIUS
+		if (conf_attr_dhcp_opt82 && ses->relay_agent && radius_loaded) {
+			ses->radius.send_access_request = ipoe_rad_send_request;
+			ses->radius.send_accounting_request = ipoe_rad_send_request;
+			rad_register_plugin(&ses->ses, &ses->radius);
+		}
+#endif
+
+		ses->username = username;
+		r = pwdb_check(&ses->ses, (pwdb_callback)auth_result, ses, username, PPP_PAP, conf_password ? conf_password : username);
+		
+		if (r == PWDB_WAIT)
+			return;
+
+		if (r == PWDB_NO_IMPL) {
+			passwd = pwdb_get_passwd(&ses->ses, ses->ses.username);
+			if (!passwd)
+				r = PWDB_DENIED;
+			else {
+				r = PWDB_SUCCESS;
+				_free(passwd);
+			}
+		}
+	}
+	
+	auth_result(ses, r);
 }
 
 static void find_gw_addr(struct ipoe_session *ses)

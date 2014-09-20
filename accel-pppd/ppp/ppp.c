@@ -115,7 +115,7 @@ int __export establish_ppp(struct ppp_t *ppp)
 			log_ppp_error("open(unit) /dev/ppp: %s\n", strerror(errno));
 			goto exit_close_chan;
 		}
-		
+	
 		fcntl(ppp->unit_fd, F_SETFD, fcntl(ppp->unit_fd, F_GETFD) | FD_CLOEXEC);
 
 		ppp->ses.unit_idx = -1;
@@ -283,7 +283,7 @@ cont:
 		list_for_each_entry(ppp_h, &ppp->chan_handlers, entry) {
 			if (ppp_h->proto == proto) {
 				ppp_h->recv(ppp_h);
-				if (ppp->chan_fd == -1) {
+				if (ppp->fd == -1) {
 					//ppp->ses.ctrl->finished(ppp);
 					return 1;
 				}
@@ -331,7 +331,7 @@ cont:
 		list_for_each_entry(ppp_h, &ppp->unit_handlers, entry) {
 			if (ppp_h->proto == proto) {
 				ppp_h->recv(ppp_h);
-				if (ppp->unit_fd == -1) {
+				if (ppp->fd == -1) {
 					//ppp->ses.ctrl->finished(ppp);
 					return 1;
 				}

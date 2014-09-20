@@ -103,6 +103,7 @@ struct ap_session
 	uint32_t acct_tx_packets_i;
 	uint32_t acct_rx_bytes_i;
 	uint32_t acct_tx_bytes_i;
+	int acct_start;
 };
 
 struct ap_session_stat
@@ -127,6 +128,7 @@ int ap_session_starting(struct ap_session *ses);
 void ap_session_finished(struct ap_session *ses);
 void ap_session_terminate(struct ap_session *ses, int cause, int hard);
 void ap_session_activate(struct ap_session *ses);
+void ap_session_accounting_started(struct ap_session *ses);
 int ap_session_set_username(struct ap_session *ses, char *username);
 
 void ap_session_ifup(struct ap_session *ses);

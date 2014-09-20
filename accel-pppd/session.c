@@ -227,7 +227,7 @@ void __export ap_session_terminate(struct ap_session *ses, int cause, int hard)
 	ap_session_read_stats(ses, NULL);
 
 	triton_event_fire(EV_SES_FINISHING, ses);
-			
+
 	ses->ctrl->terminate(ses, hard);
 }
 

@@ -80,6 +80,7 @@ struct ipoe_session {
 	struct dhcpv4_packet *dhcpv4_relay_reply;
 	int relay_retransmit;
 	int ifindex;
+	char *username;
 	struct ipv4db_item_t ipv4;
 #ifdef RADIUS
 	struct rad_plugin_t radius;

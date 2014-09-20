@@ -100,6 +100,48 @@ void rad_server_put(struct rad_server_t *s, int type)
 	}
 }
 
+static void req_wakeup(struct rad_req_t *req)
+{
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+
+	pthread_mutex_lock(&req->serv->lock);
+
+	if (ts.tv_sec < req->serv->fail_time || req->serv->need_free) {
+		req->active = 0;
+		req->serv->req_cnt--;
+		pthread_mutex_unlock(&req->serv->lock);
+		
+		req->send(req, -1);
+
+		return;
+	}
+	pthread_mutex_unlock(&req->serv->lock);
+		
+	req->send(req, 1);
+}
+
+int rad_server_req_cancel(struct rad_req_t *req)
+{
+	int r = 0;
+
+	pthread_mutex_lock(&req->serv->lock);
+	if (req->entry.next) {
+		list_del(&req->entry);
+		req->serv->queue_cnt--;
+		r = 1;
+	}
+	pthread_mutex_unlock(&req->serv->lock);
+
+	rad_server_req_exit(req);
+
+	if (req->timeout.tpd)
+		triton_timer_del(&req->timeout);
+
+	return r;
+}
+
 int rad_server_req_enter(struct rad_req_t *req)
 {
 	struct timespec ts;
@@ -112,8 +154,13 @@ int rad_server_req_enter(struct rad_req_t *req)
 	if (ts.tv_sec < req->serv->fail_time)
 		return -1;
 
-	if (!req->serv->req_limit)
+	if (!req->serv->req_limit) {
+		if (req->send)
+			return req->send(req, 0);
 		return 0;
+	}
+
+	assert(!req->active);
 
 	pthread_mutex_lock(&req->serv->lock);
 	
@@ -123,46 +170,47 @@ int rad_server_req_enter(struct rad_req_t *req)
 	}
 
 	if (req->serv->req_cnt >= req->serv->req_limit) {
-		list_add_tail(&req->entry, &req->serv->req_queue);
-		req->serv->queue_cnt++;
-
-		pthread_mutex_unlock(&req->serv->lock);
-		triton_context_schedule();
-		pthread_mutex_lock(&req->serv->lock);
-
-		req->serv->queue_cnt--;
-		if (ts.tv_sec < req->serv->fail_time || req->serv->need_free) {
+		if (req->send) {
+			list_add_tail(&req->entry, &req->serv->req_queue);
+			req->serv->queue_cnt++;
 			pthread_mutex_unlock(&req->serv->lock);
-			return -1;
+			return 0;
 		}
+		
+		pthread_mutex_unlock(&req->serv->lock);
+		return 1;
 	}
 
 	req->serv->req_cnt++;
 	log_ppp_debug("radius(%i): req_enter %i\n", req->serv->id, req->serv->req_cnt);
 	pthread_mutex_unlock(&req->serv->lock);
+	
+	req->active = 1;
 
 	return 0;
 }
 
 void rad_server_req_exit(struct rad_req_t *req)
 {
-	struct rad_req_t *r = NULL;
-	
 	if (!req->serv->req_limit)
 		return;
+
+	assert(req->active);
+
+	req->active = 0;
 
 	pthread_mutex_lock(&req->serv->lock);
 	req->serv->req_cnt--;
 	log_ppp_debug("radius(%i): req_exit %i\n", req->serv->id, req->serv->req_cnt);
 	assert(req->serv->req_cnt >= 0);
 	if (req->serv->req_cnt < req->serv->req_limit && !list_empty(&req->serv->req_queue)) {
-		r = list_entry(req->serv->req_queue.next, typeof(*r), entry);
+		struct rad_req_t *r = list_entry(req->serv->req_queue.next, typeof(*r), entry);
 		list_del(&r->entry);
+		req->serv->queue_cnt--;
+		req->active = 1;
+		triton_context_call(r->rpd->ses->ctrl->ctx, (triton_event_func)req_wakeup, r);
 	}
 	pthread_mutex_unlock(&req->serv->lock);
-
-	if (r)
-		triton_context_wakeup(r->rpd->ses->ctrl->ctx);
 }
 
 int rad_server_realloc(struct rad_req_t *req)
@@ -214,7 +262,7 @@ void rad_server_fail(struct rad_server_t *s)
 		while (!list_empty(&s->req_queue)) {
 			r = list_entry(s->req_queue.next, typeof(*r), entry);
 			list_del(&r->entry);
-			triton_context_wakeup(r->rpd->ses->ctrl->ctx);
+			triton_context_call(r->rpd->ses->ctrl->ctx, (triton_event_func)req_wakeup, r);
 		}
 	}
 
@@ -223,7 +271,7 @@ void rad_server_fail(struct rad_server_t *s)
 
 void rad_server_timeout(struct rad_server_t *s)
 {
-	if (__sync_add_and_fetch(&s->timeout_cnt, 1) >= conf_max_try)
+	if (__sync_add_and_fetch(&s->timeout_cnt, 1) >= conf_max_try * 3)
 		rad_server_fail(s);
 }
 
@@ -248,13 +296,49 @@ static int req_set_RA(struct rad_req_t *req, const char *secret)
 	return 0;
 }
 
+static void acct_on_sent(struct rad_req_t *req, int res)
+{
+	if (!res && !req->hnd.tpd) {
+		triton_md_register_handler(&req->serv->ctx, &req->hnd);
+		triton_md_enable_handler(&req->hnd, MD_MODE_READ);
+	}
+}
+
+static void acct_on_recv(struct rad_req_t *req)
+{
+	struct rad_server_t *s = req->serv;
+
+	rad_req_free(req);
+
+	if (req->serv->starting) {
+		req->serv->starting = 0;
+		req->serv->acct_on = 1;
+	} else
+		__free_server(s);
+}
+
+static void acct_on_timeout(struct triton_timer_t *t)
+{
+	struct rad_req_t *req = container_of(t, typeof(*req), timeout);
+	struct rad_server_t *s = req->serv;
+
+	if (!s->starting && ++req->serv->req_cnt == conf_max_try) {
+		rad_req_free(req);
+		__free_server(s);
+		return;
+	}
+
+	req->try = 1;
+	
+	rad_req_send(req);
+}
+
 static void send_acct_on(struct rad_server_t *s)
 {
 	struct rad_req_t *req = _malloc(sizeof(*req));
-	int i;
 
 	if (!req)
-		goto out_err;
+		return;
 
 	memset(req, 0, sizeof(*req));
 	req->hnd.fd = -1;
@@ -262,6 +346,12 @@ static void send_acct_on(struct rad_server_t *s)
 	req->server_addr = s->addr;
 	req->server_port = s->acct_port;
 	req->serv = s;
+	req->sent = acct_on_sent;
+	req->recv = acct_on_recv;
+	req->hnd.read = rad_req_read;
+	req->timeout.expire = acct_on_timeout;
+	req->timeout.period = conf_timeout * 1000;
+	req->try = 1;
 	__sync_add_and_fetch(&s->client_cnt[req->type], 1);
 	if (conf_verbose)
 		req->log = log_info1;
@@ -284,55 +374,14 @@ static void send_acct_on(struct rad_server_t *s)
 	if (req_set_RA(req, s->secret))
 		goto out_err;
 
-	for (i = 0; i < conf_max_try; i++) {
-		if (rad_req_send(req, conf_verbose ? log_info1 : NULL))
-			goto out_err;
-		
-		rad_req_wait(req, conf_timeout);
-		
-		if (!s->starting)
-			break;
+	rad_req_send(req);
 
-		if (!req->reply)
-			continue;
-				
-		if (req->reply->id == req->pack->id && req->reply->code == CODE_ACCOUNTING_RESPONSE) {
-			s->starting = 0;
-			s->acct_on = 1;
-			break;
-		}
+	triton_timer_add(&s->ctx, &req->timeout, 0);
 
-		rad_packet_free(req->reply);
-		req->reply = NULL;
-	}
-
-	if (!s->starting) {
-		if (s->timer.tpd)
-			triton_timer_del(&s->timer);
-
-		if (!s->acct_on)
-			triton_context_unregister(&s->ctx);
-		
-		rad_req_free(req);
-
-		return;
-	}
+	return;
 	
 out_err:
-	if (req)
-		rad_req_free(req);
-	
-	if (s->timer.tpd)
-		triton_timer_mod(&s->timer, 0);
-	else
-		triton_timer_add(&s->ctx, &s->timer, 0);
-}
-
-static void restart_acct_on(struct triton_timer_t *t)
-{
-	struct rad_server_t *s = container_of(t, typeof(*s), timer);
-
-	send_acct_on(s);
+	rad_req_free(req);
 }
 
 static void serv_ctx_close(struct triton_context_t *ctx)
@@ -444,6 +493,14 @@ static void __add_server(struct rad_server_t *s)
 	s->stat_interim_lost_5m = stat_accm_create(5 * 60);
 	s->stat_interim_query_1m = stat_accm_create(60);
 	s->stat_interim_query_5m = stat_accm_create(5 * 60);
+				
+	s->ctx.close = serv_ctx_close;
+
+	triton_context_register(&s->ctx, NULL);
+	triton_context_set_priority(&s->ctx, 1);
+	if (conf_acct_on)
+		triton_context_call(&s->ctx, (triton_event_func)send_acct_on, s);
+	triton_context_wakeup(&s->ctx);
 }
 
 static void __free_server(struct rad_server_t *s)
@@ -464,6 +521,8 @@ static void __free_server(struct rad_server_t *s)
 	stat_accm_free(s->stat_interim_lost_5m);
 	stat_accm_free(s->stat_interim_query_1m);
 	stat_accm_free(s->stat_interim_query_5m);
+
+	triton_context_unregister(&s->ctx);
 
 	_free(s);
 }
@@ -732,7 +791,7 @@ static void load_config(void)
 			while (!list_empty(&s->req_queue)) {
 				r = list_entry(s->req_queue.next, typeof(*r), entry);
 				list_del(&r->entry);
-				triton_context_wakeup(r->rpd->ses->ctrl->ctx);
+				triton_context_call(r->rpd->ses->ctrl->ctx, (triton_event_func)req_wakeup, r);
 			}
 
 			if (!s->client_cnt[0] && !s->client_cnt[1]) {
@@ -756,18 +815,8 @@ static void load_config(void)
 	
 	list_for_each_entry(s, &serv_list, entry) {
 		if (s->starting) {
-			if (!conf_accounting || !s->acct_port)
+			if (!conf_accounting || !s->auth_port)
 				s->starting = 0;
-			else {
-				s->ctx.close = serv_ctx_close;
-				s->timer.expire = restart_acct_on;
-				s->timer.expire_tv.tv_sec = 10;
-
-				triton_context_register(&s->ctx, NULL);
-				triton_context_set_priority(&s->ctx, 1);
-				triton_context_call(&s->ctx, (triton_event_func)send_acct_on, s);
-				triton_context_wakeup(&s->ctx);
-			}
 		}
 	}
 }

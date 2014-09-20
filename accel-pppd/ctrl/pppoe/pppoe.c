@@ -33,7 +33,7 @@
 
 #include "memdebug.h"
 
-#define SID_MAX 128
+#define SID_MAX 65536
 
 struct pppoe_conn_t {
 	struct list_head entry;
@@ -140,7 +140,6 @@ static void disconnect(struct pppoe_conn_t *conn)
 	pppoe_send_PADT(conn);
 
 	close(conn->disc_sock);
-
 
 	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp.ses);
 
@@ -365,6 +364,7 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 
 	pthread_mutex_lock(&serv->lock);
 	list_add_tail(&conn->entry, &serv->conn_list);
+	serv->conn_cnt++;
 	pthread_mutex_unlock(&serv->lock);
 	
 	return conn;

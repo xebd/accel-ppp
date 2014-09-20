@@ -618,7 +618,7 @@ int auth_mschap_v2(struct ap_session *ses, struct cs_pd_t *pd, const char *usern
 	return PWDB_SUCCESS;
 }
 
-static int check_passwd(struct pwdb_t *pwdb, struct ap_session *ses, const char *username, int type, va_list _args)
+static int check_passwd(struct pwdb_t *pwdb, struct ap_session *ses, pwdb_callback cb, void *cb_arg, const char *username, int type, va_list _args)
 {
 	va_list args;
 	int r = PWDB_NO_IMPL;

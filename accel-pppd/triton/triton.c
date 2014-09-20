@@ -569,7 +569,7 @@ static void ru_update(struct triton_timer_t *t)
 
 void __export triton_register_init(int order, void (*func)(void))
 {
-	struct _triton_init_t *i1, *i = _malloc(sizeof(*i));
+	struct _triton_init_t *i1, *i = malloc(sizeof(*i));
 	struct list_head *p = init_list.next;
 
 
@@ -624,7 +624,7 @@ int __export triton_load_modules(const char *mod_sect)
 		i = list_entry(init_list.next, typeof(*i), entry);
 		i->func();
 		list_del(&i->entry);
-		_free(i);
+		free(i);
 	}
 	
 	return 0;

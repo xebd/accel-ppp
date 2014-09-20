@@ -15,7 +15,7 @@
 #define DELAY 5
 #endif
 
-//#define MEMPOOL_DISABLE
+#define MEMPOOL_DISABLE
 
 #define MAGIC1 0x2233445566778899llu
 #define PAGE_ORDER 5
@@ -136,72 +136,6 @@ void __export *mempool_alloc(mempool_t *pool)
 
 	return it->ptr;
 }
-#else
-
-void __export *mempool_alloc_md(mempool_t *pool, const char *fname, int line)
-{
-	struct _mempool_t *p = (struct _mempool_t *)pool;
-	struct _item_t *it;
-	uint32_t size = sizeof(*it) + p->size + 8;
-
-	spin_lock(&p->lock);
-	if (!list_empty(&p->items)) {
-		it = list_entry(p->items.next, typeof(*it), entry);
-#ifdef VALGRIND
-		if (it->timestamp + DELAY < time(NULL)) {
-		VALGRIND_MAKE_MEM_DEFINED(&it->owner, size - sizeof(it->entry) - sizeof(it->timestamp));
-		VALGRIND_MAKE_MEM_UNDEFINED(it->ptr, p->size);
-#endif
-		list_del(&it->entry);
-		list_add(&it->entry, &p->ditems);
-		spin_unlock(&p->lock);
-
-		it->fname = fname;
-		it->line = line;
-		
-		--p->objects;
-		__sync_sub_and_fetch(&triton_stat.mempool_available, size);
-		
-		it->magic1 = MAGIC1;
-
-		return it->ptr;
-#ifdef VALGRIND
-		}
-#endif
-	}
-	spin_unlock(&p->lock);
-
-	if (p->mmap) {
-		spin_lock(&mmap_lock);
-		if (mmap_ptr + size >= mmap_endptr)
-			mmap_grow();
-		it = (struct _item_t *)mmap_ptr;
-		mmap_ptr += size;
-		spin_unlock(&mmap_lock);
-		__sync_sub_and_fetch(&triton_stat.mempool_available, size);
-	}	else {
-		it = md_malloc(size, fname, line);
-		__sync_add_and_fetch(&triton_stat.mempool_allocated, size);
-	}
-
-	if (!it) {
-		triton_log_error("mempool: out of memory");
-		return NULL;
-	}
-	it->owner = p;
-	it->magic2 = p->magic;
-	it->magic1 = MAGIC1;
-	it->fname = fname;
-	it->line = line;
-	*(uint64_t*)(it->ptr + p->size) = it->magic2;
-
-	spin_lock(&p->lock);
-	list_add(&it->entry, &p->ditems);
-	spin_unlock(&p->lock);
-
-	return it->ptr;
-}
-#endif
 
 void __export mempool_free(void *ptr)
 {
@@ -257,6 +191,18 @@ void __export mempool_free(void *ptr)
 #endif
 
 }
+
+
+#else
+
+void __export *md_mempool_alloc(mempool_t *pool, const char *fname, int line)
+{
+	struct _mempool_t *p = (struct _mempool_t *)pool;
+
+	return md_malloc(p->size, fname, line);
+}
+#endif
+
 
 #ifdef MEMDEBUG
 void __export mempool_show(mempool_t *pool)
