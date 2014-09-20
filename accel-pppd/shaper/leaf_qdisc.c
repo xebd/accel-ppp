@@ -153,6 +153,7 @@ out:
 	return 0;
 }
 
+#ifdef TCA_FQ_CODEL_MAX
 static int parse_fq_codel(char *str)
 {
 	char *ptr1, *ptr2;
@@ -215,7 +216,7 @@ out:
 
 	return 0;
 }
-
+#endif
 
 void leaf_qdisc_parse(const char *opt)
 {
@@ -232,9 +233,11 @@ void leaf_qdisc_parse(const char *opt)
 	if (strcmp(str, "sfq") == 0) {
 		if (parse_sfq(ptr1))
 			goto out_err;
+#ifdef TCA_FQ_CODEL_MAX
 	} if (strcmp(str, "fq_codel") == 0) {
 		if (parse_fq_codel(ptr1))
 			goto out_err;
+#endif
 	} else
 		log_emerg("shaper: unknown leaf-qdisc '%s'\n", str);
 	
@@ -270,6 +273,7 @@ static int install_sfq(struct rtnl_handle *rth, int ifindex, int parent, int han
 	return tc_qdisc_modify(rth, ifindex, RTM_NEWQDISC, NLM_F_EXCL|NLM_F_CREATE, &opt);
 }
 
+#ifdef TCA_FQ_CODEL_MAX
 static int qdisc_fq_codel(struct qdisc_opt *qopt, struct nlmsghdr *n)
 {
 	struct rtattr *tail = NLMSG_TAIL(n);
@@ -305,14 +309,17 @@ static int install_fq_codel(struct rtnl_handle *rth, int ifindex, int parent, in
 
 	return tc_qdisc_modify(rth, ifindex, RTM_NEWQDISC, NLM_F_EXCL|NLM_F_CREATE, &opt);
 }
+#endif
 
 int install_leaf_qdisc(struct rtnl_handle *rth, int ifindex, int parent, int handle)
 {
 	if (conf_leaf_qdisc == LEAF_QDISC_SFQ)
 		return install_sfq(rth, ifindex, parent, handle);
 	
-	if (conf_leaf_qdisc == LEAF_QDISC_FQ_CODEL)
+#ifdef TCA_FQ_CODEL_MAX
+	else if (conf_leaf_qdisc == LEAF_QDISC_FQ_CODEL)
 		return install_fq_codel(rth, ifindex, parent, handle);
+#endif
 	
 	return 0;
 }
