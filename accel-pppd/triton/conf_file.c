@@ -8,14 +8,19 @@
 
 #include "memdebug.h"
 
-struct sect_t
-{
+struct sect_t {
 	struct list_head entry;
 	
 	struct conf_sect_t *sect;
 };
 
-static pthread_mutex_t conf_lock = PTHREAD_MUTEX_INITIALIZER;
+struct conf_ctx {
+	const char *fname;
+	FILE *file;
+	int line;
+	struct list_head *items;
+};
+
 static LIST_HEAD(sections);
 static char *conf_fname;
 
@@ -24,29 +29,51 @@ static char* skip_word(char *str);
 
 static struct conf_sect_t *find_sect(const char *name);
 static struct conf_sect_t *create_sect(const char *name);
-static void sect_add_item(struct conf_sect_t *sect, const char *name, const char *val, char *raw);
+static int sect_add_item(struct conf_ctx *ctx, const char *name, char *val, char *raw);
 static struct conf_option_t *find_item(struct conf_sect_t *, const char *name);
+static int load_file(struct conf_ctx *ctx);
 
 static char *buf;
+static struct conf_sect_t *cur_sect;
 
-int __conf_load(const char *fname, struct conf_sect_t *cur_sect)
+static int __conf_load(struct conf_ctx *ctx, const char *fname)
 {
-	char *str, *str2, *raw;
-	int cur_line = 0;
+	struct conf_ctx ctx1;
+	int r;
 
-	FILE *f = fopen(fname, "r");
-	if (!f) {
+	ctx1.fname = fname;
+	ctx1.file = fopen(fname, "r");
+	ctx1.line = 0;
+	ctx1.items = ctx->items;
+	if (!ctx1.file) {
 		perror("conf_file:open");
 		return -1;
 	}
+
+	r = load_file(&ctx1);
 	
-	while(!feof(f)) {
-		if (!fgets(buf, 1024, f))
+	fclose(ctx1.file);
+
+	return r;
+}
+
+static int load_file(struct conf_ctx *ctx)
+{
+	char *str, *str2, *raw;
+	int len;
+
+	while(1) {
+		if (!fgets(buf, 1024, ctx->file))
 			break;
-		++cur_line;
-		if (buf[strlen(buf) - 1] == '\n')
-			buf[strlen(buf) - 1] = 0;
-		
+		ctx->line++;
+
+		len = strlen(buf);
+		if (buf[len - 1] == '\n')
+			buf[--len] = 0;
+
+		while (len && (buf[len - 1] == ' ' || buf[len - 1] == '\t'))
+			buf[--len] = 0;
+
 		str = skip_space(buf);
 		if (*str == '#' || *str == 0)
 			continue;
@@ -54,7 +81,7 @@ int __conf_load(const char *fname, struct conf_sect_t *cur_sect)
 		if (strncmp(str, "$include", 8) == 0)	{
 			str = skip_word(str);
 			str = skip_space(str);
-			if (__conf_load(str, cur_sect));
+			if (__conf_load(ctx, str))
 				break;
 			continue;
 		}
@@ -62,18 +89,28 @@ int __conf_load(const char *fname, struct conf_sect_t *cur_sect)
 		if (*str == '[') {
 			for (str2 = ++str; *str2 && *str2 != ']'; str2++);
 			if (*str2 != ']') {
-				fprintf(stderr, "conf_file:%s:%i: sintax error\n", fname, cur_line);
+				fprintf(stderr, "conf_file:%s:%i: sintax error\n", ctx->fname, ctx->line);
 				return -1;
 			}
+			
+			if (cur_sect && ctx->items != &cur_sect->items) {
+				fprintf(stderr, "conf_file:%s:%i: cann't open section inside option\n", ctx->fname, ctx->line);
+				return -1;
+			}
+
 			*str2 = 0;
 			cur_sect = find_sect(str);
 			if (!cur_sect)
-				cur_sect = create_sect(str);	
+				cur_sect = create_sect(str);
+			ctx->items = &cur_sect->items;
 			continue;
 		}
 
+		if (*str == '}' && ctx->items != &cur_sect->items)
+			return 0;
+
 		if (!cur_sect) {
-			fprintf(stderr, "conf_file:%s:%i: no section opened\n", fname, cur_line);
+			fprintf(stderr, "conf_file:%s:%i: no section opened\n", ctx->fname, ctx->line);
 			return -1;
 		}
 
@@ -98,24 +135,47 @@ int __conf_load(const char *fname, struct conf_sect_t *cur_sect)
 				}
 				opt = find_item(cur_sect, str2);
 				if (!opt) {
-					fprintf(stderr, "conf_file:%s:%i: parent option not found\n", fname, cur_line);
+					fprintf(stderr, "conf_file:%s:%i: parent option not found\n", ctx->fname, ctx->line);
 					return -1;
 				}
 				str2 = opt->val;
 			}
 		} else
 			str2 = NULL;
-		sect_add_item(cur_sect, str, str2, raw);
+		if (sect_add_item(ctx, str, str2, raw))
+			return -1;
 	}
 	
-	fclose(f);
-
 	return 0;
 }
+
+/*static void print_items(struct list_head *items, int dep)
+{
+	struct conf_option_t *opt;
+	int i;
+
+	list_for_each_entry(opt, items, entry) {
+		for (i = 0; i < dep; i++)
+			printf("\t");
+		printf("%s=%s\n", opt->name, opt->val);
+		print_items(&opt->items, dep + 1);
+	}
+}
+
+static void print_conf()
+{
+	struct sect_t *s;
+
+	list_for_each_entry(s, &sections, entry) {
+		printf("[%s]\n", s->sect->name);
+		print_items(&s->sect->items, 0);
+	}
+}*/
 
 int conf_load(const char *fname)
 {
 	int r;
+	struct conf_ctx ctx;
 
 	if (fname) {
 		if (conf_fname)
@@ -126,51 +186,50 @@ int conf_load(const char *fname)
 
 	buf = _malloc(1024);
 
-	r = __conf_load(fname, NULL);
-	
+	cur_sect = NULL;
+	ctx.items = NULL;
+	r = __conf_load(&ctx, fname);
+
 	_free(buf);
 
 	return r;
 }
 
+static void free_items(struct list_head *items)
+{
+	struct conf_option_t *opt;
+
+	while (!list_empty(items)) {
+		opt = list_entry(items->next, typeof(*opt), entry);
+		list_del(&opt->entry);
+		if (opt->val)
+			_free(opt->val);
+		_free(opt->name);
+		_free(opt->raw);
+		free_items(&opt->items);
+		_free(opt);
+	}
+}
+
 int conf_reload(const char *fname)
 {
 	struct sect_t *sect;
-	struct conf_option_t *opt;
 	int r;
 	LIST_HEAD(sections_bak);
 
-	pthread_mutex_lock(&conf_lock);
+	list_splice_init(&sections, &sections_bak);
 
-	while (!list_empty(&sections)) {
-		sect = list_entry(sections.next, typeof(*sect), entry);
-		list_del(&sect->entry);
-		list_add_tail(&sect->entry, &sections_bak);
-	}
+	cur_sect = NULL;
 
 	r = conf_load(fname);
 
-	if (r) {
+	if (r)
+		list_splice(&sections_bak, &sections);
+	else {
 		while (!list_empty(&sections_bak)) {
 			sect = list_entry(sections_bak.next, typeof(*sect), entry);
 			list_del(&sect->entry);
-			list_add_tail(&sect->entry, &sections);
-		}
-		pthread_mutex_unlock(&conf_lock);
-	} else {
-		pthread_mutex_unlock(&conf_lock);
-		while (!list_empty(&sections_bak)) {
-			sect = list_entry(sections_bak.next, typeof(*sect), entry);
-			list_del(&sect->entry);
-			while (!list_empty(&sect->sect->items)) {
-				opt = list_entry(sect->sect->items.next, typeof(*opt), entry);
-				list_del(&opt->entry);
-				if (opt->val)
-					_free(opt->val);
-				_free(opt->name);
-				_free(opt->raw);
-				_free(opt);
-			}
+			free_items(&sect->sect->items);
 			_free((char *)sect->sect->name);
 			_free(sect->sect);
 			_free(sect);
@@ -182,12 +241,12 @@ int conf_reload(const char *fname)
 
 static char* skip_space(char *str)
 {
-	for (; *str && *str == ' '; str++);
+	for (; *str && (*str == ' ' || *str == '\t'); str++);
 	return str;
 }
 static char* skip_word(char *str)
 {
-	for (; *str && (*str != ' ' && *str != '='); str++);
+	for (; *str && (*str != ' ' && *str != '\t' && *str != '='); str++);
 	return str;
 }
 
@@ -212,15 +271,39 @@ static struct conf_sect_t *create_sect(const char *name)
 	return s->sect;
 }
 
-static void sect_add_item(struct conf_sect_t *sect, const char *name, const char *val, char *raw)
+static int sect_add_item(struct conf_ctx *ctx, const char *name, char *val, char *raw)
 {
 	struct conf_option_t *opt = _malloc(sizeof(struct conf_option_t));
-	
+	int r = 0;
+	int len = 0;
+
+	if (val) {
+		len = strlen(val);
+		if (val[len - 1] == '{') {
+			val[len - 1] = 0;
+			while (len && (val[len - 1] == ' ' || val[len - 1] == '\t'))
+				len--;
+			len = 1;
+		}
+		else
+			len = 0;
+	}
+
 	opt->name = _strdup(name);
 	opt->val = val ? _strdup(val) : NULL;
 	opt->raw = raw;
+	INIT_LIST_HEAD(&opt->items);
 	
-	list_add_tail(&opt->entry, &sect->items);
+	list_add_tail(&opt->entry, ctx->items);
+
+	if (len) {
+		struct list_head *items = ctx->items;
+		ctx->items = &opt->items;
+		r = load_file(ctx);
+		ctx->items = items;
+	}
+
+	return r;
 }
 
 static struct conf_option_t *find_item(struct conf_sect_t *sect, const char *name)

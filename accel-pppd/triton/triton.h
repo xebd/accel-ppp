@@ -43,6 +43,7 @@ struct conf_option_t
 	char *name;
 	char *val;
 	char *raw;
+	struct list_head items;
 };
 
 struct conf_sect_t
