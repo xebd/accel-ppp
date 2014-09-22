@@ -15,7 +15,7 @@
 #define DELAY 5
 #endif
 
-#define MEMPOOL_DISABLE
+//#define MEMPOOL_DISABLE
 
 #define MAGIC1 0x2233445566778899llu
 #define PAGE_ORDER 5

@@ -134,7 +134,8 @@ int rad_server_req_cancel(struct rad_req_t *req)
 	}
 	pthread_mutex_unlock(&req->serv->lock);
 
-	rad_server_req_exit(req);
+	if (req->active)
+		rad_server_req_exit(req);
 
 	if (req->timeout.tpd)
 		triton_timer_del(&req->timeout);
@@ -186,7 +187,10 @@ int rad_server_req_enter(struct rad_req_t *req)
 	pthread_mutex_unlock(&req->serv->lock);
 	
 	req->active = 1;
-
+	
+	if (req->send)
+		return req->send(req, 0);
+	
 	return 0;
 }
 

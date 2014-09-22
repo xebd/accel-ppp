@@ -398,7 +398,8 @@ int rad_req_read(struct triton_md_handler_t *h)
 	
 	req->reply = pack;
 
-	rad_server_req_exit(req);
+	if (req->active)
+		rad_server_req_exit(req);
 
 	if (req->log) {
 		req->log("recv ");

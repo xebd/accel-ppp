@@ -56,6 +56,7 @@ static int parse_size(const char *str, int *r)
 	return 0;
 }
 
+#ifdef TCA_FQ_CODEL_MAX
 static int parse_time(const char *str, int *r)
 {
 	double t;
@@ -82,7 +83,7 @@ static int parse_time(const char *str, int *r)
 
 	return 0;
 }
-
+#endif
 
 static int parse_int(const char *str, int *r)
 {

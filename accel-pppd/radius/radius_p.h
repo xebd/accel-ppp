@@ -73,7 +73,7 @@ struct rad_req_t {
 	
 	in_addr_t server_addr;
 	
-	int server_port:16;
+	int server_port;
 	int type:8;
 	int try:6;
 	int active:1;

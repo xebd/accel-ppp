@@ -312,7 +312,7 @@ static void pap_recv(struct ppp_handler_t *h)
 	struct pap_auth_data *d = container_of(h, typeof(*d), h);
 	struct pap_hdr *hdr = (struct pap_hdr *)d->ppp->buf;
 
-	if (d->ppp->buf_size < sizeof(*hdr) || ntohs(hdr->len) < HDR_LEN || ntohs(hdr->len) < d->ppp->buf_size - 2)	{
+	if (d->ppp->buf_size < sizeof(*hdr) || ntohs(hdr->len) < HDR_LEN || ntohs(hdr->len) > d->ppp->buf_size - 2)	{
 		log_ppp_warn("PAP: short packet received\n");
 		return;
 	}
