@@ -207,9 +207,11 @@ static void ctx_thread(struct _triton_context_t *ctx)
 			h->pending = 0;
 			events = h->trig_epoll_events;
 			spin_unlock(&ctx->lock);
-			
+
 			__sync_sub_and_fetch(&triton_stat.md_handler_pending, 1);
 			
+			h->armed = 0;
+
 			if ((events & (EPOLLIN | EPOLLERR | EPOLLHUP)) && (h->epoll_event.events & EPOLLIN)) {
 				if (h->ud && h->ud->read) {
 					if (h->ud->read(h->ud))
@@ -223,6 +225,8 @@ static void ctx_thread(struct _triton_context_t *ctx)
 						continue;
 				}
 			}
+
+			md_rearm(h);
 
 			continue;
 		}

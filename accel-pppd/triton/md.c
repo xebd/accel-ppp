@@ -5,6 +5,7 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #include "triton_p.h"
 
@@ -31,6 +32,8 @@ int md_init(void)
 		perror("md:epoll_create");
 		return -1;
 	}
+
+	fcntl(epoll_fd, F_SETFD, O_CLOEXEC);
 
 	epoll_events = _malloc(max_events * sizeof(struct epoll_event));
 	if (!epoll_events) {
@@ -171,15 +174,22 @@ int __export triton_md_enable_handler(struct triton_md_handler_t *ud, int mode)
 	if (mode & MD_MODE_WRITE)
 		h->epoll_event.events |= EPOLLOUT;
 	
-	if (!h->trig_level)
+	if (h->trig_level)
+		h->epoll_event.events |= EPOLLONESHOT;
+	else
 		h->epoll_event.events |= EPOLLET;
 	
 	if (events == h->epoll_event.events)
 		return 0;
 	
-	if (events)
-		r = epoll_ctl(epoll_fd, EPOLL_CTL_MOD, h->ud->fd, &h->epoll_event);
-	else
+	if (events) {
+		if (h->armed)
+			r = epoll_ctl(epoll_fd, EPOLL_CTL_MOD, h->ud->fd, &h->epoll_event);
+		else {
+			h->mod = 1;
+			r = 0;
+		}
+	} else
 		r = epoll_ctl(epoll_fd, EPOLL_CTL_ADD, h->ud->fd, &h->epoll_event);
 
 	if (r) {
@@ -204,13 +214,21 @@ int __export triton_md_disable_handler(struct triton_md_handler_t *ud,int mode)
 	if (mode & MD_MODE_WRITE)
 		h->epoll_event.events &= ~EPOLLOUT;
 	
+	if (!(h->epoll_event.events & (EPOLLIN | EPOLLOUT)))
+		h->epoll_event.events = 0;
+	
 	if (events == h->epoll_event.events)
 		return 0;
 
-	if (h->epoll_event.events & (EPOLLIN | EPOLLOUT))
-		r = epoll_ctl(epoll_fd, EPOLL_CTL_MOD, h->ud->fd, &h->epoll_event);
-	else {
-		h->epoll_event.events = 0;
+	if (h->epoll_event.events) {
+		if (h->armed)
+			r = epoll_ctl(epoll_fd, EPOLL_CTL_MOD, h->ud->fd, &h->epoll_event);
+		else {
+			h->mod = 1;
+			r = 0;
+		}
+	} else {
+		h->mod = 0;
 		r = epoll_ctl(epoll_fd, EPOLL_CTL_DEL, h->ud->fd, NULL);
 	}
 
@@ -226,5 +244,15 @@ void __export triton_md_set_trig(struct triton_md_handler_t *ud, int mode)
 {
 	struct _triton_md_handler_t *h = (struct _triton_md_handler_t *)ud->tpd;
 	h->trig_level = mode;
+}
+
+void md_rearm(struct _triton_md_handler_t *h)
+{
+	if (h->mod) {
+		epoll_ctl(epoll_fd, EPOLL_CTL_MOD, h->ud->fd, &h->epoll_event);
+		h->mod = 0;
+	}
+
+	h->armed = 1;
 }
 

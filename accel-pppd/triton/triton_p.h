@@ -54,8 +54,10 @@ struct _triton_md_handler_t
 	struct _triton_context_t *ctx;
 	struct epoll_event epoll_event;
 	uint32_t trig_epoll_events;
-	int pending:1;
+	int pending;
 	int trig_level:1;
+	int armed:1;
+	int mod:1;
 	struct triton_md_handler_t *ud;
 };
 
@@ -98,6 +100,7 @@ int event_init();
 
 void md_run();
 void md_terminate();
+void md_rearm(struct _triton_md_handler_t *h);
 void timer_run();
 void timer_terminate();
 extern struct triton_context_t default_ctx;
