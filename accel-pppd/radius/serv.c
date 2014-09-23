@@ -104,6 +104,11 @@ static void req_wakeup(struct rad_req_t *req)
 {
 	struct timespec ts;
 
+	log_ppp_debug("radius(%i): wakeup %i\n", req->serv->id, req->active);
+	
+	if (!req->active)
+		return;
+
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	pthread_mutex_lock(&req->serv->lock);
@@ -111,6 +116,7 @@ static void req_wakeup(struct rad_req_t *req)
 	if (ts.tv_sec < req->serv->fail_time || req->serv->need_free) {
 		req->active = 0;
 		req->serv->req_cnt--;
+		log_ppp_debug("radius(%i): server failed\n", req->serv->id);
 		pthread_mutex_unlock(&req->serv->lock);
 		
 		req->send(req, -1);
@@ -174,6 +180,7 @@ int rad_server_req_enter(struct rad_req_t *req)
 		if (req->send) {
 			list_add_tail(&req->entry, &req->serv->req_queue);
 			req->serv->queue_cnt++;
+			log_ppp_debug("radius(%i): queue\n", req->serv->id);
 			pthread_mutex_unlock(&req->serv->lock);
 			return 0;
 		}
@@ -211,7 +218,8 @@ void rad_server_req_exit(struct rad_req_t *req)
 		struct rad_req_t *r = list_entry(req->serv->req_queue.next, typeof(*r), entry);
 		list_del(&r->entry);
 		req->serv->queue_cnt--;
-		req->active = 1;
+		req->serv->req_cnt++;
+		r->active = 1;
 		triton_context_call(r->rpd->ses->ctrl->ctx, (triton_event_func)req_wakeup, r);
 	}
 	pthread_mutex_unlock(&req->serv->lock);
