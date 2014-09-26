@@ -123,6 +123,9 @@ void __export ap_session_activate(struct ap_session *ses)
 
 	ap_session_ifup(ses);
 
+	if (ses->stop_time)
+		return;
+
 	ses->state = AP_STATE_ACTIVE;
 	__sync_sub_and_fetch(&ap_session_stat.starting, 1);
 	__sync_add_and_fetch(&ap_session_stat.active, 1);
