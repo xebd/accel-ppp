@@ -385,8 +385,10 @@ static void ses_finished(struct ap_session *ses)
 	if (rpd->acct_req) {
 		if (rpd->acct_started)
 			rad_acct_stop_defer(rpd);
-		else
+		else {
+			rad_server_req_cancel(rpd->acct_req);
 			rad_req_free(rpd->acct_req);
+		}
 	}
 
 	if (rpd->dm_coa_req)
