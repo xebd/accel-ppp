@@ -145,6 +145,9 @@ int rad_server_req_cancel(struct rad_req_t *req)
 
 	if (req->timeout.tpd)
 		triton_timer_del(&req->timeout);
+	
+	if (req->hnd.tpd)
+		triton_md_unregister_handler(&req->hnd, 0);
 
 	return r;
 }
@@ -180,7 +183,7 @@ int rad_server_req_enter(struct rad_req_t *req)
 		if (req->send) {
 			list_add_tail(&req->entry, &req->serv->req_queue);
 			req->serv->queue_cnt++;
-			log_ppp_debug("radius(%i): queue\n", req->serv->id);
+			log_ppp_debug("radius(%i): queue %p\n", req->serv->id, req);
 			pthread_mutex_unlock(&req->serv->lock);
 			return 0;
 		}
@@ -216,11 +219,12 @@ void rad_server_req_exit(struct rad_req_t *req)
 	assert(req->serv->req_cnt >= 0);
 	if (req->serv->req_cnt < req->serv->req_limit && !list_empty(&req->serv->req_queue)) {
 		struct rad_req_t *r = list_entry(req->serv->req_queue.next, typeof(*r), entry);
+		log_ppp_debug("radius(%i): wakeup %p\n", req->serv->id, r);
 		list_del(&r->entry);
 		req->serv->queue_cnt--;
 		req->serv->req_cnt++;
 		r->active = 1;
-		triton_context_call(r->rpd->ses->ctrl->ctx, (triton_event_func)req_wakeup, r);
+		triton_context_call(r->rpd ? r->rpd->ses->ctrl->ctx : NULL, (triton_event_func)req_wakeup, r);
 	}
 	pthread_mutex_unlock(&req->serv->lock);
 }
