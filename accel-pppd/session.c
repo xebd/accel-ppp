@@ -98,7 +98,7 @@ int __export ap_session_starting(struct ap_session *ses)
 		ap_session_set_ifindex(ses);
 
 	if (ses->state != AP_STATE_RESTORE) {
-		ses->start_time = time(NULL);
+		ses->start_time = _time();
 		ses->idle_time = ses->start_time;
 		generate_sessionid(ses);
 
@@ -204,7 +204,7 @@ void __export ap_session_terminate(struct ap_session *ses, int cause, int hard)
 		return;
 
 	if (!ses->stop_time)
-		time(&ses->stop_time);
+		ses->stop_time = _time();
 
 	if (!ses->terminate_cause)
 		ses->terminate_cause = cause;
@@ -303,7 +303,7 @@ int __export ap_session_read_stats(struct ap_session *ses, struct rtnl_link_stat
 	stats->tx_bytes -= ses->acct_tx_bytes_i;
 
 	if (stats->rx_bytes != ses->acct_rx_bytes || stats->tx_bytes != ses->acct_tx_bytes)
-		time(&ses->idle_time);
+		ses->idle_time = _time();
 
 	if (stats->rx_bytes < ses->acct_rx_bytes)
 		ses->acct_input_gigawords++;

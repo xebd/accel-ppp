@@ -425,7 +425,7 @@ static void print_uptime(const struct ap_session *ses, char *buf)
 	if (ses->stop_time)
 		uptime = ses->stop_time - ses->start_time;
 	else {
-		time(&uptime);
+		uptime = _time();
 		uptime -= ses->start_time;
 	}
 

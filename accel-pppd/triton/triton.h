@@ -1,7 +1,7 @@
 #ifndef TRITON_H
 #define TRITON_H
 
-#include <sys/time.h>
+#include <time.h>
 #include <stdint.h>
 
 #include "list.h"
@@ -110,6 +110,12 @@ int triton_module_loaded(const char *name);
 
 void triton_register_init(int order, void (*func)(void));
 
+static inline time_t _time()
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return ts.tv_sec;
+}
 
 #define TRITON_OK          0
 #define TRITON_ERR_NOCOMP -1

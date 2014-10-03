@@ -161,7 +161,7 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 		return;
 
 	if (rpd->session_timeout.expire_tv.tv_sec && 
-			rpd->session_timeout.expire_tv.tv_sec - (time(NULL) - rpd->ses->start_time) < INTERIM_SAFE_TIME)
+			rpd->session_timeout.expire_tv.tv_sec - (_time() - rpd->ses->start_time) < INTERIM_SAFE_TIME)
 			return;
 
 	if (req_set_stat(rpd->acct_req, rpd->ses)) {

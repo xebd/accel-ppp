@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdarg.h>
+#include <sys/time.h>
 
 #include "triton_p.h"
 

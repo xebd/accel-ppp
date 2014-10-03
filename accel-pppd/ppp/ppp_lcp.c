@@ -661,9 +661,9 @@ static void send_echo_request(struct triton_timer_t *t)
 	if (conf_echo_timeout) {
 		if (lcp->echo_sent == 2) {
 			lcp->last_ipackets = stats.rx_packets;
-			time(&lcp->last_echo_ts);
+			lcp->last_echo_ts = _time();
 		} else if (lcp->echo_sent > 2) {
-			time(&ts);
+			ts = _time();
 			if (lcp->last_ipackets != stats.rx_packets) {
 				lcp->echo_sent = 1;
 				lcp_update_echo_timer(lcp);

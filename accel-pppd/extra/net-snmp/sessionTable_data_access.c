@@ -199,9 +199,6 @@ sessionTable_container_load(netsnmp_container *container)
     sessionTable_rowreq_ctx *rowreq_ctx;
     size_t                 count = 0;
 		struct ap_session *ses;
-		time_t t;
-		
-		time(&t);
 
     DEBUGMSGTL(("verbose:sessionTable:sessionTable_container_load","called\n"));
 
@@ -232,7 +229,7 @@ sessionTable_container_load(netsnmp_container *container)
 				rowreq_ctx->data->peer_addr = ses->ipv4 ? ses->ipv4->peer_addr : 0;
 				rowreq_ctx->data->type = ses->ctrl->type;
 				rowreq_ctx->data->state = ses->state;
-				rowreq_ctx->data->uptime = (ses->stop_time ? ses->stop_time : t) - ses->start_time;
+				rowreq_ctx->data->uptime = (ses->stop_time ? ses->stop_time : _time()) - ses->start_time;
 				rowreq_ctx->data->calling_sid = _strdup(ses->ctrl->calling_station_id);
 				rowreq_ctx->data->called_sid = _strdup(ses->ctrl->called_station_id);
 
