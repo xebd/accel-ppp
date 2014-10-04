@@ -355,10 +355,15 @@ static void ses_finishing(struct ap_session *ses)
 {
 	struct radius_pd_t *rpd = find_pd(ses);
 
-	if (!rpd->acct_started)
-		return;
+	if (rpd->auth_ctx) {
+		rad_server_req_cancel(rpd->auth_ctx->req, 1);
+		rad_req_free(rpd->auth_ctx->req);
+		mempool_free(rpd->auth_ctx);
+		rpd->auth_ctx = NULL;
+	}
 
-	rad_acct_stop(rpd);
+	if (rpd->acct_started || rpd->acct_req)
+	    rad_acct_stop(rpd);
 }
 
 static void ses_finished(struct ap_session *ses)
@@ -373,7 +378,7 @@ static void ses_finished(struct ap_session *ses)
 	pthread_rwlock_unlock(&sessions_lock);
 
 	if (rpd->auth_ctx) {
-		rad_server_req_cancel(rpd->auth_ctx->req);
+		rad_server_req_cancel(rpd->auth_ctx->req, 1);
 		rad_req_free(rpd->auth_ctx->req);
 		mempool_free(rpd->auth_ctx);
 		rpd->auth_ctx = NULL;
@@ -383,7 +388,7 @@ static void ses_finished(struct ap_session *ses)
 		if (rpd->acct_started)
 			rad_acct_stop_defer(rpd);
 		else {
-			rad_server_req_cancel(rpd->acct_req);
+			rad_server_req_cancel(rpd->acct_req, 1);
 			rad_req_free(rpd->acct_req);
 		}
 	}

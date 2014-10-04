@@ -104,7 +104,10 @@ static void req_wakeup(struct rad_req_t *req)
 {
 	struct timespec ts;
 
-	log_ppp_debug("radius(%i): wakeup %i\n", req->serv->id, req->active);
+	if (!req->rpd)
+	    log_switch(triton_context_self(), NULL);
+
+	log_ppp_debug("radius(%i): wakeup %p %i\n", req->serv->id, req, req->active);
 	
 	if (!req->active)
 		return;
@@ -128,7 +131,7 @@ static void req_wakeup(struct rad_req_t *req)
 	req->send(req, 1);
 }
 
-int rad_server_req_cancel(struct rad_req_t *req)
+int rad_server_req_cancel(struct rad_req_t *req, int full)
 {
 	int r = 0;
 
@@ -139,6 +142,11 @@ int rad_server_req_cancel(struct rad_req_t *req)
 		r = 1;
 	}
 	pthread_mutex_unlock(&req->serv->lock);
+
+	triton_cancel_call(req->rpd ? req->rpd->ses->ctrl->ctx : NULL, (triton_event_func)req_wakeup);
+
+	if (!full)
+		return r;
 
 	if (req->active)
 		rad_server_req_exit(req);

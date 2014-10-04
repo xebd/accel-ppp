@@ -517,7 +517,7 @@ int __export triton_context_call(struct triton_context_t *ud, void (*func)(void 
 
 void __export triton_cancel_call(struct triton_context_t *ud, void (*func)(void *))
 {
-	struct _triton_context_t *ctx = (struct _triton_context_t *)ud->tpd;
+	struct _triton_context_t *ctx = ud ? (struct _triton_context_t *)ud->tpd : (struct _triton_context_t *)default_ctx.tpd;
 	struct list_head *pos, *n;
 	struct _triton_ctx_call_t *call;
 

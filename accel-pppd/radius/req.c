@@ -231,6 +231,7 @@ int rad_req_acct_fill(struct rad_req_t *req)
 void rad_req_free(struct rad_req_t *req)
 {
 	assert(!req->active);
+	assert(!req->entry.next);
 
 	if (req->serv)
 		rad_server_put(req->serv, req->type);
@@ -386,6 +387,9 @@ int rad_req_read(struct triton_md_handler_t *h)
 	struct rad_req_t *req = container_of(h, typeof(*req), hnd);
 	struct rad_packet_t *pack;
 
+	if (!req->rpd)
+	    log_switch(triton_context_self(), NULL);
+
 	while (1) {
 		if (rad_packet_recv(h->fd, &pack, NULL))
 			return 0;
@@ -400,6 +404,8 @@ int rad_req_read(struct triton_md_handler_t *h)
 
 	if (req->active)
 		rad_server_req_exit(req);
+	else
+		rad_server_req_cancel(req, 0);
 
 	if (req->log) {
 		req->log("recv ");

@@ -181,6 +181,9 @@ static void rad_auth_recv(struct rad_req_t *req)
 			.reply = pack,
 		};
 		triton_event_fire(EV_RADIUS_ACCESS_ACCEPT, &ev);
+	} else {
+		rad_auth_finalize(req->rpd, PWDB_DENIED);
+		return;
 	}
 	
 	if (req->rpd->auth_ctx->recv && req->rpd->auth_ctx->recv(req)) {

@@ -208,7 +208,7 @@ struct rad_server_t *rad_server_get2(int, in_addr_t, int);
 void rad_server_put(struct rad_server_t *, int);
 int rad_server_req_enter(struct rad_req_t *);
 void rad_server_req_exit(struct rad_req_t *);
-int rad_server_req_cancel(struct rad_req_t *);
+int rad_server_req_cancel(struct rad_req_t *, int full);
 int rad_server_realloc(struct rad_req_t *);
 void rad_server_fail(struct rad_server_t *);
 void rad_server_timeout(struct rad_server_t *);

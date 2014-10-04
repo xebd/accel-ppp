@@ -312,9 +312,10 @@ static void rad_acct_stop_sent(struct rad_req_t *req, int res)
 		if (req->rpd)
 			rad_acct_stop_defer(req->rpd);
 		else {
-			if (ap_shutdown)
+			if (ap_shutdown) {
 				rad_req_free(req);
-			else
+				req->rpd->acct_req = NULL;
+			} else
 				req->try = 0;
 		}
 		
@@ -353,6 +354,9 @@ static void rad_acct_stop_timeout(struct triton_timer_t *t)
 {
 	struct rad_req_t *req = container_of(t, typeof(*req), timeout);
 
+	if (!req->rpd)
+	    log_switch(triton_context_self(), NULL);
+
 	if (req->active) {
 		rad_server_req_exit(req);
 		rad_server_timeout(req->serv);
@@ -381,6 +385,7 @@ static void rad_acct_stop_timeout(struct triton_timer_t *t)
 
 static void start_deferred(struct rad_req_t *req)
 {
+	log_switch(triton_context_self(), NULL);
 	if (req->hnd.fd != -1) {
 		triton_md_register_handler(NULL, &req->hnd);
 		triton_md_enable_handler(&req->hnd, MD_MODE_READ);
@@ -394,7 +399,8 @@ static void start_deferred(struct rad_req_t *req)
 void rad_acct_stop_defer(struct radius_pd_t *rpd)
 {
 	struct rad_req_t *req = rpd->acct_req;
-	rad_server_req_cancel(req);
+
+	rad_server_req_cancel(req, 1);
 	if (req->hnd.tpd)
 		triton_md_unregister_handler(&req->hnd, 0);
 	rpd->acct_req = NULL;
@@ -411,10 +417,11 @@ int rad_acct_stop(struct radius_pd_t *rpd)
 	struct rad_req_t *req = rpd->acct_req;
 	struct timespec ts;
 
-	if (req) {
+	if (rpd->acct_interim_timer.tpd)
 		triton_timer_del(&rpd->acct_interim_timer);
-		
-		rad_server_req_cancel(req);
+
+	if (req) {		
+		rad_server_req_cancel(req, 1);
 
 		clock_gettime(CLOCK_MONOTONIC, &ts);
 		req->ts = ts.tv_sec;
