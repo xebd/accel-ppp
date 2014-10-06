@@ -346,23 +346,25 @@ static void acct_on_timeout(struct triton_timer_t *t)
 	struct rad_req_t *req = container_of(t, typeof(*req), timeout);
 	struct rad_server_t *s = req->serv;
 
-	if (!s->starting && ++req->serv->req_cnt == conf_max_try) {
+	log_switch(triton_context_self(), NULL);
+
+	if (req->try++ == conf_max_try) {
 		rad_req_free(req);
-		__free_server(s);
+		if (s->starting)
+			s->starting = 0;
+		else 
+			__free_server(s);
 		return;
 	}
 
-	req->try = 1;
-	
-	rad_req_send(req);
+	__rad_req_send(req, 0);
 }
 
 static void send_acct_on(struct rad_server_t *s)
 {
-	struct rad_req_t *req = _malloc(sizeof(*req));
-
-	if (!req)
-		return;
+	struct rad_req_t *req = rad_req_alloc_empty();
+	
+	log_switch(triton_context_self(), NULL);
 
 	memset(req, 0, sizeof(*req));
 	req->hnd.fd = -1;
@@ -398,7 +400,7 @@ static void send_acct_on(struct rad_server_t *s)
 	if (req_set_RA(req, s->secret))
 		goto out_err;
 
-	rad_req_send(req);
+	__rad_req_send(req, 0);
 
 	triton_timer_add(&s->ctx, &req->timeout, 0);
 

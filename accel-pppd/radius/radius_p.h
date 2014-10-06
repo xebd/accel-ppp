@@ -177,6 +177,7 @@ struct rad_req_t *rad_req_alloc_empty();
 int rad_req_acct_fill(struct rad_req_t *);
 void rad_req_free(struct rad_req_t *);
 int rad_req_send(struct rad_req_t *req);
+int __rad_req_send(struct rad_req_t *req, int async);
 int rad_req_read(struct triton_md_handler_t *h);
 
 struct radius_pd_t *find_pd(struct ap_session *ses);

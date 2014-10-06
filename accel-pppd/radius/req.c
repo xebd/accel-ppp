@@ -301,7 +301,7 @@ out_err:
 	return -1;
 }
 
-static int __rad_req_send(struct rad_req_t *req, int async)
+int __rad_req_send(struct rad_req_t *req, int async)
 {
 	if (async == -1) {
 		req->try = conf_max_try - 1;
