@@ -743,11 +743,12 @@ static void ipoe_serv_add_addr(struct ipoe_serv *serv, in_addr_t addr, int mask)
 	pthread_mutex_unlock(&serv->lock);
 }
 
-static void ipoe_serv_del_addr(struct ipoe_serv *serv, in_addr_t addr)
+static void ipoe_serv_del_addr(struct ipoe_serv *serv, in_addr_t addr, int lock)
 {
 	struct ifaddr *a;
 
-	pthread_mutex_lock(&serv->lock);
+	if (lock)
+		pthread_mutex_lock(&serv->lock);
 
 	list_for_each_entry(a, &serv->addr_list, entry) {
 		if (a->addr == addr) {
@@ -761,7 +762,8 @@ static void ipoe_serv_del_addr(struct ipoe_serv *serv, in_addr_t addr)
 		}
 	}
 	
-	pthread_mutex_unlock(&serv->lock);
+	if (lock)
+		pthread_mutex_unlock(&serv->lock);
 }
 
 static void ipoe_ifcfg_add(struct ipoe_session *ses)
@@ -789,7 +791,7 @@ static void ipoe_ifcfg_del(struct ipoe_session *ses, int lock)
 	}
 
 	if (ses->serv->opt_ifcfg)
-		ipoe_serv_del_addr(ses->serv, ses->siaddr);
+		ipoe_serv_del_addr(ses->serv, ses->siaddr, lock);
 }
 
 static void __ipoe_session_activate(struct ipoe_session *ses)
@@ -1808,7 +1810,7 @@ static void ipoe_serv_release(struct ipoe_serv *serv)
 		dhcpv4_free(serv->dhcpv4);
 	
 	if (serv->dhcpv4_relay) {
-		ipoe_serv_del_addr(serv, serv->dhcpv4_relay->giaddr);
+		ipoe_serv_del_addr(serv, serv->dhcpv4_relay->giaddr, 0);
 		dhcpv4_relay_free(serv->dhcpv4_relay, &serv->ctx);
 	}
 
@@ -2230,7 +2232,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 		if (serv->dhcpv4_relay &&  
 				(serv->dhcpv4_relay->addr != relay_addr || serv->dhcpv4_relay->giaddr != opt_giaddr)) {
 			if (serv->opt_ifcfg)
-				ipoe_serv_del_addr(serv, serv->dhcpv4_relay->giaddr);
+				ipoe_serv_del_addr(serv, serv->dhcpv4_relay->giaddr, 0);
 			dhcpv4_relay_free(serv->dhcpv4_relay, &serv->ctx);
 			serv->dhcpv4_relay = NULL;
 		}
