@@ -1802,17 +1802,21 @@ static int ipoe_nl_cmd_add_vlan_mon(struct sk_buff *skb, struct genl_info *info)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
 		if (dev->features & NETIF_F_HW_VLAN_FILTER) {
+			rtnl_lock();
 			for (i = 1; i < 4096; i++) {
 				if (!(d->vid[i / (8*sizeof(long))] & (1lu << (i % (8*sizeof(long))))))
 					dev->netdev_ops->ndo_vlan_rx_add_vid(dev, i);
 			}
+			rtnl_unlock();
 		}
 #else
 		if (dev->features & NETIF_F_HW_VLAN_CTAG_FILTER) {
+			rtnl_lock();
 			for (i = 1; i < 4096; i++) {
 				if (!(d->vid[i / (8*sizeof(long))] & (1lu << (i % (8*sizeof(long))))))
 					dev->netdev_ops->ndo_vlan_rx_add_vid(dev, htons(ETH_P_8021Q), i);
 			}
+			rtnl_unlock();
 		}
 #endif
 	}
