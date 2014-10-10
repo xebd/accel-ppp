@@ -26,6 +26,7 @@
 #include <net/ip.h>
 #include <net/icmp.h>
 #include <net/flow.h>
+#include <net/xfrm.h>
 #include <net/net_namespace.h>
 #include <net/netns/generic.h>
 #include <net/pkt_sched.h>
@@ -453,11 +454,13 @@ static netdev_tx_t ipoe_xmit(struct sk_buff *skb, struct net_device *dev)
 			return NETDEV_TX_OK;
 		}
 
+		//pr_info("ipoe: xmit1 %08x %08x\n", iph->saddr, iph->daddr);
 		if (iph->daddr == ses->addr) {
 			if (skb_shared(skb)) {
 				skb1 = skb_clone(skb, GFP_ATOMIC);
 				if (!skb1)
 					goto drop;
+				dev_kfree_skb(skb);
 				skb = skb1;
 			}
 
@@ -467,7 +470,7 @@ static netdev_tx_t ipoe_xmit(struct sk_buff *skb, struct net_device *dev)
 
 		if (!ses->link_dev) {
 			iph = ip_hdr(skb);
-			
+		
 			ip_send_check(iph);
 			
 			if (ipoe_route4(skb))
@@ -483,6 +486,12 @@ static netdev_tx_t ipoe_xmit(struct sk_buff *skb, struct net_device *dev)
 #else
 			skb->iif = dev->ifindex;
 #endif
+			
+			//pr_info("ipoe: xmit2 %08x %08x %p %p\n", iph->saddr, iph->daddr, dev, skb->dev);
+			nf_reset(skb);
+			secpath_reset(skb);
+			skb->vlan_tci = 0;
+			skb_set_queue_mapping(skb, 0);
 
 			ip_local_out(skb);
 
@@ -789,7 +798,6 @@ static unsigned int ipt_in_hook(const struct nf_hook_ops *ops, struct sk_buff *s
 		return NF_DROP;
 	}
 
-	//pr_info("ipoe: recv cb=%x\n", *(__u16 *)cb_ptr);
 	stats = &ses->dev->stats;
 	
 	if (ses->link_dev) {
