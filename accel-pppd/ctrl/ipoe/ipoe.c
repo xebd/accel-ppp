@@ -2302,6 +2302,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	serv = _malloc(sizeof(*serv));
 	memset(serv, 0, sizeof(*serv));
 	serv->ctx.close = ipoe_serv_close;
+	serv->ctx.before_switch = log_switch;
 	pthread_mutex_init(&serv->lock, NULL);
 	serv->ifname = _strdup(ifname);
 	serv->ifindex = ifindex;
@@ -3078,7 +3079,7 @@ static void ipoe_init(void)
 	disc_item_pool = mempool_create(sizeof(struct disc_item));
 	req_item_pool = mempool_create(sizeof(struct request_item));
 	uc_pool = mempool_create(sizeof(struct unit_cache));
-	
+
 	triton_context_register(&l4_redirect_ctx, NULL);
 	triton_context_wakeup(&l4_redirect_ctx);
 
