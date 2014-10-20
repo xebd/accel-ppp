@@ -1146,6 +1146,10 @@ static int pppoe_serv_read(struct triton_md_handler_t *h)
 		if (n < 0) {
 			if (errno == EAGAIN)
 				break;
+			if (errno == ENETDOWN) {
+				_server_stop(serv);
+				return 1;
+			}
 			log_error("pppoe: read: %s\n", strerror(errno));
 			return 0;
 		}
