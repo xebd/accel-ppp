@@ -890,6 +890,8 @@ struct dhcpv4_relay *dhcpv4_relay_create(const char *_addr, in_addr_t giaddr, st
 	r->hnd.fd = sock;
 	r->hnd.read = dhcpv4_relay_read;
 
+	r->ctx.before_switch = log_switch;
+
 	triton_context_register(&r->ctx, NULL);
 	triton_md_register_handler(&r->ctx, &r->hnd);
 	triton_md_enable_handler(&r->hnd, MD_MODE_READ);
