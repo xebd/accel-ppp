@@ -71,7 +71,7 @@ static void rad_acct_sent(struct rad_req_t *req, int res)
 			triton_timer_del(&req->timeout);
 		return;
 	}
-	
+
 	__sync_add_and_fetch(&req->serv->stat_interim_sent, 1);
 	
 	if (!req->hnd.tpd) {
@@ -106,7 +106,7 @@ static void rad_acct_timeout(struct triton_timer_t *t)
 	struct rad_req_t *req = container_of(t, typeof(*req), timeout);
 	time_t dt;
 	struct timespec ts;
-
+	
 	rad_server_req_exit(req);
 	rad_server_timeout(req->serv);
 
@@ -157,7 +157,7 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 	struct radius_pd_t *rpd = container_of(t, typeof(*rpd), acct_interim_timer);
 	struct timespec ts;
 
-	if (rpd->acct_req->timeout.tpd)
+	if (rpd->acct_req->entry.next || rpd->acct_req->timeout.tpd)
 		return;
 
 	if (rpd->session_timeout.expire_tv.tv_sec && 

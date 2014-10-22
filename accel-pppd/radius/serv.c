@@ -179,6 +179,7 @@ int rad_server_req_enter(struct rad_req_t *req)
 	}
 
 	assert(!req->active);
+	assert(!req->entry.next);
 
 	pthread_mutex_lock(&req->serv->lock);
 	
