@@ -15,6 +15,7 @@
 #include <sys/types.h>
 
 #include "triton.h"
+#include "events.h"
 #include "log.h"
 #include "ppp.h"
 #include "list.h"
@@ -32,11 +33,11 @@
 #define ESC_UP "[A"
 #define ESC_DOWN "[B"
 
-struct telnet_client_t
-{
+struct telnet_client_t {
 	struct cli_client_t cli_client;
 	struct list_head entry;
 	struct triton_md_handler_t hnd;
+	struct sockaddr_in addr;
 	struct list_head xmit_queue;
 	struct buffer_t *xmit_buf;
 	int xmit_pos;
@@ -53,8 +54,7 @@ struct telnet_client_t
 	int disconnect:1;
 };
 
-struct buffer_t
-{
+struct buffer_t {
 	struct list_head entry;
 	int size;
 	struct buffer_t *p_buf;
@@ -70,6 +70,8 @@ static uint8_t *temp_buf;
 
 static int conf_history_len = 100;
 static const char *conf_history_file = "/var/lib/accel-ppp/history";
+static int conf_verbose;
+
 static LIST_HEAD(history);
 static int history_len;
 static pthread_mutex_t history_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -303,6 +305,9 @@ static int telnet_input_char(struct telnet_client_t *cln, uint8_t c)
 			list_add(&b->entry, cln->history.next);
 			cln->history_pos = cln->history.next;
 			
+			if (conf_verbose == 2)
+				log_info2("cli: %s: %s\n", inet_ntoa(cln->addr.sin_addr), cln->cmdline);
+
 			if (cli_process_cmd(&cln->cli_client))
 				return -1;
 		}
@@ -551,18 +556,15 @@ static int serv_read(struct triton_md_handler_t *h)
 			continue;
 		}
 
-		log_info2("cli: telnet: new connection from %s\n", inet_ntoa(addr.sin_addr));
+		if (conf_verbose)
+			log_info2("cli: telnet: new connection from %s\n", inet_ntoa(addr.sin_addr));
 
-		if (fcntl(sock, F_SETFL, O_NONBLOCK)) {
-			log_error("cli: telnet: failed to set nonblocking mode: %s, closing connection...\n", strerror(errno));
-			close(sock);
-			continue;
-		}
-
+		fcntl(sock, F_SETFL, O_NONBLOCK);
 		fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
 
 		conn = _malloc(sizeof(*conn));
 		memset(conn, 0, sizeof(*conn));
+		conn->addr = addr;
 		conn->hnd.fd = sock;
 		conn->hnd.read = cln_read;
 		conn->hnd.write = cln_write;
@@ -725,6 +727,17 @@ static void load_history_file(void)
 	fclose(f);
 }
 
+static void load_config(void)
+{
+	const char *opt;
+
+	opt = conf_get_opt("cli", "verbose");
+	if (opt)
+		conf_verbose = atoi(opt);
+	else
+		conf_verbose = 1;
+}
+
 static void init(void)
 {
 	const char *opt;
@@ -749,6 +762,8 @@ static void init(void)
 	if (opt)
 		conf_history_file = _strdup(opt);
 
+	load_config();
+
 	recv_buf = malloc(RECV_BUF_SIZE);
 	temp_buf = malloc(RECV_BUF_SIZE);
 
@@ -757,6 +772,8 @@ static void init(void)
 	start_server(host, port);
 	
 	atexit(save_history_file);
+	
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 	
 	return;
 err_fmt:

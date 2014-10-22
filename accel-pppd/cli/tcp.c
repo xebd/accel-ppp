@@ -11,6 +11,7 @@
 #include <sys/socket.h>
 
 #include "triton.h"
+#include "events.h"
 #include "log.h"
 #include "list.h"
 #include "memdebug.h"
@@ -19,11 +20,11 @@
 
 #define RECV_BUF_SIZE 1024
 
-struct tcp_client_t
-{
+struct tcp_client_t {
 	struct cli_client_t cli_client;
 	struct list_head entry;
 	struct triton_md_handler_t hnd;
+	struct sockaddr_in addr;
 	struct list_head xmit_queue;
 	struct buffer_t *xmit_buf;
 	uint8_t *cmdline;
@@ -33,12 +34,13 @@ struct tcp_client_t
 	int disconnect:1;
 };
 
-struct buffer_t
-{
+struct buffer_t {
 	struct list_head entry;
 	int size;
 	uint8_t buf[0];
 };
+
+static int conf_verbose;
 
 static struct triton_context_t serv_ctx;
 static struct triton_md_handler_t serv_hnd;
@@ -171,8 +173,12 @@ static int cln_read(struct triton_md_handler_t *h)
 				if (strcmp((char *)cln->cmdline, conf_cli_passwd))
 					goto drop;
 				cln->auth = 1;
-			} else
+			} else {
+				if (conf_verbose == 2)
+					log_info2("cli: %s: %s\n", inet_ntoa(cln->addr.sin_addr), cln->cmdline);
+
 				cli_process_cmd(&cln->cli_client);
+			}
 
 			if (cln->disconnect)
 				goto drop;
@@ -241,7 +247,8 @@ static int serv_read(struct triton_md_handler_t *h)
 			continue;
 		}
 
-		log_info2("cli: tcp: new connection from %s\n", inet_ntoa(addr.sin_addr));
+		if (conf_verbose)
+			log_info2("cli: tcp: new connection from %s\n", inet_ntoa(addr.sin_addr));
 
 		if (fcntl(sock, F_SETFL, O_NONBLOCK)) {
 			log_error("cli: tcp: failed to set nonblocking mode: %s, closing connection...\n", strerror(errno));
@@ -251,6 +258,7 @@ static int serv_read(struct triton_md_handler_t *h)
 
 		conn = _malloc(sizeof(*conn));
 		memset(conn, 0, sizeof(*conn));
+		conn->addr = addr;
 		conn->hnd.fd = sock;
 		conn->hnd.read = cln_read;
 		conn->hnd.write = cln_write;
@@ -345,6 +353,17 @@ static void start_server(const char *host, int port)
 	triton_context_wakeup(&serv_ctx);
 }
 
+static void load_config(void)
+{
+	const char *opt;
+
+	opt = conf_get_opt("cli", "verbose");
+	if (opt)
+		conf_verbose = atoi(opt);
+	else
+		conf_verbose = 1;
+}
+
 static void init(void)
 {
 	const char *opt;
@@ -364,10 +383,14 @@ static void init(void)
 	port = atoi(d + 1);
 	if (port <= 0)
 		goto err_fmt;
+	
+	load_config();
 
 	temp_buf = malloc(RECV_BUF_SIZE);
 
 	start_server(host, port);
+	
+	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 	
 	return;
 err_fmt:

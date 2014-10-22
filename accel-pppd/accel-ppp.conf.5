@@ -886,6 +886,11 @@ Due to accel-ppp operates with rates in kilobit basis if you send rates in diffe
 .br
 Configuration of the command line interface.
 .TP
+.BI "verbose=" n
+If \fIn\fR = 1 then cli module will log IP address of each connection.
+.br
+If \fIn\fR = 2 then cli module will also log passed commands.
+.TP
 .BI "tcp=" host:port
 Defines on which IP address and port the TCP module will listen for incoming
 connections. When \fIhost\fR is empty, the TCP module listens on all local
