@@ -48,7 +48,9 @@ struct pppunit_cache
 	int unit_idx;
 };
 
+static pthread_t uc_thr;
 static pthread_mutex_t uc_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t uc_cond = PTHREAD_COND_INITIALIZER;
 static LIST_HEAD(uc_list);
 static int uc_size;
 static mempool_t uc_pool;
@@ -75,6 +77,9 @@ void __export ppp_init(struct ppp_t *ppp)
 int __export establish_ppp(struct ppp_t *ppp)
 {
 	struct pppunit_cache *uc = NULL;
+
+	if (ap_shutdown)
+		return -1;
 
 	/* Open an instance of /dev/ppp and connect the channel to it */
 	if (ioctl(ppp->fd, PPPIOCGCHAN, &ppp->chan_idx) == -1) {
@@ -165,7 +170,8 @@ int __export establish_ppp(struct ppp_t *ppp)
 
 	log_ppp_debug("ppp established\n");
 
-	ap_session_starting(&ppp->ses);
+	if (ap_session_starting(&ppp->ses))
+		goto exit_close_unit;
 	
 	start_first_layer(ppp);
 
@@ -185,28 +191,29 @@ exit_close_chan:
 static void destablish_ppp(struct ppp_t *ppp)
 {
 	struct pppunit_cache *uc;
-	int close_unit = uc_size >= conf_unit_cache;
 
 	triton_event_fire(EV_SES_PRE_FINISHED, &ppp->ses);
 
 	triton_md_unregister_handler(&ppp->chan_hnd, 1);
-	triton_md_unregister_handler(&ppp->unit_hnd, close_unit);
 	
-	if (!close_unit) {
+	if (conf_unit_cache) {
+		triton_md_unregister_handler(&ppp->unit_hnd, 0);
 		uc = mempool_alloc(uc_pool);
 		uc->fd = ppp->unit_fd;
 		uc->unit_idx = ppp->ses.unit_idx;
 
 		pthread_mutex_lock(&uc_lock);
 		list_add_tail(&uc->entry, &uc_list);
-		++uc_size;
-		pthread_mutex_unlock(&uc_lock);
-	
-		ppp->chan_fd = -1;
-	}
+		if (++uc_size > conf_unit_cache)
+			pthread_cond_signal(&uc_cond);
+		pthread_mutex_unlock(&uc_lock);	
+	} else
+		triton_md_unregister_handler(&ppp->unit_hnd, 1);
 
 	close(ppp->fd);
 	ppp->fd = -1;
+	ppp->chan_fd = -1;
+	ppp->unit_fd = -1;
 
 	_free_layers(ppp);
 	
@@ -215,6 +222,40 @@ static void destablish_ppp(struct ppp_t *ppp)
 	mempool_free(ppp->buf);
 
 	ap_session_finished(&ppp->ses);
+}
+
+static void *uc_thread(void *unused)
+{
+	struct pppunit_cache *uc;
+	int fd;
+	sigset_t set;
+	
+	sigfillset(&set);
+	sigdelset(&set, SIGKILL);
+	sigdelset(&set, SIGSTOP);
+	
+	pthread_sigmask(SIG_BLOCK, &set, NULL);
+	
+	while (1) {
+		pthread_mutex_lock(&uc_lock);
+		if (uc_size > conf_unit_cache) {
+			uc = list_entry(uc_list.next, typeof(*uc), entry);
+			list_del(&uc->entry);
+			--uc_size;
+			pthread_mutex_unlock(&uc_lock);
+
+			fd = uc->fd;
+
+			mempool_free(uc);
+
+			close(fd);
+			continue;
+		}
+		pthread_cond_wait(&uc_cond, &uc_lock);
+		pthread_mutex_unlock(&uc_lock);
+	}
+
+	return NULL;
 }
 
 /*void print_buf(uint8_t *buf, int size)
@@ -610,6 +651,8 @@ static void init(void)
 
 	load_config();
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
+	
+	pthread_create(&uc_thr, NULL, uc_thread, NULL);
 }
 
 DEFINE_INIT(2, init);
