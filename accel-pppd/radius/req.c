@@ -305,7 +305,8 @@ int __rad_req_send(struct rad_req_t *req, int async)
 {
 	if (async == -1) {
 		req->try = conf_max_try - 1;
-		rad_req_send(req);
+		if (rad_req_send(req))
+			req->sent(req, -1);
 		return 0;
 	}
 
@@ -351,8 +352,8 @@ int rad_req_send(struct rad_req_t *req)
 	req->send = __rad_req_send;
 
 	if (req->try++ == conf_max_try) {
-		rad_server_req_exit(req);
 		rad_server_fail(req->serv);
+		rad_server_req_exit(req);
 			
 		if (rad_server_realloc(req)) {
 			if (req->rpd)
@@ -393,6 +394,8 @@ int rad_req_read(struct triton_md_handler_t *h)
 	while (1) {
 		if (rad_packet_recv(h->fd, &pack, NULL))
 			return 0;
+
+		rad_server_reply(req->serv);
 		
 		if (pack->id == req->pack->id)
 			break;

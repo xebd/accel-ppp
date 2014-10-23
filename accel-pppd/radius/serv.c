@@ -131,6 +131,11 @@ static void req_wakeup(struct rad_req_t *req)
 	req->send(req, 1);
 }
 
+static void req_wakeup_failed(struct rad_req_t *req)
+{
+	req->send(req, -1);
+}
+
 int rad_server_req_cancel(struct rad_req_t *req, int full)
 {
 	int r = 0;
@@ -287,8 +292,9 @@ void rad_server_fail(struct rad_server_t *s)
 		while (!list_empty(&s->req_queue)) {
 			r = list_entry(s->req_queue.next, typeof(*r), entry);
 			list_del(&r->entry);
-			triton_context_call(r->rpd->ses->ctrl->ctx, (triton_event_func)req_wakeup, r);
+			triton_context_call(r->rpd ? r->rpd->ses->ctrl->ctx : NULL, (triton_event_func)req_wakeup_failed, r);
 		}
+		s->queue_cnt = 0;
 	}
 
 	pthread_mutex_unlock(&s->lock);
