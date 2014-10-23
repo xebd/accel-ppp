@@ -64,8 +64,10 @@ static struct rad_server_t *__rad_server_get(int type, struct rad_server_t *excl
 			continue;
 		}
 
-		if (s0->backup || s->weight*s->client_cnt[type] < s0->weight*s0->client_cnt[type])
-			s0 = s;
+		if ((s->backup < s0->backup) ||
+			((s->backup == s0->backup) &&
+			((s->client_cnt[0] + s->client_cnt[1])/s->weight < (s0->client_cnt[0] + s0->client_cnt[1])/s0->weight)))
+		s0 = s;
 	}
 
 	if (s1)
@@ -746,9 +748,13 @@ static int parse_server2(const char *_opt, struct rad_server_t *s)
 		s->conf_fail_time = conf_fail_time;
 	
 	ptr3 = strstr(ptr2, ",weight=");
-	if (ptr3)
-		s->weight = 1.0/atoi(ptr3 + 8);
-	else
+	if (ptr3) {
+		s->weight = atoi(ptr3 + 8);
+		if (s->weight <= 0) {
+			log_error("radius: %s: invalid weight (forced to 1)\n", _opt);
+			s->weight = 1;
+		}
+	} else
 		s->weight = 1;
 	
 	ptr3 = strstr(ptr2, ",backup");
