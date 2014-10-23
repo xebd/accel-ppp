@@ -596,7 +596,7 @@ Specifies IP address, port and secret of authentication RADIUS server. (obsolete
 .BI "acct-server=" x.x.x.x:port,secret
 Specifies IP address, port and secret of accounting RADIUS server. (obsolete)
 .TP
-.BI "server=" address,secret[,auth-port=1812][,acct-port=1813][,req-limit=0][,fail-time=0][,weight=1][,backup]
+.BI "server=" address,secret[,auth-port=1812][,acct-port=1813][,req-limit=0][,fail-timeout=0,max-fail=0,][,weight=1][,backup]
 Specifies IP address, secret, ports of RADIUS server.
 .br
 .B req-limit
@@ -604,6 +604,9 @@ Specifies IP address, secret, ports of RADIUS server.
 .br
 .B fail-time
 - if server doesn't responds mark it as unavailable for this time (sec).
+.br
+.B max-fail
+- number of unreplied requests in a row after that mark server as unavailable.
 .br
 .B weight
 - specifies weight of server for multi-server configuration.

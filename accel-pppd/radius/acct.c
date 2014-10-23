@@ -303,15 +303,15 @@ out_err:
 static void rad_acct_stop_sent(struct rad_req_t *req, int res)
 {
 	if (res) {
-		if (req->rpd)
+		if (ap_shutdown) {
+			struct radius_pd_t *rpd = req->rpd;
+		
+			rad_req_free(req);
+			
+			if (rpd)
+				rpd->acct_req = NULL;
+		} else if (req->rpd)
 			rad_acct_stop_defer(req->rpd);
-		else {
-			if (ap_shutdown) {
-				rad_req_free(req);
-				req->rpd->acct_req = NULL;
-			} else
-				req->try = 0;
-		}
 		
 		return;
 	}
@@ -347,6 +347,8 @@ static void rad_acct_stop_recv(struct rad_req_t *req)
 static void rad_acct_stop_timeout(struct triton_timer_t *t)
 {
 	struct rad_req_t *req = container_of(t, typeof(*req), timeout);
+
+	log_debug("timeout %p\n", req);
 
 	if (!req->rpd)
 	    log_switch(triton_context_self(), NULL);
