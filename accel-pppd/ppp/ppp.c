@@ -162,16 +162,17 @@ int __export establish_ppp(struct ppp_t *ppp)
 	ppp->chan_hnd.read = ppp_chan_read;
 	ppp->unit_hnd.fd = ppp->unit_fd;
 	ppp->unit_hnd.read = ppp_unit_read;
-	triton_md_register_handler(ppp->ses.ctrl->ctx, &ppp->chan_hnd);
-	triton_md_register_handler(ppp->ses.ctrl->ctx, &ppp->unit_hnd);
-	
-	triton_md_enable_handler(&ppp->chan_hnd, MD_MODE_READ);
-	triton_md_enable_handler(&ppp->unit_hnd, MD_MODE_READ);
 
 	log_ppp_debug("ppp established\n");
 
 	if (ap_session_starting(&ppp->ses))
 		goto exit_close_unit;
+	
+	triton_md_register_handler(ppp->ses.ctrl->ctx, &ppp->chan_hnd);
+	triton_md_register_handler(ppp->ses.ctrl->ctx, &ppp->unit_hnd);
+	
+	triton_md_enable_handler(&ppp->chan_hnd, MD_MODE_READ);
+	triton_md_enable_handler(&ppp->unit_hnd, MD_MODE_READ);
 	
 	start_first_layer(ppp);
 
@@ -197,6 +198,17 @@ static void destablish_ppp(struct ppp_t *ppp)
 	triton_md_unregister_handler(&ppp->chan_hnd, 1);
 	
 	if (conf_unit_cache) {
+		struct ifreq ifr;
+	
+		sprintf(ifr.ifr_newname, "ppp%i", ppp->ses.unit_idx);
+		if (strcmp(ifr.ifr_newname, ppp->ses.ifname)) {
+			strncpy(ifr.ifr_name, ppp->ses.ifname, IFNAMSIZ);
+			if (ioctl(sock_fd, SIOCSIFNAME, &ifr)) {
+				triton_md_unregister_handler(&ppp->unit_hnd, 1);
+				goto skip;
+			}
+		}
+
 		triton_md_unregister_handler(&ppp->unit_hnd, 0);
 		uc = mempool_alloc(uc_pool);
 		uc->fd = ppp->unit_fd;
@@ -210,6 +222,7 @@ static void destablish_ppp(struct ppp_t *ppp)
 	} else
 		triton_md_unregister_handler(&ppp->unit_hnd, 1);
 
+skip:
 	close(ppp->fd);
 	ppp->fd = -1;
 	ppp->chan_fd = -1;

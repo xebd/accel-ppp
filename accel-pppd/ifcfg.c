@@ -269,7 +269,6 @@ int __export ap_session_rename(struct ap_session *ses, const char *ifname, int l
 		return -1;
 	}
 
-	ifr.ifr_ifindex = ses->ifindex;
 	strcpy(ifr.ifr_name, ses->ifname);
 	memcpy(ifr.ifr_newname, ifname, len);
 	ifr.ifr_newname[len] = 0;
