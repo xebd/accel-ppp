@@ -64,13 +64,8 @@ static int req_set_stat(struct rad_req_t *req, struct ap_session *ses)
 
 static void rad_acct_sent(struct rad_req_t *req, int res)
 {
-	if (res) {
-		if (conf_acct_timeout)
-			ap_session_terminate(req->rpd->ses, TERM_NAS_ERROR, 0);
-		else
-			triton_timer_del(&req->timeout);
+	if (res)
 		return;
-	}
 
 	__sync_add_and_fetch(&req->serv->stat_interim_sent, 1);
 	
@@ -125,13 +120,10 @@ static void rad_acct_timeout(struct triton_timer_t *t)
 	dt = ts.tv_sec - req->ts;
 
 	if (dt > conf_acct_timeout) {
-		rad_server_fail(req->serv);
-		if (rad_server_realloc(req)) {
-			log_ppp_warn("radius:acct: no servers available, terminating session...\n");
-			triton_timer_del(t);
-			ap_session_terminate(req->rpd->ses, TERM_NAS_ERROR, 0);
-			return;
-		}
+		log_ppp_warn("radius: server(%i) not responding, terminating session...\n", req->serv->id);
+		triton_timer_del(t);
+		ap_session_terminate(req->rpd->ses, TERM_NAS_ERROR, 0);
+		return;
 	}
 
 	if (dt > conf_acct_timeout / 2)
@@ -259,6 +251,8 @@ static void rad_acct_start_recv(struct rad_req_t *req)
 static void rad_acct_start_timeout(struct triton_timer_t *t)
 {
 	struct rad_req_t *req = container_of(t, typeof(*req), timeout);
+	
+	rad_server_timeout(req->serv);
 
 	__sync_add_and_fetch(&req->serv->stat_acct_lost, 1);
 	stat_accm_add(req->serv->stat_acct_lost_1m, 1);
@@ -358,8 +352,8 @@ static void rad_acct_stop_timeout(struct triton_timer_t *t)
 	    log_switch(triton_context_self(), NULL);
 
 	if (req->active) {
-		rad_server_req_exit(req);
 		rad_server_timeout(req->serv);
+		rad_server_req_exit(req);
 
 		__sync_add_and_fetch(&req->serv->stat_acct_lost, 1);
 		stat_accm_add(req->serv->stat_acct_lost_1m, 1);

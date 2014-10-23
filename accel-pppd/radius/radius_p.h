@@ -101,10 +101,12 @@ struct rad_server_t {
 	int req_limit;
 	int req_cnt;
 	int queue_cnt;
+	int fail_timeout;
+	int max_fail;
+
 	struct list_head req_queue;
 	int client_cnt[2];
 	time_t fail_time;
-	int conf_fail_time;
 	int timeout_cnt;
 	int weight;
 	pthread_mutex_t lock;
@@ -160,8 +162,6 @@ extern in_addr_t conf_dm_coa_server;
 extern int conf_dm_coa_port;
 extern int conf_acct_interim_interval;
 extern int conf_accounting;
-extern int conf_fail_time;
-extern int conf_req_limit;
 extern const char *conf_attr_tunnel_type;
 
 int rad_check_nas_pack(struct rad_packet_t *pack);

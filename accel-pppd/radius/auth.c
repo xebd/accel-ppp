@@ -199,6 +199,8 @@ static void rad_auth_recv(struct rad_req_t *req)
 static void rad_auth_timeout(struct triton_timer_t *t)
 {
 	struct rad_req_t *req = container_of(t, typeof(*req), timeout);
+
+	rad_server_timeout(req->serv);
 	
 	__sync_add_and_fetch(&req->serv->stat_auth_lost, 1);
 	stat_accm_add(req->serv->stat_auth_lost_1m, 1);

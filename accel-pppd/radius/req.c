@@ -304,7 +304,8 @@ out_err:
 int __rad_req_send(struct rad_req_t *req, int async)
 {
 	if (async == -1) {
-		req->try = conf_max_try - 1;
+		if (req->active)
+			req->try = conf_max_try;
 		if (rad_req_send(req))
 			req->sent(req, -1);
 		return 0;
@@ -352,7 +353,6 @@ int rad_req_send(struct rad_req_t *req)
 	req->send = __rad_req_send;
 
 	if (req->try++ == conf_max_try) {
-		rad_server_fail(req->serv);
 		rad_server_req_exit(req);
 			
 		if (rad_server_realloc(req)) {

@@ -24,6 +24,9 @@
 #include "memdebug.h"
 
 static int conf_acct_on;
+static int conf_fail_timeout;
+static int conf_max_fail;
+static int conf_req_limit;
 
 static int num;
 static LIST_HEAD(serv_list);
@@ -285,26 +288,28 @@ void rad_server_fail(struct rad_server_t *s)
 	pthread_mutex_lock(&s->lock);
 
 	if (ts.tv_sec >= s->fail_time) {
-		s->fail_time = ts.tv_sec + s->conf_fail_time + 1;
+		s->fail_time = ts.tv_sec + s->fail_timeout;
 		log_ppp_warn("radius: server(%i) not responding\n", s->id);
 		log_warn("radius: server(%i) not responding\n", s->id);
 	}
 
-	if (s->conf_fail_time) {
-		while (!list_empty(&s->req_queue)) {
-			r = list_entry(s->req_queue.next, typeof(*r), entry);
-			list_del(&r->entry);
-			triton_context_call(r->rpd ? r->rpd->ses->ctrl->ctx : NULL, (triton_event_func)req_wakeup_failed, r);
-		}
-		s->queue_cnt = 0;
+	while (!list_empty(&s->req_queue)) {
+		r = list_entry(s->req_queue.next, typeof(*r), entry);
+		list_del(&r->entry);
+		triton_context_call(r->rpd ? r->rpd->ses->ctrl->ctx : NULL, (triton_event_func)req_wakeup_failed, r);
 	}
+	s->queue_cnt = 0;
+	s->stat_fail_cnt++;
 
 	pthread_mutex_unlock(&s->lock);
 }
 
 void rad_server_timeout(struct rad_server_t *s)
 {
-	if (__sync_add_and_fetch(&s->timeout_cnt, 1) >= conf_max_try * 3)
+	if (!s->fail_timeout)
+		return;
+
+	if (__sync_add_and_fetch(&s->timeout_cnt, 1) >= s->max_fail)
 		rad_server_fail(s);
 }
 
@@ -449,14 +454,12 @@ static void show_stat(struct rad_server_t *s, void *client)
 
 	cli_sendv(client, "radius(%i, %s):\r\n", s->id, addr);
 
-	if (s->conf_fail_time > 1) {
-		if (ts.tv_sec < s->fail_time)
-			cli_send(client, "  state: failed\r\n");
-		else
-			cli_send(client, "  state: active\r\n");
+	if (ts.tv_sec < s->fail_time)
+		cli_send(client, "  state: failed\r\n");
+	else
+		cli_send(client, "  state: active\r\n");
 
-		cli_sendv(client, "  fail count: %lu\r\n", s->stat_fail_cnt);
-	}
+	cli_sendv(client, "  fail count: %lu\r\n", s->stat_fail_cnt);
 		
 	cli_sendv(client, "  request count: %i\r\n", s->req_cnt);
 	cli_sendv(client, "  queue length: %i\r\n", s->queue_cnt);
@@ -500,8 +503,9 @@ static void __add_server(struct rad_server_t *s)
 
 	list_for_each_entry(s1, &serv_list, entry) {
 		if (s1->addr == s->addr && s1->auth_port == s->auth_port && s1->acct_port == s->acct_port) {
-			s1->conf_fail_time = s->conf_fail_time;
+			s1->fail_timeout = s->fail_timeout;
 			s1->req_limit = s->req_limit;
+			s1->max_fail = s->max_fail;
 			s1->need_free = 0;
 			_free(s);
 			return;
@@ -626,7 +630,9 @@ static void add_server_old(void)
 	s->addr = auth_addr;
 	s->secret = auth_secret;
 	s->auth_port = auth_port;
-	s->conf_fail_time = conf_fail_time;
+	s->fail_timeout = conf_fail_timeout;
+	s->req_limit = conf_req_limit;
+	s->max_fail = conf_max_fail;
 
 	if (auth_addr == acct_addr && !strcmp(auth_secret, acct_secret)) {
 		s->acct_port = acct_port;
@@ -642,7 +648,9 @@ static void add_server_old(void)
 		s->addr = acct_addr;
 		s->secret = acct_secret;
 		s->acct_port = acct_port;
-		s->conf_fail_time = conf_fail_time;
+		s->fail_timeout = conf_fail_timeout;
+		s->req_limit = conf_req_limit;
+		s->max_fail = conf_max_fail;
 		__add_server(s);
 	}
 }
@@ -690,7 +698,9 @@ static int parse_server1(const char *_opt, struct rad_server_t *s)
 		s->acct_port = 1813;
 
 	s->secret = _strdup(ptr1 + 1);
-	s->conf_fail_time = conf_fail_time;
+	s->fail_timeout = conf_fail_timeout;
+	s->req_limit = conf_req_limit;
+	s->max_fail = conf_max_fail;
 	
 	return 0;
 
@@ -739,13 +749,28 @@ static int parse_server2(const char *_opt, struct rad_server_t *s)
 	} else
 		s->req_limit = conf_req_limit;
 
-	ptr3 = strstr(ptr2, ",fail-time=");
+	ptr3 = strstr(ptr2, ",fail-timeout=");
 	if (ptr3) {
-		s->conf_fail_time = strtol(ptr3 + 11, &endptr, 10);
+		s->fail_timeout = strtol(ptr3 + 14, &endptr, 10);
+		if (*endptr != ',' && *endptr != 0)
+			goto out;
+	} else {
+		ptr3 = strstr(ptr2, ",fail-time=");
+		if (ptr3) {
+			s->fail_timeout = strtol(ptr3 + 11, &endptr, 10);
+			if (*endptr != ',' && *endptr != 0)
+				goto out;
+		} else
+			s->fail_timeout = conf_fail_timeout;
+	}
+	
+	ptr3 = strstr(ptr2, ",max-fail=");
+	if (ptr3) {
+		s->max_fail = strtol(ptr3 + 10, &endptr, 10);
 		if (*endptr != ',' && *endptr != 0)
 			goto out;
 	} else
-		s->conf_fail_time = conf_fail_time;
+		s->max_fail = conf_max_fail;
 	
 	ptr3 = strstr(ptr2, ",weight=");
 	if (ptr3) {
@@ -815,6 +840,26 @@ static void load_config(void)
 		conf_acct_on = atoi(opt1);
 	else
 		conf_acct_on = 0;
+	
+	opt1 = conf_get_opt("radius", "fail-timeout");
+	if (!opt1)
+		opt1 = conf_get_opt("radius", "fail-time");
+	if (opt1)
+		conf_fail_timeout = atoi(opt1);
+	else
+		conf_fail_timeout = 0;
+
+	opt1 = conf_get_opt("radius", "req-limit");
+	if (opt1)
+		conf_req_limit = atoi(opt1);
+	else
+		conf_req_limit = 0;
+	
+	opt1 = conf_get_opt("radius", "max-fail");
+	if (opt1)
+		conf_max_fail = atoi(opt1);
+	else
+		conf_max_fail = conf_req_limit + conf_max_try;
 
 	list_for_each_entry(opt, &sect->items, entry) {
 		if (strcmp(opt->name, "server"))

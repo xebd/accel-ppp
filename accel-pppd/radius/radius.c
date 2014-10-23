@@ -670,14 +670,6 @@ static int load_config(void)
 	if (opt)
 		conf_acct_delay_time = atoi(opt);
 
-	opt = conf_get_opt("radius", "fail-time");
-	if (opt)
-		conf_fail_time = atoi(opt);
-
-	opt = conf_get_opt("radius", "req-limit");
-	if (opt)
-		conf_req_limit = atoi(opt);
-	
 	conf_attr_tunnel_type = conf_get_opt("radius", "attr-tunnel-type");
 	
 	conf_default_realm = conf_get_opt("radius", "default-realm");
