@@ -615,7 +615,7 @@ static void find_gw_addr(struct ipoe_session *ses)
 
 	list_for_each_entry(a, &conf_gw_addr, entry) {
 		if ((ntohl(ses->yiaddr) & (a->mask1)) == (ntohl(a->addr) & (a->mask1))) {
-			ses->siaddr = a->addr;
+			ses->router = a->addr;
 			ses->mask = a->mask;
 			return;
 		}
@@ -633,9 +633,6 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 	if (!ses->yiaddr && !ses->serv->opt_nat)
 		ses->ses.ipv4 = ipdb_get_ipv4(&ses->ses);
 
-	if (!ses->mask)
-		ses->mask = conf_netmask;
-
 	if (ses->ses.ipv4) {
 		if (!ses->mask)
 			ses->mask = ses->ses.ipv4->mask;
@@ -652,19 +649,48 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 		ses->ipv4.mask = ses->mask;
 		ses->ipv4.owner = NULL;
 	}*/
-
+	
 	if (ses->dhcpv4_request) {
 		if (!ses->yiaddr) {
 			log_ppp_error("no free IPv4 address\n");
 			ap_session_terminate(&ses->ses, TERM_NAS_REQUEST, 0);
 			return;
 		}
+
+		if (!ses->router)
+			find_gw_addr(ses);
+	
+		if (!ses->mask)
+			ses->mask = conf_netmask;
+		
+		if (!ses->mask)
+			ses->mask = 32;
+		
+		if (ses->dhcpv4_request->hdr->giaddr) {
+			/*uint32_t mask = ses->mask == 32 ? 0xffffffff : (((1 << ses->mask) - 1) << (32 - ses->mask));
+
+			ses->siaddr = iproute_get(ses->dhcpv4_request->hdr->giaddr);
+			if ((ntohl(ses->router) & mask) == (ntohl(ses->siaddr) & mask))
+				ses->siaddr = ses->router;
+			else if (!ses->router)
+				ses->router = ses->dhcpv4_request->hdr->giaddr;*/
+			if (ses->serv->opt_mode == MODE_L2)
+				ses->siaddr = ses->router;
+			else {
+				ses->siaddr = iproute_get(ses->dhcpv4_request->hdr->giaddr, NULL);
+				if (!ses->router)
+					ses->router = ses->dhcpv4_request->hdr->giaddr;
+			}
+		}
+		
+		if (!ses->router) {
+			log_ppp_error("can't determine router address\n");
+			ap_session_terminate(&ses->ses, TERM_NAS_REQUEST, 0);
+			return;
+		}	
 			
 		if (!ses->siaddr && ses->router != ses->yiaddr)
 			ses->siaddr = ses->router;
-		
-		if (!ses->siaddr)
-			find_gw_addr(ses);
 		
 		if (!ses->siaddr)
 			ses->siaddr = ses->serv->opt_src;		
@@ -680,12 +706,6 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 
 		if (ses->ses.ipv4 && !ses->ses.ipv4->addr)
 			ses->ses.ipv4->addr = ses->siaddr;
-
-		if (!ses->router)
-			ses->router = ses->siaddr;
-				
-		if (!ses->mask)
-			ses->mask = 32;
 
 		dhcpv4_send_reply(DHCPOFFER, ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
 
@@ -704,7 +724,7 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 			ses->siaddr = ses->serv->opt_src;
 
 		if (!ses->siaddr)
-			ses->siaddr = iproute_get(ses->yiaddr);
+			ses->siaddr = iproute_get(ses->yiaddr, NULL);
 
 		if (!ses->siaddr) {
 			log_ppp_error("can't determine local address\n");
@@ -779,7 +799,7 @@ static void ipoe_ifcfg_add(struct ipoe_session *ses)
 		ipoe_serv_add_addr(ses->serv, ses->siaddr, conf_ip_unnumbered ? 32 : ses->mask);
 	
 	if (conf_ip_unnumbered) {
-		if (iproute_add(serv->ifindex, ses->serv->opt_src ? ses->serv->opt_src : ses->router, ses->yiaddr, conf_proto))
+		if (iproute_add(serv->ifindex, ses->serv->opt_src ? ses->serv->opt_src : ses->router, ses->yiaddr, 0, conf_proto))
 			log_ppp_warn("ipoe: failed to add route to interface '%s'\n", serv->ifname);
 	}
 
@@ -817,7 +837,16 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 			addr = ses->ses.ipv4->peer_addr;
 		else if (!conf_ip_unnumbered)
 			ses->ctrl.dont_ifcfg = 1;
-		
+
+		if (ses->dhcpv4_request && ses->serv->opt_mode == MODE_L3) {
+			in_addr_t gw;
+			iproute_get(ses->router, &gw);
+			if (gw)
+				iproute_add(0, ses->siaddr, ses->yiaddr, gw, conf_proto);
+			else
+				iproute_add(0, ses->siaddr, ses->router, gw, conf_proto);
+		}
+
 		if (ipoe_nl_modify(ses->ifindex, ses->yiaddr, addr, NULL, NULL)) {
 			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 0);
 			return;
@@ -837,10 +866,10 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 	
 		ipoe_nl_add_exclude(ses->yiaddr, 32);
 
-		iproute_add(ses->serv->ifindex, ses->siaddr, ses->yiaddr, conf_proto);
+		iproute_add(ses->serv->ifindex, ses->siaddr, ses->yiaddr, 0, conf_proto);
 		
 		ses->ctrl.dont_ifcfg = 1;
-	} else if (ses->ctrl.dont_ifcfg)
+	} else if (ses->ctrl.dont_ifcfg && ses->serv->opt_mode == MODE_L2)
 		ipaddr_add(ses->ifindex, ses->siaddr, ses->mask);
 	
 	if (ses->l4_redirect)

@@ -305,7 +305,7 @@ int __export ipaddr_del(int ifindex, in_addr_t addr, int mask)
 	return 0;
 }
 
-int __export iproute_add(int ifindex, in_addr_t src, in_addr_t dst, int proto)
+int __export iproute_add(int ifindex, in_addr_t src, in_addr_t dst, in_addr_t gw, int proto)
 {
 	struct ipaddr_req {
 		struct nlmsghdr n;
@@ -326,15 +326,18 @@ int __export iproute_add(int ifindex, in_addr_t src, in_addr_t dst, int proto)
 	req.n.nlmsg_type = RTM_NEWROUTE;
 	req.i.rtm_family = AF_INET;
 	req.i.rtm_table = RT_TABLE_MAIN;
-	req.i.rtm_scope = RT_SCOPE_LINK;
+	req.i.rtm_scope = ifindex ? RT_SCOPE_LINK : RT_SCOPE_UNIVERSE;
 	req.i.rtm_protocol = proto;
 	req.i.rtm_type = RTN_UNICAST;
 	req.i.rtm_dst_len = 32;
 
+	if (ifindex)
+		addattr32(&req.n, sizeof(req), RTA_OIF, ifindex);
 	if (src)
 		addattr32(&req.n, sizeof(req), RTA_PREFSRC, src);
+	if (gw)
+		addattr32(&req.n, sizeof(req), RTA_GATEWAY, gw);
 	addattr32(&req.n, sizeof(req), RTA_DST, dst);
-	addattr32(&req.n, sizeof(req), RTA_OIF, ifindex);
 
 	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
 		return -1;
@@ -413,7 +416,7 @@ int __export ip6route_add(int ifindex, struct in6_addr *dst, int pref_len, int p
 
 }
 
-in_addr_t __export iproute_get(in_addr_t dst)
+in_addr_t __export iproute_get(in_addr_t dst, in_addr_t *gw)
 {
 	struct ipaddr_req {
 		struct nlmsghdr n;
@@ -424,6 +427,7 @@ in_addr_t __export iproute_get(in_addr_t dst)
 	struct rtattr *tb[RTA_MAX+1];
 	int len;
 	in_addr_t res = 0;
+	*gw = 0;
 
 	if (!rth)
 		open_rth();
@@ -470,7 +474,10 @@ in_addr_t __export iproute_get(in_addr_t dst)
 		
 	if (tb[RTA_PREFSRC])
 		res = *(uint32_t *)RTA_DATA(tb[RTA_PREFSRC]);
-			
+
+	if (gw && tb[RTA_GATEWAY])
+		*gw = *(uint32_t *)RTA_DATA(tb[RTA_GATEWAY]);
+
 out:
 	return res;
 }

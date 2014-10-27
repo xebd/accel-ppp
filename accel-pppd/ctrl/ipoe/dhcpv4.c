@@ -506,6 +506,8 @@ static int dhcpv4_read(struct triton_md_handler_t *h)
 			continue;
 		}
 
+		pack->src_addr = addr.sin_addr.s_addr;
+
 		if (serv->recv)
 			serv->recv(serv, pack);
 		
@@ -640,7 +642,7 @@ static int dhcpv4_send_raw(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack,
 	return 0;
 }
 
-static int dhcpv4_send_udp(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack)
+static int dhcpv4_send_udp(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack, in_addr_t ip, int port)
 {
 	struct sockaddr_in addr;
 	int n;
@@ -648,22 +650,14 @@ static int dhcpv4_send_udp(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack)
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
-	addr.sin_port = htons(DHCP_CLIENT_PORT);
-	addr.sin_addr.s_addr = pack->hdr->giaddr;
+	addr.sin_port = htons(port);
+	addr.sin_addr.s_addr = ip;
 
 	n = sendto(serv->hnd.fd, pack->data, len, 0, (struct sockaddr *)&addr, sizeof(addr));
 	if (n != len)
 		return -1;
 	
 	return 0;
-}
-
-static int dhcpv4_send(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack, in_addr_t saddr, in_addr_t daddr)
-{
-	if (pack->hdr->giaddr)
-		return dhcpv4_send_udp(serv, pack);
-	
-	return dhcpv4_send_raw(serv, pack, saddr, daddr);
 }
 
 int dhcpv4_packet_add_opt(struct dhcpv4_packet *pack, int type, const void *data, int len)
@@ -713,12 +707,13 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 	memcpy(pack->hdr, req->hdr, sizeof(*req->hdr));
 
 	pack->hdr->op = DHCP_OP_REPLY;
-	//pack->hdr->ciaddr = 0;
 	pack->hdr->yiaddr = yiaddr;
-	if (msg_type == DHCPOFFER)
-		pack->hdr->siaddr = siaddr;
+	if (msg_type == DHCPACK)
+		pack->hdr->ciaddr = req->hdr->ciaddr;
 	else
-		pack->hdr->siaddr = 0;
+		pack->hdr->ciaddr = 0;
+	pack->hdr->siaddr = 0;
+	pack->hdr->giaddr = req->hdr->giaddr;
 
 	if (dhcpv4_packet_add_opt(pack, 53, &msg_type, 1))
 		goto out_err;
@@ -768,7 +763,12 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 		dhcpv4_print_packet(pack, 0, log_ppp_info2);
 	}
 
-	r = dhcpv4_send(serv, pack, siaddr, yiaddr);
+	if (req->hdr->giaddr)
+		r = dhcpv4_send_udp(serv, pack, req->hdr->giaddr, DHCP_SERV_PORT);
+	else if (pack->hdr->ciaddr)
+		r = dhcpv4_send_udp(serv, pack, req->hdr->ciaddr, DHCP_CLIENT_PORT);
+	else
+		r = dhcpv4_send_raw(serv, pack, siaddr, yiaddr);
 
 	dhcpv4_packet_free(pack);
 
@@ -796,6 +796,7 @@ int dhcpv4_send_nak(struct dhcpv4_serv *serv, struct dhcpv4_packet *req)
 	pack->hdr->ciaddr = 0;
 	pack->hdr->yiaddr = 0;
 	pack->hdr->siaddr = 0;
+	pack->hdr->giaddr = req->hdr->giaddr;
 
 	val = DHCPNAK;
 	if (dhcpv4_packet_add_opt(pack, 53, &val, 1))
@@ -809,7 +810,10 @@ int dhcpv4_send_nak(struct dhcpv4_serv *serv, struct dhcpv4_packet *req)
 		dhcpv4_print_packet(pack, 0, log_info2);
 	}
 
-	r = dhcpv4_send(serv, pack, 0, 0xffffffff);
+	if (req->hdr->giaddr)
+		r = dhcpv4_send_udp(serv, pack, req->hdr->giaddr, DHCP_SERV_PORT);
+	else
+		r = dhcpv4_send_raw(serv, pack, 0, 0xffffffff);
 
 	dhcpv4_packet_free(pack);
 
