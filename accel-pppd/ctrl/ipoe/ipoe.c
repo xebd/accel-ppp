@@ -105,6 +105,7 @@ static int conf_arp;
 static int conf_ipv6;
 static uint32_t conf_src;
 static const char *conf_ip_pool;
+static const char *conf_l4_redirect_pool;
 //static int conf_dhcpv6;
 static int conf_username;
 static const char *conf_password;
@@ -307,6 +308,17 @@ static void ipoe_session_timeout(struct triton_timer_t *t)
 	ap_session_terminate(&ses->ses, TERM_LOST_CARRIER, 0);
 }
 
+static void ipoe_session_l4_redirect_timeout(struct triton_timer_t *t)
+{
+	struct ipoe_session *ses = container_of(t, typeof(*ses), l4_redirect_timer);
+
+	triton_timer_del(t);
+
+	log_ppp_info2("ipoe: session timed out\n");
+
+	ap_session_terminate(&ses->ses, TERM_NAS_REQUEST, 0);
+}
+
 static void ipoe_relay_timeout(struct triton_timer_t *t)
 {
 	struct ipoe_session *ses = container_of(t, typeof(*ses), timer);
@@ -505,6 +517,24 @@ static void auth_result(struct ipoe_session *ses, int r)
 	ses->username = NULL;
 
 	if (r == PWDB_DENIED) {
+		if (conf_l4_redirect_on_reject && ses->dhcpv4_request) {
+			ses->l4_redirect = 1;
+			if (conf_l4_redirect_pool) {
+				if (ses->ses.ipv4_pool_name)
+					_free(ses->ses.ipv4_pool_name);
+				ses->ses.ipv4_pool_name = _strdup(conf_l4_redirect_pool);
+			}
+
+			ses->l4_redirect_timer.expire = ipoe_session_l4_redirect_timeout;
+			ses->l4_redirect_timer.expire_tv.tv_sec = conf_l4_redirect_on_reject;
+			triton_timer_add(&ses->ctx, &ses->l4_redirect_timer, 0);
+
+			ap_session_set_username(&ses->ses, username);
+			log_ppp_info1("%s: authentication failed\n", ses->ses.username);
+			log_ppp_info1("%s: start temporary session (l4-redirect)\n", ses->ses.username);
+			goto cont;
+		}
+
 		pthread_rwlock_wrlock(&ses_lock);
 		ses->ses.username = username;
 		ses->ses.terminate_cause = TERM_AUTH_ERROR;
@@ -519,6 +549,8 @@ static void auth_result(struct ipoe_session *ses, int r)
 
 	ap_session_set_username(&ses->ses, username);
 	log_ppp_info1("%s: authentication succeeded\n", ses->ses.username);
+
+cont:
 	triton_event_fire(EV_SES_AUTHORIZED, &ses->ses);
 
 	if (ses->serv->opt_nat)
@@ -998,6 +1030,9 @@ static void ipoe_session_free(struct ipoe_session *ses)
 		__sync_sub_and_fetch(&stat_starting, 1);
 	
 	if (ses->timer.tpd)
+		triton_timer_del(&ses->timer);
+	
+	if (ses->l4_redirect_timer.tpd)
 		triton_timer_del(&ses->timer);
 
 	if (ses->dhcpv4_request)
@@ -3103,6 +3138,7 @@ static void load_config(void)
 		conf_offer_timeout = 10;
 	
 	conf_ip_pool = conf_get_opt("ipoe", "ip-pool");
+	conf_l4_redirect_pool = conf_get_opt("ipoe", "l4-redirect-ip-pool");
 
 	conf_vlan_name = conf_get_opt("ipoe", "vlan-name");
 	if (!conf_vlan_name)

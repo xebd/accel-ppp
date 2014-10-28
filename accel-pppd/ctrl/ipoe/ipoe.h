@@ -58,6 +58,7 @@ struct ipoe_session {
 	struct list_head entry;
 	struct triton_context_t ctx;
 	struct triton_timer_t timer;
+	struct triton_timer_t l4_redirect_timer;
 	struct ipoe_serv *serv;
 	struct dhcpv4_serv *dhcpv4;
 	struct ap_ctrl ctrl;
