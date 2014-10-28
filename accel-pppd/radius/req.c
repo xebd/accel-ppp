@@ -353,14 +353,15 @@ int rad_req_send(struct rad_req_t *req)
 	req->send = __rad_req_send;
 
 	if (req->try++ == conf_max_try) {
-		if (req->active) {
+		if (req->active)
 			rad_server_req_exit(req);
 				
-			if (rad_server_realloc(req)) {
-				if (req->rpd)
-					log_ppp_warn("radius: no available servers\n");
-				return -1;
-			}
+		log_ppp_warn("radius: server(%i) not responding\n", req->serv->id);
+				
+		if (rad_server_realloc(req)) {
+			if (req->rpd)
+				log_ppp_warn("radius: no available servers\n");
+			return -1;
 		}
 
 		req->try = 1;
