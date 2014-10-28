@@ -427,7 +427,9 @@ in_addr_t __export iproute_get(in_addr_t dst, in_addr_t *gw)
 	struct rtattr *tb[RTA_MAX+1];
 	int len;
 	in_addr_t res = 0;
-	*gw = 0;
+
+	if (gw)
+		*gw = 0;
 
 	if (!rth)
 		open_rth();
