@@ -166,7 +166,7 @@ int __export establish_ppp(struct ppp_t *ppp)
 	log_ppp_debug("ppp established\n");
 
 	if (ap_session_starting(&ppp->ses))
-		goto exit_close_unit;
+		goto exit_free_buf;
 
 	triton_md_register_handler(ppp->ses.ctrl->ctx, &ppp->chan_hnd);
 	triton_md_register_handler(ppp->ses.ctrl->ctx, &ppp->unit_hnd);
@@ -178,13 +178,13 @@ int __export establish_ppp(struct ppp_t *ppp)
 
 	return 0;
 
+exit_free_buf:
+	mempool_free(ppp->buf);
+	ppp->buf = NULL;
 exit_close_unit:
 	close(ppp->unit_fd);
 exit_close_chan:
 	close(ppp->chan_fd);
-
-	if (ppp->buf)
-		mempool_free(ppp->buf);
 
 	return -1;
 }
