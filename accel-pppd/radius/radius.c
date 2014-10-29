@@ -183,7 +183,7 @@ static int rad_pwdb_check(struct pwdb_t *pwdb, struct ap_session *ses, pwdb_call
 	}
 	
 	rpd->auth_ctx = mempool_alloc(auth_ctx_pool);
-	memset(rpd->auth_ctx, 0, sizeof(rpd->auth_ctx));
+	memset(rpd->auth_ctx, 0, sizeof(*rpd->auth_ctx));
 
 	rpd->auth_ctx->cb = cb;
 	rpd->auth_ctx->cb_arg = cb_arg;

@@ -608,7 +608,7 @@ static void send_term_req(struct ppp_fsm_t *fsm)
 	if (conf_ppp_verbose)
 		log_ppp_info2("send [CCP TermReq id=%i]\n", hdr.id);
 
-	ppp_chan_send(ccp->ppp, &hdr, 6);
+	ppp_unit_send(ccp->ppp, &hdr, 6);
 }
 
 static void send_term_ack(struct ppp_fsm_t *fsm)
@@ -623,8 +623,8 @@ static void send_term_ack(struct ppp_fsm_t *fsm)
 
 	if (conf_ppp_verbose)
 		log_ppp_info2("send [CCP TermAck id=%i]\n", hdr.id);
-	
-	ppp_chan_send(ccp->ppp, &hdr, 6);
+
+	ppp_unit_send(ccp->ppp, &hdr, 6);
 }
 
 static void ccp_recv(struct ppp_handler_t*h)
