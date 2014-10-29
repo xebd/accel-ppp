@@ -117,6 +117,8 @@ static int conf_attr_dhcp_router_ip;
 static int conf_attr_dhcp_mask;
 static int conf_attr_dhcp_lease_time;
 static int conf_attr_l4_redirect;
+static int conf_attr_l4_redirect_table;
+static int conf_attr_l4_redirect_ipset;
 static const char *conf_attr_dhcp_opt82;
 #endif
 static int conf_l4_redirect_table;
@@ -442,22 +444,22 @@ static void ipoe_change_l4_redirect(struct ipoe_session *ses, int del)
 	else
 		addr = ses->yiaddr;
 	
-	if (conf_l4_redirect_table) {
+	if (ses->l4_redirect_table) {
 		if (del) {
-			iprule_del(addr, conf_l4_redirect_table);
+			iprule_del(addr, ses->l4_redirect_table);
 			ses->l4_redirect_set = 0;
 		} else {
-			iprule_add(addr, conf_l4_redirect_table);
+			iprule_add(addr, ses->l4_redirect_table);
 			ses->l4_redirect_set = 1;
 		}
 	}
 
-	if (conf_l4_redirect_ipset) {
+	if (conf_l4_redirect_ipset || ses->l4_redirect_ipset) {
 		if (del) {
-			ipset_del(conf_l4_redirect_ipset, addr);
+			ipset_del(ses->l4_redirect_ipset ?: conf_l4_redirect_ipset, addr);
 			ses->l4_redirect_set = 0;
 		} else {
-			ipset_add(conf_l4_redirect_ipset, addr);
+			ipset_add(ses->l4_redirect_ipset ?: conf_l4_redirect_ipset, addr);
 			ses->l4_redirect_set = 1;
 		}
 	}
@@ -1049,6 +1051,9 @@ static void ipoe_session_free(struct ipoe_session *ses)
 	
 	if (ses->ctrl.calling_station_id)
 		_free(ses->ctrl.calling_station_id);
+	
+	if (ses->l4_redirect_ipset)
+		_free(ses->l4_redirect_ipset);
 
 	triton_context_unregister(&ses->ctx);
 	
@@ -1772,6 +1777,7 @@ struct ipoe_session *ipoe_session_alloc(void)
 	ses->ctrl.terminate = ipoe_session_terminate;
 	ses->ctrl.type = CTRL_TYPE_IPOE;
 	ses->ctrl.name = "ipoe";
+	ses->l4_redirect_table = conf_l4_redirect_table;
 
 	ses->ses.ctrl = &ses->ctrl;
 	
@@ -1838,6 +1844,12 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 				ses->l4_redirect = 1;
 		} else if (attr->attr->id == conf_attr_dhcp_lease_time)
 			ses->lease_time = attr->val.integer;
+		else if (attr->attr->id == conf_attr_l4_redirect_table)
+			ses->l4_redirect_table = attr->val.integer;
+		else if (attr->attr->id == conf_attr_l4_redirect_ipset) {
+			if (attr->attr->type == ATTR_TYPE_STRING)
+				ses->l4_redirect_ipset = _strdup(attr->val.string);
+		}
 	}
 }
 
@@ -2657,6 +2669,8 @@ static void parse_conf_rad_attr(const char *opt, int *val)
 	struct rad_dict_attr_t *attr;
 
 	opt = conf_get_opt("ipoe", opt);
+		
+	*val = 0;
 
 	if (opt) {
 		if (atoi(opt) > 0)
@@ -2668,8 +2682,7 @@ static void parse_conf_rad_attr(const char *opt, int *val)
 			else
 				log_emerg("ipoe: couldn't find '%s' in dictionary\n", opt);
 		}
-	} else
-		*val = -1;
+	}
 }
 
 static void load_radius_attrs(void)
@@ -2679,6 +2692,8 @@ static void load_radius_attrs(void)
 	parse_conf_rad_attr("attr-dhcp-mask", &conf_attr_dhcp_mask);
 	parse_conf_rad_attr("attr-dhcp-lease-time", &conf_attr_dhcp_lease_time);
 	parse_conf_rad_attr("attr-l4-redirect", &conf_attr_l4_redirect);
+	parse_conf_rad_attr("attr-l4-redirect-table", &conf_attr_l4_redirect_table);
+	parse_conf_rad_attr("attr-l4-redirect-ipset", &conf_attr_l4_redirect_ipset);
 	conf_attr_dhcp_opt82 = conf_get_opt("ipoe", "attr-dhcp-opt82");
 }
 #endif

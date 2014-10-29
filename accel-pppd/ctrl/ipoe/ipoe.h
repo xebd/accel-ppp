@@ -74,6 +74,8 @@ struct ipoe_session {
 	uint32_t siaddr;
 	uint32_t router;
 	uint32_t relay_server_id;
+	int l4_redirect_table;
+	char *l4_redirect_ipset;
 	int mask;
 	int lease_time;
 	uint8_t *data;
