@@ -39,11 +39,6 @@
 #define PPP_CBCP	0xc029	/* Callback Control Protocol */
 #define PPP_EAP		0xc227	/* Extensible Authentication Protocol */
 
-struct ppp_t;
-
-struct ipv4db_item_t;
-struct ipv6db_item_t;
-
 struct ppp_t
 {
 	struct ap_session ses;
@@ -63,8 +58,6 @@ struct ppp_t
 	struct list_head unit_handlers;
 
 	struct list_head layers;
-	
-	struct ppp_lcp_t *lcp;
 };
 
 struct ppp_layer_t;
@@ -98,7 +91,6 @@ struct ppp_handler_t
 	void (*recv_proto_rej)(struct ppp_handler_t *h);
 };
 
-struct ppp_t *alloc_ppp(void);
 void ppp_init(struct ppp_t *ppp);
 int establish_ppp(struct ppp_t *ppp);
 int ppp_chan_send(struct ppp_t *ppp, void *data, int size);
@@ -106,10 +98,6 @@ int ppp_unit_send(struct ppp_t *ppp, void *data, int size);
 void lcp_send_proto_rej(struct ppp_t *ppp, uint16_t proto);
 void ppp_recv_proto_rej(struct ppp_t *ppp, uint16_t proto);
 
-void ppp_ifup(struct ppp_t *ppp);
-void ppp_ifdown(struct ppp_t *ppp);
-
-struct ppp_fsm_t* ppp_lcp_init(struct ppp_t *ppp);
 void ppp_layer_started(struct ppp_t *ppp,struct ppp_layer_data_t*);
 void ppp_layer_finished(struct ppp_t *ppp,struct ppp_layer_data_t*);
 void ppp_layer_passive(struct ppp_t *ppp,struct ppp_layer_data_t*);
@@ -123,8 +111,6 @@ void ppp_unregister_handler(struct ppp_t *, struct ppp_handler_t *);
 int ppp_register_layer(const char *name, struct ppp_layer_t *);
 void ppp_unregister_layer(struct ppp_layer_t *);
 struct ppp_layer_data_t *ppp_find_layer_data(struct ppp_t *, struct ppp_layer_t *);
-
-int ppp_ipv6_nd_start(struct ppp_t *ppp, uint64_t intf_id);
 
 extern int conf_ppp_verbose;
 
