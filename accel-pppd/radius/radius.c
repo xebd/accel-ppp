@@ -63,6 +63,7 @@ int rad_proc_attrs(struct rad_req_t *req)
 	struct ev_dns_t dns;
 	struct ev_wins_t wins;
 	int res = 0;
+	struct radius_pd_t *rpd = req->rpd;
 
 	dns.ses = NULL;
 	wins.ses = NULL;
@@ -72,19 +73,19 @@ int rad_proc_attrs(struct rad_req_t *req)
 		if (attr->vendor && attr->vendor->id == Vendor_Microsoft) {
 			switch (attr->attr->id) {
 				case MS_Primary_DNS_Server:
-					dns.ses = req->rpd->ses;
+					dns.ses = rpd->ses;
 					dns.dns1 = attr->val.ipaddr;
 					break;
 				case MS_Secondary_DNS_Server:
-					dns.ses = req->rpd->ses;
+					dns.ses = rpd->ses;
 					dns.dns2 = attr->val.ipaddr;
 					break;
 				case MS_Primary_NBNS_Server:
-					wins.ses = req->rpd->ses;
+					wins.ses = rpd->ses;
 					wins.wins1 = attr->val.ipaddr;
 					break;
 				case MS_Secondary_NBNS_Server:
-					wins.ses = req->rpd->ses;
+					wins.ses = rpd->ses;
 					wins.wins2 = attr->val.ipaddr;
 					break;
 			}
@@ -94,59 +95,59 @@ int rad_proc_attrs(struct rad_req_t *req)
 
 		switch(attr->attr->id) {
 			case Framed_IP_Address:
-				if (!conf_gw_ip_address && req->rpd->ses->ctrl->ppp)
+				if (!conf_gw_ip_address && rpd->ses->ctrl->ppp)
 					log_ppp_warn("radius: gw-ip-address not specified, cann't assign IP address...\n");
 				else if (attr->val.ipaddr != 0xfffffffe) {
-					req->rpd->ipv4_addr.owner = &ipdb;
-					req->rpd->ipv4_addr.peer_addr = attr->val.ipaddr;
-					req->rpd->ipv4_addr.addr = req->rpd->ses->ctrl->ppp ? conf_gw_ip_address : 0;
+					rpd->ipv4_addr.owner = &ipdb;
+					rpd->ipv4_addr.peer_addr = attr->val.ipaddr;
+					rpd->ipv4_addr.addr = rpd->ses->ctrl->ppp ? conf_gw_ip_address : 0;
 				}
 				break;
 			case Acct_Interim_Interval:
-				req->rpd->acct_interim_interval = attr->val.integer;
+				rpd->acct_interim_interval = attr->val.integer;
 				break;
 			case Session_Timeout:
-				req->rpd->session_timeout.expire_tv.tv_sec = attr->val.integer;
+				rpd->session_timeout.expire_tv.tv_sec = attr->val.integer;
 				break;
 			case Idle_Timeout:
-				req->rpd->idle_timeout.period = attr->val.integer * 1000;
+				rpd->idle_timeout.period = attr->val.integer * 1000;
 				break;
 			case Class:
-				if (!req->rpd->attr_class)
-					req->rpd->attr_class = _malloc(attr->len);
-				else if (req->rpd->attr_class_len != attr->len)
-					req->rpd->attr_class = _realloc(req->rpd->attr_class, attr->len);
-				memcpy(req->rpd->attr_class, attr->val.octets, attr->len);
-				req->rpd->attr_class_len = attr->len;
+				if (!rpd->attr_class)
+					rpd->attr_class = _malloc(attr->len);
+				else if (rpd->attr_class_len != attr->len)
+					rpd->attr_class = _realloc(rpd->attr_class, attr->len);
+				memcpy(rpd->attr_class, attr->val.octets, attr->len);
+				rpd->attr_class_len = attr->len;
 				break;
 			case State:
-				if (!req->rpd->attr_state)
-					req->rpd->attr_state = _malloc(attr->len);
-				else if (req->rpd->attr_state_len != attr->len)
-					req->rpd->attr_state = _realloc(req->rpd->attr_state, attr->len);
-				memcpy(req->rpd->attr_state, attr->val.octets, attr->len);
-				req->rpd->attr_state_len = attr->len;	
+				if (!rpd->attr_state)
+					rpd->attr_state = _malloc(attr->len);
+				else if (rpd->attr_state_len != attr->len)
+					rpd->attr_state = _realloc(rpd->attr_state, attr->len);
+				memcpy(rpd->attr_state, attr->val.octets, attr->len);
+				rpd->attr_state_len = attr->len;	
 				break;
 			case Termination_Action:
-				req->rpd->termination_action = attr->val.integer; 
+				rpd->termination_action = attr->val.integer; 
 				break;
 			case Framed_Interface_Id:
-				req->rpd->ipv6_addr.peer_intf_id = attr->val.ifid;
+				rpd->ipv6_addr.peer_intf_id = attr->val.ifid;
 				break;
 			case Framed_IPv6_Prefix:
 				a = _malloc(sizeof(*a));
 				a->prefix_len = attr->val.ipv6prefix.len;
 				a->addr = attr->val.ipv6prefix.prefix;
-				list_add_tail(&a->entry, &req->rpd->ipv6_addr.addr_list);
+				list_add_tail(&a->entry, &rpd->ipv6_addr.addr_list);
 				break;
 			case Delegated_IPv6_Prefix:
 				a = _malloc(sizeof(*a));
 				a->prefix_len = attr->val.ipv6prefix.len;
 				a->addr = attr->val.ipv6prefix.prefix;
-				list_add_tail(&a->entry, &req->rpd->ipv6_dp.prefix_list);
+				list_add_tail(&a->entry, &rpd->ipv6_dp.prefix_list);
 				break;
 			case NAS_Port_Id:
-				ap_session_rename(req->rpd->ses, attr->val.string, attr->len);
+				ap_session_rename(rpd->ses, attr->val.string, attr->len);
 				break;
 		}
 	}
@@ -156,6 +157,9 @@ int rad_proc_attrs(struct rad_req_t *req)
 
 	if (wins.ses)
 		triton_event_fire(EV_WINS, &wins);
+	
+	if (!rpd->ses->ipv6_dp && !list_empty(&rpd->ipv6_dp.prefix_list))
+		rpd->ses->ipv6_dp = &rpd->ipv6_dp;
 
 	return res;
 }
