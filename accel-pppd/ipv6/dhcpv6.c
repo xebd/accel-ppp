@@ -47,7 +47,6 @@ struct dhcpv6_pd {
 	struct dhcpv6_opt_clientid *clientid;
 	uint32_t addr_iaid;
 	uint32_t dp_iaid;
-	struct ipv6db_prefix_t *ipv6_dp;
 	int dp_active:1;
 };
 
@@ -142,8 +141,8 @@ static void ev_ses_finished(struct ap_session *ses)
 	if (pd->clientid)
 		_free(pd->clientid);
 	
-	if (pd->ipv6_dp)
-		ipdb_put_ipv6_prefix(ses, pd->ipv6_dp);
+	if (ses->ipv6_dp)
+		ipdb_put_ipv6_prefix(ses, ses->ipv6_dp);
 	
 	triton_md_unregister_handler(&pd->hnd, 1);
 
@@ -173,7 +172,7 @@ static void insert_dp_routes(struct ap_session *ses, struct dhcpv6_pd *pd)
 	rt6.rtmsg_ifindex = ses->ifindex;
 	rt6.rtmsg_flags = RTF_UP;
 
-	list_for_each_entry(p, &pd->ipv6_dp->prefix_list, entry) {
+	list_for_each_entry(p, &ses->ipv6_dp->prefix_list, entry) {
 		memcpy(&rt6.rtmsg_dst, &p->addr, sizeof(p->addr));
 		rt6.rtmsg_dst_len = p->prefix_len;
 		rt6.rtmsg_metric = 1;
@@ -256,6 +255,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 	struct dhcpv6_opt_ia_prefix *ia_prefix;
 	struct ipv6db_addr_t *a;
 	struct in6_addr addr;
+	struct ap_session *ses = req->ses;
 	int f = 0, f1, f2 = 0;
 
 	reply = dhcpv6_packet_alloc_reply(req, code);
@@ -278,7 +278,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 
 			if (req->hdr->type == D6_RENEW && pd->addr_iaid != ia_na->iaid) {
 				insert_status(reply, opt1, D6_STATUS_NoBinding);
-			} else if (list_empty(&req->ses->ipv6->addr_list) || f) {
+			} else if (list_empty(&ses->ipv6->addr_list) || f) {
 				insert_status(reply, opt1, D6_STATUS_NoAddrsAvail);
 			} else {
 
@@ -287,11 +287,11 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 
 				f = 1;
 
-				list_for_each_entry(a, &req->ses->ipv6->addr_list, entry) {
+				list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
 					opt2 = dhcpv6_nested_option_alloc(reply, opt1, D6_OPTION_IAADDR, sizeof(*ia_addr) - sizeof(struct dhcpv6_opt_hdr));
 					ia_addr = (struct dhcpv6_opt_ia_addr *)opt2->hdr;
 
-					build_addr(a, req->ses->ipv6->peer_intf_id, &ia_addr->addr);
+					build_addr(a, ses->ipv6->peer_intf_id, &ia_addr->addr);
 
 					ia_addr->pref_lifetime = htonl(conf_pref_lifetime);
 					ia_addr->valid_lifetime = htonl(conf_valid_lifetime);	
@@ -305,8 +305,8 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 							continue;
 
 						f1 = 0;
-						list_for_each_entry(a, &req->ses->ipv6->addr_list, entry) {
-							build_addr(a, req->ses->ipv6->peer_intf_id, &addr);
+						list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
+							build_addr(a, ses->ipv6->peer_intf_id, &addr);
 							if (memcmp(&addr, &ia_addr->addr, sizeof(addr)))
 								continue;
 							f1 = 1;
@@ -341,24 +341,24 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 			ia_na->T1 = conf_pref_lifetime == -1 ? -1 : htonl(conf_pref_lifetime / 2);
 			ia_na->T2 = conf_pref_lifetime == -1 ? -1 : htonl((conf_pref_lifetime * 4) / 5);
 			
-			if (!pd->ipv6_dp)
-				pd->ipv6_dp = ipdb_get_ipv6_prefix(req->ses);
+			if (!ses->ipv6_dp)
+				ses->ipv6_dp = ipdb_get_ipv6_prefix(ses);
 
 			if ((req->hdr->type == D6_RENEW) && pd->dp_iaid != ia_na->iaid) {
 				insert_status(reply, opt1, D6_STATUS_NoBinding);
-			} else if (!pd->ipv6_dp || list_empty(&pd->ipv6_dp->prefix_list) || f2) {
+			} else if (!ses->ipv6_dp || list_empty(&ses->ipv6_dp->prefix_list) || f2) {
 				insert_status(reply, opt1, D6_STATUS_NoPrefixAvail);
 			} else {
 
 				if (req->hdr->type == D6_REQUEST || req->rapid_commit) {
 					pd->dp_iaid = ia_na->iaid;
 					if (!pd->dp_active)
-						insert_dp_routes(req->ses, pd);
+						insert_dp_routes(ses, pd);
 				}
 
 				f2 = 1;
 
-				list_for_each_entry(a, &pd->ipv6_dp->prefix_list, entry) {
+				list_for_each_entry(a, &ses->ipv6_dp->prefix_list, entry) {
 					opt2 = dhcpv6_nested_option_alloc(reply, opt1, D6_OPTION_IAPREFIX, sizeof(*ia_prefix) - sizeof(struct dhcpv6_opt_hdr));
 					ia_prefix = (struct dhcpv6_opt_ia_prefix *)opt2->hdr;
 					
@@ -376,7 +376,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 							continue;
 
 						f1 = 0;
-						list_for_each_entry(a, &pd->ipv6_dp->prefix_list, entry) {
+						list_for_each_entry(a, &ses->ipv6_dp->prefix_list, entry) {
 							if (a->prefix_len != ia_prefix->prefix_len)
 								continue;
 							if (memcmp(&a->addr, &ia_prefix->prefix, sizeof(a->addr)))
@@ -444,6 +444,7 @@ static void dhcpv6_send_reply2(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, 
 	struct dhcpv6_opt_ia_prefix *ia_prefix;
 	struct ipv6db_addr_t *a;
 	struct in6_addr addr;
+	struct ap_session *ses = req->ses;
 	int f = 0, f1, f2 = 0, f3;
 
 	reply = dhcpv6_packet_alloc_reply(req, code);
@@ -473,8 +474,8 @@ static void dhcpv6_send_reply2(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, 
 					f1 = 0;
 					
 					if (!f) {
-						list_for_each_entry(a, &req->ses->ipv6->addr_list, entry) {
-							build_addr(a, req->ses->ipv6->peer_intf_id, &addr);
+						list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
+							build_addr(a, ses->ipv6->peer_intf_id, &addr);
 							if (memcmp(&addr, &ia_addr->addr, sizeof(addr)))
 								continue;
 							f1 = 1;
@@ -514,8 +515,8 @@ static void dhcpv6_send_reply2(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, 
 			ia_na->T1 = conf_pref_lifetime == -1 ? -1 : htonl(conf_pref_lifetime / 2);
 			ia_na->T2 = conf_pref_lifetime == -1 ? -1 : htonl((conf_pref_lifetime * 4) / 5);
 			
-			if (!pd->ipv6_dp)
-				pd->ipv6_dp = ipdb_get_ipv6_prefix(req->ses);
+			if (!ses->ipv6_dp)
+				ses->ipv6_dp = ipdb_get_ipv6_prefix(req->ses);
 
 			f3 = 0;
 
@@ -529,7 +530,7 @@ static void dhcpv6_send_reply2(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, 
 					f1 = 0;
 
 					if (!f2) {
-						list_for_each_entry(a, &pd->ipv6_dp->prefix_list, entry) {
+						list_for_each_entry(a, &ses->ipv6_dp->prefix_list, entry) {
 							if (a->prefix_len != ia_prefix->prefix_len)
 								continue;
 							if (memcmp(&a->addr, &ia_prefix->prefix, sizeof(a->addr)))

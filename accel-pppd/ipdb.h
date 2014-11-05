@@ -57,8 +57,8 @@ void ipdb_put_ipv4(struct ap_session *ses, struct ipv4db_item_t *);
 struct ipv6db_item_t *ipdb_get_ipv6(struct ap_session *ses);
 void ipdb_put_ipv6(struct ap_session *ses, struct ipv6db_item_t *);
 
-struct ipv6db_prefix_t __export *ipdb_get_ipv6_prefix(struct ap_session *ses);
-void __export ipdb_put_ipv6_prefix(struct ap_session *ses, struct ipv6db_prefix_t *it);
+struct ipv6db_prefix_t *ipdb_get_ipv6_prefix(struct ap_session *ses);
+void ipdb_put_ipv6_prefix(struct ap_session *ses, struct ipv6db_prefix_t *it);
 
 void ipdb_register(struct ipdb_t *);
 
