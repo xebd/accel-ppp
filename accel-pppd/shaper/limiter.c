@@ -529,7 +529,7 @@ int init_ifb(const char *name)
 	req.t.tcm_ifindex = conf_ifb_ifindex;
 	req.t.tcm_handle = 1;
 	req.t.tcm_parent = 0x00010000;
-	req.t.tcm_info = TC_H_MAKE(1 << 16, ntohs(ETH_P_IP));
+	req.t.tcm_info = TC_H_MAKE(100 << 16, ntohs(ETH_P_IP));
 	
 	addattr_l(&req.n, sizeof(req), TCA_KIND, "flow", 5);
 
