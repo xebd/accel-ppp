@@ -9,6 +9,7 @@
 #include <inttypes.h>
 #include <sys/ioctl.h>
 #include <netinet/in.h>
+#include <arpa/inet.h>
 #include "linux_ppp.h"
 
 #include "triton.h"
@@ -26,6 +27,9 @@
 #endif
 
 #include "memdebug.h"
+
+#define ENV_MEM 1024
+#define ENV_MAX 16
 
 static char *conf_ip_up = "/etc/ppp/ip-up";
 static char *conf_ip_pre_up;
@@ -56,7 +60,7 @@ struct pppd_compat_pd
 
 static struct pppd_compat_pd *find_pd(struct ap_session *ses);
 static void fill_argv(char **argv, struct pppd_compat_pd *pd, char *path);
-static void fill_env(char **env, struct pppd_compat_pd *pd);
+static void fill_env(char **env, char *mem, struct pppd_compat_pd *pd);
 #ifdef RADIUS
 static void remove_radattr(struct pppd_compat_pd *);
 static void write_radattr(struct pppd_compat_pd *, struct rad_packet_t *pack);
@@ -130,12 +134,10 @@ static void ev_ses_pre_up(struct ap_session *ses)
 {
 	pid_t pid;
 	char *argv[8];
-	char *env[4];
+	char *env[ENV_MAX];
+	char env_mem[ENV_MEM];
 	char ipaddr[17];
 	char peer_ipaddr[17];
-	char peername[64];
-	char calling_sid[64];
-	char called_sid[64];
 	struct pppd_compat_pd *pd = find_pd(ses);
 	
 	if (!pd)
@@ -168,11 +170,7 @@ static void ev_ses_pre_up(struct ap_session *ses)
 	argv[5] = peer_ipaddr;
 	fill_argv(argv, pd, conf_ip_up);
 	
-	env[0] = peername;
-	env[1] = calling_sid;
-	env[2] = called_sid;
-	env[3] = NULL;
-	fill_env(env, pd);
+	fill_env(env, env_mem, pd);
 
 	if (conf_ip_pre_up) {
 		sigchld_lock();
@@ -207,12 +205,10 @@ static void ev_ses_started(struct ap_session *ses)
 {
 	pid_t pid;
 	char *argv[8];
-	char *env[4];
+	char *env[ENV_MAX];
+	char env_mem[ENV_MEM];
 	char ipaddr[17];
 	char peer_ipaddr[17];
-	char peername[64];
-	char calling_sid[64];
-	char called_sid[64];
 	struct pppd_compat_pd *pd = find_pd(ses);
 	
 	if (!pd)
@@ -222,11 +218,7 @@ static void ev_ses_started(struct ap_session *ses)
 	argv[5] = peer_ipaddr;
 	fill_argv(argv, pd, conf_ip_up);
 	
-	env[0] = peername;
-	env[1] = calling_sid;
-	env[2] = called_sid;
-	env[3] = NULL;
-	fill_env(env, pd);
+	fill_env(env, env_mem, pd);
 
 	if (conf_ip_up) {
 		sigchld_lock();
@@ -256,15 +248,10 @@ static void ev_ses_finished(struct ap_session *ses)
 {
 	pid_t pid;
 	char *argv[8];
-	char *env[7];
+	char *env[ENV_MAX];
+	char env_mem[ENV_MEM];
 	char ipaddr[17];
 	char peer_ipaddr[17];
-	char peername[64];
-	char calling_sid[64];
-	char called_sid[64];
-	char connect_time[24];
-	char bytes_sent[24];
-	char bytes_rcvd[24];
 	struct pppd_compat_pd *pd = find_pd(ses);
 	
 	if (!pd)
@@ -284,14 +271,7 @@ static void ev_ses_finished(struct ap_session *ses)
 	argv[5] = peer_ipaddr;
 	fill_argv(argv, pd, conf_ip_down);
 
-	env[0] = peername;
-	env[1] = calling_sid;
-	env[2] = called_sid;
-	env[3] = connect_time;
-	env[4] = bytes_sent;
-	env[5] = bytes_rcvd;
-	env[6] = NULL;
-	fill_env(env, pd);
+	fill_env(env, env_mem, pd);
 
 	if (conf_ip_down) {
 		sigchld_lock();
@@ -354,12 +334,10 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 {
 	pid_t pid;
 	char *argv[8];
-	char *env[4];
+	char *env[ENV_MAX];
+	char env_mem[ENV_MEM];
 	char ipaddr[17];
 	char peer_ipaddr[17];
-	char peername[64];
-	char calling_sid[64];
-	char called_sid[64];
 	struct pppd_compat_pd *pd = find_pd(ev->ses);
 	
 	if (!pd)
@@ -371,11 +349,7 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 	argv[5] = peer_ipaddr;
 	fill_argv(argv, pd, conf_ip_change);
 
-	env[0] = peername;
-	env[1] = calling_sid;
-	env[2] = called_sid;
-	env[3] = NULL;
-	fill_env(env, pd);
+	fill_env(env, env_mem, pd);
 
 	sigchld_lock();
 	pid = fork();
@@ -527,23 +501,62 @@ static void fill_argv(char **argv, struct pppd_compat_pd *pd, char *path)
 	argv[7] = NULL;
 }
 
-static void fill_env(char **env, struct pppd_compat_pd *pd)
+static void build_addr(struct ipv6db_addr_t *a, uint64_t intf_id, struct in6_addr *addr)
+{
+	memcpy(addr, &a->addr, sizeof(*addr));
+
+	if (a->prefix_len <= 64)
+		*(uint64_t *)(addr->s6_addr + 8) = intf_id;
+	else
+		*(uint64_t *)(addr->s6_addr + 8) |= intf_id & ((1 << (128 - a->prefix_len)) - 1);
+}
+
+static void fill_env(char **env, char *mem, struct pppd_compat_pd *pd)
 {
 	struct ap_session *ses = pd->ses;
 	uint64_t tx_bytes, rx_bytes;
+	int n = 0;
 	
-	tx_bytes = (uint64_t)ses->acct_tx_bytes + ses->acct_output_gigawords*4294967296llu;
-	rx_bytes = (uint64_t)ses->acct_rx_bytes + ses->acct_input_gigawords*4294967296llu;
+	tx_bytes = (uint64_t)ses->acct_tx_bytes + 4294967296llu*ses->acct_output_gigawords;
+	rx_bytes = (uint64_t)ses->acct_rx_bytes + 4294967296llu*ses->acct_input_gigawords;
 	
-	snprintf(env[0], 64, "PEERNAME=%s", pd->ses->username);
-	snprintf(env[1], 64, "CALLING_SID=%s", pd->ses->ctrl->calling_station_id);
-	snprintf(env[2], 64, "CALLED_SID=%s", pd->ses->ctrl->called_station_id);
-	
-	if (pd->ses->stop_time && env[3]) {
-		snprintf(env[3], 24, "CONNECT_TIME=%lu", pd->ses->stop_time - pd->ses->start_time);
-		snprintf(env[4], 24, "BYTES_SENT=%" PRIu64, tx_bytes);
-		snprintf(env[5], 24, "BYTES_RCVD=%" PRIu64, rx_bytes);
+	env[n++] = mem;
+	mem += sprintf(mem, "PEERNAME=%s", pd->ses->username) + 1;
+	env[n++] = mem;
+	mem += sprintf(mem, "CALLING_SID=%s", pd->ses->ctrl->calling_station_id) + 1;
+	env[n++] = mem;
+	mem += sprintf(mem, "CALLED_SID=%s", pd->ses->ctrl->called_station_id) + 1;
+
+	if (ses->ipv6) {
+		///FIXME only first address is passed to env
+		struct ipv6db_addr_t *a = list_first_entry(&ses->ipv6->addr_list, typeof(*a), entry);
+		struct in6_addr addr;
+		build_addr(a, ses->ipv6->peer_intf_id, &addr);
+		env[n++] = mem;
+		strcpy(mem, "IPV6_PREFIX="); mem += 12;
+		inet_ntop(AF_INET6, &addr, mem, ENV_MEM); mem = strchr(mem, 0);
+		mem += sprintf(mem, "/%i", a->prefix_len) + 1;
 	}
+
+	if (ses->ipv6_dp) {
+		///FIXME only first prefix is passed to env
+		struct ipv6db_addr_t *a = list_first_entry(&ses->ipv6_dp->prefix_list, typeof(*a), entry);
+		env[n++] = mem;
+		strcpy(mem, "IPV6_DELEGATED_PREFIX="); mem += 22;
+		inet_ntop(AF_INET6, &a->addr, mem, ENV_MEM); mem = strchr(mem, 0);
+		mem += sprintf(mem, "/%i", a->prefix_len) + 1;
+	}
+	
+	if (pd->ses->stop_time) {
+		env[n++] = mem;
+		mem += sprintf(mem, "CONNECT_TIME=%lu", pd->ses->stop_time - pd->ses->start_time) + 1;
+		env[n++] = mem;
+		mem += sprintf(mem, "BYTES_SENT=%" PRIu64, tx_bytes) + 1;
+		env[n++] = mem;
+		mem += sprintf(mem, "BYTES_RCVD=%" PRIu64, rx_bytes) + 1;
+	}
+
+	env[n++] = NULL;
 }
 
 static void init(void)
