@@ -209,11 +209,6 @@ static void ipcp_layer_finished(struct ppp_fsm_t *fsm)
 		ap_session_terminate(&ipcp->ppp->ses, TERM_USER_ERROR, 0);
 	
 	fsm->fsm_state = FSM_Closed;
-	
-	if (ipcp->ppp->ses.ipv4) {
-		ipdb_put_ipv4(&ipcp->ppp->ses, ipcp->ppp->ses.ipv4);
-		ipcp->ppp->ses.ipv4 = NULL;
-	}
 }
 
 static void ipcp_layer_down(struct ppp_fsm_t *fsm)

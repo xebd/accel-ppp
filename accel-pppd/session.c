@@ -19,6 +19,7 @@
 #include "log.h"
 #include "events.h"
 #include "ap_session.h"
+#include "ipdb.h"
 #include "backup.h"
 #include "iputils.h"
 #include "spinlock.h"
@@ -157,6 +158,16 @@ void __export ap_session_finished(struct ap_session *ses)
 		case AP_STATE_FINISHING:
 			__sync_sub_and_fetch(&ap_session_stat.finishing, 1);
 			break;
+	}
+
+	if (ses->ipv4 && ses->ipv4->owner) {
+		ipdb_put_ipv4(ses, ses->ipv4);
+		ses->ipv4 = NULL;
+	}
+
+	if (ses->ipv6 && ses->ipv6->owner) {
+		ipdb_put_ipv6(ses, ses->ipv6);
+		ses->ipv6 = NULL;
 	}
 
 	triton_event_fire(EV_SES_FINISHED, ses);
