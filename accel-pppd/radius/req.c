@@ -403,7 +403,7 @@ int rad_req_read(struct triton_md_handler_t *h)
 		if (pack->id == req->pack->id)
 			break;
 		
-		rad_packet_free(req->reply);
+		rad_packet_free(pack);
 	}
 	
 	req->reply = pack;
