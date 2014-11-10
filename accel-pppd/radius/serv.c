@@ -138,6 +138,9 @@ static void req_wakeup(struct rad_req_t *req)
 
 static void req_wakeup_failed(struct rad_req_t *req)
 {
+	if (!req->rpd)
+	    log_switch(triton_context_self(), NULL);
+
 	req->send(req, -1);
 }
 
