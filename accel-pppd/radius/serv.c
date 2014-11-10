@@ -204,6 +204,10 @@ int rad_server_req_enter(struct rad_req_t *req)
 			req->serv->queue_cnt++;
 			log_ppp_debug("radius(%i): queue %p\n", req->serv->id, req);
 			pthread_mutex_unlock(&req->serv->lock);
+			
+			if (req->hnd.tpd)
+				triton_md_disable_handler(&req->hnd, MD_MODE_READ);
+
 			return 0;
 		}
 		

@@ -219,10 +219,10 @@ static void rad_auth_sent(struct rad_req_t *req, int res)
 	
 	__sync_add_and_fetch(&req->serv->stat_auth_sent, 1);
 	
-	if (!req->hnd.tpd) {
+	if (!req->hnd.tpd)
 		triton_md_register_handler(req->rpd->ses->ctrl->ctx, &req->hnd);
-		triton_md_enable_handler(&req->hnd, MD_MODE_READ);
-	}
+	
+	triton_md_enable_handler(&req->hnd, MD_MODE_READ);
 	
 	if (req->timeout.tpd)
 		triton_timer_mod(&req->timeout, 0);
