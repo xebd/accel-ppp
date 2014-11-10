@@ -77,12 +77,12 @@ static int qdisc_htb_class(struct qdisc_opt *qopt, struct nlmsghdr *n)
 	struct rtattr *tail;
 
 	memset(&opt, 0, sizeof(opt));
-	
+
 	opt.rate.rate = qopt->rate;
 	opt.rate.mpu = conf_mpu;
 	opt.ceil.rate = qopt->rate;
 	opt.ceil.mpu = conf_mpu;
-	
+
 	if (tc_calc_rtable(&opt.rate, rtab, cell_log, mtu, linklayer) < 0) {
 		log_ppp_error("shaper: failed to calculate rate table.\n");
 		return -1;
@@ -94,7 +94,15 @@ static int qdisc_htb_class(struct qdisc_opt *qopt, struct nlmsghdr *n)
 		return -1;
 	}
 	opt.cbuffer = tc_calc_xmittime(opt.ceil.rate, conf_cburst ? conf_cburst : qopt->buffer);
-	
+
+	if (qopt->quantum)
+		opt.quantum = qopt->quantum;
+	else if (conf_moderate_quantum) {
+		unsigned int q = qopt->rate / conf_r2q;
+		if (q < 1500 || q > 200000)
+			opt.quantum = q < 1500 ? 1500 : 200000;
+	}
+
 	tail = NLMSG_TAIL(n);
 	addattr_l(n, TCA_BUF_MAX, TCA_OPTIONS, NULL, 0);
 	addattr_l(n, TCA_BUF_MAX, TCA_HTB_PARMS, &opt, sizeof(opt));

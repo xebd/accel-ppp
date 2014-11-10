@@ -38,6 +38,7 @@ double conf_latency = 0.05;
 int conf_mpu = 0;
 int conf_mtu = 0;
 int conf_quantum = 1500;
+int conf_moderate_quantum;
 int conf_r2q = 10;
 int conf_cburst = 1534;
 int conf_ifb_ifindex;
@@ -909,12 +910,22 @@ static void load_config(void)
 		conf_mtu = 0;
 
 	opt = conf_get_opt("shaper", "r2q");
-	if (opt && atoi(opt) >= 0)
+	if (opt)
 		conf_r2q = atoi(opt);
+	else
+		conf_r2q = 10;
 
 	opt = conf_get_opt("shaper", "quantum");
-	if (opt && atoi(opt) >= 0)
+	if (opt)
 		conf_quantum = atoi(opt);
+	else
+		conf_quantum = 0;
+	
+	opt = conf_get_opt("shaper", "moderate-quantum");
+	if (opt)
+		conf_moderate_quantum = atoi(opt);
+	else
+		conf_moderate_quantum = 0;
 	
 	opt = conf_get_opt("shaper", "cburst");
 	if (opt && atoi(opt) >= 0)

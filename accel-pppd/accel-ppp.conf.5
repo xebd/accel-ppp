@@ -872,6 +872,9 @@ Specifies r2q parameter of root htb qdisc.
 .BI "quantum=" n
 Specifies quantum parameter of htb classes.
 .TP
+.BI "moderate-quantum=" 1|0
+If fixed quantum is not specified and this option is specified then shaper module will check for quantum value is valid (in range 1000-200000).
+.TP
 .BI "up-limiter=" police|htb
 Specifes upstream rate limiting method.
 .TP

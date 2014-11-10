@@ -33,6 +33,7 @@ extern double conf_latency;
 extern int conf_mpu;
 extern int conf_mtu;
 extern int conf_quantum;
+extern int conf_moderate_quantum;
 extern int conf_r2q;
 extern int conf_cburst;
 extern int conf_ifb_ifindex;
