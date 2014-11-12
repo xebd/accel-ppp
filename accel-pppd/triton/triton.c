@@ -520,11 +520,18 @@ void __export triton_cancel_call(struct triton_context_t *ud, void (*func)(void 
 	struct _triton_context_t *ctx = ud ? (struct _triton_context_t *)ud->tpd : (struct _triton_context_t *)default_ctx.tpd;
 	struct list_head *pos, *n;
 	struct _triton_ctx_call_t *call;
+	LIST_HEAD(rem_calls);
 
+	spin_lock(&ctx->lock);
 	list_for_each_safe(pos, n, &ctx->pending_calls) {
 		call = list_entry(pos, typeof(*call), entry);
-		if (call->func != func)
-			continue;
+		if (call->func == func)
+			list_move(&call->entry, &rem_calls);
+	}
+	spin_unlock(&ctx->lock);
+
+	while (!list_empty(&rem_calls)) {
+		call = list_first_entry(&rem_calls, typeof(*call), entry);
 		list_del(&call->entry);
 		mempool_free(call);
 	}
