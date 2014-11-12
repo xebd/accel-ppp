@@ -556,9 +556,11 @@ static void print_help(const char *name)
 	printf("\t-v, --verbose\t- Verbose output.\n");
 	printf("\t-V, --version\t- Display version number and exit.\n");
 	printf("\t-h, --help\t- Display this help message and exit.\n");
-	printf("\n\tCOMMAND is the accel-ppp command line to be executed.\n");
-	printf("\tIf no COMMAND is provided, then data read from standard"
-	       " input is forwarded to accel-ppp.\n");
+	printf("\n\tCOMMAND is the accel-ppp command line to be executed");
+	printf(" (if omitted, commands are read from standard input).\n");
+	printf("\tThe \"help\" command can be used (e.g. \"%s help\") to get"
+	       " information about available commands and their syntax.\n",
+	       name);
 }
 
 int main(int argc, char **argv)

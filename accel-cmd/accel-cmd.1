@@ -11,6 +11,10 @@ accel-cmd \- send commands to accel-ppp
 .IR COMMAND "s to accel-ppp's tcp interface and displays the result on"
 .RI "standard output. If no " COMMAND " is supplied, then"
 .BR accel-cmd " reads and sends data from its standard input."
+.P
+The "help"
+.IR COMMAND " can be used to get information about available " COMMAND "s and "
+their syntax.
 .SH OPTIONS
 .TP
 .BR \-f " \fIFAMILY\fR, " \-\-family "=\fIFAMILY\fR"
@@ -51,6 +55,9 @@ Display version number and exit.
 .BR \-h ", " \-\-help
 Display help message and exit.
 .SH EXAMPLES
+.TP
+Get information about available commands:
+$ accel-cmd help
 .TP
 Send the "show sessions" command to accel-ppp on localhost and display \
 the result on standard output:
