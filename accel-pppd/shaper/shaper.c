@@ -143,37 +143,42 @@ static void parse_string(const char *str, int dir, int *speed, int *burst, int *
 	char *endptr;
 	long int val;
 	unsigned int n1, n2, n3;
+	char *str1;
 
-	if (strstr(str, "lcp:interface-config#1=rate-limit output access-group") == str) {
-		if (dir == ATTR_DOWN) {
-			val = sscanf(str, "lcp:interface-config#1=rate-limit output access-group %i %u %u %u conform-action transmit exceed-action drop", tr_id, &n1, &n2, &n3);
+	if (dir == ATTR_DOWN) {
+		str1 = strstr(str, "rate-limit output access-group");
+		if (str1) {
+			val = sscanf(str1, "rate-limit output access-group %i %u %u %u", tr_id, &n1, &n2, &n3);
 			if (val == 4) {
 				*speed = n1/1000;
 				*burst = n2;
 			}
+			return;
 		}
-		return;
-	} else if (strstr(str, "lcp:interface-config#1=rate-limit input access-group") == str) {
-		if (dir == ATTR_UP) {
-			val = sscanf(str, "lcp:interface-config#1=rate-limit input access-group %i %u %u %u conform-action transmit exceed-action drop", tr_id, &n1, &n2, &n3);
-			if (val == 4) {
-				*speed = n1/1000;
-				*burst = n2;
-			}
-		}
-		return;
-	}	else if (strstr(str, "lcp:interface-config#1=rate-limit output") == str) {
-		if (dir == ATTR_DOWN) {
-			val = sscanf(str, "lcp:interface-config#1=rate-limit output %u %u %u conform-action transmit exceed-action drop", &n1, &n2, &n3);
+	
+		str1 = strstr(str, "rate-limit output");
+		if (str1) {
+			val = sscanf(str1, "rate-limit output %u %u %u", &n1, &n2, &n3);
 			if (val == 3) {
 				*speed = n1/1000;
 				*burst = n2;
 			}
+			return;
 		}
-		return;
-	}	else if (strstr(str, "lcp:interface-config#1=rate-limit input") == str) {
-		if (dir == ATTR_UP) {
-			val = sscanf(str, "lcp:interface-config#1=rate-limit input %u %u %u conform-action transmit exceed-action drop", &n1, &n2, &n3);
+	} else {
+		str1 = strstr(str, "rate-limit input access-group");
+		if (str1) {
+			val = sscanf(str1, "rate-limit input access-group %i %u %u %u", tr_id, &n1, &n2, &n3);
+			if (val == 4) {
+				*speed = n1/1000;
+				*burst = n2;
+			}
+			return;
+		}
+		
+		str1 = strstr(str, "rate-limit input");
+		if (str1) {
+			val = sscanf(str1, "rate-limit input %u %u %u", &n1, &n2, &n3);
 			if (val == 3) {
 				*speed = n1/1000;
 				*burst = n2;
