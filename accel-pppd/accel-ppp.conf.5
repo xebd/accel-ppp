@@ -875,6 +875,9 @@ Specifies quantum parameter of htb classes.
 .BI "moderate-quantum=" 1|0
 If fixed quantum is not specified and this option is specified then shaper module will check for quantum value is valid (in range 1000-200000).
 .TP
+.BI "fwmark=" n
+Spicifies the fwmark for traffic that won't be passed through shaper.
+.TP
 .BI "up-limiter=" police|htb
 Specifes upstream rate limiting method.
 .TP

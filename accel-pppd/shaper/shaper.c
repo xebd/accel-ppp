@@ -43,6 +43,7 @@ int conf_r2q = 10;
 int conf_cburst = 1534;
 int conf_ifb_ifindex;
 static double conf_multiplier = 1;
+int conf_fwmark;
 
 int conf_up_limiter = LIM_POLICE;
 int conf_down_limiter = LIM_TBF;
@@ -972,7 +973,13 @@ static void load_config(void)
 		conf_multiplier = atof(opt);
 	else
 		conf_multiplier = 1;
-
+	
+	opt = conf_get_opt("shaper", "fwmark");
+	if (opt)
+		conf_fwmark = atof(opt);
+	else
+		conf_fwmark = 0;
+	
 	triton_context_call(&shaper_ctx, (triton_event_func)load_time_ranges, NULL);
 }
 
@@ -981,7 +988,7 @@ static void init(void)
 	const char *opt;
 
 	tc_core_init();
-
+	
 	opt = conf_get_opt("shaper", "ifb");
 	if (opt && init_ifb(opt))
 		_exit(0);

@@ -11,8 +11,7 @@
 struct rtnl_handle;
 struct nlmsghdr;
 
-struct qdisc_opt
-{
+struct qdisc_opt {
 	char *kind;
 	int handle;
 	int parent;
@@ -37,6 +36,7 @@ extern int conf_moderate_quantum;
 extern int conf_r2q;
 extern int conf_cburst;
 extern int conf_ifb_ifindex;
+extern int conf_fwmark;
 extern int conf_leaf_qdisc;
 extern int conf_lq_arg1;
 extern int conf_lq_arg2;

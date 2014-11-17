@@ -246,7 +246,8 @@ static int install_police(struct rtnl_handle *rth, int ifindex, int rate, int bu
 	req.t.tcm_ifindex = ifindex;
 	req.t.tcm_handle = 1;
 	req.t.tcm_parent = 0xffff0000;
-	req.t.tcm_info = TC_H_MAKE(1 << 16, ntohs(ETH_P_IP));
+	
+	req.t.tcm_info = TC_H_MAKE(100 << 16, ntohs(ETH_P_IP));
 	
 	addattr_l(&req.n, sizeof(req), TCA_KIND, "u32", 4);
 
@@ -340,7 +341,9 @@ static int install_htb_ifb(struct rtnl_handle *rth, int ifindex, __u32 priority,
 	req.t.tcm_ifindex = ifindex;
 	req.t.tcm_handle = 1;
 	req.t.tcm_parent = 0xffff0000;
-	req.t.tcm_info = TC_H_MAKE(1 << 16, ntohs(ETH_P_IP));
+	
+	req.t.tcm_info = TC_H_MAKE(100 << 16, ntohs(ETH_P_IP));
+
 	
 	addattr_l(&req.n, sizeof(req), TCA_KIND, "u32", 4);
 
@@ -388,6 +391,35 @@ static int install_htb_ifb(struct rtnl_handle *rth, int ifindex, __u32 priority,
 		return -1;
 
 	return 0;
+}
+
+static int install_fwmark(struct rtnl_handle *rth, int ifindex, int parent)
+{
+	struct rtattr *tail;
+
+	struct {
+			struct nlmsghdr 	n;
+			struct tcmsg 		t;
+			char buf[1024];
+	} req;
+
+	memset(&req, 0, sizeof(req) - 1024);
+
+	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct tcmsg));
+	req.n.nlmsg_flags = NLM_F_REQUEST|NLM_F_EXCL|NLM_F_CREATE;
+	req.n.nlmsg_type = RTM_NEWTFILTER;
+	req.t.tcm_family = AF_UNSPEC;
+	req.t.tcm_ifindex = ifindex;
+	req.t.tcm_handle = 1;
+	req.t.tcm_parent = parent;
+	req.t.tcm_info = TC_H_MAKE(90 << 16, ntohs(ETH_P_IP));
+	
+	addattr_l(&req.n, sizeof(req), TCA_KIND, "fw", 3);
+	tail = NLMSG_TAIL(&req.n);
+	addattr_l(&req.n, TCA_BUF_MAX, TCA_OPTIONS, NULL, 0);
+	addattr32(&req.n, TCA_BUF_MAX, TCA_FW_CLASSID, TC_H_MAKE(conf_fwmark << 16, 0));
+	tail->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)tail;
+	return rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0);
 }
 
 static int remove_root(struct rtnl_handle *rth, int ifindex)
@@ -449,6 +481,11 @@ int install_limiter(struct ap_session *ses, int down_speed, int down_burst, int 
 		r = install_htb_ifb(&rth, ses->ifindex, ses->unit_idx + 1, up_speed, up_burst);
 		if (r == 0)
 			r = install_leaf_qdisc(&rth, conf_ifb_ifindex, 0x00010001 + ses->unit_idx + 1, (1 + ses->unit_idx + 1) << 16);
+	}
+
+	if (conf_fwmark) {
+		install_fwmark(&rth, ses->ifindex, 0x00010000);
+		install_fwmark(&rth, ses->ifindex, TC_H_INGRESS);
 	}
 	
 	rtnl_close(&rth);
