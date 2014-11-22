@@ -495,7 +495,7 @@ static void dhcpv6_send_reply2(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, 
 						ia_addr->pref_lifetime = 0;
 						ia_addr->valid_lifetime = 0;
 
-						insert_status(reply, opt3, D6_STATUS_NotOnLink);
+						goto out;
 					}
 				}
 			}
@@ -517,6 +517,9 @@ static void dhcpv6_send_reply2(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, 
 
 			if (!ses->ipv6_dp)
 				ses->ipv6_dp = ipdb_get_ipv6_prefix(req->ses);
+
+			if (!ses->ipv6_dp)
+				goto out;
 
 			f3 = 0;
 
@@ -552,7 +555,7 @@ static void dhcpv6_send_reply2(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, 
 						ia_prefix->pref_lifetime = 0;
 						ia_prefix->valid_lifetime = 0;
 
-						insert_status(reply, opt3, D6_STATUS_NotOnLink);
+						goto out;
 					}
 				}
 			}
@@ -561,7 +564,6 @@ static void dhcpv6_send_reply2(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, 
 				pd->dp_iaid = ia_na->iaid;
 				f2 = 1;
 			}
-
 		// Option Request
 		}	else if (ntohs(opt->hdr->code) == D6_OPTION_ORO)
 			insert_oro(reply, opt);
@@ -579,6 +581,7 @@ static void dhcpv6_send_reply2(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, 
 
 	sendto(pd->hnd.fd, reply->hdr, reply->endptr - (void *)reply->hdr, 0, (struct sockaddr *)&req->addr, sizeof(req->addr));
 
+out:
 	dhcpv6_packet_free(reply);
 }
 
@@ -699,10 +702,9 @@ static void dhcpv6_recv_rebind(struct dhcpv6_packet *req)
 		return;
 	}
 
-	if (!pd->clientid) {
-		pd->clientid = _malloc(sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len));
-		memcpy(pd->clientid, req->clientid, sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len));
-	} else if (pd->clientid->hdr.len != req->clientid->hdr.len || memcmp(pd->clientid, req->clientid, sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len))) {
+	if (!pd->clientid)
+		return;
+	else if (pd->clientid->hdr.len != req->clientid->hdr.len || memcmp(pd->clientid, req->clientid, sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len))) {
 		log_ppp_error("dhcpv6: unmatched Client-ID option\n");
 		return;
 	}
