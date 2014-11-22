@@ -80,7 +80,7 @@ struct dhcpv4_iprange {
 	int len;
 	pthread_mutex_t lock;
 	unsigned long free[0];
-}; 
+};
 
 struct dhcpv4_serv {
 	struct triton_context_t *ctx;

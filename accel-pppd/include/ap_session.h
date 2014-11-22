@@ -95,7 +95,7 @@ struct ap_session
 	int terminate_cause;
 
 	struct list_head pd_list;
-	
+
 	uint32_t acct_rx_bytes;
 	uint32_t acct_tx_bytes;
 	uint32_t acct_input_gigawords;

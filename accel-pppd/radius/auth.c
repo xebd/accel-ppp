@@ -22,7 +22,7 @@ static int decrypt_chap_mppe_keys(struct rad_req_t *req, struct rad_attr_t *attr
 	uint8_t sha1[SHA_DIGEST_LENGTH];
 	uint8_t plain[32];
 	int i;
-	
+
 	if (attr->len != 32) {
 		log_ppp_warn("radius: %s: incorrect attribute length (%i)\n", attr->attr->name, attr->len);
 		return -1;
@@ -37,7 +37,7 @@ static int decrypt_chap_mppe_keys(struct rad_req_t *req, struct rad_attr_t *attr
 
 	for (i = 0; i < 16; i++)
 		plain[i] ^= md5[i];
-	
+
 	MD5_Init(&md5_ctx);
 	MD5_Update(&md5_ctx, req->serv->secret, strlen(req->serv->secret));
 	MD5_Update(&md5_ctx, attr->val.octets, 16);
@@ -45,7 +45,7 @@ static int decrypt_chap_mppe_keys(struct rad_req_t *req, struct rad_attr_t *attr
 
 	for (i = 0; i < 16; i++)
 		plain[i + 16] ^= md5[i];
-	
+
 	SHA1_Init(&sha1_ctx);
 	SHA1_Update(&sha1_ctx, plain + 8, 16);
 	SHA1_Update(&sha1_ctx, plain + 8, 16);
@@ -63,7 +63,7 @@ static int decrypt_mppe_key(struct rad_req_t *req, struct rad_attr_t *attr, uint
 	uint8_t md5[16];
 	uint8_t plain[32];
 	int i;
-	
+
 	if (attr->len != 34) {
 		log_ppp_warn("radius: %s: incorrect attribute length (%i)\n", attr->attr->name, attr->len);
 		return -1;
@@ -84,7 +84,7 @@ static int decrypt_mppe_key(struct rad_req_t *req, struct rad_attr_t *attr, uint
 
 	for (i = 0; i < 16; i++)
 		plain[i] ^= md5[i];
-	
+
 	if (plain[0] != 16) {
 		log_ppp_warn("radius: %s: incorrect key length (%i)\n", attr->attr->name, plain[0]);
 		return -1;
@@ -116,7 +116,7 @@ static uint8_t* encrypt_password(const char *passwd, const char *secret, const u
 		*epasswd_len = 0;
 		return (uint8_t *)1;
 	}
-	
+
 	epasswd = _malloc(chunk_cnt * 16);
 	if (!epasswd) {
 		log_emerg("radius: out of memory\n");
@@ -132,7 +132,7 @@ static uint8_t* encrypt_password(const char *passwd, const char *secret, const u
 		MD5_Update(&ctx, secret, strlen(secret));
 		MD5_Update(&ctx, c, 16);
 		MD5_Final(b, &ctx);
-	
+
 		for(j = 0; j < 16; j++)
 			epasswd[i * 16 + j] ^= b[j];
 
@@ -164,17 +164,17 @@ static void rad_auth_recv(struct rad_req_t *req)
 	unsigned int dt;
 
 	triton_timer_del(&req->timeout);
-				
+
 	dt = (req->reply->tv.tv_sec - req->pack->tv.tv_sec) * 1000 + (req->reply->tv.tv_nsec - req->pack->tv.tv_nsec) / 1000000;
 	stat_accm_add(req->serv->stat_auth_query_1m, dt);
 	stat_accm_add(req->serv->stat_auth_query_5m, dt);
-	
+
 	if (pack->code == CODE_ACCESS_ACCEPT) {
 		if (rad_proc_attrs(req)) {
 			rad_auth_finalize(req->rpd, PWDB_DENIED);
 			return;
 		}
-		
+
 		struct ev_radius_t ev = {
 			.ses = req->rpd->ses,
 			.request = req->pack,
@@ -185,14 +185,14 @@ static void rad_auth_recv(struct rad_req_t *req)
 		rad_auth_finalize(req->rpd, PWDB_DENIED);
 		return;
 	}
-	
+
 	if (req->rpd->auth_ctx->recv && req->rpd->auth_ctx->recv(req)) {
 		rad_auth_finalize(req->rpd, PWDB_DENIED);
 		return;
 	}
-		
+
 	req->rpd->authenticated = 1;
-	
+
 	rad_auth_finalize(req->rpd, PWDB_SUCCESS);
 }
 
@@ -201,7 +201,7 @@ static void rad_auth_timeout(struct triton_timer_t *t)
 	struct rad_req_t *req = container_of(t, typeof(*req), timeout);
 
 	rad_server_timeout(req->serv);
-	
+
 	__sync_add_and_fetch(&req->serv->stat_auth_lost, 1);
 	stat_accm_add(req->serv->stat_auth_lost_1m, 1);
 	stat_accm_add(req->serv->stat_auth_lost_5m, 1);
@@ -216,14 +216,14 @@ static void rad_auth_sent(struct rad_req_t *req, int res)
 		rad_auth_finalize(req->rpd, PWDB_DENIED);
 		return;
 	}
-	
+
 	__sync_add_and_fetch(&req->serv->stat_auth_sent, 1);
-	
+
 	if (!req->hnd.tpd)
 		triton_md_register_handler(req->rpd->ses->ctrl->ctx, &req->hnd);
-	
+
 	triton_md_enable_handler(&req->hnd, MD_MODE_READ);
-	
+
 	if (req->timeout.tpd)
 		triton_timer_mod(&req->timeout, 0);
 	else
@@ -233,10 +233,10 @@ static void rad_auth_sent(struct rad_req_t *req, int res)
 static struct rad_req_t *rad_auth_req_alloc(struct radius_pd_t *rpd, const char *username, int (*recv)(struct rad_req_t *))
 {
 	struct rad_req_t *req = rad_req_alloc(rpd, CODE_ACCESS_REQUEST, username);
-	
+
 	if (!req)
 		return NULL;
-	
+
 	if (conf_sid_in_auth) {
 		if (rad_packet_add_str(req->pack, NULL, "Acct-Session-Id", rpd->ses->sessionid))
 			goto out;
@@ -275,7 +275,7 @@ int rad_auth_pap(struct radius_pd_t *rpd, const char *username, va_list args)
 
 	if (!req)
 		return PWDB_DENIED;
-	
+
 	epasswd = encrypt_password(passwd, req->serv->secret, req->RA, &epasswd_len);
 	if (!epasswd)
 		return PWDB_DENIED;
@@ -283,7 +283,7 @@ int rad_auth_pap(struct radius_pd_t *rpd, const char *username, va_list args)
 	r = rad_packet_add_octets(req->pack, NULL, "User-Password", epasswd, epasswd_len);
 	if (epasswd_len)
 		_free(epasswd);
-	
+
 	if (r)
 		return PWDB_DENIED;
 
@@ -301,7 +301,7 @@ int rad_auth_chap_md5(struct radius_pd_t *rpd, const char *username, va_list arg
 	uint8_t *challenge = va_arg(args, uint8_t *);
 	int challenge_len = va_arg(args, int);
 	uint8_t *response = va_arg(args, uint8_t *);
-	
+
 	if (!req)
 		return PWDB_DENIED;
 
@@ -316,7 +316,7 @@ int rad_auth_chap_md5(struct radius_pd_t *rpd, const char *username, va_list arg
 
 	if (rad_packet_add_octets(req->pack, NULL, "CHAP-Password", chap_password, 17))
 		return PWDB_DENIED;
-	
+
 	if (rad_req_send(req))
 		return PWDB_DENIED;
 
@@ -410,10 +410,10 @@ int rad_auth_mschap_v1(struct radius_pd_t *rpd, const char *username, va_list ar
 
 	if (rad_packet_add_octets(req->pack, "Microsoft", "MS-CHAP-Challenge", challenge, challenge_len))
 		return PWDB_DENIED;
-	
+
 	if (rad_packet_add_octets(req->pack, "Microsoft", "MS-CHAP-Response", response, sizeof(response)))
 		return PWDB_DENIED;
-	
+
 	if (rad_req_send(req))
 		return PWDB_DENIED;
 
@@ -481,10 +481,10 @@ int rad_auth_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list ar
 
 	if (rad_packet_add_octets(req->pack, "Microsoft", "MS-CHAP-Challenge", challenge, 16))
 		return PWDB_DENIED;
-		
+
 	if (rad_packet_add_octets(req->pack, "Microsoft", "MS-CHAP2-Response", mschap_response, sizeof(mschap_response)))
 		return PWDB_DENIED;
-		
+
 	if (rad_req_send(req))
 		return PWDB_DENIED;
 
@@ -494,7 +494,7 @@ int rad_auth_mschap_v2(struct radius_pd_t *rpd, const char *username, va_list ar
 int rad_auth_null(struct radius_pd_t *rpd, const char *username, va_list args)
 {
 	struct rad_req_t *req = rad_auth_req_alloc(rpd, username, NULL);
-	
+
 	if (!req)
 		return PWDB_DENIED;
 

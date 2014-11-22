@@ -39,7 +39,7 @@ static void open_rth(void)
 
 	if (!rth)
 		return;
-	
+
 	memset(rth, 0, sizeof(*rth));
 
 	if (rtnl_open(rth, 0)) {
@@ -78,7 +78,7 @@ static int store_nlmsg(const struct sockaddr_nl *who, struct nlmsghdr *n, void *
 
 	if (tb[IFLA_IFNAME] == NULL)
 		return 0;
-	
+
 	//printf("%i %s\n", ifi->ifi_index, RTA_DATA(tb[IFLA_IFNAME]));
 
 	return a->func(ifi->ifi_index, ifi->ifi_flags, RTA_DATA(tb[IFLA_IFNAME]), a->arg);
@@ -127,12 +127,12 @@ int __export iplink_get_stats(int ifindex, struct rtnl_link_stats *stats)
 
 	if (!rth)
 		open_rth();
-	
+
 	if (!rth)
 		return -1;
 
 	memset(&req, 0, sizeof(req) - 4096);
-	
+
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
 	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
 	req.n.nlmsg_type = RTM_GETLINK;
@@ -158,10 +158,10 @@ int __export iplink_get_stats(int ifindex, struct rtnl_link_stats *stats)
 		memcpy(stats, RTA_DATA(tb[IFLA_STATS]), sizeof(*stats));
 	else
 		return -1;
-	
+
 	return 0;
 }
-	
+
 int __export iplink_vlan_add(const char *ifname, int ifindex, int vid)
 {
 	struct iplink_req {
@@ -173,20 +173,20 @@ int __export iplink_vlan_add(const char *ifname, int ifindex, int vid)
 
 	if (!rth)
 		open_rth();
-	
+
 	if (!rth)
 		return -1;
 
 	memset(&req, 0, sizeof(req) - 4096);
-	
+
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
 	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL;
 	req.n.nlmsg_type = RTM_NEWLINK;
 	req.i.ifi_family = AF_UNSPEC;
-	
+
 	addattr_l(&req.n, 4096, IFLA_LINK, &ifindex, 4);
 	addattr_l(&req.n, 4096, IFLA_IFNAME, ifname, strlen(ifname));
-	
+
 	linkinfo = NLMSG_TAIL(&req.n);
 	addattr_l(&req.n, 4096, IFLA_LINKINFO, NULL, 0);
 	addattr_l(&req.n, 4096, IFLA_INFO_KIND, "vlan", 4);
@@ -195,12 +195,12 @@ int __export iplink_vlan_add(const char *ifname, int ifindex, int vid)
 	addattr_l(&req.n, 4096, IFLA_INFO_DATA, NULL, 0);
 	addattr_l(&req.n, 4096, IFLA_VLAN_ID, &vid, 2);
 	data->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)data;
-	
+
 	linkinfo->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)linkinfo;
 
 	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
 		return -1;
-	
+
 	return 0;
 }
 
@@ -215,18 +215,18 @@ int __export iplink_vlan_del(int ifindex)
 
 	if (!rth)
 		open_rth();
-	
+
 	if (!rth)
 		return -1;
 
 	memset(&req, 0, sizeof(req) - 4096);
-	
+
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
 	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
 	req.n.nlmsg_type = RTM_DELLINK;
 	req.i.ifi_family = AF_UNSPEC;
 	req.i.ifi_index = ifindex;
-	
+
 	linkinfo = NLMSG_TAIL(&req.n);
 	addattr_l(&req.n, 4096, IFLA_LINKINFO, NULL, 0);
 	addattr_l(&req.n, 4096, IFLA_INFO_KIND, "vlan", 4);
@@ -234,12 +234,12 @@ int __export iplink_vlan_del(int ifindex)
 	/*data = NLMSG_TAIL(&req.n);
 	addattr_l(&req.n, 4096, IFLA_VLAN_ID, &vid, 2);
 	data->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)data;*/
-	
+
 	linkinfo->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)linkinfo;
 
 	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
 		return -1;
-	
+
 	return 0;
 }
 
@@ -253,12 +253,12 @@ int __export ipaddr_add(int ifindex, in_addr_t addr, int mask)
 
 	if (!rth)
 		open_rth();
-	
+
 	if (!rth)
 		return -1;
 
 	memset(&req, 0, sizeof(req) - 4096);
-	
+
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
 	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE;
 	req.n.nlmsg_type = RTM_NEWADDR;
@@ -270,7 +270,7 @@ int __export ipaddr_add(int ifindex, in_addr_t addr, int mask)
 
 	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
 		return -1;
-	
+
 	return 0;
 }
 
@@ -284,12 +284,12 @@ int __export ipaddr_del(int ifindex, in_addr_t addr, int mask)
 
 	if (!rth)
 		open_rth();
-	
+
 	if (!rth)
 		return -1;
 
 	memset(&req, 0, sizeof(req) - 4096);
-	
+
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
 	req.n.nlmsg_flags = NLM_F_REQUEST;
 	req.n.nlmsg_type = RTM_DELADDR;
@@ -301,7 +301,7 @@ int __export ipaddr_del(int ifindex, in_addr_t addr, int mask)
 
 	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
 		return -1;
-	
+
 	return 0;
 }
 
@@ -315,12 +315,12 @@ int __export iproute_add(int ifindex, in_addr_t src, in_addr_t dst, in_addr_t gw
 
 	if (!rth)
 		open_rth();
-	
+
 	if (!rth)
 		return -1;
 
 	memset(&req, 0, sizeof(req) - 4096);
-	
+
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
 	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE;
 	req.n.nlmsg_type = RTM_NEWROUTE;
@@ -341,7 +341,7 @@ int __export iproute_add(int ifindex, in_addr_t src, in_addr_t dst, in_addr_t gw
 
 	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
 		return -1;
-	
+
 	return 0;
 }
 
@@ -355,12 +355,12 @@ int __export iproute_del(int ifindex, in_addr_t dst, int proto)
 
 	if (!rth)
 		open_rth();
-	
+
 	if (!rth)
 		return -1;
 
 	memset(&req, 0, sizeof(req) - 4096);
-	
+
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
 	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
 	req.n.nlmsg_type = RTM_DELROUTE;
@@ -376,7 +376,7 @@ int __export iproute_del(int ifindex, in_addr_t dst, int proto)
 
 	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
 		return -1;
-	
+
 	return 0;
 }
 
@@ -390,12 +390,12 @@ int __export ip6route_add(int ifindex, struct in6_addr *dst, int pref_len, int p
 
 	if (!rth)
 		open_rth();
-	
+
 	if (!rth)
 		return -1;
 
 	memset(&req, 0, sizeof(req) - 4096);
-	
+
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
 	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE;
 	req.n.nlmsg_type = RTM_NEWROUTE;
@@ -411,7 +411,7 @@ int __export ip6route_add(int ifindex, struct in6_addr *dst, int pref_len, int p
 
 	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
 		return -1;
-	
+
 	return 0;
 
 }
@@ -433,12 +433,12 @@ in_addr_t __export iproute_get(in_addr_t dst, in_addr_t *gw)
 
 	if (!rth)
 		open_rth();
-	
+
 	if (!rth)
 		return -1;
 
 	memset(&req, 0, sizeof(req) - 4096);
-	
+
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
 	req.n.nlmsg_flags = NLM_F_REQUEST;
 	req.n.nlmsg_type = RTM_GETROUTE;
@@ -460,7 +460,7 @@ in_addr_t __export iproute_get(in_addr_t dst, in_addr_t *gw)
 
 	r = NLMSG_DATA(&req.n);
 	len = req.n.nlmsg_len;
-	
+
 	if (req.n.nlmsg_type != RTM_NEWROUTE) {
 		log_error("failed to detect route to server (wrong netlink message type)");
 		goto out;
@@ -473,7 +473,7 @@ in_addr_t __export iproute_get(in_addr_t dst, in_addr_t *gw)
 	}
 
 	parse_rtattr(tb, RTA_MAX, RTM_RTA(r), len);
-		
+
 	if (tb[RTA_PREFSRC])
 		res = *(uint32_t *)RTA_DATA(tb[RTA_PREFSRC]);
 
@@ -494,12 +494,12 @@ int __export iprule_add(uint32_t addr, int table)
 
 	if (!rth)
 		open_rth();
-	
+
 	if (!rth)
 		return -1;
 
 	memset(&req, 0, sizeof(req) - 4096);
-	
+
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
 	req.n.nlmsg_flags = NLM_F_REQUEST;
 	req.n.nlmsg_type = RTM_NEWRULE;
@@ -516,7 +516,7 @@ int __export iprule_add(uint32_t addr, int table)
 
 	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
 		return -1;
-	
+
 	return 0;
 }
 
@@ -530,12 +530,12 @@ int __export iprule_del(uint32_t addr, int table)
 
 	if (!rth)
 		open_rth();
-	
+
 	if (!rth)
 		return -1;
 
 	memset(&req, 0, sizeof(req) - 4096);
-	
+
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
 	req.n.nlmsg_flags = NLM_F_REQUEST;
 	req.n.nlmsg_type = RTM_DELRULE;
@@ -552,7 +552,7 @@ int __export iprule_del(uint32_t addr, int table)
 
 	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
 		return -1;
-	
+
 	return 0;
 }
 

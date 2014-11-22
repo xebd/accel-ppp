@@ -105,10 +105,10 @@ static int pap_start(struct ppp_t *ppp, struct auth_data_t *auth)
 static int pap_finish(struct ppp_t *ppp, struct auth_data_t *auth)
 {
 	struct pap_auth_data *d = container_of(auth, typeof(*d), auth);
-	
+
 	if (d->timeout.tpd)
 		triton_timer_del(&d->timeout);
-	
+
 	if (d->peer_id)
 		_free(d->peer_id);
 
@@ -147,10 +147,10 @@ static void pap_send_ack(struct pap_auth_data *p, int id)
 	msg->hdr.len = htons(HDR_LEN + 1 + sizeof(MSG_SUCCESSED) - 1);
 	msg->msg_len = sizeof(MSG_SUCCESSED) - 1;
 	memcpy(msg->msg, MSG_SUCCESSED, sizeof(MSG_SUCCESSED));
-	
+
 	if (conf_ppp_verbose)
 		log_ppp_info2("send [PAP AuthAck id=%x \"%s\"]\n", id, MSG_SUCCESSED);
-	
+
 	ppp_chan_send(p->ppp, msg, ntohs(msg->hdr.len) + 2);
 }
 
@@ -164,10 +164,10 @@ static void pap_send_nak(struct pap_auth_data *p, int id)
 	msg->hdr.len = htons(HDR_LEN + 1 + sizeof(MSG_FAILED) - 1);
 	msg->msg_len = sizeof(MSG_FAILED) - 1;
 	memcpy(msg->msg, MSG_FAILED, sizeof(MSG_FAILED));
-	
+
 	if (conf_ppp_verbose)
 		log_ppp_info2("send [PAP AuthNak id=%x \"%s\"]\n", id, MSG_FAILED);
-	
+
 	ppp_chan_send(p->ppp, msg, ntohs(msg->hdr.len) + 2);
 }
 
@@ -236,7 +236,7 @@ static int pap_recv_req(struct pap_auth_data *p, struct pap_hdr *hdr)
 	}
 
 	peer_id = _strndup((const char*)peer_id, peer_id_len);
-	
+
 	if (conf_any_login) {
 		if (ppp_auth_succeeded(p->ppp, peer_id)) {
 			pap_send_nak(p, hdr->id);
@@ -293,17 +293,17 @@ static int pap_recv_req(struct pap_auth_data *p, struct pap_hdr *hdr)
 	_free(passwd);
 
 	return ret;
-		
+
 failed:
 	pap_send_nak(p, hdr->id);
 	if (p->started)
 		ap_session_terminate(&p->ppp->ses, TERM_AUTH_ERROR, 0);
 	else
 		ppp_auth_failed(p->ppp, peer_id);
-	
+
 	_free(passwd);
 	_free(peer_id);
-	
+
 	return -1;
 }
 

@@ -70,7 +70,7 @@ const struct l2tp_dict_value_t *l2tp_dict_find_value(const struct l2tp_dict_attr
 static char *skip_word(char *ptr)
 {
 	for(; *ptr; ptr++)
-		if (*ptr == ' ' || *ptr == '\t' || *ptr == '\n') 
+		if (*ptr == ' ' || *ptr == '\t' || *ptr == '\n')
 			break;
 	return ptr;
 }
@@ -91,9 +91,9 @@ static int split(char *buf, char **ptr)
 		buf = skip_word(buf);
 		if (!*buf)
 			return i;
-		
+
 		*buf = 0;
-		
+
 		buf = skip_space(buf + 1);
 		if (!*buf)
 			return i;
@@ -153,12 +153,12 @@ static int dict_load(const char *fname)
 		} else if (!strcmp(buf, "ATTRIBUTE")) {
 			if (r < 3)
 				goto out_syntax;
-			
+
 			attr = malloc(sizeof(*attr));
 			memset(attr, 0, sizeof(*attr));
 			list_add_tail(&attr->entry, items);
 			INIT_LIST_HEAD(&attr->values);
-			
+
 			attr->name = strdup(ptr[0]);
 			attr->id = strtol(ptr[1], &endptr, 10);
 			if (*endptr != 0)
@@ -197,7 +197,7 @@ static int dict_load(const char *fname)
 		} else if (!strcmp(buf, "VALUE")) {
 			if (r != 3)
 				goto out_syntax;
-			
+
 			attr = l2tp_dict_find_attr_by_name(ptr[0]);
 			if (!attr) {
 				log_emerg("l2tp:%s:%i: attribute not found\n", fname, n);

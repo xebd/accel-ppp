@@ -109,7 +109,7 @@ static int wins_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt
 
 	if (wins_opt->addr == opt32->val)
 		return IPCP_OPT_ACK;
-		
+
 	return IPCP_OPT_NAK;
 }
 
@@ -123,7 +123,7 @@ static void wins1_print(void (*print)(const char *fmt, ...), struct ipcp_option_
 		in.s_addr = opt32->val;
 	else
 		in.s_addr = wins_opt->addr;
-	
+
 	print("<wins1 %s>", inet_ntoa(in));
 }
 
@@ -137,7 +137,7 @@ static void wins2_print(void (*print)(const char *fmt, ...), struct ipcp_option_
 		in.s_addr = opt32->val;
 	else
 		in.s_addr = wins_opt->addr;
-	
+
 	print("<wins2 %s>", inet_ntoa(in));
 }
 
@@ -145,7 +145,7 @@ static void ev_wins(struct ev_wins_t *ev)
 {
 	struct wins_option_t *wins_opt;
 	struct ppp_t *ppp;
-	
+
 	if (!ev->ses->ctrl->ppp)
 		return;
 
@@ -161,11 +161,11 @@ static void ev_wins(struct ev_wins_t *ev)
 static void load_config(void)
 {
 	char *opt;
-	
+
 	opt = conf_get_opt("wins", "wins1");
 	if (opt)
 		conf_wins1 = inet_addr(opt);
-	
+
 	opt = conf_get_opt("wins", "wins2");
 	if (opt)
 		conf_wins2 = inet_addr(opt);

@@ -87,7 +87,7 @@ struct ippool_t *find_pool(const char *name, int create)
 
 	if (create)
 		return create_pool(name);
-	
+
 	return NULL;
 }
 
@@ -95,7 +95,7 @@ static void parse_gw_ip_address(const char *val)
 {
 	if (!val)
 		return;
-	
+
 	conf_gw_ip_address = inet_addr(val);
 }
 
@@ -103,7 +103,7 @@ static void parse_gw_ip_address(const char *val)
 static int parse1(const char *str, uint32_t *begin, uint32_t *end)
 {
 	int n, f1, f2, f3, f4, m, mask = 0;
-	
+
 	n = sscanf(str, "%u.%u.%u.%u/%u",&f1, &f2, &f3, &f4, &m);
 	if (n != 5)
 		return -1;
@@ -117,7 +117,7 @@ static int parse1(const char *str, uint32_t *begin, uint32_t *end)
 		return -1;
 	if (m == 0 || m > 32)
 		return -1;
-	
+
 	*begin = (f4 << 24) | (f3 << 16) | (f2 << 8) | f1;
 
 	mask = htonl(~((1 << (32 - m)) - 1));
@@ -145,7 +145,7 @@ static int parse2(const char *str, uint32_t *begin, uint32_t *end)
 		return -1;
 	if (m < f4 || m > 255)
 		return -1;
-	
+
 	*begin = ntohl((f4 << 24) | (f3 << 16) | (f2 << 8) | f1);
 	*end = ntohl((m << 24) | (f3 << 16) | (f2 << 8) | f1);
 
@@ -184,12 +184,12 @@ static uint8_t get_random()
 
 	if (pos == 0)
 		read(urandom_fd, buf, 128);
-	
+
 	r = buf[pos++];
 
 	if (pos == 128)
 		pos = 0;
-	
+
 	return r;
 }
 
@@ -224,17 +224,17 @@ static void generate_pool_p2p(struct ippool_t *p)
 
 				pos1 = pos1->next;
 				pos2 = pos2->prev;
-				
+
 				if (r >= 64)
 					continue;
-				
+
 				peer_addr = list_entry(pos, typeof(*peer_addr), entry);
 				if (pos == pos1)
 					pos1 = pos1->next;
-				
+
 				if (pos == pos2)
 					pos2 = pos2->prev;
-				
+
 				list_del(&peer_addr->entry);
 				t = 0;
 			} else {
@@ -304,13 +304,13 @@ static void generate_pool_net30(struct ippool_t *p)
 		it->it.peer_addr = addr[2]->addr;
 
 		list_add_tail(&it->entry, &p->items);
-		
+
 		for (i = 0; i < 4; i++) {
 			if (addr[i])
 				free(addr[i]);
 		}
 	}
-		
+
 	for (i = 0; i < 4; i++) {
 		if (addr[i])
 			free(addr[i]);
@@ -514,7 +514,7 @@ static int parse_vendor_opt(const char *opt)
 	vendor = rad_dict_find_vendor_name(opt);
 	if (vendor)
 		return vendor->id;
-	
+
 	return atoi(opt);
 }
 #endif
@@ -568,7 +568,7 @@ static void ippool_init2(void)
 	char *pool_name = NULL;
 	char *allocator = NULL;
 	void (*generate)(struct ippool_t *pool);
-	
+
 	if (!s)
 		return;
 
@@ -581,7 +581,7 @@ static void ippool_init2(void)
 				conf_vendor = parse_vendor_opt(opt->val);
 				continue;
 			}
-			
+
 			if (!strcmp(opt->name, "attr")) {
 				conf_attr = parse_attr_opt(opt->val);
 				continue;
@@ -625,7 +625,7 @@ static void ippool_init2(void)
 				_free(allocator);
 		}
 	}
-	
+
 	if (def_pool->generate)
 		def_pool->generate(def_pool);
 

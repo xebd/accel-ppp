@@ -109,7 +109,7 @@ static int dns_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt,
 
 	if (dns_opt->addr == opt32->val)
 		return IPCP_OPT_ACK;
-		
+
 	return IPCP_OPT_NAK;
 }
 
@@ -123,7 +123,7 @@ static void dns1_print(void (*print)(const char *fmt, ...), struct ipcp_option_t
 		in.s_addr = opt32->val;
 	else
 		in.s_addr = dns_opt->addr;
-	
+
 	print("<dns1 %s>", inet_ntoa(in));
 }
 
@@ -137,7 +137,7 @@ static void dns2_print(void (*print)(const char *fmt, ...), struct ipcp_option_t
 		in.s_addr = opt32->val;
 	else
 		in.s_addr = dns_opt->addr;
-	
+
 	print("<dns2 %s>", inet_ntoa(in));
 }
 
@@ -148,7 +148,7 @@ static void ev_dns(struct ev_dns_t *ev)
 
 	if (!ev->ses->ctrl->ppp)
 		return;
-	
+
 	ppp = container_of(ev->ses, typeof(*ppp), ses);
 
 	dns_opt = container_of(ipcp_find_option(ppp, &dns1_opt_hnd), typeof(*dns_opt), opt);
@@ -161,11 +161,11 @@ static void ev_dns(struct ev_dns_t *ev)
 static void load_config(void)
 {
 	char *opt;
-	
+
 	opt = conf_get_opt("dns", "dns1");
 	if (opt)
 		conf_dns1 = inet_addr(opt);
-	
+
 	opt = conf_get_opt("dns", "dns2");
 	if (opt)
 		conf_dns2 = inet_addr(opt);

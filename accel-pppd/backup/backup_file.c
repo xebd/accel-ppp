@@ -78,7 +78,7 @@ static int fs_commit(struct backup_data *d)
 
 	MD5_Init(&md5);
 	MD5_Update(&md5, &version, 1);
-		
+
 	iov[0].iov_base = &version;
 	iov[0].iov_len = 1;
 	i = 1;
@@ -145,7 +145,7 @@ static int fs_commit(struct backup_data *d)
 	}
 
 	return 0;
-	
+
 out_err:
 	close(fd);
 	unlink(fname);
@@ -159,10 +159,10 @@ static void fs_free(struct backup_data *d)
 
 	if (fsd->map_addr)
 		munmap(fsd->map_addr, fsd->map_len);
-	
+
 	if (fsd->fd != -1)
 		close(fsd->fd);
-	
+
 	sprintf(fname, "%s/%s", conf_path, d->ses->sessionid);
 	unlink(fname);
 
@@ -190,10 +190,10 @@ static void fs_free_mod(struct backup_mod *mod)
 static struct backup_tag *fs_alloc_tag(struct backup_data *d, int size)
 {
 	struct backup_tag *t = _malloc(sizeof(struct backup_tag) + 4 + size);
-	
+
 	if (!t)
 		return NULL;
-	
+
 	memset(t, 0, sizeof(*t));
 
 	t->data = (uint8_t *)(t + 1) + 4;
@@ -240,7 +240,7 @@ static void restore_session(const char *fn, int internal)
 		close(fd);
 		return;
 	}
-	
+
 	if (*ptr != VERSION)
 		goto out;
 
@@ -250,11 +250,11 @@ static void restore_session(const char *fn, int internal)
 
 	if (memcmp(md5_buf, ptr + st.st_size - 16, 16))
 		goto out;
-	
+
 	d = fs_create(NULL);
 	if (!d)
 		goto out;
-	
+
 	d->internal = internal;
 
 	fsd = container_of(d, typeof(*fsd), data);
@@ -304,10 +304,10 @@ static void fs_restore(int internal)
 {
 	DIR *dirp;
 	struct dirent ent, *res;
-	
+
 	if (!conf_path)
 		return;
-	
+
 	dirp = opendir(conf_path);
 	if (!dirp) {
 		log_emerg("backup_file: opendir: %s\n", strerror(errno));

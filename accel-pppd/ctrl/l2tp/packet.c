@@ -69,7 +69,7 @@ struct l2tp_packet_t *l2tp_packet_alloc(int ver, int msg_type,
 	struct l2tp_packet_t *pack = mempool_alloc(pack_pool);
 	if (!pack)
 		return NULL;
-	
+
 	memset(pack, 0, sizeof(*pack));
 	INIT_LIST_HEAD(&pack->attrs);
 	pack->hdr.ver = ver;
@@ -250,16 +250,16 @@ int l2tp_recv(int fd, struct l2tp_packet_t **p, struct in_pktinfo *pkt_info,
 		memset(&msg, 0, sizeof(msg));
 		msg.msg_control = msg_control;
 		msg.msg_controllen = 128;
-		
+
 		n = recvmsg(fd, &msg, MSG_PEEK);
-		
+
 		if (n < 0) {
 			if (errno == EAGAIN)
 				return -1;
 			log_error("l2tp: recvmsg: %s\n", strerror(errno));
 			return 0;
 		}
-		
+
 		for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
 			if (cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_PKTINFO) {
 				memcpy(pkt_info, CMSG_DATA(cmsg), sizeof(*pkt_info));

@@ -77,7 +77,7 @@ static int intf_exec(const char *cmd, char * const *fields, int fields_cnt, void
 		pppoe_server_stop(fields[3]);
 	else
 		goto help;
-	
+
 	return CLI_CMD_OK;
 help:
 	intf_help(fields, fields_cnt, client);
@@ -149,9 +149,9 @@ static int show_verbose_exec(const char *cmd, char * const *f, int f_cnt, void *
 {
 	if (f_cnt != 3)
 		return CLI_CMD_SYNTAX;
-	
+
 	cli_sendv(cli, "%i\r\n", conf_verbose);
-	
+
 	return CLI_CMD_OK;
 }
 
@@ -159,9 +159,9 @@ static int show_pado_delay_exec(const char *cmd, char * const *f, int f_cnt, voi
 {
 	if (f_cnt != 3)
 		return CLI_CMD_SYNTAX;
-	
+
 	cli_sendv(cli, "%s\r\n", conf_pado_delay);
-	
+
 	return CLI_CMD_OK;
 }
 
@@ -169,12 +169,12 @@ static int show_service_name_exec(const char *cmd, char * const *f, int f_cnt, v
 {
 	if (f_cnt != 3)
 		return CLI_CMD_SYNTAX;
-	
+
 	if (conf_service_name)
 		cli_sendv(cli, "%s\r\n", conf_service_name);
 	else
 		cli_sendv(cli, "*\r\n");
-	
+
 	return CLI_CMD_OK;
 }
 
@@ -182,9 +182,9 @@ static int show_ac_name_exec(const char *cmd, char * const *f, int f_cnt, void *
 {
 	if (f_cnt != 3)
 		return CLI_CMD_SYNTAX;
-	
+
 	cli_sendv(cli, "%s\r\n", conf_ac_name);
-	
+
 	return CLI_CMD_OK;
 }
 
@@ -192,14 +192,14 @@ static int set_verbose_exec(const char *cmd, char * const *f, int f_cnt, void *c
 {
 	if (f_cnt != 4)
 		return CLI_CMD_SYNTAX;
-	
+
 	if (!strcmp(f[3], "0"))
 		conf_verbose = 0;
 	else if (!strcmp(f[3], "1"))
 		conf_verbose = 1;
 	else
 		return CLI_CMD_INVAL;
-	
+
 	return CLI_CMD_OK;
 }
 
@@ -218,7 +218,7 @@ static int set_service_name_exec(const char *cmd, char * const *f, int f_cnt, vo
 {
 	if (f_cnt != 4)
 		return CLI_CMD_SYNTAX;
-	
+
 	if (conf_service_name)
 		_free(conf_service_name);
 
@@ -226,7 +226,7 @@ static int set_service_name_exec(const char *cmd, char * const *f, int f_cnt, vo
 		conf_service_name = NULL;
 	else
 		conf_service_name = _strdup(f[3]);
-	
+
 	return CLI_CMD_OK;
 }
 
@@ -234,10 +234,10 @@ static int set_ac_name_exec(const char *cmd, char * const *f, int f_cnt, void *c
 {
 	if (f_cnt != 4)
 		return CLI_CMD_SYNTAX;
-	
+
 	_free(conf_ac_name);
 	conf_ac_name = _strdup(f[3]);
-	
+
 	return CLI_CMD_OK;
 }
 //===================================

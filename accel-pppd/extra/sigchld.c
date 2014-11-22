@@ -34,7 +34,7 @@ static void* sigchld_thread(void *arg)
 	sigaddset(&set, SIGCHLD);
 	sigaddset(&set, SIGQUIT);
 
-	while (1) {	
+	while (1) {
 		pid = waitpid(-1, &status, 0);
 		if (pid < 0) {
 			if (errno == EINTR)

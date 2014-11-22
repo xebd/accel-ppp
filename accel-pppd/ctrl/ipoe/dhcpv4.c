@@ -57,10 +57,10 @@ static int open_raw_sock(void)
 			log_error("dhcpv4: socket(AF_PACKET, SOCK_RAW): %s\n", strerror(errno));
 			return -1;
 		}
-	
+
 		fcntl(raw_sock, F_SETFL, O_NONBLOCK);
 		fcntl(raw_sock, F_SETFD, fcntl(raw_sock, F_GETFD) | FD_CLOEXEC);
-	
+
 		pthread_setspecific(raw_sock_key, (void *)(long)raw_sock);
 	}
 
@@ -78,7 +78,7 @@ static struct dhcpv4_iprange *parse_range(const char *str)
 	struct dhcpv4_iprange *r;
 
 	n = sscanf(str, "%u.%u.%u.%u/%u", &f1, &f2, &f3, &f4, &m);
-	
+
 	if (n != 5)
 		goto parse_err;
 	if (f1 > 255)
@@ -91,7 +91,7 @@ static struct dhcpv4_iprange *parse_range(const char *str)
 		goto parse_err;
 	if (m == 0 || m > 30)
 		goto parse_err;
-	
+
 	start = (f1 << 24) | (f2 << 16) | (f3 << 8) | f4;
 	mask = ~((1 << (32 - m)) - 1);
 	start = start & mask;
@@ -145,10 +145,10 @@ struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifna
 	addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
 	sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	
+
 	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &f, sizeof(f)))
 		log_error("setsockopt(SO_REUSEADDR): %s\n", strerror(errno));
-	
+
 
 	if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &f, sizeof(f))) {
 		log_error("setsockopt(SO_BROADCAST): %s\n", strerror(errno));
@@ -164,15 +164,15 @@ struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifna
 		log_error("setsockopt(SO_BINDTODEVICE): %s\n", strerror(errno));
 		goto out_err;
 	}
-	
+
 	if (ioctl(sock, SIOCGIFHWADDR, &ifr)) {
 		log_error("dhcpv4(%s): ioctl(SIOCGIFHWADDR): %s\n", ifname, strerror(errno));
 		goto out_err;
 	}
-	
+
 	fcntl(sock, F_SETFL, O_NONBLOCK);
 	fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
-	
+
 	serv = _malloc(sizeof(*serv));
 	memset(serv, 0, sizeof(*serv));
 
@@ -186,13 +186,13 @@ struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifna
 	if (opt && *opt) {
 		str0 = _strdup(opt);
 		str = str0;
-	
+
 		while (1) {
 			for (ptr1 = str + 1; *ptr1 && *ptr1 != '='; ptr1++);
 
 			if (!*ptr1)
 				break;
-		
+
 			*ptr1 = 0;
 
 			for (ptr2 = ++ptr1; *ptr2 && *ptr2 != ','; ptr2++);
@@ -213,7 +213,7 @@ struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifna
 
 			str = ptr2 + 1;
 		}
-		
+
 		_free(str0);
 	}
 
@@ -301,10 +301,10 @@ static int dhcpv4_parse_packet(struct dhcpv4_packet *pack, int len)
 			log_warn("dhcpv4: short packet received\n");
 		return -1;
 	}
-	
+
 	if (pack->hdr->htype != 1)
 		return -1;
-	
+
 	if (pack->hdr->hlen != 6)
 		return -1;
 
@@ -318,7 +318,7 @@ static int dhcpv4_parse_packet(struct dhcpv4_packet *pack, int len)
 			ptr++;
 			continue;
 		}
-		
+
 		if (*ptr == 0xff) {
 			ptr++;
 			break;
@@ -357,9 +357,9 @@ static int dhcpv4_parse_packet(struct dhcpv4_packet *pack, int len)
 
 	if (dhcpv4_check_options(pack))
 		return -1;
-	
+
 	pack->ptr = ptr;
-	
+
 	/*if (conf_verbose) {
 		log_info2("recv ");
 		print_packet(pack, log_info2);
@@ -465,7 +465,7 @@ int dhcpv4_packet_insert_opt82(struct dhcpv4_packet *pack, const char *agent_cir
 
 	r = dhcpv4_packet_add_opt(pack, 82, data, 4 + len1 + len2);
 	_free(data);
-	
+
 	*pack->ptr++ = 255;
 
 	return r;
@@ -500,7 +500,7 @@ static int dhcpv4_read(struct triton_md_handler_t *h)
 			dhcpv4_packet_free(pack);
 			continue;
 		}
-		
+
 		if (pack->hdr->op != DHCP_OP_REQUEST) {
 			dhcpv4_packet_free(pack);
 			continue;
@@ -510,7 +510,7 @@ static int dhcpv4_read(struct triton_md_handler_t *h)
 
 		if (serv->recv)
 			serv->recv(serv, pack);
-		
+
 		dhcpv4_packet_free(pack);
 	}
 }
@@ -542,7 +542,7 @@ static int dhcpv4_relay_read(struct triton_md_handler_t *h)
 			dhcpv4_packet_free(pack);
 			continue;
 		}
-		
+
 		if (pack->hdr->op != DHCP_OP_REPLY) {
 			dhcpv4_packet_free(pack);
 			continue;
@@ -564,17 +564,17 @@ uint16_t ip_csum(uint16_t *buf, int len)
 {
 	uint32_t sum=0;
 	int i;
-    
+
 	for (i=0; i < len; i += 2)
 		sum += *buf++;
-	
+
 	// take only 16 bits out of the 32 bit sum and add up the carries
 	while (sum >> 16)
 	  sum = (sum & 0xffff) + (sum >> 16);
 
 	// one's complement the result
 	sum = ~sum;
-	
+
 	return sum & 0xffff;
 }
 
@@ -591,7 +591,7 @@ static int dhcpv4_send_raw(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack,
 	struct sockaddr_ll ll_addr;
 	struct msghdr msg;
 	int sock = open_raw_sock();
-	
+
 	memset(&ll_addr, 0, sizeof(ll_addr));
 	ll_addr.sll_family = AF_PACKET;
 	ll_addr.sll_ifindex = serv->ifindex;
@@ -638,7 +638,7 @@ static int dhcpv4_send_raw(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack,
 		printf("%i %i\n", errno, serv->ifindex);
 		return -1;
 	}
-	
+
 	return 0;
 }
 
@@ -656,7 +656,7 @@ static int dhcpv4_send_udp(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack,
 	n = sendto(serv->hnd.fd, pack->data, len, 0, (struct sockaddr *)&addr, sizeof(addr));
 	if (n != len)
 		return -1;
-	
+
 	return 0;
 }
 
@@ -674,7 +674,7 @@ int dhcpv4_packet_add_opt(struct dhcpv4_packet *pack, int type, const void *data
 
 	opt->type = type;
 	opt->len = len;
-	opt->data = pack->ptr; 
+	opt->data = pack->ptr;
 	pack->ptr += len;
 
 	memcpy(opt->data, data, len);
@@ -697,7 +697,7 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 	} dns;
 	int dns_avail = 0;
 	struct dhcpv4_option *opt;
-	
+
 	pack = dhcpv4_packet_alloc();
 	if (!pack) {
 		log_emerg("out of memory\n");
@@ -717,17 +717,17 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 
 	if (dhcpv4_packet_add_opt(pack, 53, &msg_type, 1))
 		goto out_err;
-	
+
 	if (dhcpv4_packet_add_opt(pack, 54, &siaddr, 4))
 		goto out_err;
-	
+
 	val = ntohl(lease_time);
 	if (dhcpv4_packet_add_opt(pack, 51, &val, 4))
 		goto out_err;
 
 	if (router && dhcpv4_packet_add_opt(pack, 3, &router, 4))
 		goto out_err;
-	
+
 	val = htonl(~((1 << (32 - mask)) - 1));
 	if (dhcpv4_packet_add_opt(pack, 1, &val, 4))
 		goto out_err;
@@ -742,7 +742,7 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 				goto out_err;
 		}
 	}
-	
+
 	if (!dns_avail) {
 		if (conf_dns1 && conf_dns2) {
 			dns.dns1 = conf_dns1;
@@ -783,7 +783,7 @@ int dhcpv4_send_nak(struct dhcpv4_serv *serv, struct dhcpv4_packet *req)
 {
 	struct dhcpv4_packet *pack;
 	int val, r;
-	
+
 	pack = dhcpv4_packet_alloc();
 	if (!pack) {
 		log_emerg("out of memory\n");
@@ -801,7 +801,7 @@ int dhcpv4_send_nak(struct dhcpv4_serv *serv, struct dhcpv4_packet *req)
 	val = DHCPNAK;
 	if (dhcpv4_packet_add_opt(pack, 53, &val, 1))
 		goto out_err;
-		
+
 	*pack->ptr++ = 255;
 
 	if (conf_verbose) {
@@ -837,7 +837,7 @@ struct dhcpv4_relay *dhcpv4_relay_create(const char *_addr, in_addr_t giaddr, st
 	int sock = -1;
 	int f = 1;
 	struct dhcpv4_relay_ctx *c;
-	
+
 	ptr = strchr(_addr, ':');
 	if (ptr) {
 		memcpy(str, _addr, ptr - _addr);
@@ -846,7 +846,7 @@ struct dhcpv4_relay *dhcpv4_relay_create(const char *_addr, in_addr_t giaddr, st
 		port = atoi(ptr + 1);
 	} else
 		addr = inet_addr(_addr);
-	
+
 	memset(&raddr, 0, sizeof(raddr));
 	raddr.sin_family = AF_INET;
 	raddr.sin_addr.s_addr = addr;
@@ -862,7 +862,7 @@ struct dhcpv4_relay *dhcpv4_relay_create(const char *_addr, in_addr_t giaddr, st
 		if (r->addr == addr && r->giaddr == giaddr)
 			goto found;
 	}
-	
+
 	r = _malloc(sizeof(*r));
 	memset(r, 0, sizeof(*r));
 	INIT_LIST_HEAD(&r->ctx_list);
@@ -877,7 +877,7 @@ struct dhcpv4_relay *dhcpv4_relay_create(const char *_addr, in_addr_t giaddr, st
 
 	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &f, sizeof(f)))
 		log_error("dhcpv4: setsockopt(SO_REUSEADDR): %s\n", strerror(errno));
-	
+
 	if (bind(sock, &laddr, sizeof(laddr))) {
 		log_error("dhcpv4: relay: %s: bind: %s\n", _addr, strerror(errno));
 		goto out_err_unlock;
@@ -887,7 +887,7 @@ struct dhcpv4_relay *dhcpv4_relay_create(const char *_addr, in_addr_t giaddr, st
 		log_error("dhcpv4: relay: %s: connect: %s\n", _addr, strerror(errno));
 		goto out_err_unlock;
 	}
-	
+
 	fcntl(sock, F_SETFL, O_NONBLOCK);
 	fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
 
@@ -908,7 +908,7 @@ found:
 	c->ctx = ctx;
 	c->recv = recv;
 	list_add_tail(&c->entry, &r->ctx_list);
-	
+
 	pthread_mutex_unlock(&relay_lock);
 
 	return r;
@@ -965,11 +965,11 @@ int dhcpv4_relay_send(struct dhcpv4_relay *relay, struct dhcpv4_packet *request,
 	if (server_id) {
 		opt = dhcpv4_packet_find_opt(request, 54);
 		if (opt) {
-			_server_id = *(uint32_t *)opt->data; 
+			_server_id = *(uint32_t *)opt->data;
 			*(uint32_t *)opt->data = server_id;
 		}
 	}
-	
+
 	if (conf_verbose) {
 		log_ppp_info2("send ");
 		dhcpv4_print_packet(request, 1, log_ppp_info2);
@@ -982,10 +982,10 @@ int dhcpv4_relay_send(struct dhcpv4_relay *relay, struct dhcpv4_packet *request,
 
 	if (opt)
 		*(uint32_t *)opt->data = _server_id;
-	
+
 	if (n != len)
 		return -1;
-	
+
 	return 0;
 }
 
@@ -1019,7 +1019,7 @@ int dhcpv4_relay_send_release(struct dhcpv4_relay *relay, uint8_t *chaddr, uint3
 
 	if (client_id && dhcpv4_packet_add_opt(pack, 61, client_id->data, client_id->len))
 		goto out_err;
-	
+
 	if (relay_agent && dhcpv4_packet_add_opt(pack, 82, relay_agent->data, relay_agent->len))
 		goto out_err;
 	else if (!relay_agent) {
@@ -1028,18 +1028,18 @@ int dhcpv4_relay_send_release(struct dhcpv4_relay *relay, uint8_t *chaddr, uint3
 			goto out_err;
 		pack->ptr--;
 	}
-	
+
 	*pack->ptr++ = 255;
 
 	len = pack->ptr - pack->data;
-	
+
 	if (conf_verbose) {
 		log_ppp_info2("send ");
 		dhcpv4_print_packet(pack, 1, log_ppp_info2);
 	}
 
 	n = write(relay->hnd.fd, pack->data, len);
-	
+
 	dhcpv4_packet_free(pack);
 
 	return n == len ? 0 : -1;
@@ -1055,7 +1055,7 @@ int dhcpv4_get_ip(struct dhcpv4_serv *serv, uint32_t *yiaddr, uint32_t *siaddr, 
 
 	if (!serv->range)
 		return 0;
-	
+
 	pthread_mutex_lock(&serv->range->lock);
 
 	while (1) {
@@ -1074,7 +1074,7 @@ int dhcpv4_get_ip(struct dhcpv4_serv *serv, uint32_t *yiaddr, uint32_t *siaddr, 
 
 		if (serv->range->pos == 0)
 			break;
-	
+
 		serv->range->pos = 0;
 	}
 
@@ -1097,7 +1097,7 @@ void dhcpv4_put_ip(struct dhcpv4_serv *serv, uint32_t ip)
 void dhcpv4_reserve_ip(struct dhcpv4_serv *serv, uint32_t ip)
 {
 	int n = ntohl(ip) - serv->range->startip;
-	
+
 	if (n <= 0 || n / (8 * sizeof(long)) >= serv->range->len)
 		return;
 
@@ -1108,7 +1108,7 @@ void dhcpv4_reserve_ip(struct dhcpv4_serv *serv, uint32_t ip)
 
 static void load_config()
 {
-	const char *opt; 
+	const char *opt;
 
 	opt = conf_get_opt("ipoe", "verbose");
 	if (opt)
@@ -1117,7 +1117,7 @@ static void load_config()
 	opt = conf_get_opt("dns", "dns1");
 	if (opt)
 		conf_dns1 = inet_addr(opt);
-	
+
 	opt = conf_get_opt("dns", "dns2");
 	if (opt)
 		conf_dns2 = inet_addr(opt);
@@ -1127,7 +1127,7 @@ static void init()
 {
 	pack_pool = mempool_create(BUF_SIZE + sizeof(struct dhcpv4_packet));
 	opt_pool = mempool_create(sizeof(struct dhcpv4_option));
-	
+
 	pthread_key_create(&raw_sock_key, close_raw_sock);
 
 	load_config();

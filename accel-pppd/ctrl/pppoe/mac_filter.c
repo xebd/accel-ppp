@@ -73,7 +73,7 @@ static int mac_filter_load(const char *opt)
 		log_emerg("pppoe: open '%s': %s\n", name, strerror(errno));
 		goto err;
 	}
-	
+
 	conf_mac_filter = opt;
 
 	pthread_rwlock_wrlock(&lock);
@@ -274,7 +274,7 @@ static void init(void)
 	const char *opt = conf_get_opt("pppoe", "mac-filter");
 	if (!opt || mac_filter_load(opt))
 		type = -1;
-	
+
 	cli_register_simple_cmd2(cmd_exec, cmd_help, 2, "pppoe", "mac-filter");
 }
 

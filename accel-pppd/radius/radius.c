@@ -126,10 +126,10 @@ int rad_proc_attrs(struct rad_req_t *req)
 				else if (rpd->attr_state_len != attr->len)
 					rpd->attr_state = _realloc(rpd->attr_state, attr->len);
 				memcpy(rpd->attr_state, attr->val.octets, attr->len);
-				rpd->attr_state_len = attr->len;	
+				rpd->attr_state_len = attr->len;
 				break;
 			case Termination_Action:
-				rpd->termination_action = attr->val.integer; 
+				rpd->termination_action = attr->val.integer;
 				break;
 			case Framed_Interface_Id:
 				rpd->ipv6_addr.peer_intf_id = attr->val.ifid;
@@ -157,7 +157,7 @@ int rad_proc_attrs(struct rad_req_t *req)
 
 	if (wins.ses)
 		triton_event_fire(EV_WINS, &wins);
-	
+
 	if (!rpd->ses->ipv6_dp && !list_empty(&rpd->ipv6_dp.prefix_list))
 		rpd->ses->ipv6_dp = &rpd->ipv6_dp;
 
@@ -178,14 +178,14 @@ static int rad_pwdb_check(struct pwdb_t *pwdb, struct ap_session *ses, pwdb_call
 			log_ppp_error("radius: username is too large to append realm\n");
 			return PWDB_DENIED;
 		}
-		
+
 		memcpy(username1, username, len);
 		username1[len] = '@';
 		memcpy(username1 + len + 1, conf_default_realm, conf_default_realm_len);
 		username1[len + 1 + conf_default_realm_len] = 0;
 		username = username1;
 	}
-	
+
 	rpd->auth_ctx = mempool_alloc(auth_ctx_pool);
 	memset(rpd->auth_ctx, 0, sizeof(*rpd->auth_ctx));
 
@@ -232,7 +232,7 @@ static int rad_pwdb_check(struct pwdb_t *pwdb, struct ap_session *ses, pwdb_call
 static struct ipv4db_item_t *get_ipv4(struct ap_session *ses)
 {
 	struct radius_pd_t *rpd = find_pd(ses);
-	
+
 	if (rpd->ipv4_addr.peer_addr)
 		return &rpd->ipv4_addr;
 	return NULL;
@@ -305,7 +305,7 @@ static void ses_starting(struct ap_session *ses)
 	INIT_LIST_HEAD(&rpd->plugin_list);
 	INIT_LIST_HEAD(&rpd->ipv6_addr.addr_list);
 	INIT_LIST_HEAD(&rpd->ipv6_dp.prefix_list);
-	
+
 	rpd->ipv4_addr.owner = &ipdb;
 	rpd->ipv6_addr.owner = &ipdb;
 	rpd->ipv6_dp.owner = &ipdb;
@@ -325,10 +325,10 @@ static void ses_starting(struct ap_session *ses)
 static void ses_acct_start(struct ap_session *ses)
 {
 	struct radius_pd_t *rpd = find_pd(ses);
-	
+
 	if (!conf_accounting)
 		return;
-	
+
 	if (!rpd->authenticated)
 		return;
 
@@ -402,13 +402,13 @@ static void ses_finished(struct ap_session *ses)
 
 	if (rpd->session_timeout.tpd)
 		triton_timer_del(&rpd->session_timeout);
-	
+
 	if (rpd->idle_timeout.tpd)
 		triton_timer_del(&rpd->idle_timeout);
 
 	if (rpd->attr_class)
 		_free(rpd->attr_class);
-	
+
 	if (rpd->attr_state)
 		_free(rpd->attr_state);
 
@@ -425,7 +425,7 @@ static void ses_finished(struct ap_session *ses)
 	}
 
 	list_del(&rpd->pd.entry);
-	
+
 	release_pd(rpd);
 }
 
@@ -458,7 +458,7 @@ void release_pd(struct radius_pd_t *rpd)
 struct radius_pd_t *rad_find_session(const char *sessionid, const char *username, const char *port_id, int port, in_addr_t ipaddr, const char *csid)
 {
 	struct radius_pd_t *rpd;
-	
+
 	pthread_rwlock_rdlock(&sessions_lock);
 	list_for_each_entry(rpd, &sessions, entry) {
 		if (!rpd->ses->username)
@@ -492,7 +492,7 @@ struct radius_pd_t *rad_find_session_pack(struct rad_packet_t *pack)
 	int port = -1;
 	const char *port_id = NULL;
 	in_addr_t ipaddr = 0;
-	
+
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		if (attr->vendor)
 			continue;
@@ -523,7 +523,7 @@ struct radius_pd_t *rad_find_session_pack(struct rad_packet_t *pack)
 
 	if (username && !sessionid && port == -1 && ipaddr == 0 && !port_id)
 		return NULL;
-	
+
 	return rad_find_session(sessionid, username, port_id, port, ipaddr, csid);
 }
 
@@ -532,7 +532,7 @@ int rad_check_nas_pack(struct rad_packet_t *pack)
 	struct rad_attr_t *attr;
 	const char *ident = NULL;
 	in_addr_t ipaddr = 0;
-	
+
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		if (!strcmp(attr->attr->name, "NAS-Identifier"))
 			ident = attr->val.string;
@@ -548,7 +548,7 @@ int rad_check_nas_pack(struct rad_packet_t *pack)
 
 	if (conf_nas_ip_address && ipaddr && conf_nas_ip_address != ipaddr)
 		return -1;
-	
+
 	return 0;
 }
 
@@ -586,9 +586,9 @@ static int parse_server(const char *opt, in_addr_t *addr, int *port, char **secr
 		*p2 = 0;
 	else
 		return -1;
-	
+
 	*addr = inet_addr(str);
-	
+
 	if (p1) {
 		*port = atoi(p1 + 1);
 		if (*port <=0 )
@@ -600,7 +600,7 @@ static int parse_server(const char *opt, in_addr_t *addr, int *port, char **secr
 	*secret = p1;
 	if (p2)
 		_free(p2);
-	
+
 	_free(str);
 
 	return 0;
@@ -613,7 +613,7 @@ static int load_config(void)
 	opt = conf_get_opt("radius", "max-try");
 	if (opt && atoi(opt) > 0)
 		conf_max_try = atoi(opt);
-	
+
 	opt = conf_get_opt("radius", "timeout");
 	if (opt && atoi(opt) > 0)
 		conf_timeout = atoi(opt);
@@ -633,7 +633,7 @@ static int load_config(void)
 	opt = conf_get_opt("radius", "nas-ip-address");
 	if (opt)
 		conf_nas_ip_address = inet_addr(opt);
-	
+
 	if (conf_nas_identifier)
 		_free(conf_nas_identifier);
 	opt = conf_get_opt("radius", "nas-identifier");
@@ -641,7 +641,7 @@ static int load_config(void)
 		conf_nas_identifier = _strdup(opt);
 	else
 		conf_nas_identifier = NULL;
-	
+
 	opt = conf_get_opt("radius", "gw-ip-address");
 	if (opt)
 		conf_gw_ip_address = inet_addr(opt);
@@ -661,11 +661,11 @@ static int load_config(void)
 	opt = conf_get_opt("radius", "sid_in_auth");
 	if (opt)
 		conf_sid_in_auth = atoi(opt);
-	
+
 	opt = conf_get_opt("radius", "require-nas-identification");
 	if (opt)
 		conf_require_nas_ident = atoi(opt);
-	
+
 	opt = conf_get_opt("radius", "acct-interim-interval");
 	if (opt && atoi(opt) > 0)
 		conf_acct_interim_interval = atoi(opt);
@@ -675,7 +675,7 @@ static int load_config(void)
 		conf_acct_delay_time = atoi(opt);
 
 	conf_attr_tunnel_type = conf_get_opt("radius", "attr-tunnel-type");
-	
+
 	conf_default_realm = conf_get_opt("radius", "default-realm");
 	if (conf_default_realm)
 		conf_default_realm_len = strlen(conf_default_realm);
@@ -695,7 +695,7 @@ static void radius_init(void)
 	if (load_config())
 		_exit(EXIT_FAILURE);
 
-	
+
 	list_for_each_entry(opt1, &s->items, entry) {
 		if (strcmp(opt1->name, "dictionary") || !opt1->val)
 			continue;

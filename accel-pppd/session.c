@@ -94,7 +94,7 @@ int __export ap_session_starting(struct ap_session *ses)
 		}
 		ses->ifindex = ifr.ifr_ifindex;
 	}
-	
+
 	if (ses->ifindex != -1)
 		ap_session_set_ifindex(ses);
 
@@ -105,13 +105,13 @@ int __export ap_session_starting(struct ap_session *ses)
 
 		ses->state = AP_STATE_STARTING;
 	}
-	
+
 	__sync_add_and_fetch(&ap_session_stat.starting, 1);
 
 	pthread_rwlock_wrlock(&ses_lock);
 	list_add_tail(&ses->entry, &ses_list);
 	pthread_rwlock_unlock(&ses_lock);
-	
+
 	triton_event_fire(EV_SES_STARTING, ses);
 
 	return 0;
@@ -185,12 +185,12 @@ void __export ap_session_finished(struct ap_session *ses)
 		_free(ses->ipv4_pool_name);
 		ses->ipv4_pool_name = NULL;
 	}
-	
+
 	if (ses->ipv6_pool_name) {
 		_free(ses->ipv6_pool_name);
 		ses->ipv6_pool_name = NULL;
 	}
-	
+
 	if (ses->ifname_rename) {
 		_free(ses->ifname_rename);
 		ses->ifname_rename = NULL;
@@ -200,7 +200,7 @@ void __export ap_session_finished(struct ap_session *ses)
 	if (ses->backup)
 		ses->backup->storage->free(ses->backup);
 #endif
-	
+
 	if (ap_shutdown && !ap_session_stat.starting && !ap_session_stat.active && !ap_session_stat.finishing) {
 		if (shutdown_cb)
 			shutdown_cb();
@@ -225,7 +225,7 @@ void __export ap_session_terminate(struct ap_session *ses, int cause, int hard)
 			ses->ctrl->terminate(ses, hard);
 		return;
 	}
-	
+
 	if (ses->state == AP_STATE_ACTIVE)
 		__sync_sub_and_fetch(&ap_session_stat.active, 1);
 	else
@@ -271,7 +271,7 @@ static void generate_sessionid(struct ap_session *ses)
 #else
 		sid = __sync_add_and_fetch(&seq, 1);
 #endif
-		
+
 		clock_gettime(CLOCK_MONOTONIC, &ts);
 		if (ts.tv_sec - seq_ts.tv_sec > conf_seq_save_timeout)
 			save_seq();
@@ -307,7 +307,7 @@ int __export ap_session_read_stats(struct ap_session *ses, struct rtnl_link_stat
 		log_ppp_warn("failed to get interface statistics\n");
 		return -1;
 	}
-	
+
 	stats->rx_packets -= ses->acct_rx_packets_i;
 	stats->tx_packets -= ses->acct_tx_packets_i;
 	stats->rx_bytes -= ses->acct_rx_bytes_i;
@@ -367,7 +367,7 @@ static void save_seq(void)
 	FILE *f;
 	char path[PATH_MAX];
 	const char *ptr;
-	
+
 	if (conf_sid_source != SID_SOURCE_SEQ)
 		return;
 
@@ -397,16 +397,16 @@ static void load_config(void)
 		else if (strcmp(opt, "lower"))
 			log_emerg("sid-case: invalid format\n");
 	}
-	
+
 	opt = conf_get_opt("common", "single-session");
 	if (opt) {
 		if (!strcmp(opt, "deny"))
 			conf_single_session = 0;
 		else if (!strcmp(opt, "replace"))
 			conf_single_session = 1;
-	} else 
+	} else
 		conf_single_session = -1;
-	
+
 	opt = conf_get_opt("common", "sid-source");
 	if (opt) {
 		if (strcmp(opt, "seq") == 0)
@@ -417,7 +417,7 @@ static void load_config(void)
 			log_error("unknown sid-source\n");
 	} else
 		conf_sid_source = SID_SOURCE_SEQ;
-	
+
 	conf_seq_file = conf_get_opt("common", "seq-file");
 	if (!conf_seq_file)
 		conf_seq_file = "/var/lib/accel-ppp/seq";
@@ -436,7 +436,7 @@ static void init(void)
 		perror("socket");
 		_exit(EXIT_FAILURE);
 	}
-	
+
 	fcntl(sock_fd, F_SETFD, fcntl(sock_fd, F_GETFD) | FD_CLOEXEC);
 
 	sock6_fd = socket(AF_INET6, SOCK_DGRAM, 0);
@@ -450,7 +450,7 @@ static void init(void)
 		log_emerg("failed to open /dev/urandom: %s\n", strerror(errno));
 		return;
 	}
-	
+
 	fcntl(urandom_fd, F_SETFD, fcntl(urandom_fd, F_GETFD) | FD_CLOEXEC);
 
 	load_config();

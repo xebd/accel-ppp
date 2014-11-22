@@ -121,13 +121,13 @@ static void* triton_thread(struct _triton_thread_t *thread)
 			log_debug2("thread: %p: sleeping\n", thread);
 			if (!terminate)
 				list_add(&thread->entry2, &sleep_threads);
-			
+
 			if (__sync_sub_and_fetch(&triton_stat.thread_active, 1) == 0 && need_config_reload) {
 				spin_unlock(&threads_lock);
 				__config_reload(config_reload_notify);
 			} else
 				spin_unlock(&threads_lock);
-			
+
 			if (terminate) {
 				spin_lock(&threads_lock);
 				list_del(&thread->entry);
@@ -209,7 +209,7 @@ static void ctx_thread(struct _triton_context_t *ctx)
 			spin_unlock(&ctx->lock);
 
 			__sync_sub_and_fetch(&triton_stat.md_handler_pending, 1);
-			
+
 			h->armed = 0;
 
 			if ((events & (EPOLLIN | EPOLLERR | EPOLLHUP)) && (h->epoll_event.events & EPOLLIN)) {
@@ -242,7 +242,7 @@ static void ctx_thread(struct _triton_context_t *ctx)
 
 		ctx->pending = 0;
 		spin_unlock(&ctx->lock);
-		break;	
+		break;
 	}
 
 	spin_lock(&ctx->lock);
@@ -293,7 +293,7 @@ int triton_queue_ctx(struct _triton_context_t *ctx)
 		return 0;
 	}
 
-	if (list_empty(&sleep_threads) || need_config_reload || triton_stat.thread_active > thread_count || 
+	if (list_empty(&sleep_threads) || need_config_reload || triton_stat.thread_active > thread_count ||
 		(ctx->priority == 0 && triton_stat.thread_count > thread_count_max)) {
 		if (ctx->priority)
 			list_add(&ctx->entry2, &ctx_queue);
@@ -403,7 +403,7 @@ void __export triton_context_unregister(struct triton_context_t *ud)
 			terminate = 1;
 	}
 	spin_unlock(&ctx_list_lock);
-	
+
 	if (terminate) {
 		spin_lock(&threads_lock);
 		list_for_each_entry(t, &threads, entry)
@@ -415,7 +415,7 @@ void __export triton_context_unregister(struct triton_context_t *ud)
 void __export triton_context_set_priority(struct triton_context_t *ud, int prio)
 {
 	struct _triton_context_t *ctx = (struct _triton_context_t *)ud->tpd;
-	
+
 	ctx->priority = prio > 0;
 }
 
@@ -423,7 +423,7 @@ void __export triton_context_schedule()
 {
 	struct _triton_context_t *ctx = (struct _triton_context_t *)this_ctx->tpd;
 	struct _triton_thread_t *t = NULL;
-	
+
 	log_debug2("ctx %p: enter schedule\n", ctx);
 	__sync_add_and_fetch(&triton_stat.context_sleeping, 1);
 	__sync_sub_and_fetch(&triton_stat.thread_active, 1);
@@ -568,7 +568,7 @@ static void ru_update(struct triton_timer_t *t)
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	dt = (ts.tv_sec - ru_timestamp.tv_sec) * 1000000 + (ts.tv_nsec - ru_timestamp.tv_nsec) / 1000000;
-	val = (double)((rusage.ru_utime.tv_sec - ru_utime.tv_sec) * 1000000 + (rusage.ru_utime.tv_usec - ru_utime.tv_usec) + 
+	val = (double)((rusage.ru_utime.tv_sec - ru_utime.tv_sec) * 1000000 + (rusage.ru_utime.tv_usec - ru_utime.tv_usec) +
 	      (rusage.ru_stime.tv_sec - ru_stime.tv_sec) * 1000000 + (rusage.ru_stime.tv_usec - ru_stime.tv_usec)) / dt * 100;
 
 	triton_stat.cpu = val;
@@ -637,7 +637,7 @@ int __export triton_load_modules(const char *mod_sect)
 		list_del(&i->entry);
 		free(i);
 	}
-	
+
 	return 0;
 }
 
@@ -721,7 +721,7 @@ void __export triton_terminate()
 		spin_unlock(&threads_lock);
 		sleep(1);
 	}
-	
+
 	md_terminate();
 	timer_terminate();
 }

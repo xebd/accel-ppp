@@ -55,7 +55,7 @@ handle_statCoreUpTime(netsnmp_mib_handler *handler,
 
     /* a instance handler also only hands us one request at a time, so
        we don't need to loop over a list of requests; we'll only get one. */
-    
+
     switch(reqinfo->mode) {
 
         case MODE_GET:
@@ -84,7 +84,7 @@ handle_statCoreCPU(netsnmp_mib_handler *handler,
 
     /* a instance handler also only hands us one request at a time, so
        we don't need to loop over a list of requests; we'll only get one. */
-    
+
     switch(reqinfo->mode) {
 
         case MODE_GET:
@@ -119,7 +119,7 @@ handle_statCoreMemRss(netsnmp_mib_handler *handler,
 		fscanf(f, "%lu %lu", &vmsize, &vmrss);
 		fclose(f);
 	}
-	
+
 	vmrss *= page_size;
 
     /* We are never called for a GETNEXT if it's registered as a
@@ -127,7 +127,7 @@ handle_statCoreMemRss(netsnmp_mib_handler *handler,
 
     /* a instance handler also only hands us one request at a time, so
        we don't need to loop over a list of requests; we'll only get one. */
-    
+
     switch(reqinfo->mode) {
 
         case MODE_GET:

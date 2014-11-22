@@ -36,7 +36,7 @@ static int dm_coa_check_RA(struct rad_packet_t *pack, const char *secret)
 	MD5_CTX ctx;
 
 	memset(RA, 0, 16);
-	
+
 	MD5_Init(&ctx);
 	MD5_Update(&ctx, pack->buf, 4);
 	MD5_Update(&ctx, RA, 16);
@@ -69,7 +69,7 @@ static int dm_coa_send_ack(int fd, struct rad_packet_t *req, struct sockaddr_in 
 		return -1;
 
 	reply->id = req->id;
-	
+
 	if (rad_packet_build(reply, RA)) {
 		rad_packet_free(reply);
 		return -1;
@@ -83,7 +83,7 @@ static int dm_coa_send_ack(int fd, struct rad_packet_t *req, struct sockaddr_in 
 	}
 
 	rad_packet_send(reply, fd, addr);
-	
+
 	rad_packet_free(reply);
 
 	return 0;
@@ -118,7 +118,7 @@ static int dm_coa_send_nak(int fd, struct rad_packet_t *req, struct sockaddr_in 
 	}
 
 	rad_packet_send(reply, fd, addr);
-	
+
 	rad_packet_free(reply);
 
 	return 0;
@@ -135,7 +135,7 @@ static void disconnect_request(struct radius_pd_t *rpd)
 	dm_coa_send_ack(serv.hnd.fd, rpd->dm_coa_req, &rpd->dm_coa_addr);
 
 	rad_packet_free(rpd->dm_coa_req);
-	
+
 	pthread_mutex_lock(&rpd->lock);
 	rpd->dm_coa_req = NULL;
 	pthread_mutex_unlock(&rpd->lock);
@@ -183,7 +183,7 @@ static void coa_request(struct radius_pd_t *rpd)
 
 		dm_coa_send_ack(serv.hnd.fd, rpd->dm_coa_req, &rpd->dm_coa_addr);
 	}
-	
+
 	rad_packet_free(rpd->dm_coa_req);
 
 	pthread_mutex_lock(&rpd->lock);
@@ -232,14 +232,14 @@ static int dm_coa_read(struct triton_md_handler_t *h)
 			err_code = 403;
 			goto out_err;
 		}
-		
+
 		rpd = rad_find_session_pack(pack);
 		if (!rpd) {
 			log_warn("radius:dm_coa: session not found\n");
 			err_code = 503;
 			goto out_err;
 		}
-		
+
 		if (rpd->dm_coa_req) {
 			pthread_mutex_unlock(&rpd->lock);
 			goto out_err_no_reply;
@@ -292,7 +292,7 @@ static void init(void)
     log_emerg("radius:dm_coa: socket: %s\n", strerror(errno));
     return;
   }
-	
+
 	fcntl(serv.hnd.fd, F_SETFD, fcntl(serv.hnd.fd, F_GETFD) | FD_CLOEXEC);
 
   addr.sin_family = AF_INET;
@@ -312,7 +312,7 @@ static void init(void)
 		close(serv.hnd.fd);
     return;
 	}
-	
+
 	triton_context_register(&serv.ctx, NULL);
 	triton_md_register_handler(&serv.ctx, &serv.hnd);
 	triton_md_enable_handler(&serv.hnd, MD_MODE_READ);

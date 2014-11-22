@@ -36,7 +36,7 @@ static void set_action(const char *cmd, size_t len)
 
 	memcpy(cc.cmdline, cmd, len);
 	cc.cmdline[len] = 0;
-	
+
 	cli_process_cmd(&cc);
 
 	_free(cc.cmdline);
@@ -69,7 +69,7 @@ handle_cli(netsnmp_mib_handler *handler,
 
     /* a instance handler also only hands us one request at a time, so
        we don't need to loop over a list of requests; we'll only get one. */
-    
+
     switch(reqinfo->mode) {
 
         case MODE_GET:

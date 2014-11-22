@@ -15,7 +15,7 @@ static struct rad_dict_t *dict;
 static char *skip_word(char *ptr)
 {
 	for(; *ptr; ptr++)
-		if (*ptr == ' ' || *ptr == '\t' || *ptr == '\n') 
+		if (*ptr == ' ' || *ptr == '\t' || *ptr == '\n')
 			break;
 	return ptr;
 }
@@ -34,9 +34,9 @@ static int split(char *buf, char **ptr)
 		buf = skip_word(buf);
 		if (!*buf)
 			return i;
-		
+
 		*buf = 0;
-		
+
 		buf = skip_space(buf + 1);
 		if (!*buf)
 			return i;
@@ -82,7 +82,7 @@ static int dict_load(const char *fname)
 		log_emerg("radius: open dictioanary '%s': %s\n", fname, strerror(errno));
 		return -1;
 	}
-	
+
 	items = &dict->items;
 
 	while (fgets(buf, BUF_SIZE, f)) {
@@ -301,7 +301,7 @@ __export struct rad_dict_attr_t *rad_dict_find_attr_id(struct rad_dict_vendor_t 
 {
 	struct rad_dict_attr_t *attr;
 	struct list_head *items = vendor ? &vendor->items : &dict->items;
-	
+
 	list_for_each_entry(attr, items, entry)
 		if (attr->id == id)
 			return attr;

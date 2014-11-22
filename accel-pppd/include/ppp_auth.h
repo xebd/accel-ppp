@@ -9,7 +9,7 @@ struct auth_data_t
 {
 	struct list_head entry;
 	int proto;
-	int state; 
+	int state;
 	struct ppp_auth_handler_t *h;
 };
 

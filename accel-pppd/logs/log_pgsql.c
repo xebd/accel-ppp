@@ -68,9 +68,9 @@ static void set_hdr(struct log_msg_t *msg, struct ap_session *ses)
 		msg->hdr->len += strlen(ses->username) + 1;
 		strcpy(msg->hdr->msg + msg->hdr->len, ses->sessionid);
 		msg->hdr->len += strlen(ses->sessionid) + 1;
-	} else 
+	} else
 		memset(msg->hdr->msg + msg->hdr->len, 0, 2);
-		
+
 }
 
 static void write_next_msg(void)
@@ -159,7 +159,7 @@ static int pgsql_flush(struct triton_md_handler_t *h)
 		log_emerg("log_pgsql: %s\n", PQerrorMessage(conn));
 	if (r == 1)
 		return 0;
-	
+
 	triton_md_disable_handler(&pgsql_hnd, MD_MODE_WRITE);
 	return 0;
 }
@@ -272,7 +272,7 @@ static void pgsql_close(struct triton_context_t *ctx)
 		conn = NULL;
 		triton_context_unregister(&pgsql_ctx);
 	} else
-		need_close = 1;	
+		need_close = 1;
 	spin_unlock(&queue_lock);
 }
 
@@ -294,7 +294,7 @@ static void init(void)
 	opt = conf_get_opt("log-pgsql", "connect-inteval");
 	if (opt && atoi(opt) > 0)
 		connect_timer.period = atoi(opt) * 1000;
-	
+
 	opt = conf_get_opt("log-pgsql", "log-query");
 	if (opt)
 		conf_query = _strdup(opt);

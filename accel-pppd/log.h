@@ -19,7 +19,7 @@ struct log_msg_t
 	struct timeval timestamp;
 	int level;
 	struct log_chunk_t *hdr;
-	struct list_head *chunks;		
+	struct list_head *chunks;
 };
 
 struct log_chunk_t

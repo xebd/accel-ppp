@@ -75,10 +75,10 @@ static struct ccp_option_t *mppe_init(struct ppp_ccp_t *ccp)
 		mppe_opt->mppe = 1;
 	else
 		mppe_opt->mppe = -1;
-	
+
 	if (mppe == MPPE_REQUIRE || mppe == MPPE_PREFER)
 		ccp->ld.passive = 0;
-	
+
 	if (mppe == MPPE_REQUIRE)
 		ccp->ld.optional = 0;
 
@@ -153,7 +153,7 @@ static int __mppe_send_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt,
 		opt32->hdr.id = CI_MPPE;
 		opt32->hdr.len = 6;
 		opt32->val = mppe_opt->mppe ? htonl(MPPE_S | MPPE_H) : 0;
-		
+
 		if (setup_key && mppe_opt->mppe && setup_mppe_key(ccp->ppp->unit_fd, 0, mppe_opt->recv_key))
 			return 0;
 
@@ -189,7 +189,7 @@ static int mppe_recv_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, u
 			return CCP_OPT_NAK;
 		return CCP_OPT_ACK;
 	}
-	
+
 	if (opt32->hdr.len != 6)
 		return CCP_OPT_REJ;
 
@@ -209,7 +209,7 @@ static int mppe_recv_conf_req(struct ppp_ccp_t *ccp, struct ccp_option_t *opt, u
 			mppe_opt->mppe = 0;
 	} else
 		return CCP_OPT_REJ;
-	
+
 	if (mppe_opt->mppe) {
 		if (setup_mppe_key(ccp->ppp->unit_fd, 1, mppe_opt->send_key))
 			return CCP_OPT_REJ;
@@ -283,7 +283,7 @@ static void mppe_print(void (*print)(const char *fmt,...),struct ccp_option_t *o
 		bits & MPPE_S ? "+" : "-",
 		bits & MPPE_L ? "+" : "-",
 		bits & MPPE_D ? "+" : "-",
-		bits & MPPE_C ? "+" : "-" 
+		bits & MPPE_C ? "+" : "-"
 	);
 }
 
@@ -304,7 +304,7 @@ static void ev_mppe_keys(struct ev_mppe_keys_t *ev)
 		mppe_opt->mppe = 0;
 		return;
 	}
-	
+
 	if (ccp->ppp->ses.ctrl->mppe == MPPE_UNSET)
 		mppe = conf_mppe;
 	else
@@ -348,7 +348,7 @@ static void mppe_opt_init()
 {
 	ccp_option_register(&mppe_opt_hnd);
 	triton_event_register_handler(EV_MPPE_KEYS, (triton_event_func)ev_mppe_keys);
-	
+
 	load_config();
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }

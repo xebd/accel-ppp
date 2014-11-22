@@ -30,12 +30,12 @@ static int parse_size(const char *str, int *r)
 
 	if (endptr == str)
 		return -1;
-	
+
 	if (*endptr == 0) {
 		*r = sz;
 		return 0;
 	}
-	
+
 	if (strcmp(endptr, "kb") == 0 || strcmp(endptr, "k") == 0)
 		*r = sz * 1024;
 	else if (strcmp(endptr, "mb") == 0 || strcmp(endptr, "m") == 0)
@@ -66,12 +66,12 @@ static int parse_time(const char *str, int *r)
 
 	if (endptr == str)
 		return -1;
-	
+
 	if (*endptr == 0) {
 		*r = t;
 		return 0;
 	}
-	
+
 	if (strcmp(endptr, "s") == 0 || strcmp(endptr, "sec") == 0)
 		*r = t * TIME_UNITS_PER_SEC;
 	else if (strcmp(endptr, "ms") == 0 || strcmp(endptr, "msec") == 0)
@@ -109,17 +109,17 @@ static int parse_sfq(char *str)
 
 	if (!*str)
 		goto out;
-	
+
 	while (1) {
 		for (ptr1 = str + 1; *ptr1 && *ptr1 != ' '; ptr1++);
 
 		if (!*ptr1)
 			return -1;
-	
+
 		*ptr1 = 0;
 
 		for (ptr1++; *ptr1 && *ptr1 == ' '; ptr1++);
-		
+
 		if (!*ptr1)
 			return -1;
 
@@ -160,7 +160,7 @@ static int parse_fq_codel(char *str)
 	char *ptr1, *ptr2;
 
 	conf_lq_arg6 = -1;
-	
+
 	if (!*str)
 		goto out;
 
@@ -169,11 +169,11 @@ static int parse_fq_codel(char *str)
 
 		if (!*ptr1)
 			return -1;
-	
+
 		*ptr1 = 0;
 
 		for (ptr1++; *ptr1 && *ptr1 == ' '; ptr1++);
-		
+
 		if (!*ptr1)
 			return -1;
 
@@ -241,9 +241,9 @@ void leaf_qdisc_parse(const char *opt)
 #endif
 	} else
 		log_emerg("shaper: unknown leaf-qdisc '%s'\n", str);
-	
+
 	free(str);
-	
+
 	return;
 out_err:
 	log_emerg("shaper: failed to parse '%s'\n", opt);
@@ -256,7 +256,7 @@ static int qdisc_sfq(struct qdisc_opt *qopt, struct nlmsghdr *n)
 		.perturb_period = conf_lq_arg2,
 		.limit = conf_lq_arg3,
 	};
-	
+
 	addattr_l(n, 1024, TCA_OPTIONS, &opt, sizeof(opt));
 
 	return 0;
@@ -316,12 +316,12 @@ int install_leaf_qdisc(struct rtnl_handle *rth, int ifindex, int parent, int han
 {
 	if (conf_leaf_qdisc == LEAF_QDISC_SFQ)
 		return install_sfq(rth, ifindex, parent, handle);
-	
+
 #ifdef TCA_FQ_CODEL_MAX
 	else if (conf_leaf_qdisc == LEAF_QDISC_FQ_CODEL)
 		return install_fq_codel(rth, ifindex, parent, handle);
 #endif
-	
+
 	return 0;
 }
 

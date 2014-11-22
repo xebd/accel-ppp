@@ -94,7 +94,7 @@ static int cli_client_send(struct cli_client_t *tcln, const void *_buf, int size
 
 	if (cln->disconnect)
 		return -1;
-	
+
 	if (!list_empty(&cln->xmit_queue)) {
 		b = _malloc(sizeof(*b) + size);
 		b->size = size;
@@ -197,10 +197,10 @@ static int cln_write(struct triton_md_handler_t *h)
 {
 	struct tcp_client_t *cln = container_of(h, typeof(*cln), hnd);
 	int k;
-	
+
 	if (!cln->xmit_buf)
 		return 0;
-	
+
 	while (1) {
 		for (; cln->xmit_pos < cln->xmit_buf->size; cln->xmit_pos += k) {
 			k = write(cln->hnd.fd, cln->xmit_buf->buf + cln->xmit_pos, cln->xmit_buf->size - cln->xmit_pos);
@@ -312,7 +312,7 @@ static void start_server(const char *host, int port)
     log_emerg("cli: tcp: failed to create server socket: %s\n", strerror(errno));
     return;
   }
-	
+
 	fcntl(serv_hnd.fd, F_SETFD, fcntl(serv_hnd.fd, F_GETFD) | FD_CLOEXEC);
 
 	memset(&addr, 0, sizeof(addr));
@@ -323,7 +323,7 @@ static void start_server(const char *host, int port)
 	else
 		addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
-  setsockopt(serv_hnd.fd, SOL_SOCKET, SO_REUSEADDR, &serv_hnd.fd, 4);  
+  setsockopt(serv_hnd.fd, SOL_SOCKET, SO_REUSEADDR, &serv_hnd.fd, 4);
   if (bind (serv_hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
     log_emerg("cli: tcp: failed to bind socket: %s\n", strerror(errno));
 		close(serv_hnd.fd);
@@ -341,7 +341,7 @@ static void start_server(const char *host, int port)
 		close(serv_hnd.fd);
     return;
 	}
-	
+
   addr.sin_family = AF_INET;
   addr.sin_port = htons(port);
 	addr.sin_addr.s_addr = inet_addr(host);
@@ -383,15 +383,15 @@ static void init(void)
 	port = atoi(d + 1);
 	if (port <= 0)
 		goto err_fmt;
-	
+
 	load_config();
 
 	temp_buf = malloc(RECV_BUF_SIZE);
 
 	start_server(host, port);
-	
+
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
-	
+
 	return;
 err_fmt:
 	log_emerg("cli: tcp: invalid format\n");

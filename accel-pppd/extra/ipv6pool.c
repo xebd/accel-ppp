@@ -79,7 +79,7 @@ static void generate_ippool(struct in6_addr *addr, int mask, int prefix_len)
 		*(uint64_t *)(step.s6_addr + 8) = htobe64(1llu << (128 - prefix_len));
 	else
 		*(uint64_t *)step.s6_addr = htobe64(1llu << (64 - prefix_len));
-		
+
 	while (in6_addr_cmp(&ip, &end) <= 0) {
 		it = malloc(sizeof(*it));
 		it->it.owner = &ipdb;
@@ -115,7 +115,7 @@ static void generate_dppool(struct in6_addr *addr, int mask, int prefix_len)
 		*(uint64_t *)(step.s6_addr + 8) = htobe64(1llu << (128 - prefix_len));
 	else
 		*(uint64_t *)step.s6_addr = htobe64(1llu << (64 - prefix_len));
-	
+
 	while (in6_addr_cmp(&ip, &end) <= 0) {
 		it = malloc(sizeof(*it));
 		it->it.owner = &ipdb;
@@ -138,34 +138,34 @@ static void add_prefix(int type, const char *_val)
 	struct in6_addr addr;
 	int prefix_len;
 	int mask;
-	
+
 	ptr1 = strchr(val, '/');
 	if (!ptr1)
 		goto err;
-	
+
 	*ptr1 = 0;
 
 	ptr2 = strchr(ptr1 + 1, ',');
 	if (!ptr2)
 		goto err;
-	
+
 	*ptr2 = 0;
 
 	if (inet_pton(AF_INET6, val, &addr) == 0)
 		goto err;
-	
+
 	if (sscanf(ptr1 + 1, "%i", &mask) != 1)
 		goto err;
-	
+
 	if (mask < 7 || mask > 127)
 		goto err;
-	
+
 	if (sscanf(ptr2 + 1, "%i", &prefix_len) != 1)
 		goto err;
-	
+
 	if (prefix_len > 128  || prefix_len < mask)
 		goto err;
-	
+
 	if (type)
 		generate_dppool(&addr, mask, prefix_len);
 	else
@@ -173,7 +173,7 @@ static void add_prefix(int type, const char *_val)
 
 	_free(val);
 	return;
-	
+
 err:
 	log_error("ipv6_pool: failed to parse '%s'\n", _val);
 	_free(val);
@@ -245,7 +245,7 @@ static void ippool_init(void)
 
 	if (!s)
 		return;
-	
+
 	list_for_each_entry(opt, &s->items, entry) {
 		if (!strcmp(opt->name, "delegate"))
 			add_prefix(1, opt->val);

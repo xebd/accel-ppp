@@ -49,7 +49,7 @@ struct conf_option_t
 
 struct conf_sect_t
 {
-	const char *name;	
+	const char *name;
 	struct list_head items;
 };
 

@@ -11,8 +11,8 @@
 #include "ppp.h"
 
 /*
- * Our initialization routine, called automatically by the agent 
- * (Note that the function name must match init_FILENAME()) 
+ * Our initialization routine, called automatically by the agent
+ * (Note that the function name must match init_FILENAME())
  */
 void
 init_statPPP(void)
@@ -26,7 +26,7 @@ init_statPPP(void)
 
   /*
    * a debugging statement.  Run the agent with -DstatPPP to see
-   * the output of this debugging statement. 
+   * the output of this debugging statement.
    */
   DEBUGMSGTL(("statPPP", "Initializing the statPPP module\n"));
 

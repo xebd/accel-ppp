@@ -52,7 +52,7 @@ static void stat_accm_clean(struct stat_accm_t *s)
 {
 	struct item_t *it;
 	struct timespec ts;
-	
+
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	while (!list_empty(&s->items)) {
@@ -71,11 +71,11 @@ void stat_accm_add(struct stat_accm_t *s, unsigned int val)
 {
 	struct item_t *it;
 	struct timespec ts;
-	
+
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	pthread_mutex_lock(&s->lock);
-	
+
 	stat_accm_clean(s);
 
 	it = mempool_alloc(item_pool);
@@ -84,7 +84,7 @@ void stat_accm_add(struct stat_accm_t *s, unsigned int val)
 	list_add_tail(&it->entry, &s->items);
 	++s->items_cnt;
 	s->total += val;
-	
+
 	pthread_mutex_unlock(&s->lock);
 }
 
@@ -104,7 +104,7 @@ unsigned long stat_accm_get_avg(struct stat_accm_t *s)
 	stat_accm_clean(s);
 	val = s->items_cnt ? s->total/s->items_cnt : 0;
 	pthread_mutex_unlock(&s->lock);
-	
+
 	return val;
 }
 

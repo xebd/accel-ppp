@@ -40,7 +40,7 @@ struct ipv6db_prefix_t
 struct ipdb_t
 {
 	struct list_head entry;
-	
+
 	struct ipv4db_item_t *(*get_ipv4)(struct ap_session *ses);
 	void (*put_ipv4)(struct ap_session *ses, struct ipv4db_item_t *);
 

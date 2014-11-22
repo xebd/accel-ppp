@@ -97,7 +97,7 @@ struct ppp_ipv6cp_t
 
 	struct list_head ropt_list; // last received ConfReq
 	int ropt_len;
-	
+
 	int conf_req_len;
 	int starting:1;
 	int started:1;

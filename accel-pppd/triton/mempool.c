@@ -84,7 +84,7 @@ mempool_t __export *mempool_create(int size)
 mempool_t __export *mempool_create2(int size)
 {
 	struct _mempool_t *p = (struct _mempool_t *)mempool_create(size);
-	
+
 	p->mmap = 1;
 
 	return (mempool_t *)p;
@@ -105,7 +105,7 @@ void __export *mempool_alloc(mempool_t *pool)
 
 		--p->objects;
 		__sync_sub_and_fetch(&triton_stat.mempool_available, size);
-		
+
 		return it->ptr;
 #ifdef VALGRIND
 		}
@@ -275,7 +275,7 @@ static int mmap_grow(void)
 	}
 
 	mmap_endptr = ptr + size;
-		
+
 	__sync_add_and_fetch(&triton_stat.mempool_allocated, size);
 	__sync_add_and_fetch(&triton_stat.mempool_available, size);
 

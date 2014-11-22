@@ -138,7 +138,7 @@ static void accomp_print(void (*print)(const char *fmt, ...), struct lcp_option_
 static void load_config(void)
 {
 	char *opt;
-	
+
 	opt = conf_get_opt("ppp", "accomp");
 	if (opt) {
 		if (!strcmp(opt, "deny"))

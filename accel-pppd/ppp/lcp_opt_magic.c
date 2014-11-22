@@ -71,7 +71,7 @@ static int magic_send_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, 
 {
 	struct magic_option_t *magic_opt = container_of(opt, typeof(*magic_opt), opt);
 	struct lcp_opt32_t *opt32 = (struct lcp_opt32_t *)ptr;
-	
+
 	if (!magic_opt->magic)
 		return 0;
 

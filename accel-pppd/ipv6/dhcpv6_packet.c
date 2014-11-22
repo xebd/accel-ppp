@@ -69,7 +69,7 @@ static void *parse_option(void *ptr, void *endptr, struct list_head *opt_list)
 		log_warn("dhcpv6: invalid packet received\n");
 		return NULL;
 	}
-	
+
 	opt = _malloc(sizeof(*opt));
 	if (!opt) {
 		log_emerg("out of memory\n");
@@ -85,7 +85,7 @@ static void *parse_option(void *ptr, void *endptr, struct list_head *opt_list)
 		if (dopt->code == ntohs(opth->code))
 			break;
 	}
-	
+
 	if (dopt->len) {
 		endptr = ptr + sizeof(*opth) + ntohs(opth->len);
 		ptr += dopt->len;
@@ -96,7 +96,7 @@ static void *parse_option(void *ptr, void *endptr, struct list_head *opt_list)
 		}
 	} else
 		ptr += sizeof(*opth) + ntohs(opth->len);
-	
+
 	return ptr;
 }
 
@@ -148,13 +148,13 @@ struct dhcpv6_packet *dhcpv6_packet_parse(const void *buf, size_t size)
 struct dhcpv6_option *dhcpv6_option_alloc(struct dhcpv6_packet *pkt, int code, int len)
 {
 	struct dhcpv6_option *opt;
-	
+
 	opt = _malloc(sizeof(*opt));
 	if (!opt) {
 		log_emerg("out of memory\n");
 		return NULL;
 	}
-	
+
 	memset(opt, 0, sizeof(*opt));
 	INIT_LIST_HEAD(&opt->opt_list);
 
@@ -172,13 +172,13 @@ struct dhcpv6_option *dhcpv6_option_alloc(struct dhcpv6_packet *pkt, int code, i
 struct dhcpv6_option *dhcpv6_nested_option_alloc(struct dhcpv6_packet *pkt, struct dhcpv6_option *popt, int code, int len)
 {
 	struct dhcpv6_option *opt;
-	
+
 	opt = _malloc(sizeof(*opt));
 	if (!opt) {
 		log_emerg("out of memory\n");
 		return NULL;
 	}
-	
+
 	memset(opt, 0, sizeof(*opt));
 	INIT_LIST_HEAD(&opt->opt_list);
 	opt->parent = popt;
@@ -204,7 +204,7 @@ struct dhcpv6_packet *dhcpv6_packet_alloc_reply(struct dhcpv6_packet *req, int t
 {
 	struct dhcpv6_packet *pkt = _malloc(sizeof(*pkt));
 	struct dhcpv6_option *opt;
-	
+
 	if (!pkt) {
 		log_emerg("out of memory\n");
 		return NULL;
@@ -306,7 +306,7 @@ void dhcpv6_packet_print(struct dhcpv6_packet *pkt, void (*print)(const char *fm
 		print("Unknown");
 	else
 		print("%s", type_name[pkt->hdr->type - 1]);
-	
+
 	print(" XID=%x", pkt->hdr->trans_id);
 
 	print_options(&pkt->opt_list, 0, print);
@@ -320,7 +320,7 @@ static void print_clientid(struct dhcpv6_option *opt, void (*print)(const char *
 	struct dhcpv6_opt_clientid *o = (struct dhcpv6_opt_clientid *)opt->hdr;
 
 	print(" %i:", htons(o->duid.type));
-	
+
 	for (i = 0; i < ntohs(o->hdr.len) - 2; i++)
 		print("%02x", o->duid.u.raw[i]);
 }
@@ -358,7 +358,7 @@ static void print_oro(struct dhcpv6_option *opt, void (*print)(const char *fmt, 
 	for (; ptr < end_ptr; ptr++) {
 		if (f)
 			print(",");
-		else 
+		else
 			print(" ");
 
 		for (dopt = known_options; dopt->code; dopt++) {

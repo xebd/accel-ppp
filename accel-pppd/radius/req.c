@@ -50,7 +50,7 @@ static struct rad_req_t *__rad_req_alloc(struct radius_pd_t *rpd, int code, cons
 
 	if (!req->serv)
 		goto out_err;
-	
+
 	req->server_addr = req->serv->addr;
 	req->server_port = req->serv->auth_port;
 
@@ -73,7 +73,7 @@ static struct rad_req_t *__rad_req_alloc(struct radius_pd_t *rpd, int code, cons
 
 	if (rad_packet_add_str(req->pack, NULL, "User-Name", username))
 		goto out_err;
-	
+
 	if (conf_nas_identifier)
 		if (rad_packet_add_str(req->pack, NULL, "NAS-Identifier", conf_nas_identifier))
 			goto out_err;
@@ -84,10 +84,10 @@ static struct rad_req_t *__rad_req_alloc(struct radius_pd_t *rpd, int code, cons
 
 	if (rad_packet_add_int(req->pack, NULL, "NAS-Port", rpd->ses->unit_idx))
 		goto out_err;
-	
+
 	if (rad_packet_add_str(req->pack, NULL, "NAS-Port-Id", rpd->ses->ifname))
 		goto out_err;
-	
+
 	if (req->rpd->ses->ctrl->type == CTRL_TYPE_IPOE) {
 		if (rad_packet_add_val(req->pack, NULL, "NAS-Port-Type", "Ethernet"))
 			goto out_err;
@@ -105,15 +105,15 @@ static struct rad_req_t *__rad_req_alloc(struct radius_pd_t *rpd, int code, cons
 	if (rpd->ses->ctrl->calling_station_id)
 		if (rad_packet_add_str(req->pack, NULL, "Calling-Station-Id", rpd->ses->ctrl->calling_station_id))
 			goto out_err;
-	
+
 	if (rpd->ses->ctrl->called_station_id)
 		if (rad_packet_add_str(req->pack, NULL, "Called-Station-Id", rpd->ses->ctrl->called_station_id))
 			goto out_err;
-	
+
 	if (rpd->attr_class)
 		if (rad_packet_add_octets(req->pack, NULL, "Class", rpd->attr_class, rpd->attr_class_len))
 			goto out_err;
-	
+
 	if (conf_attr_tunnel_type)
 		if (rad_packet_add_str(req->pack, NULL, conf_attr_tunnel_type, rpd->ses->ctrl->name))
 			goto out_err;
@@ -240,7 +240,7 @@ void rad_req_free(struct rad_req_t *req)
 		triton_md_unregister_handler(&req->hnd, 1);
 	else if (req->hnd.fd != -1)
 		close(req->hnd.fd);
-	
+
 	if (req->timeout.tpd)
 		triton_timer_del(&req->timeout);
 
@@ -288,7 +288,7 @@ static int make_socket(struct rad_req_t *req)
 		log_ppp_error("radius: failed to set nonblocking mode: %s\n", strerror(errno));
 		goto out_err;
 	}
-	
+
 	return 0;
 
 out_err:
@@ -313,18 +313,18 @@ int __rad_req_send(struct rad_req_t *req, int async)
 
 	if (req->hnd.fd == -1 && make_socket(req))
 		return -1;
-	
+
 	if (req->before_send && req->before_send(req))
 		goto out_err;
 
 	if (!req->pack->buf && rad_packet_build(req->pack, req->RA))
 		goto out_err;
-	
+
 	if (req->log) {
 		req->log("send ");
 		rad_packet_print(req->pack, req->serv, req->log);
 	}
-	
+
 	if (req->sent)
 		req->sent(req, 0);
 
@@ -339,7 +339,7 @@ out_err:
 		close(req->hnd.fd);
 		req->hnd.fd = -1;
 	}
-	
+
 	if (async && req->sent)
 		req->sent(req, -1);
 
@@ -355,9 +355,9 @@ int rad_req_send(struct rad_req_t *req)
 	if (req->try++ == conf_max_try) {
 		if (req->active)
 			rad_server_req_exit(req);
-				
+
 		log_ppp_warn("radius: server(%i) not responding\n", req->serv->id);
-				
+
 		if (rad_server_realloc(req)) {
 			if (req->rpd)
 				log_ppp_warn("radius: no available servers\n");
@@ -373,7 +373,7 @@ int rad_req_send(struct rad_req_t *req)
 
 			if (r >= 0)
 				break;
-			
+
 			if (rad_server_realloc(req)) {
 				if (req->rpd)
 					log_ppp_warn("radius: no available servers\n");
@@ -399,13 +399,13 @@ int rad_req_read(struct triton_md_handler_t *h)
 			return 0;
 
 		rad_server_reply(req->serv);
-		
+
 		if (pack->id == req->pack->id)
 			break;
-		
+
 		rad_packet_free(pack);
 	}
-	
+
 	req->reply = pack;
 
 	if (req->active)

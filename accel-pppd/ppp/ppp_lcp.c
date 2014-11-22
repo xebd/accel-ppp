@@ -80,15 +80,15 @@ static struct ppp_layer_data_t *lcp_layer_init(struct ppp_t *ppp)
 {
 	struct ppp_lcp_t *lcp = _malloc(sizeof(*lcp));
 	memset(lcp, 0, sizeof(*lcp));
-	
+
 	log_ppp_debug("lcp_layer_init\n");
 
 	lcp->ppp = ppp;
 	lcp->fsm.ppp = ppp;
-	
+
 	lcp->hnd.proto = PPP_LCP;
 	lcp->hnd.recv = lcp_recv;
-	
+
 	ppp_register_chan_handler(ppp, &lcp->hnd);
 
 	lcp->fsm.proto = PPP_LCP;
@@ -113,14 +113,14 @@ static struct ppp_layer_data_t *lcp_layer_init(struct ppp_t *ppp)
 int lcp_layer_start(struct ppp_layer_data_t *ld)
 {
 	struct ppp_lcp_t *lcp = container_of(ld, typeof(*lcp), ld);
-	
+
 	log_ppp_debug("lcp_layer_start\n");
 
 	lcp_options_init(lcp);
 	ppp_fsm_lower_up(&lcp->fsm);
 	if (ppp_fsm_open(&lcp->fsm))
 		return -1;
-	
+
 	return 0;
 }
 
@@ -132,7 +132,7 @@ static void _lcp_layer_finished(struct ppp_lcp_t *lcp)
 void lcp_layer_finish(struct ppp_layer_data_t *ld)
 {
 	struct ppp_lcp_t *lcp = container_of(ld,typeof(*lcp),ld);
-	
+
 	log_ppp_debug("lcp_layer_finish\n");
 
 	if (lcp->started) {
@@ -145,7 +145,7 @@ void lcp_layer_finish(struct ppp_layer_data_t *ld)
 void lcp_layer_free(struct ppp_layer_data_t *ld)
 {
 	struct ppp_lcp_t *lcp = container_of(ld, typeof(*lcp), ld);
-	
+
 	log_ppp_debug("lcp_layer_free\n");
 
 	stop_echo(lcp);
@@ -153,7 +153,7 @@ void lcp_layer_free(struct ppp_layer_data_t *ld)
 	lcp_options_free(lcp);
 	ppp_fsm_free(&lcp->fsm);
 	triton_cancel_call(lcp->ppp->ses.ctrl->ctx, (triton_event_func)_lcp_layer_finished);
-	
+
 	_free(lcp);
 }
 
@@ -219,7 +219,7 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 	lcp_hdr->code = CONFREQ;
 	lcp_hdr->id = lcp->fsm.id;
 	lcp_hdr->len = 0;
-	
+
 	ptr += sizeof(*lcp_hdr);
 
 	list_for_each_entry(lopt, &lcp->options, entry) {
@@ -232,7 +232,7 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 		} else
 			lopt->print = 0;
 	}
-	
+
 	if (conf_ppp_verbose) {
 		log_ppp_info2("send [LCP ConfReq id=%x", lcp_hdr->id);
 		list_for_each_entry(lopt,&lcp->options,entry) {
@@ -293,13 +293,13 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 	lcp_hdr->code = CONFNAK;
 	lcp_hdr->id = lcp->fsm.recv_id;
 	lcp_hdr->len = 0;
-	
+
 	ptr += sizeof(*lcp_hdr);
 
 	list_for_each_entry(lopt, &lcp->options, entry) {
 		if (lopt->state == LCP_OPT_NAK) {
 			n = lopt->h->send_conf_nak(lcp, lopt, ptr);
-			
+
 			if (conf_ppp_verbose && n) {
 				log_ppp_info2(" ");
 				lopt->h->print(log_ppp_info2, lopt, ptr);
@@ -308,7 +308,7 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 			ptr += n;
 		}
 	}
-	
+
 	if (conf_ppp_verbose)
 		log_ppp_info2("]\n");
 
@@ -385,7 +385,7 @@ static int lcp_recv_conf_req(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 		data += hdr->len;
 		size -= hdr->len;
 	}
-	
+
 	list_for_each_entry(lopt, &lcp->options, entry)
 		lopt->state = LCP_OPT_NONE;
 
@@ -465,7 +465,7 @@ static int lcp_recv_conf_rej(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 
 		if (!hdr->len || hdr->len > size)
 			break;
-		
+
 		list_for_each_entry(lopt, &lcp->options, entry) {
 			if (lopt->id == hdr->id) {
 				if (conf_ppp_verbose) {
@@ -510,7 +510,7 @@ static int lcp_recv_conf_nak(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 
 		if (!hdr->len || hdr->len > size)
 			break;
-		
+
 		list_for_each_entry(lopt,&lcp->options,entry) {
 			if (lopt->id == hdr->id) {
 				if (conf_ppp_verbose) {
@@ -553,7 +553,7 @@ static int lcp_recv_conf_ack(struct ppp_lcp_t *lcp, uint8_t *data, int size)
 
 		if (!hdr->len || hdr->len > size)
 			break;
-		
+
 		list_for_each_entry(lopt, &lcp->options, entry) {
 			if (lopt->id == hdr->id) {
 				if (conf_ppp_verbose) {
@@ -730,7 +730,7 @@ static void send_term_ack(struct ppp_fsm_t *fsm)
 
 	if (conf_ppp_verbose)
 		log_ppp_info2("send [LCP TermAck id=%i]\n", hdr.id);
-	
+
 	ppp_chan_send(lcp->ppp, &hdr, 6);
 }
 
@@ -761,13 +761,13 @@ static void lcp_recv(struct ppp_handler_t*h)
 	struct ppp_lcp_t *lcp = container_of(h, typeof(*lcp), hnd);
 	int r;
 	char *term_msg;
-	
+
 	if (lcp->ppp->buf_size < PPP_HEADERLEN + 2) {
 		log_ppp_warn("LCP: short packet received\n");
 		return;
 	}
 
-	hdr = (struct lcp_hdr_t *)lcp->ppp->buf;	
+	hdr = (struct lcp_hdr_t *)lcp->ppp->buf;
 	if (ntohs(hdr->len) < PPP_HEADERLEN) {
 		log_ppp_warn("LCP: short packet received\n");
 		return;
@@ -775,7 +775,7 @@ static void lcp_recv(struct ppp_handler_t*h)
 
 	if ((hdr->code == CONFACK || hdr->code == CONFNAK || hdr->code == CONFREJ) && hdr->id != lcp->fsm.id)
 		return;
-	
+
 	if ((hdr->code == CONFACK || hdr->code == CONFNAK || hdr->code == CONFREJ) && lcp->started)
 		return;
 
@@ -887,9 +887,9 @@ int lcp_option_register(struct lcp_option_handler_t *h)
 	/*struct lcp_option_drv_t *p;
 
 	list_for_each_entry(p,option_drv_list,entry)
-		if (p->id==h->id) 
+		if (p->id==h->id)
 			return -1;*/
-	
+
 	list_add_tail(&h->entry, &option_handlers);
 
 	return 0;
@@ -922,7 +922,7 @@ static void load_config(void)
 	opt = conf_get_opt("ppp", "lcp-echo-failure");
 	if (opt && atoi(opt) >= 0)
 		conf_echo_failure = atoi(opt);
-	
+
 	opt = conf_get_opt("ppp", "lcp-echo-timeout");
 	if (opt && atoi(opt) >= 0)
 		conf_echo_timeout = atoi(opt);

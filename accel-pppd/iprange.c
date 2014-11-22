@@ -30,7 +30,7 @@ static struct iprange_t *parse1(const char *str)
 	int n,f1,f2,f3,f4,m;
 	struct iprange_t *r;
 	int mask;
-	
+
 	n = sscanf(str, "%u.%u.%u.%u/%u",&f1, &f2, &f3, &f4, &m);
 	if (n != 5)
 		return NULL;
@@ -44,14 +44,14 @@ static struct iprange_t *parse1(const char *str)
 		return NULL;
 	if (m > 32)
 		return NULL;
-	
+
 	r = _malloc(sizeof(*r));
 	r->begin = (f4 << 24) | (f3 << 16) | (f2 << 8) | f1;
-	
+
 	mask = htonl(~((1 << (32 - m)) - 1));
 	r->end = ntohl(r->begin | ~mask);
 	r->begin = ntohl(r->begin);
-	
+
 	return r;
 }
 
@@ -74,7 +74,7 @@ static struct iprange_t *parse2(const char *str)
 		return NULL;
 	if (m < f4 || m > 255)
 		return NULL;
-	
+
 	r = _malloc(sizeof(*r));
 	r->begin = ntohl((f4 << 24) | (f3 << 16) | (f2 << 8) | f1);
 	r->end = ntohl((m << 24) | (f3 << 16) | (f2 << 8) | f1);
@@ -118,7 +118,7 @@ static int check_range(struct list_head *list, in_addr_t ipaddr)
 {
 	struct iprange_t *r;
 	uint32_t a = ntohl(ipaddr);
-	
+
 	list_for_each_entry(r, list, entry) {
 		if (a >= r->begin && a <= r->end)
 			return 0;

@@ -111,7 +111,7 @@ static void close_all_fd(void)
 	int fd;
 
 	sprintf(path, "/proc/%u/fd", getpid());
-	
+
 	dirp = opendir(path);
 	if (!dirp)
 		return;
@@ -162,7 +162,7 @@ static void sigsegv(int num)
 	int status;
 
 	pthread_sigmask(SIG_SETMASK, &orig_set, NULL);
-	
+
 	if (conf_dump) {
 		FILE *f;
 		unsigned int t = time(NULL);
@@ -182,8 +182,8 @@ static void sigsegv(int num)
 		sprintf(cmd, "gdb -x %s %s %d > dump-%u", fname, exec_file, getpid(), t);
 
 		system(cmd);
-		
-		unlink(fname);	
+
+		unlink(fname);
 	}
 
 out:
@@ -242,12 +242,12 @@ int main(int _argc, char **_argv)
 
 	if (!conf_file)
 		goto usage;
-	
+
 	if (internal) {
 		while (getppid() != 1)
 			sleep(1);
 	}
-	
+
 	if (triton_init(conf_file))
 		_exit(EXIT_FAILURE);
 
@@ -300,12 +300,12 @@ int main(int _argc, char **_argv)
 	sa.sa_handler = config_reload;
 	sa.sa_mask = set;
 	sigaction(SIGUSR1, &sa, NULL);
-	
+
 	sa.sa_handler = sigsegv;
 	sa.sa_mask = set;
 	sigaction(SIGSEGV, &sa, NULL);
 
-	
+
 	sigdelset(&set, SIGKILL);
 	sigdelset(&set, SIGSTOP);
 	sigdelset(&set, SIGSEGV);
@@ -334,7 +334,7 @@ int main(int _argc, char **_argv)
 
 	sigwait(&set, &sig);
 	log_info1("terminate, sig = %i\n", sig);
-	
+
 	triton_terminate();
 
 	return EXIT_SUCCESS;

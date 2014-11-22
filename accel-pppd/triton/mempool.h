@@ -5,7 +5,7 @@
 
 struct mempool_stat_t
 {
-	uint32_t allocated;	
+	uint32_t allocated;
 	uint32_t available;
 };
 

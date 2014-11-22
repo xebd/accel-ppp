@@ -23,7 +23,7 @@ int gre_add_protocol(struct gre_protocol *proto, u8 version)
 
 	if (version >= GREPROTO_MAX)
 		return -EINVAL;
-	
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	write_lock_bh(&gre_proto_lock);
 #else
@@ -96,7 +96,7 @@ static int gre_rcv(struct sk_buff *skb)
 	ver = skb->data[1]&0x7f;
 	if (ver >= GREPROTO_MAX)
 		goto drop_nolock;
-	
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	read_lock(&gre_proto_lock);
 	proto = gre_proto[ver];
@@ -139,7 +139,7 @@ static void gre_err(struct sk_buff *skb, u32 info)
 	ver=skb->data[1]&0x7f;
 	if (ver>=GREPROTO_MAX)
 		goto drop_nolock;
-		
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,0)
 	read_lock(&gre_proto_lock);
 	proto = gre_proto[ver];

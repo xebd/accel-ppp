@@ -41,7 +41,7 @@ struct backup_data
 	struct list_head mod_list;
 	int internal:1;
 };
-	
+
 struct backup_module
 {
 	struct list_head entry;
@@ -49,7 +49,7 @@ struct backup_module
 
 	int (*save)(struct ap_session *, struct backup_mod *);
 	int (*restore)(struct ap_session *, struct backup_mod *);
-	
+
 	struct ap_session *(*ctrl_restore)(struct backup_mod *);
 	void (*ctrl_start)(struct ap_session *ses);
 	void (*restore_complete)(void);
@@ -61,18 +61,18 @@ struct backup_storage
 
 	/*int (*check_integrity)(void);
 	int (*restore)(int internal);*/
-	
+
 	void (*restore)(int internal);
 
 	struct backup_data *(*create)(struct ap_session *);
 	int (*commit)(struct backup_data *);
 	void (*free)(struct backup_data *);
-	
+
 	struct backup_mod *(*alloc_mod)(struct backup_data *);
 	void (*free_mod)(struct backup_mod *);
 
 	void (*add_fd)(struct backup_data *, int fd);
-	
+
 	struct backup_tag *(*alloc_tag)(struct backup_data *, int size);
 	void (*free_tag)(struct backup_data *, struct backup_tag *);
 };

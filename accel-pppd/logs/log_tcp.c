@@ -207,9 +207,9 @@ static void start_connect(struct tcp_target_t *t)
 		log_emerg("log-tcp: socket: %s\n", strerror(errno));
 		return;
 	}
-	
+
 	fcntl(t->hnd.fd, F_SETFD, fcntl(t->hnd.fd, F_GETFD) | FD_CLOEXEC);
-	
+
 	if (fcntl(t->hnd.fd, F_SETFL, O_NONBLOCK)) {
     log_emerg("log-tcp: failed to set nonblocking mode: %s\n", strerror(errno));
 		close(t->hnd.fd);
@@ -304,7 +304,7 @@ static void init(void)
 {
 	struct conf_sect_t *s =	conf_get_section("log");
 	struct conf_option_t *opt;
-	
+
 	if (!s)
 		return;
 

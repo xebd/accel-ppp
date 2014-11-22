@@ -10,7 +10,7 @@
 
 struct sect_t {
 	struct list_head entry;
-	
+
 	struct conf_sect_t *sect;
 };
 
@@ -51,7 +51,7 @@ static int __conf_load(struct conf_ctx *ctx, const char *fname)
 	}
 
 	r = load_file(&ctx1);
-	
+
 	fclose(ctx1.file);
 
 	return r;
@@ -92,7 +92,7 @@ static int load_file(struct conf_ctx *ctx)
 				fprintf(stderr, "conf_file:%s:%i: sintax error\n", ctx->fname, ctx->line);
 				return -1;
 			}
-			
+
 			if (cur_sect && ctx->items != &cur_sect->items) {
 				fprintf(stderr, "conf_file:%s:%i: cann't open section inside option\n", ctx->fname, ctx->line);
 				return -1;
@@ -145,7 +145,7 @@ static int load_file(struct conf_ctx *ctx)
 		if (sect_add_item(ctx, str, str2, raw))
 			return -1;
 	}
-	
+
 	return 0;
 }
 
@@ -261,13 +261,13 @@ static struct conf_sect_t *find_sect(const char *name)
 static struct conf_sect_t *create_sect(const char *name)
 {
 	struct sect_t *s = _malloc(sizeof(struct sect_t));
-	
+
 	s->sect = _malloc(sizeof(struct conf_sect_t));
 	s->sect->name = (char*)_strdup(name);
 	INIT_LIST_HEAD(&s->sect->items);
-	
+
 	list_add_tail(&s->entry, &sections);
-	
+
 	return s->sect;
 }
 
@@ -293,7 +293,7 @@ static int sect_add_item(struct conf_ctx *ctx, const char *name, char *val, char
 	opt->val = val ? _strdup(val) : NULL;
 	opt->raw = raw;
 	INIT_LIST_HEAD(&opt->items);
-	
+
 	list_add_tail(&opt->entry, ctx->items);
 
 	if (len) {
@@ -313,7 +313,7 @@ static struct conf_option_t *find_item(struct conf_sect_t *sect, const char *nam
 		if (strcmp(opt->name, name) == 0)
 			return opt;
 	}
-	
+
 	return NULL;
 }
 
@@ -329,7 +329,7 @@ __export char * conf_get_opt(const char *sect, const char *name)
 
 	if (!s)
 		return NULL;
-	
+
 	opt = find_item(s, name);
 	if (!opt)
 		return NULL;

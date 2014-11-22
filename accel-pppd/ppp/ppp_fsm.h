@@ -25,7 +25,7 @@ struct ppp_fsm_t
 	struct ppp_t *ppp;
 	FSM_STATE fsm_state;
 	uint16_t proto;
-	
+
 	struct triton_timer_t restart_timer;
 	int restart_counter;
 	int max_terminate;

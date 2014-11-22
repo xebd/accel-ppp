@@ -22,8 +22,8 @@ static unsigned int *stat_starting;
 static unsigned int *stat_active;
 
 /*
- * Our initialization routine, called automatically by the agent 
- * (Note that the function name must match init_FILENAME()) 
+ * Our initialization routine, called automatically by the agent
+ * (Note that the function name must match init_FILENAME())
  */
 void
 init_statIPOE(void)
@@ -36,7 +36,7 @@ init_statIPOE(void)
 
   /*
    * a debugging statement.  Run the agent with -DstatIPOE to see
-   * the output of this debugging statement. 
+   * the output of this debugging statement.
    */
   DEBUGMSGTL(("statIPOE", "Initializing the statIPOE module\n"));
 

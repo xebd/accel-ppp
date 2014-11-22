@@ -25,7 +25,7 @@
 struct in6_ifreq {
         struct in6_addr ifr6_addr;
         __u32           ifr6_prefixlen;
-        int             ifr6_ifindex; 
+        int             ifr6_ifindex;
 };
 
 static void devconf(struct ap_session *ses, const char *attr, const char *val)
@@ -65,7 +65,7 @@ void ap_session_ifup(struct ap_session *ses)
 		_free(ses->ifname_rename);
 		ses->ifname_rename = NULL;
 	}
-	
+
 	triton_event_fire(EV_SES_ACCT_START, ses);
 
 	if (ses->stop_time)
@@ -119,17 +119,17 @@ void __export ap_session_accounting_started(struct ap_session *ses)
 				addr.sin_family = AF_INET;
 				addr.sin_addr.s_addr = ses->ipv4->addr;
 				memcpy(&ifr.ifr_addr, &addr, sizeof(addr));
-				
+
 				if (ioctl(sock_fd, SIOCSIFADDR, &ifr))
 					log_ppp_error("failed to set IPv4 address: %s\n", strerror(errno));
-			
+
 				/*if (ses->ctrl->type == CTRL_TYPE_IPOE) {
 					addr.sin_addr.s_addr = 0xffffffff;
 					memcpy(&ifr.ifr_netmask, &addr, sizeof(addr));
 					if (ioctl(sock_fd, SIOCSIFNETMASK, &ifr))
 						log_ppp_error("failed to set IPv4 nask: %s\n", strerror(errno));
 				}*/
-				
+
 				addr.sin_addr.s_addr = ses->ipv4->peer_addr;
 
 				/*if (ses->ctrl->type == CTRL_TYPE_IPOE) {
@@ -142,7 +142,7 @@ void __export ap_session_accounting_started(struct ap_session *ses)
 						log_ppp_error("failed to add route: %s\n", strerror(errno));
 				} else*/ {
 					memcpy(&ifr.ifr_dstaddr, &addr, sizeof(addr));
-					
+
 					if (ioctl(sock_fd, SIOCSIFDSTADDR, &ifr))
 						log_ppp_error("failed to set peer IPv4 address: %s\n", strerror(errno));
 				}
@@ -154,7 +154,7 @@ void __export ap_session_accounting_started(struct ap_session *ses)
 				devconf(ses, "forwarding", "1");
 
 				memset(&ifr6, 0, sizeof(ifr6));
-				
+
 				if (ses->ctrl->ppp) {
 					ifr6.ifr6_addr.s6_addr32[0] = htons(0xfe80);
 					*(uint64_t *)(ifr6.ifr6_addr.s6_addr + 8) = ses->ipv6->intf_id;
@@ -164,7 +164,7 @@ void __export ap_session_accounting_started(struct ap_session *ses)
 					if (ioctl(sock6_fd, SIOCSIFADDR, &ifr6))
 						log_ppp_error("faild to set LL IPv6 address: %s\n", strerror(errno));
 				}
-				
+
 				list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
 					/*if (a->prefix_len < 128) {
 						build_addr(a, ses->ipv6->intf_id, &ifr6.ifr6_addr);
@@ -195,7 +195,7 @@ void __export ap_session_accounting_started(struct ap_session *ses)
 					if (ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
 						log_ppp_error("failed to set NP (IPv4) mode: %s\n", strerror(errno));
 				}
-				
+
 				if (ses->ipv6) {
 					np.protocol = PPP_IPV6;
 					np.mode = NPMODE_PASS;
@@ -208,7 +208,7 @@ void __export ap_session_accounting_started(struct ap_session *ses)
 		}
 #endif
 	}
-	
+
 	ses->ctrl->started(ses);
 
 	triton_event_fire(EV_SES_STARTED, ses);
@@ -244,7 +244,7 @@ void __export ap_session_ifdown(struct ap_session *ses)
 		ifr6.ifr6_ifindex = ses->ifindex;
 
 		ioctl(sock6_fd, SIOCDIFADDR, &ifr6);
-	
+
 		list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
 			if (a->prefix_len == 128)
 				continue;
@@ -263,7 +263,7 @@ int __export ap_session_rename(struct ap_session *ses, const char *ifname, int l
 
 	if (len == -1)
 		len = strlen(ifname);
-	
+
 	if (len >= IFNAMSIZ - 1) {
 		log_ppp_warn("cannot rename interface (name is too long)\n");
 		return -1;
@@ -272,7 +272,7 @@ int __export ap_session_rename(struct ap_session *ses, const char *ifname, int l
 	strcpy(ifr.ifr_name, ses->ifname);
 	memcpy(ifr.ifr_newname, ifname, len);
 	ifr.ifr_newname[len] = 0;
-	
+
 	if (ioctl(sock_fd, SIOCSIFNAME, &ifr)) {
 		if (!ses->ifname_rename)
 			ses->ifname_rename = _strdup(ifr.ifr_newname);
@@ -281,7 +281,7 @@ int __export ap_session_rename(struct ap_session *ses, const char *ifname, int l
 			return -1;
 		}
 	} else {
-		log_ppp_info2("rename interface to '%s'\n", ifr.ifr_newname);	
+		log_ppp_info2("rename interface to '%s'\n", ifr.ifr_newname);
 		memcpy(ses->ifname, ifname, len);
 		ses->ifname[len] = 0;
 	}

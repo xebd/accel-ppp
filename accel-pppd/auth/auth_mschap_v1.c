@@ -176,7 +176,7 @@ static void chap_timeout_timer(struct triton_timer_t *t)
 static void chap_restart_timer(struct triton_timer_t *t)
 {
 	struct chap_auth_data *d = container_of(t, typeof(*d), interval);
-	
+
 	chap_send_challenge(d, 1);
 }
 
@@ -218,7 +218,7 @@ static void chap_send_success(struct chap_auth_data *ad, int id)
 	hdr->id = id;
 	hdr->len = htons(HDR_LEN + strlen(conf_msg_success));
 	strcpy((char *)(hdr + 1), conf_msg_success);
-	
+
 	if (conf_ppp_verbose)
 		log_ppp_info2("send [MSCHAP-v1 Success id=%x \"%s\"]\n", hdr->id, conf_msg_success);
 
@@ -278,14 +278,14 @@ static void auth_result(struct chap_auth_data *ad, int res)
 			name = NULL;
 		}
 	}
-		
+
 	ad->id++;
 
 	if (ad->mschap_error != conf_msg_failure) {
 		_free(ad->mschap_error);
 		ad->mschap_error = conf_msg_failure;
 	}
-	
+
 	if (name)
 		_free(name);
 }
@@ -358,7 +358,7 @@ static void chap_recv_response(struct chap_auth_data *ad, struct chap_hdr *hdr)
 	ad->mschap_error = conf_msg_failure;
 
 	r = pwdb_check(&ad->ppp->ses, (pwdb_callback)auth_result, ad, name, PPP_CHAP, MSCHAP_V1, ad->id, ad->val, VALUE_SIZE, msg->lm_hash, msg->nt_hash, msg->flags, &ad->mschap_error);
-	
+
 	if (r == PWDB_WAIT) {
 		ad->name = name;
 		return;
@@ -367,7 +367,7 @@ static void chap_recv_response(struct chap_auth_data *ad, struct chap_hdr *hdr)
 	if (r == PWDB_NO_IMPL)
 		if (chap_check_response(ad, msg, name))
 			r = PWDB_DENIED;
-	
+
 	if (r == PWDB_DENIED) {
 		chap_send_failure(ad, ad->mschap_error);
 		if (ad->started)
@@ -426,7 +426,7 @@ static void des_encrypt(const uint8_t *input, const uint8_t *key, uint8_t *outpu
 	DES_set_key_checked(&cb, &ks);
 	memcpy(cb, input, 8);
 	DES_ecb_encrypt(&cb, &res, &ks, DES_ENCRYPT);
-	memcpy(output, res, 8);	
+	memcpy(output, res, 8);
 }
 
 static int chap_check_response(struct chap_auth_data *ad, struct chap_response *msg, const char *name)
@@ -437,7 +437,7 @@ static int chap_check_response(struct chap_auth_data *ad, struct chap_response *
 	char *passwd;
 	char *u_passwd;
 	int i;
-	
+
 	passwd = pwdb_get_passwd(&ad->ppp->ses, name);
 	if (!passwd) {
 		if (conf_ppp_verbose)
@@ -497,7 +497,7 @@ static void set_mppe_keys(struct chap_auth_data *ad, uint8_t *z_hash)
 	SHA1_Update(&sha_ctx, digest, 16);
 	SHA1_Update(&sha_ctx, digest, 16);
 	SHA1_Update(&sha_ctx, ad->val, VALUE_SIZE);
-	SHA1_Final(digest, &sha_ctx);	
+	SHA1_Final(digest, &sha_ctx);
 
 	triton_event_fire(EV_MPPE_KEYS, &ev_mppe);
 }
@@ -505,7 +505,7 @@ static void set_mppe_keys(struct chap_auth_data *ad, uint8_t *z_hash)
 static int chap_restart(struct ppp_t *ppp, struct auth_data_t *auth)
 {
 	struct chap_auth_data *d = container_of(auth, typeof(*d), auth);
-	
+
 	chap_send_challenge(d, 1);
 
 	return 0;

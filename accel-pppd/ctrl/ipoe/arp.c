@@ -50,7 +50,7 @@ static int arp_read(struct triton_md_handler_t *h)
 	dst.sll_family = AF_PACKET;
 	dst.sll_ifindex = s->ipoe->ifindex;
 	dst.sll_protocol = htons(ETH_P_ARP);
-	
+
 	ah2.ar_hrd = htons(ARPHRD_ETHER);
 	ah2.ar_pro = htons(ETH_P_IP);
 	ah2.ar_hln = ETH_ALEN;

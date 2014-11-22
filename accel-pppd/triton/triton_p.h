@@ -24,10 +24,10 @@ struct _triton_context_t
 {
 	struct list_head entry;
 	struct list_head entry2;
-	
+
 	spinlock_t lock;
 	struct _triton_thread_t *thread;
-	
+
 	struct list_head handlers;
 	struct list_head timers;
 	struct list_head pending_handlers;
