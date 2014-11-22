@@ -183,8 +183,8 @@ static void parse_string(const char *str, int dir, int *speed, int *burst, int *
 				*speed = n1/1000;
 				*burst = n2;
 			}
+			return;
 		}
-		return;
 	}
 
 	val = strtol(str, &endptr, 10);
