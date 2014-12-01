@@ -17,6 +17,7 @@
 #include "events.h"
 #include "mempool.h"
 #include "ipdb.h"
+#include "iputils.h"
 
 #include "memdebug.h"
 
@@ -104,12 +105,12 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ad
 	//struct nd_opt_mtu *mtu;
 	struct ipv6db_addr_t *a;
 	int i;
-	
+
 	if (!buf) {
 		log_emerg("out of memory\n");
 		return;
 	}
-	
+
 	if (!h->ses->ipv6) {
 		triton_timer_del(&h->timer);
 		return;
@@ -119,12 +120,12 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ad
 	adv->nd_ra_type = ND_ROUTER_ADVERT;
 	adv->nd_ra_curhoplimit = conf_AdvCurHopLimit;
 	adv->nd_ra_router_lifetime = htons(conf_AdvDefaultLifetime);
-	adv->nd_ra_flags_reserved = 
+	adv->nd_ra_flags_reserved =
 		(conf_AdvManagedFlag ? ND_RA_FLAG_MANAGED : 0) |
 		(conf_AdvOtherConfigFlag ? ND_RA_FLAG_OTHER : 0);
 	adv->nd_ra_reachable = htonl(conf_AdvReachableTime);
 	adv->nd_ra_retransmit = htonl(conf_AdvRetransTimer);
-	
+
 	pinfo = (struct nd_opt_prefix_info *)(adv + 1);
 	list_for_each_entry(a, &h->ses->ipv6->addr_list, entry) {
 		memset(pinfo, 0, sizeof(*pinfo));
@@ -137,8 +138,16 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ad
 		pinfo->nd_opt_pi_preferred_time = htonl(conf_AdvPrefixPreferredLifetime);
 		memcpy(&pinfo->nd_opt_pi_prefix, &a->addr, 8);
 		pinfo++;
+
+		if (!a->installed) {
+			struct in6_addr addr;
+			memcpy(addr.s6_addr, &a->addr, 8);
+			memcpy(addr.s6_addr + 8, &h->ses->ipv6->intf_id, 8);
+			ip6addr_add(h->ses->ifindex, &addr, a->prefix_len);
+			a->installed = 1;
+		}
 	}
-	
+
 	/*rinfo = (struct nd_opt_route_info_local *)pinfo;
 	list_for_each_entry(a, &h->ses->ipv6->route_list, entry) {
 		memset(rinfo, 0, sizeof(*rinfo));
@@ -163,7 +172,7 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ad
 		}
 	} else
 		rdnss_addr = (struct in6_addr *)pinfo;
-	
+
 	if (conf_dnssl) {
 		dnsslinfo = (struct nd_opt_dnssl_info_local *)rdnss_addr;
 		memset(dnsslinfo, 0, sizeof(*dnsslinfo));
@@ -190,7 +199,7 @@ static void send_ra_timer(struct triton_timer_t *t)
 	addr.sin6_family = AF_INET6;
 	addr.sin6_addr.s6_addr32[0] = htonl(0xff020000);
 	addr.sin6_addr.s6_addr32[3] = htonl(0x1);
-	addr.sin6_scope_id = h->ses->ifindex; 
+	addr.sin6_scope_id = h->ses->ifindex;
 
 	if (h->ra_sent == conf_init_ra) {
 		h->timer.period = conf_MaxRtrAdvInterval * 1000;
@@ -261,7 +270,7 @@ static int ipv6_nd_start(struct ap_session *ses)
 	struct ipv6_nd_handler_t *h;
 
 	sock = socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
-	
+
 	if (sock < 0) {
 		log_ppp_error("socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6): %s\n", strerror(errno));
 		return -1;
@@ -283,7 +292,7 @@ static int ipv6_nd_start(struct ap_session *ses)
 		log_ppp_error("ipv6_nd: setsockopt(IPV6_UNICAST_HOPS): %s\n", strerror(errno));
 		goto out_err;
 	}
-	
+
 	if (setsockopt(sock, IPPROTO_IPV6, IPV6_MULTICAST_HOPS, &val, sizeof(val))) {
 		log_ppp_error("ipv6_nd: setsockopt(IPV6_MULTICAST_HOPS): %s\n", strerror(errno));
 		goto out_err;
@@ -372,14 +381,14 @@ static void ev_ses_finishing(struct ap_session *ses)
 
 	if (!h)
 		return;
-	
+
 	if (h->timer.tpd)
 		triton_timer_del(&h->timer);
 
 	triton_md_unregister_handler(&h->hnd, 1);
 
 	list_del(&h->pd.entry);
-	
+
 	_free(h);
 }
 
@@ -393,19 +402,19 @@ static void add_dnssl(const char *val)
 		n++;
 	else
 		n += 2;
-	
+
 	if (n > 255) {
 		log_error("dnsv6: dnssl '%s' is too long\n", val);
 		return;
 	}
-	
+
 	if (!conf_dnssl)
 		conf_dnssl = _malloc(n);
 	else
 		conf_dnssl = _realloc(conf_dnssl, conf_dnssl_size + n);
-	
+
 	buf = conf_dnssl + conf_dnssl_size;
-	
+
 	while (1) {
 		ptr = strchr(val, '.');
 		if (!ptr)
@@ -423,7 +432,7 @@ static void add_dnssl(const char *val)
 				break;
 		}
 	}
-	
+
 	conf_dnssl_size += n;
 }
 
@@ -431,12 +440,12 @@ static void load_dns(void)
 {
 	struct conf_sect_t *s = conf_get_section("ipv6-dns");
 	struct conf_option_t *opt;
-	
+
 	if (!s)
 		return;
-	
+
 	conf_dns_count = 0;
-	
+
 	if (conf_dnssl)
 		_free(conf_dnssl);
 	conf_dnssl = NULL;
@@ -447,7 +456,7 @@ static void load_dns(void)
 			add_dnssl(opt->val);
 			continue;
 		}
-		
+
 		if (!strcmp(opt->name, "lifetime")) {
 			conf_rdnss_lifetime = atoi(opt->val);
 			continue;
@@ -473,10 +482,10 @@ static void load_config(void)
 	opt = conf_get_opt("ipv6-nd", "MaxRtrAdvInterval");
 	if (opt)
 		conf_MaxRtrAdvInterval = atoi(opt);
-	
+
 	conf_MinRtrAdvInterval = 0.33 * conf_MaxRtrAdvInterval;
 	conf_AdvDefaultLifetime = 3 * conf_MaxRtrAdvInterval;
-	
+
 	conf_AdvManagedFlag = triton_module_loaded("ipv6_dhcp");
 	conf_AdvOtherConfigFlag = triton_module_loaded("ipv6_dhcp");
 	conf_AdvPrefixAutonomousFlag = !conf_AdvManagedFlag;
@@ -532,7 +541,7 @@ static void load_config(void)
 	opt = conf_get_opt("ipv6-nd", "AdvAutonomousFlag");
 	if (opt)
 		conf_AdvPrefixAutonomousFlag = atoi(opt);
-	
+
 	load_dns();
 }
 
@@ -541,7 +550,7 @@ static void init(void)
 	buf_pool = mempool_create(BUF_SIZE);
 
 	load_config();
-	
+
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 	triton_event_register_handler(EV_SES_STARTED, (triton_event_func)ev_ses_started);
 	triton_event_register_handler(EV_SES_FINISHING, (triton_event_func)ev_ses_finishing);

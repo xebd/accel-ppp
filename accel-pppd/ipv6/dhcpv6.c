@@ -21,10 +21,11 @@
 #include "ppp.h"
 #include "ipdb.h"
 #include "events.h"
-
-#include "memdebug.h"
+#include "iputils.h"
 
 #include "dhcpv6.h"
+
+#include "memdebug.h"
 
 #define BUF_SIZE 65536
 #define MAX_DNS_COUNT 3
@@ -295,6 +296,18 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 
 					ia_addr->pref_lifetime = htonl(conf_pref_lifetime);
 					ia_addr->valid_lifetime = htonl(conf_valid_lifetime);
+
+					if (a->installed) {
+						if (a->prefix_len > 64)
+							ip6route_add(ses->ifindex, &a->addr, a->prefix_len, 0);
+						else {
+							struct in6_addr addr;
+							memcpy(addr.s6_addr, &a->addr, 8);
+							memcpy(addr.s6_addr + 8, &ses->ipv6->intf_id, 8);
+							ip6addr_add(ses->ifindex, &addr, a->prefix_len);
+						}
+						a->installed = 1;
+					}
 				}
 
 				list_for_each_entry(opt2, &opt->opt_list, entry) {

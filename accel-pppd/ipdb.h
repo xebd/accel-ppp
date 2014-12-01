@@ -1,8 +1,6 @@
 #ifndef IPDB_H
 #define IPDB_H
 
-#include <netinet/in.h>
-
 #include "ppp.h"
 #include "list.h"
 
@@ -20,6 +18,7 @@ struct ipv6db_addr_t
 	struct in6_addr addr;
 	int prefix_len;
 	int flag_auto:1;
+	int installed:1;
 };
 
 struct ipv6db_item_t
@@ -40,7 +39,7 @@ struct ipv6db_prefix_t
 struct ipdb_t
 {
 	struct list_head entry;
-	
+
 	struct ipv4db_item_t *(*get_ipv4)(struct ap_session *ses);
 	void (*put_ipv4)(struct ap_session *ses, struct ipv4db_item_t *);
 
