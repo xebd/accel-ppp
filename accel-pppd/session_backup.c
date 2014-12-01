@@ -52,7 +52,7 @@ static int session_save(struct ap_session *ses, struct backup_mod *m)
 	//add_tag_int(PPP_TAG_UNIT, &ses->unit_idx, sizeof(ses->unit_idx));
 
 	//triton_event_fire(EV_PPP_SESSION_SAVE, &ev);
-	
+
 	return 0;
 }
 
@@ -115,7 +115,7 @@ static int session_restore(struct ap_session *ses, struct backup_mod *m)
 				break;*/
 		}
 	}
-	
+
 	return 0;
 	//return establish_ses(ses);
 }

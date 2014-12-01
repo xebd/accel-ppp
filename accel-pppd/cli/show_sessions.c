@@ -103,7 +103,7 @@ static void free_row(struct row_t *row)
 static void insert_row(struct list_head *list, struct row_t *row)
 {
 	struct row_t *row2, *row3;
-				
+
 	row3 = NULL;
 	list_for_each_entry(row2, list, entry) {
 		if (strcmp(row->order_key, row2->order_key) <= 0) {
@@ -213,7 +213,7 @@ static int show_ses_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 		col->hidden = 1;
 		list_add_tail(&col->entry, &c_list);
 	}
-	
+
 	if (order_key && !order_key_f) {
 		col = _malloc(sizeof(*col));
 		col->column = order_key;

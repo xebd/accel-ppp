@@ -256,7 +256,7 @@ void __export log_free_msg(struct log_msg_t *m)
 	struct _log_msg_t *msg = (struct _log_msg_t *)m->lpd;
 
 	//printf("free msg %p\n", m);
-	
+
 	mempool_free(m->hdr);
 	_log_free_msg(msg);
 
@@ -270,7 +270,7 @@ static void _log_free_msg(struct _log_msg_t *msg)
 
 	if (__sync_sub_and_fetch(&msg->refs, 1))
 		return;
-	
+
 	while(!list_empty(&msg->chunks)) {
 		chunk = list_entry(msg->chunks.next, typeof(*chunk), entry);
 		list_del(&chunk->entry);
@@ -287,13 +287,13 @@ static struct log_msg_t *clone_msg(struct _log_msg_t *msg)
 		log_emerg("log: out of memory\n");
 		return NULL;
 	}
-	
+
 	m->hdr = mempool_alloc(chunk_pool);
 	if (!m->hdr) {
 		log_emerg("log: out of memory\n");
 		mempool_free(m);
 		return NULL;
-	}	
+	}
 
 	m->hdr->len = 0;
 	m->lpd = msg;
@@ -311,14 +311,14 @@ static int add_msg(struct _log_msg_t *msg, const char *buf)
 {
 	struct log_chunk_t *chunk;
 	int i, chunk_cnt, len = strlen(buf);
-	
+
 	if (!list_empty(&msg->chunks)) {
 		chunk = list_entry(msg->chunks.prev, typeof(*chunk), entry);
 		i = min(len, LOG_CHUNK_SIZE - chunk->len);
 		memcpy(chunk->msg + chunk->len, buf, i);
 		chunk->len += i;
 		chunk->msg[chunk->len] = 0;
-		
+
 		if (i == len)
 			return 0;
 
@@ -358,10 +358,10 @@ static void write_msg(FILE *f, struct _log_msg_t *msg, struct ap_session *ses)
 
 	if (ses)
 		fprintf(f, "%s: %s: ", ses->ifname, ses->sessionid);
-	
+
 	list_for_each_entry(chunk, &msg->chunks, entry)
 		fwrite(chunk->msg, chunk->len, 1, f);
-	
+
 	fflush(f);
 	pthread_mutex_unlock(&lock);
 }
@@ -444,7 +444,7 @@ static void ev_ppp_authorized(struct ap_session *ses)
 	struct _log_msg_t *msg;
 	struct log_msg_t *m;
 	struct log_target_t *t;
-	
+
 	list_for_each_entry(t, &targets, entry)
 		if (t->session_start)
 			t->session_start(ppp);

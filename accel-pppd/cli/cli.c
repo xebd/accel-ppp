@@ -49,7 +49,7 @@ void __export cli_register_simple_cmd2(
 
 	c = malloc(sizeof(*c));
 	memset(c, 0, sizeof(*c));
-	
+
 	c->exec = exec;
 	c->help = help;
 	c->hdr_len = hdr_len;
@@ -57,7 +57,7 @@ void __export cli_register_simple_cmd2(
 
 	for (i = 0; i < hdr_len; i++)
 		c->hdr[i] = va_arg(ap, char *);
-	
+
 	list_add_tail(&c->entry, &simple_cmd_list);
 
 	va_end(ap);
@@ -319,7 +319,7 @@ out_found:
 static void load_config(void)
 {
 	const char *opt;
-	
+
 	if (conf_cli_passwd)
 		_free(conf_cli_passwd);
 	opt = conf_get_opt("cli", "password");
@@ -327,7 +327,7 @@ static void load_config(void)
 		conf_cli_passwd = _strdup(opt);
 	else
 		conf_cli_passwd = NULL;
-	
+
 	if (conf_cli_prompt && conf_cli_prompt != def_cli_prompt)
 		_free(conf_cli_prompt);
 	opt = conf_get_opt("cli", "prompt");

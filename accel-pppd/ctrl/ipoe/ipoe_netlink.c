@@ -63,7 +63,7 @@ void ipoe_nl_add_net(uint32_t addr, int mask)
 		struct nlmsghdr n;
 		char buf[1024];
 	} req;
-	
+
 	if (rth.fd == -1)
 		return;
 
@@ -74,7 +74,7 @@ void ipoe_nl_add_net(uint32_t addr, int mask)
 
 	ghdr = NLMSG_DATA(&req.n);
 	ghdr->cmd = IPOE_CMD_ADD_NET;
-		
+
 	mask = ((1 << mask) - 1) << (32 - mask);
 
 	addattr32(nlh, 1024, IPOE_ATTR_ADDR, addr);
@@ -94,12 +94,12 @@ int ipoe_nl_add_exclude(uint32_t addr, int mask)
 		char buf[1024];
 	} req;
 	int ret = 0;
-	
+
 	if (rtnl_open_byproto(&rth, 0, NETLINK_GENERIC)) {
 		log_ppp_error("ipoe: cannot open generic netlink socket\n");
 		return -1;
 	}
-	
+
 	nlh = &req.n;
 	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
 	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
@@ -115,9 +115,9 @@ int ipoe_nl_add_exclude(uint32_t addr, int mask)
 		log_ppp_error("ipoe: nl_add_net: error talking to kernel\n");
 		ret = -1;
 	}
-	
+
 	rtnl_close(&rth);
-	
+
 	return ret;
 }
 
@@ -130,7 +130,7 @@ void ipoe_nl_del_exclude(uint32_t addr)
 		struct nlmsghdr n;
 		char buf[1024];
 	} req;
-	
+
 	if (rtnl_open_byproto(&rth, 0, NETLINK_GENERIC)) {
 		log_ppp_error("ipoe: cannot open generic netlink socket\n");
 		return;
@@ -148,7 +148,7 @@ void ipoe_nl_del_exclude(uint32_t addr)
 
 	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 )
 		log_ppp_error("ipoe: nl_add_net: error talking to kernel\n");
-	
+
 	rtnl_close(&rth);
 }
 
@@ -186,7 +186,7 @@ void ipoe_nl_add_interface(int ifindex)
 		struct nlmsghdr n;
 		char buf[1024];
 	} req;
-	
+
 	if (rth.fd == -1)
 		return;
 
@@ -238,10 +238,10 @@ int ipoe_nl_create(uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_
 
 	if (peer_addr)
 		addattr32(nlh, 1024, IPOE_ATTR_PEER_ADDR, peer_addr);
-	
+
 	if (addr)
 		addattr32(nlh, 1024, IPOE_ATTR_ADDR, addr);
-	
+
 	if (hwaddr) {
 		memcpy(u.hwaddr, hwaddr, 6);
 		addattr_l(nlh, 1024, IPOE_ATTR_HWADDR, &u.u64, 8);
@@ -252,7 +252,7 @@ int ipoe_nl_create(uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_
 
 	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 )
 		log_ppp_error("ipoe: nl_create: error talking to kernel\n");
-	
+
 	if (nlh->nlmsg_type != ipoe_genl_id) {
 		log_ppp_error("ipoe: not a IPoE message %d\n", nlh->nlmsg_type);
 		goto out;
@@ -281,7 +281,7 @@ int ipoe_nl_create(uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_
 	}
 
 	ret = *(uint32_t *)(RTA_DATA(tb[IPOE_ATTR_IFINDEX]));
-	
+
 out:
 	rtnl_close(&rth);
 
@@ -319,7 +319,7 @@ int ipoe_nl_modify(int ifindex, uint32_t peer_addr, uint32_t addr, const char *i
 	addattr32(nlh, 1024, IPOE_ATTR_IFINDEX, ifindex);
 	addattr32(nlh, 1024, IPOE_ATTR_PEER_ADDR, peer_addr);
 	addattr32(nlh, 1024, IPOE_ATTR_ADDR, addr);
-	
+
 	if (hwaddr) {
 		memcpy(u.hwaddr, hwaddr, 6);
 		addattr_l(nlh, 1024, IPOE_ATTR_HWADDR, &u.u64, 8);
@@ -332,7 +332,7 @@ int ipoe_nl_modify(int ifindex, uint32_t peer_addr, uint32_t addr, const char *i
 		log_ppp_error("ipoe: nl_create: error talking to kernel\n");
 		ret = -1;
 	}
-	
+
 	rtnl_close(&rth);
 
 	return ret;
@@ -399,7 +399,7 @@ void ipoe_nl_get_sessions(struct list_head *list)
 
 	if (rth.fd == -1)
 		return;
-	
+
 	nlh = &req.n;
 	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
 	nlh->nlmsg_flags = NLM_F_ROOT | NLM_F_MATCH | NLM_F_REQUEST;
@@ -456,7 +456,7 @@ int ipoe_nl_add_vlan_mon(int ifindex, long *mask, int len)
 		struct nlmsghdr n;
 		char buf[1024];
 	} req;
-	
+
 	if (rth.fd == -1)
 		return -1;
 
@@ -489,12 +489,12 @@ int ipoe_nl_add_vlan_mon_vid(int ifindex, int vid)
 		char buf[1024];
 	} req;
 	int r = 0;
-	
+
 	if (rtnl_open_byproto(&rth, 0, NETLINK_GENERIC)) {
 		log_error("ipoe: cannot open generic netlink socket\n");
 		return -1;
 	}
-	
+
 	nlh = &req.n;
 	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
 	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
@@ -510,7 +510,7 @@ int ipoe_nl_add_vlan_mon_vid(int ifindex, int vid)
 		log_error("ipoe: nl_add_vlan_mon_vid: error talking to kernel\n");
 		r = -1;
 	}
-	
+
 	rtnl_close(&rth);
 
 	return r;
@@ -525,7 +525,7 @@ int ipoe_nl_del_vlan_mon(int ifindex)
 		struct nlmsghdr n;
 		char buf[1024];
 	} req;
-	
+
 	if (rth.fd == -1)
 		return -1;
 
@@ -575,7 +575,7 @@ static void ipoe_up_handler(const struct sockaddr_nl *addr, struct nlmsghdr *h)
 			break;
 
 		parse_rtattr_nested(tb2, IPOE_ATTR_MAX, tb[i]);
-		
+
 		if (!tb2[IPOE_ATTR_ETH_HDR] || !tb2[IPOE_ATTR_IP_HDR] || !tb2[IPOE_ATTR_IFINDEX])
 			continue;
 
@@ -612,7 +612,7 @@ static void ipoe_vlan_mon_handler(const struct sockaddr_nl *addr, struct nlmsghd
 			break;
 
 		parse_rtattr_nested(tb2, IPOE_ATTR_MAX, tb[i]);
-		
+
 		if (!tb2[IPOE_ATTR_IFINDEX] || !tb2[IPOE_ATTR_ADDR])
 			continue;
 
@@ -657,7 +657,7 @@ static int ipoe_mc_read(struct triton_md_handler_t *h)
 				continue;
 			return 0;
 		}
-		
+
 		if (status == 0) {
 			log_error("ipoe: EOF on netlink\n");
 			return 0;
@@ -728,13 +728,13 @@ static void init(void)
 		rth.fd = -1;
 		return;
 	}
-	
+
 	if (rtnl_open_byproto(&rth, 1 << (mcg_id - 1), NETLINK_GENERIC)) {
 		log_error("ipoe: cannot open generic netlink socket\n");
 		rth.fd = -1;
 		return;
 	}
-	
+
 	fcntl(rth.fd, F_SETFL, O_NONBLOCK);
 	fcntl(rth.fd, F_SETFD, fcntl(rth.fd, F_GETFD) | FD_CLOEXEC);
 

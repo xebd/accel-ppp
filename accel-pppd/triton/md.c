@@ -55,8 +55,8 @@ void md_run(void)
 
 void md_terminate(void)
 {
-	pthread_cancel(md_thr);	
-	pthread_join(md_thr, NULL);	
+	pthread_cancel(md_thr);
+	pthread_join(md_thr, NULL);
 }
 
 static void *md_thread(void *arg)
@@ -78,7 +78,7 @@ static void *md_thread(void *arg)
 			triton_log_error("md:epoll_wait: %s", strerror(errno));
 			_exit(-1);
 		}
-		
+
 		for(i = 0; i < n; i++) {
 			h = (struct _triton_md_handler_t *)epoll_events[i].data.ptr;
 			if (!h->ud)
@@ -99,7 +99,7 @@ static void *md_thread(void *arg)
 			if (r)
 				triton_thread_wakeup(h->ctx->thread);
 		}
-		
+
 		while (!list_empty(&freed_list2)) {
 			h = list_entry(freed_list2.next, typeof(*h), entry);
 			list_del(&h->entry);
@@ -144,7 +144,7 @@ void __export triton_md_unregister_handler(struct triton_md_handler_t *ud, int c
 		close(ud->fd);
 		ud->fd = -1;
 	}
-	
+
 	spin_lock(&h->ctx->lock);
 	h->ud = NULL;
 	list_del(&h->entry);
@@ -173,15 +173,15 @@ int __export triton_md_enable_handler(struct triton_md_handler_t *ud, int mode)
 		h->epoll_event.events |= EPOLLIN;
 	if (mode & MD_MODE_WRITE)
 		h->epoll_event.events |= EPOLLOUT;
-	
+
 	if (h->trig_level)
 		h->epoll_event.events |= EPOLLONESHOT;
 	else
 		h->epoll_event.events |= EPOLLET;
-	
+
 	if (events == h->epoll_event.events)
 		return 0;
-	
+
 	if (events) {
 		if (h->armed)
 			r = epoll_ctl(epoll_fd, EPOLL_CTL_MOD, h->ud->fd, &h->epoll_event);
@@ -208,15 +208,15 @@ int __export triton_md_disable_handler(struct triton_md_handler_t *ud,int mode)
 
 	if (!h->epoll_event.events)
 		return 0;
-	
+
 	if (mode & MD_MODE_READ)
 		h->epoll_event.events &= ~EPOLLIN;
 	if (mode & MD_MODE_WRITE)
 		h->epoll_event.events &= ~EPOLLOUT;
-	
+
 	if (!(h->epoll_event.events & (EPOLLIN | EPOLLOUT)))
 		h->epoll_event.events = 0;
-	
+
 	if (events == h->epoll_event.events)
 		return 0;
 

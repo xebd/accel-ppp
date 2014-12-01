@@ -40,29 +40,29 @@ static int session_save(struct ap_session *ses, struct backup_mod *m)
 		return -2;
 
 	add_tag(RAD_TAG_INTERIM_INTERVAL, &rpd->acct_interim_interval, 4);
-	
+
 	if (rpd->session_timeout.tpd)
 		add_tag(RAD_TAG_SESSION_TIMEOUT, &session_timeout, 8);
-	
+
 	if (rpd->idle_timeout.tpd)
 		add_tag(RAD_TAG_IDLE_TIMEOUT, &idle_timeout, 4);
-	
+
 	if (ses->ipv4 == &rpd->ipv4_addr)
 		add_tag(RAD_TAG_IPV4_ADDR, NULL, 0);
-	
+
 	if (ses->ipv6 == &rpd->ipv6_addr)
 		add_tag(RAD_TAG_IPV6_ADDR, NULL, 0);
-	
+
 	/*if (rpd->ipv6_pd_assigned) {
 
 	}*/
 
 	if (rpd->attr_class)
 		add_tag(RAD_TAG_ATTR_CLASS, rpd->attr_class, rpd->attr_class_len);
-	
+
 	if (rpd->attr_state)
 		add_tag(RAD_TAG_ATTR_CLASS, rpd->attr_state, rpd->attr_state_len);
-	
+
 	add_tag(RAD_TAG_TERMINATION_ACTION, &rpd->termination_action, 4);
 
 	if (rpd->acct_req) {
@@ -109,7 +109,7 @@ void radius_restore_session(struct ap_session *ses, struct radius_pd_t *rpd)
 
 	if (!m)
 		return;
-	
+
 	list_for_each_entry(tag, &m->tag_list, entry) {
 		switch (tag->id) {
 			case RAD_TAG_INTERIM_INTERVAL:
@@ -149,10 +149,10 @@ void radius_restore_session(struct ap_session *ses, struct radius_pd_t *rpd)
 				break;
 		}
 	}
-	
+
 	if (acct_addr)
 		rpd->acct_req = rad_req_alloc2(rpd, CODE_ACCOUNTING_REQUEST, rpd->ses->username, acct_addr, acct_port);
-	
+
 	rpd->authenticated = 1;
 }
 

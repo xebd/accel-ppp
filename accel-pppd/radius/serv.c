@@ -38,7 +38,7 @@ static struct rad_server_t *__rad_server_get(int type, struct rad_server_t *excl
 {
 	struct rad_server_t *s, *s0 = NULL, *s1 = NULL;
 	struct timespec ts;
-	
+
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	list_for_each_entry(s, &serv_list, entry) {
@@ -61,7 +61,7 @@ static struct rad_server_t *__rad_server_get(int type, struct rad_server_t *excl
 			else if (!s1)
 				s1 = s;
 		}
-		
+
 		if (!s0) {
 			s0 = s;
 			continue;
@@ -113,7 +113,7 @@ static void req_wakeup(struct rad_req_t *req)
 	    log_switch(triton_context_self(), NULL);
 
 	log_ppp_debug("radius(%i): wakeup %p %i\n", req->serv->id, req, req->active);
-	
+
 	if (!req->active)
 		return;
 
@@ -126,13 +126,13 @@ static void req_wakeup(struct rad_req_t *req)
 		req->serv->req_cnt--;
 		log_ppp_debug("radius(%i): server failed\n", req->serv->id);
 		pthread_mutex_unlock(&req->serv->lock);
-		
+
 		req->send(req, -1);
 
 		return;
 	}
 	pthread_mutex_unlock(&req->serv->lock);
-		
+
 	req->send(req, 1);
 }
 
@@ -166,7 +166,7 @@ int rad_server_req_cancel(struct rad_req_t *req, int full)
 
 	if (req->timeout.tpd)
 		triton_timer_del(&req->timeout);
-	
+
 	if (req->hnd.tpd)
 		triton_md_unregister_handler(&req->hnd, 0);
 
@@ -176,7 +176,7 @@ int rad_server_req_cancel(struct rad_req_t *req, int full)
 int rad_server_req_enter(struct rad_req_t *req)
 {
 	struct timespec ts;
-	
+
 	if (req->serv->need_free || req->serv->starting)
 		return -1;
 
@@ -195,7 +195,7 @@ int rad_server_req_enter(struct rad_req_t *req)
 	assert(!req->entry.next);
 
 	pthread_mutex_lock(&req->serv->lock);
-	
+
 	if (ts.tv_sec < req->serv->fail_time) {
 		pthread_mutex_unlock(&req->serv->lock);
 		return -1;
@@ -207,13 +207,13 @@ int rad_server_req_enter(struct rad_req_t *req)
 			req->serv->queue_cnt++;
 			log_ppp_debug("radius(%i): queue %p\n", req->serv->id, req);
 			pthread_mutex_unlock(&req->serv->lock);
-			
+
 			if (req->hnd.tpd)
 				triton_md_disable_handler(&req->hnd, MD_MODE_READ);
 
 			return 0;
 		}
-		
+
 		pthread_mutex_unlock(&req->serv->lock);
 		return 1;
 	}
@@ -221,12 +221,12 @@ int rad_server_req_enter(struct rad_req_t *req)
 	req->serv->req_cnt++;
 	log_ppp_debug("radius(%i): req_enter %i\n", req->serv->id, req->serv->req_cnt);
 	pthread_mutex_unlock(&req->serv->lock);
-	
+
 	req->active = 1;
-	
+
 	if (req->send)
 		return req->send(req, 0);
-	
+
 	return 0;
 }
 
@@ -289,7 +289,7 @@ void rad_server_fail(struct rad_server_t *s)
 {
 	struct rad_req_t *r;
 	struct timespec ts;
-	
+
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	pthread_mutex_lock(&s->lock);
@@ -329,7 +329,7 @@ void rad_server_reply(struct rad_server_t *s)
 static int req_set_RA(struct rad_req_t *req, const char *secret)
 {
 	MD5_CTX ctx;
-	
+
 	if (rad_packet_build(req->pack, req->RA))
 		return -1;
 
@@ -373,7 +373,7 @@ static void acct_on_timeout(struct triton_timer_t *t)
 		rad_req_free(req);
 		if (s->starting)
 			s->starting = 0;
-		else 
+		else
 			__free_server(s);
 		return;
 	}
@@ -384,7 +384,7 @@ static void acct_on_timeout(struct triton_timer_t *t)
 static void send_acct_on(struct rad_server_t *s)
 {
 	struct rad_req_t *req = rad_req_alloc_empty();
-	
+
 	log_switch(triton_context_self(), NULL);
 
 	memset(req, 0, sizeof(*req));
@@ -406,10 +406,10 @@ static void send_acct_on(struct rad_server_t *s)
 	req->pack = rad_packet_alloc(CODE_ACCOUNTING_REQUEST);
 	if (!req->pack)
 		goto out_err;
-	
+
 	if (rad_packet_add_val(req->pack, NULL, "Acct-Status-Type", s->starting ? "Accounting-On" : "Accounting-Off"))
 		goto out_err;
-	
+
 	if (conf_nas_identifier)
 		if (rad_packet_add_str(req->pack, NULL, "NAS-Identifier", conf_nas_identifier))
 			goto out_err;
@@ -417,7 +417,7 @@ static void send_acct_on(struct rad_server_t *s)
 	if (conf_nas_ip_address)
 		if (rad_packet_add_ipaddr(req->pack, NULL, "NAS-IP-Address", conf_nas_ip_address))
 			goto out_err;
-	
+
 	if (req_set_RA(req, s->secret))
 		goto out_err;
 
@@ -426,7 +426,7 @@ static void send_acct_on(struct rad_server_t *s)
 	triton_timer_add(&s->ctx, &req->timeout, 0);
 
 	return;
-	
+
 out_err:
 	rad_req_free(req);
 }
@@ -434,12 +434,12 @@ out_err:
 static void serv_ctx_close(struct triton_context_t *ctx)
 {
 	struct rad_server_t *s = container_of(ctx, typeof(*s), ctx);
-		
+
 	if (s->timer.tpd)
 		triton_timer_del(&s->timer);
 
 	s->need_close = 1;
-	
+
 	if (!s->client_cnt[0] && !s->client_cnt[1]) {
 		if (s->acct_on) {
 			s->acct_on = 0;
@@ -467,7 +467,7 @@ static void show_stat(struct rad_server_t *s, void *client)
 		cli_send(client, "  state: active\r\n");
 
 	cli_sendv(client, "  fail count: %lu\r\n", s->stat_fail_cnt);
-		
+
 	cli_sendv(client, "  request count: %i\r\n", s->req_cnt);
 	cli_sendv(client, "  queue length: %i\r\n", s->queue_cnt);
 
@@ -539,7 +539,7 @@ static void __add_server(struct rad_server_t *s)
 	s->stat_interim_lost_5m = stat_accm_create(5 * 60);
 	s->stat_interim_query_1m = stat_accm_create(60);
 	s->stat_interim_query_5m = stat_accm_create(5 * 60);
-				
+
 	s->ctx.close = serv_ctx_close;
 
 	triton_context_register(&s->ctx, NULL);
@@ -587,9 +587,9 @@ static int parse_server_old(const char *opt, in_addr_t *addr, int *port, char **
 		*p2 = 0;
 	else
 		return -1;
-	
+
 	*addr = inet_addr(str);
-	
+
 	if (p1) {
 		*port = atoi(p1 + 1);
 		if (*port <=0 )
@@ -646,7 +646,7 @@ static void add_server_old(void)
 		__add_server(s);
 		return;
 	}
-	
+
 	__add_server(s);
 
 	if (acct_addr) {
@@ -670,14 +670,14 @@ static int parse_server1(const char *_opt, struct rad_server_t *s)
 	ptr1 = strchr(opt, ',');
 	if (!ptr1)
 		goto out;
-	
+
 	ptr2 = strchr(ptr1 + 1, ',');
 
 	if (ptr2)
 		ptr3 = strchr(ptr2 + 1, ',');
 	else
 		ptr3 = NULL;
-	
+
 	*ptr1 = 0;
 	if (ptr2)
 		*ptr2 = 0;
@@ -694,7 +694,7 @@ static int parse_server1(const char *_opt, struct rad_server_t *s)
 		}
 	} else
 		s->auth_port = 1812;
-	
+
 	if (ptr3) {
 		if (ptr3[1]) {
 			s->acct_port = strtol(ptr3 + 1, &endptr, 10);
@@ -708,7 +708,7 @@ static int parse_server1(const char *_opt, struct rad_server_t *s)
 	s->fail_timeout = conf_fail_timeout;
 	s->req_limit = conf_req_limit;
 	s->max_fail = conf_max_fail;
-	
+
 	return 0;
 
 out:
@@ -725,7 +725,7 @@ static int parse_server2(const char *_opt, struct rad_server_t *s)
 	ptr1 = strchr(opt, ',');
 	if (!ptr1)
 		goto out;
-	
+
 	ptr2 = strchr(ptr1 + 1, ',');
 
 	*ptr1 = 0;
@@ -770,7 +770,7 @@ static int parse_server2(const char *_opt, struct rad_server_t *s)
 		} else
 			s->fail_timeout = conf_fail_timeout;
 	}
-	
+
 	ptr3 = strstr(ptr2, ",max-fail=");
 	if (ptr3) {
 		s->max_fail = strtol(ptr3 + 10, &endptr, 10);
@@ -778,7 +778,7 @@ static int parse_server2(const char *_opt, struct rad_server_t *s)
 			goto out;
 	} else
 		s->max_fail = conf_max_fail;
-	
+
 	ptr3 = strstr(ptr2, ",weight=");
 	if (ptr3) {
 		s->weight = atoi(ptr3 + 8);
@@ -788,7 +788,7 @@ static int parse_server2(const char *_opt, struct rad_server_t *s)
 		}
 	} else
 		s->weight = 1;
-	
+
 	ptr3 = strstr(ptr2, ",backup");
 	if (ptr3)
 		s->backup = 1;
@@ -799,7 +799,7 @@ static int parse_server2(const char *_opt, struct rad_server_t *s)
 		*ptr2 = 0;
 
 	s->secret = _strdup(ptr1 + 1);
-	
+
 	_free(opt);
 
 	return 0;
@@ -813,12 +813,12 @@ out:
 static void add_server(const char *opt)
 {
 	struct rad_server_t *s = _malloc(sizeof(*s));
-	
+
 	memset(s, 0, sizeof(*s));
 
 	if (!parse_server1(opt,s))
 		goto add;
-	
+
 	if (!parse_server2(opt,s))
 		goto add;
 
@@ -841,13 +841,13 @@ static void load_config(void)
 
 	list_for_each_entry(s, &serv_list, entry)
 		s->need_free = 1;
-		
+
 	opt1 = conf_get_opt("radius", "acct-on");
 	if (opt1)
 		conf_acct_on = atoi(opt1);
 	else
 		conf_acct_on = 0;
-	
+
 	opt1 = conf_get_opt("radius", "fail-timeout");
 	if (!opt1)
 		opt1 = conf_get_opt("radius", "fail-time");
@@ -861,7 +861,7 @@ static void load_config(void)
 		conf_req_limit = atoi(opt1);
 	else
 		conf_req_limit = 0;
-	
+
 	opt1 = conf_get_opt("radius", "max-fail");
 	if (opt1)
 		conf_max_fail = atoi(opt1);
@@ -873,7 +873,7 @@ static void load_config(void)
 			continue;
 		add_server(opt->val);
 	}
-	
+
 	list_for_each_safe(pos, n, &serv_list) {
 		s = list_entry(pos, typeof(*s), entry);
 		if (s->need_free) {
@@ -893,9 +893,9 @@ static void load_config(void)
 			}
 		}
 	}
-	
+
 	add_server_old();
-	
+
 	conf_accounting = 0;
 	list_for_each_entry(s, &serv_list, entry) {
 		if (s->acct_port) {
@@ -903,7 +903,7 @@ static void load_config(void)
 			break;
 		}
 	}
-	
+
 	list_for_each_entry(s, &serv_list, entry) {
 		if (s->starting) {
 			if (!conf_accounting || !s->auth_port)

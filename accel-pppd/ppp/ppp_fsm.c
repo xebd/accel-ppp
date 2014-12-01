@@ -54,7 +54,7 @@ int ppp_fsm_lower_up(struct ppp_fsm_t *layer)
 			//if (layer->init_req_cnt) layer->init_req_cnt(layer);
 			init_req_counter(layer,layer->max_configure);
 			--layer->restart_counter;
-			if (layer->send_conf_req) 
+			if (layer->send_conf_req)
 				if (layer->send_conf_req(layer))
 					return -1;
 			layer->fsm_state=FSM_Req_Sent;
@@ -509,7 +509,7 @@ static void init_req_counter(struct ppp_fsm_t *layer,int timeout)
 static void zero_req_counter(struct ppp_fsm_t *layer)
 {
 	layer->restart_counter=0;
-	
+
 	if (!layer->restart_timer.tpd)
 		triton_timer_add(layer->ppp->ses.ctrl->ctx, &layer->restart_timer, 0);
 }

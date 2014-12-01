@@ -4552,7 +4552,7 @@ static int start_udp_server(void)
 err_hnd:
 	triton_md_unregister_handler(&udp_serv.hnd, 1);
 	triton_context_unregister(&udp_serv.ctx);
-	
+
 	return -1;
 
 err_fd:
@@ -4888,7 +4888,7 @@ static void load_config(void)
 	opt = conf_get_opt("l2tp", "dir300_quirk");
 	if (opt)
 		conf_dir300_quirk = atoi(opt);
-	
+
 	conf_mppe = MPPE_UNSET;
 	opt = conf_get_opt("l2tp", "mppe");
 	if (opt) {

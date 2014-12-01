@@ -103,7 +103,7 @@ static int mru_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, ui
 
 	/*if (!ptr)
 		return LCP_OPT_NAK;*/
-	
+
 	if (opt16->hdr.len != 4)
 		return LCP_OPT_REJ;
 
@@ -132,7 +132,7 @@ static int mru_recv_conf_ack(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, ui
 
 	if (ioctl(sock_fd, SIOCSIFMTU, &ifr))
 		log_ppp_error("lcp:mru: failed to set MTU: %s\n", strerror(errno));
-	
+
 	return 0;
 }
 
@@ -169,11 +169,11 @@ static void load_config(void)
 	opt = conf_get_opt("ppp", "min-mtu");
 	if (opt && atoi(opt) > 0)
 		conf_min_mtu = atoi(opt);
-	
+
 	opt = conf_get_opt("ppp", "max-mtu");
 	if (opt && atoi(opt) > 0)
 		conf_max_mtu = atoi(opt);
-	
+
 	if (conf_min_mtu > conf_mru) {
 		log_emerg("min-mtu cann't be greater then mtu/mru\n");
 		conf_min_mtu = conf_mru;

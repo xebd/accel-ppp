@@ -21,7 +21,7 @@
 struct in6_ifreq {
         struct in6_addr ifr6_addr;
         __u32           ifr6_prefixlen;
-        int             ifr6_ifindex; 
+        int             ifr6_ifindex;
 };
 
 static void devconf(struct ppp_t *ppp, const char *attr, const char *val)
@@ -58,7 +58,7 @@ void ppp_ifup(struct ppp_t *ppp)
 	struct in6_ifreq ifr6;
 	struct npioctl np;
 	struct sockaddr_in addr;
-	
+
 	triton_event_fire(EV_SES_ACCT_START, ppp);
 	if (ppp->stop_time)
 		return;
@@ -69,19 +69,19 @@ void ppp_ifup(struct ppp_t *ppp)
 
 	memset(&ifr, 0, sizeof(ifr));
 	strcpy(ifr.ifr_name, ppp->ifname);
-	
+
 	if (ppp->ses.ipv4) {
 		memset(&addr, 0, sizeof(addr));
 		addr.sin_family = AF_INET;
 		addr.sin_addr.s_addr = ppp->ses.ipv4->addr;
 		memcpy(&ifr.ifr_addr,&addr,sizeof(addr));
-		
+
 		if (ioctl(sock_fd, SIOCSIFADDR, &ifr))
 			log_ppp_error("ppp: failed to set IPv4 address: %s\n", strerror(errno));
-		
+
 		addr.sin_addr.s_addr = ppp->ses.ipv4->peer_addr;
 		memcpy(&ifr.ifr_dstaddr,&addr,sizeof(addr));
-		
+
 		if (ioctl(sock_fd, SIOCSIFDSTADDR, &ifr))
 			log_ppp_error("ppp: failed to set peer IPv4 address: %s\n", strerror(errno));
 	}
@@ -99,7 +99,7 @@ void ppp_ifup(struct ppp_t *ppp)
 
 		if (ioctl(sock6_fd, SIOCSIFADDR, &ifr6))
 			log_ppp_error("ppp: failed to set LL IPv6 address: %s\n", strerror(errno));
-		
+
 		list_for_each_entry(a, &ppp->ses.ipv6->addr_list, entry) {
 			if (a->prefix_len == 128)
 				continue;
@@ -127,7 +127,7 @@ void ppp_ifup(struct ppp_t *ppp)
 		if (ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
 			log_ppp_error("ppp: failed to set NP (IPv4) mode: %s\n", strerror(errno));
 	}
-	
+
 	if (ppp->ses.ipv6) {
 		np.protocol = PPP_IPV6;
 		np.mode = NPMODE_PASS;
@@ -135,7 +135,7 @@ void ppp_ifup(struct ppp_t *ppp)
 		if (ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
 			log_ppp_error("ppp: failed to set NP (IPv6) mode: %s\n", strerror(errno));
 	}
-	
+
 	ppp->ses.ctrl->started(ppp);
 
 	triton_event_fire(EV_SES_STARTED, ppp);
@@ -167,7 +167,7 @@ void __export ppp_ifdown(struct ppp_t *ppp)
 		ifr6.ifr6_ifindex = ppp->ifindex;
 
 		ioctl(sock6_fd, SIOCDIFADDR, &ifr6);
-	
+
 		list_for_each_entry(a, &ppp->ses.ipv6->addr_list, entry) {
 			if (a->prefix_len == 128)
 				continue;

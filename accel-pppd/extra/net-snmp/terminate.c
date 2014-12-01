@@ -63,7 +63,7 @@ static void terminate_by_ip(const char *val, size_t len)
 	str[len] = 0;
 
 	addr = inet_addr(str);
-	
+
 	pthread_rwlock_rdlock(&ses_lock);
 	list_for_each_entry(ses, &ses_list, entry) {
 		if (!ses->ipv4 || ses->ipv4->peer_addr != addr)
@@ -139,7 +139,7 @@ handle_termBySID(netsnmp_mib_handler *handler,
 
     /* a instance handler also only hands us one request at a time, so
        we don't need to loop over a list of requests; we'll only get one. */
-    
+
     switch(reqinfo->mode) {
 
         case MODE_GET:
@@ -200,7 +200,7 @@ handle_termByIfName(netsnmp_mib_handler *handler,
 
     /* a instance handler also only hands us one request at a time, so
        we don't need to loop over a list of requests; we'll only get one. */
-    
+
     switch(reqinfo->mode) {
 
         case MODE_GET:
@@ -262,7 +262,7 @@ handle_termByIP(netsnmp_mib_handler *handler,
 
     /* a instance handler also only hands us one request at a time, so
        we don't need to loop over a list of requests; we'll only get one. */
-    
+
     switch(reqinfo->mode) {
 
         case MODE_GET:
@@ -326,7 +326,7 @@ handle_termByUsername(netsnmp_mib_handler *handler,
 
     /* a instance handler also only hands us one request at a time, so
        we don't need to loop over a list of requests; we'll only get one. */
-    
+
     switch(reqinfo->mode) {
 
         case MODE_GET:

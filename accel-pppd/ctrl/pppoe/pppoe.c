@@ -49,7 +49,7 @@ struct pppoe_conn_t {
 	struct pppoe_tag *service_name;
 	struct pppoe_tag *tr101;
 	uint8_t cookie[COOKIE_LENGTH - 4];
-	
+
 	struct ap_ctrl ctrl;
 	struct ppp_t ppp;
 #ifdef RADIUS
@@ -153,7 +153,7 @@ static void disconnect(struct pppoe_conn_t *conn)
 		pppoe_server_free(conn->serv);
 	} else
 		pthread_mutex_unlock(&conn->serv->lock);
-	
+
 	pthread_mutex_lock(&sid_lock);
 	sid_map[conn->sid/(8*sizeof(long))] |= 1 << (conn->sid % (8*sizeof(long)));
 	pthread_mutex_unlock(&sid_lock);
@@ -209,7 +209,7 @@ static int pppoe_rad_send_access_request(struct rad_plugin_t *rad, struct rad_pa
 
 	if (conn->tr101)
 		return tr101_send_access_request(conn->tr101, pack);
-	
+
 	return 0;
 }
 
@@ -219,11 +219,11 @@ static int pppoe_rad_send_accounting_request(struct rad_plugin_t *rad, struct ra
 
 	if (conn->tr101)
 		return tr101_send_accounting_request(conn->tr101, pack);
-	
+
 	return 0;
 }
 #endif
-	
+
 static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const uint8_t *addr, const struct pppoe_tag *host_uniq, const struct pppoe_tag *relay_sid, const struct pppoe_tag *service_name, const struct pppoe_tag *tr101, const uint8_t *cookie)
 {
 	struct pppoe_conn_t *conn;
@@ -241,18 +241,18 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 	old_sid_ptr = sid_ptr;
 	while (1) {
 		int bit = ffsl(*sid_ptr) - 1;
-		
+
 		if (bit != -1) {
 			conn->sid = sid_idx*8*sizeof(long) + bit;
 			*sid_ptr &= ~(1lu << bit);
 		}
-		
+
 		if (++sid_idx == SID_MAX/8/sizeof(long)) {
 			sid_ptr = sid_map;
 			sid_idx = 0;
 		} else
 			sid_ptr++;
-		
+
 		if (bit != -1)
 			break;
 
@@ -349,7 +349,7 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 		else
 		    sprintf(conn->ctrl.calling_station_id, "%02x:%02x:%02x:%02x:%02x:%02x",
 			addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
-	
+
 	ppp_init(&conn->ppp);
 
 	conn->ppp.ses.ctrl = &conn->ctrl;
@@ -357,16 +357,16 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 
 	if (conf_ip_pool)
 		conn->ppp.ses.ipv4_pool_name = _strdup(conf_ip_pool);
-	
+
 	conn->disc_sock = dup(serv->hnd.fd);
-	
+
 	triton_context_register(&conn->ctx, &conn->ppp.ses);
 
 	pthread_mutex_lock(&serv->lock);
 	list_add_tail(&conn->entry, &serv->conn_list);
 	serv->conn_cnt++;
 	pthread_mutex_unlock(&serv->lock);
-	
+
 	return conn;
 }
 
@@ -374,7 +374,7 @@ static void connect_channel(struct pppoe_conn_t *conn)
 {
 	int sock;
 	struct sockaddr_pppox sp;
-	
+
 	triton_event_fire(EV_CTRL_STARTING, &conn->ppp.ses);
 	triton_event_fire(EV_CTRL_STARTED, &conn->ppp.ses);
 
@@ -383,7 +383,7 @@ static void connect_channel(struct pppoe_conn_t *conn)
 		log_error("pppoe: socket(PPPOX): %s\n", strerror(errno));
 		goto out_err;
 	}
-	
+
 	fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
 
 	memset(&sp, 0, sizeof(sp));
@@ -403,7 +403,7 @@ static void connect_channel(struct pppoe_conn_t *conn)
 
 	if (establish_ppp(&conn->ppp))
 		goto out_err_close;
-	
+
 #ifdef RADIUS
 	if (conn->tr101 && triton_module_loaded("radius")) {
 		conn->radius.send_access_request = pppoe_rad_send_access_request;
@@ -413,9 +413,9 @@ static void connect_channel(struct pppoe_conn_t *conn)
 #endif
 
 	conn->ppp_started = 1;
-	
+
 	dpado_check_next(__sync_add_and_fetch(&stat_active, 1));
-	
+
 	return;
 
 out_err_close:
@@ -478,8 +478,8 @@ static void print_packet(uint8_t *pack)
 			log_info2("PADT");
 			break;
 	}
-	
-	log_info2(" %02x:%02x:%02x:%02x:%02x:%02x => %02x:%02x:%02x:%02x:%02x:%02x", 
+
+	log_info2(" %02x:%02x:%02x:%02x:%02x:%02x => %02x:%02x:%02x:%02x:%02x:%02x",
 		ethhdr->h_source[0], ethhdr->h_source[1], ethhdr->h_source[2], ethhdr->h_source[3], ethhdr->h_source[4], ethhdr->h_source[5],
 		ethhdr->h_dest[0], ethhdr->h_dest[1], ethhdr->h_dest[2], ethhdr->h_dest[3], ethhdr->h_dest[4], ethhdr->h_dest[5]);
 
@@ -577,7 +577,7 @@ static void generate_cookie(struct pppoe_serv_t *serv, const uint8_t *src, uint8
 			u1.raw[16 + i] = buf[i] ^ buf[i + 4] ^ buf[i + 8] ^ buf[i + 12];
 	} else
 		memset(u1.raw + 16, 0, 4);
-	
+
 	*(uint32_t *)(u1.raw + 20) = ts.tv_sec + conf_cookie_timeout;
 
 	for (i = 0; i < 3; i++)
@@ -585,7 +585,7 @@ static void generate_cookie(struct pppoe_serv_t *serv, const uint8_t *src, uint8
 
 	for (i = 0; i < 3; i++)
 		DES_ecb_encrypt(&u2.b[i], &u1.b[i], &serv->des_ks, DES_ENCRYPT);
-	
+
 	memcpy(cookie, u1.raw, 24);
 }
 
@@ -593,7 +593,7 @@ static int check_cookie(struct pppoe_serv_t *serv, const uint8_t *src, const uin
 {
 	MD5_CTX ctx;
 	DES_cblock key;
-	DES_key_schedule ks;	
+	DES_key_schedule ks;
 	int i;
 	union {
 		DES_cblock b[3];
@@ -602,7 +602,7 @@ static int check_cookie(struct pppoe_serv_t *serv, const uint8_t *src, const uin
 	struct timespec ts;
 
 	clock_gettime(CLOCK_MONOTONIC, &ts);
-	
+
 	memcpy(key, serv->hwaddr, 6);
 	key[6] = src[4];
 	key[7] = src[5];
@@ -612,13 +612,13 @@ static int check_cookie(struct pppoe_serv_t *serv, const uint8_t *src, const uin
 
 	for (i = 0; i < 3; i++)
 		DES_ecb_encrypt(&u1.b[i], &u2.b[i], &serv->des_ks, DES_DECRYPT);
-	
+
 	for (i = 0; i < 3; i++)
 		DES_ecb_encrypt(&u2.b[i], &u1.b[i], &ks, DES_DECRYPT);
-	
+
 	if (*(uint32_t *)(u1.raw + 20) < ts.tv_sec)
 		return 1;
-	
+
 	MD5_Init(&ctx);
 	MD5_Update(&ctx, serv->secret, SECRET_LENGTH);
 	MD5_Update(&ctx, serv->hwaddr, ETH_ALEN);
@@ -664,7 +664,7 @@ static void add_tag2(uint8_t *pack, const struct pppoe_tag *t)
 	struct pppoe_tag *tag = (struct pppoe_tag *)(pack + ETH_HLEN + sizeof(*hdr) + ntohs(hdr->length));
 
 	memcpy(tag, t, sizeof(*t) + ntohs(t->tag_len));
-	
+
 	hdr->length = htons(ntohs(hdr->length) + sizeof(*tag) + ntohs(t->tag_len));
 }
 
@@ -695,14 +695,14 @@ static void pppoe_send_PADO(struct pppoe_serv_t *serv, const uint8_t *addr, cons
 
 	if (service_name)
 		add_tag2(pack, service_name);
-	
+
 	generate_cookie(serv, addr, cookie, host_uniq, relay_sid);
 
 	add_tag(pack, TAG_AC_COOKIE, cookie, COOKIE_LENGTH);
 
 	if (host_uniq)
 		add_tag2(pack, host_uniq);
-	
+
 	if (relay_sid)
 		add_tag2(pack, relay_sid);
 
@@ -726,7 +726,7 @@ static void pppoe_send_err(struct pppoe_serv_t *serv, const uint8_t *addr, const
 
 	if (host_uniq)
 		add_tag2(pack, host_uniq);
-	
+
 	if (relay_sid)
 		add_tag2(pack, relay_sid);
 
@@ -745,12 +745,12 @@ static void pppoe_send_PADS(struct pppoe_conn_t *conn)
 	setup_header(pack, conn->serv->hwaddr, conn->addr, CODE_PADS, conn->sid);
 
 	add_tag(pack, TAG_AC_NAME, (uint8_t *)conf_ac_name, strlen(conf_ac_name));
-	
+
 	add_tag2(pack, conn->service_name);
 
 	if (conn->host_uniq)
 		add_tag2(pack, conn->host_uniq);
-	
+
 	if (conn->relay_sid)
 		add_tag2(pack, conn->relay_sid);
 
@@ -831,13 +831,13 @@ static int check_padi_limit(struct pppoe_serv_t *serv, uint8_t *addr)
 		} else
 			break;
 	}
-	
+
 	if (serv->padi_cnt == serv->padi_limit)
 		return -1;
-	
+
 	if (conf_padi_limit && total_padi_cnt >= conf_padi_limit)
 		return -1;
-	
+
 	list_for_each_entry(padi, &serv->padi_list, entry) {
 		if (memcmp(padi->addr, addr, ETH_ALEN) == 0)
 			return -1;
@@ -846,7 +846,7 @@ static int check_padi_limit(struct pppoe_serv_t *serv, uint8_t *addr)
 	padi = mempool_alloc(padi_pool);
 	if (!padi)
 		return -1;
-	
+
 	padi->ts = ts;
 	memcpy(padi->addr, addr, ETH_ALEN);
 	list_add_tail(&padi->entry, &serv->padi_list);
@@ -990,13 +990,13 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 
 	if (ap_shutdown)
 		return;
-	
+
 	if (!memcmp(ethhdr->h_dest, bc_addr, ETH_ALEN)) {
 		if (conf_verbose)
 			log_warn("pppoe: discard PADR (destination address is broadcast)\n");
 		return;
 	}
-	
+
 	if (hdr->sid) {
 		if (conf_verbose)
 			log_warn("pppoe: discarding PADR packet (sid is not zero)\n");
@@ -1007,7 +1007,7 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 		log_info2("recv ");
 		print_packet(pack);
 	}
-	
+
 	for (n = 0; n < ntohs(hdr->length); n += sizeof(*tag) + ntohs(tag->tag_len)) {
 		tag = (struct pppoe_tag *)(pack + ETH_HLEN + sizeof(*hdr) + n);
 
@@ -1110,13 +1110,13 @@ static void pppoe_recv_PADT(struct pppoe_serv_t *serv, uint8_t *pack)
 	struct pppoe_hdr *hdr = (struct pppoe_hdr *)(pack + ETH_HLEN);
 	struct pppoe_conn_t *conn;
 	uint16_t sid = ntohs(hdr->sid);
-	
+
 	if (!memcmp(ethhdr->h_dest, bc_addr, ETH_ALEN)) {
 		if (conf_verbose)
 			log_warn("pppoe: discard PADT (destination address is broadcast)\n");
 		return;
 	}
-	
+
 	if (conf_verbose) {
 		log_info2("recv ");
 		print_packet(pack);
@@ -1191,7 +1191,7 @@ static int pppoe_serv_read(struct triton_md_handler_t *h)
 				log_warn("pppoe: discarding packet (unsupported version %i)\n", hdr->ver);
 			continue;
 		}
-		
+
 		if (hdr->type != 1) {
 			if (conf_verbose)
 				log_warn("pppoe: discarding packet (unsupported type %i)\n", hdr->type);
@@ -1266,13 +1266,13 @@ static void pppoe_add_interface_re(const char *opt, void *cli)
 	struct iplink_arg arg;
 
 	for (ptr = opt; *ptr && *ptr != ','; ptr++);
-	
+
 	pattern = _malloc(ptr - (opt + 3) + 1);
 	memcpy(pattern, opt + 3, ptr - (opt + 3));
 	pattern[ptr - (opt + 3)] = 0;
-	
+
 	re = pcre_compile2(pattern, 0, NULL, &pcre_err, &pcre_offset, NULL);
-		
+
 	if (!re) {
 		log_error("pppoe: %s at %i\r\n", pcre_err, pcre_offset);
 		return;
@@ -1352,7 +1352,7 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli)
 		_free(serv);
 		return;
 	}
-	
+
 	fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
 
 	if (setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &f, sizeof(f))) {
@@ -1398,7 +1398,7 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli)
 			cli_sendv(cli, "interface %s has MTU of %i, should be %i\r\n", ifname, ifr.ifr_mtu, ETH_DATA_LEN);
 		log_error("pppoe: interface %s has MTU of %i, should be %i\n", ifname, ifr.ifr_mtu, ETH_DATA_LEN);
 	}
-	
+
 	if (ioctl(sock, SIOCGIFINDEX, &ifr)) {
 		if (cli)
 			cli_sendv(cli, "ioctl(SIOCGIFINDEX): %s\r\n", strerror(errno));
@@ -1464,7 +1464,7 @@ static void _server_stop(struct pppoe_serv_t *serv)
 
 	if (serv->stopping)
 		return;
-	
+
 	serv->stopping = 1;
 	triton_md_disable_handler(&serv->hnd, MD_MODE_READ | MD_MODE_WRITE);
 
@@ -1578,11 +1578,11 @@ static void load_config(void)
 		opt = conf_get_opt("pppoe", "PADO-Delay");
 	if (opt)
 		dpado_parse(opt);
-	
+
 	opt = conf_get_opt("pppoe", "tr101");
 	if (opt)
 		conf_tr101 = atoi(opt);
-	
+
 	opt = conf_get_opt("pppoe", "padi-limit");
 	if (opt)
 		conf_padi_limit = atoi(opt);
@@ -1590,7 +1590,7 @@ static void load_config(void)
 	opt = conf_get_opt("pppoe", "sid-uppercase");
 	if (opt)
 		conf_sid_uppercase = atoi(opt);
-	
+
 	opt = conf_get_opt("pppoe", "cookie-timeout");
 	if (opt)
 		conf_cookie_timeout = atoi(opt);
@@ -1665,7 +1665,7 @@ static void pppoe_init(void)
 		log_error("pppoe: no configuration, disabled...\n");
 		return;
 	}
-	
+
 	load_config();
 
 	connlimit_loaded = triton_module_loaded("connlimit");

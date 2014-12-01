@@ -37,7 +37,7 @@ void dpado_check_next(int conn_cnt)
 			dpado_range_next = list_entry(dpado_range_next->entry.next, typeof(*dpado_range_next), entry);
 		else
 			dpado_range_next = NULL;
-	/*printf("active=%i, prev=%i:%i, next=%i:%i, pado_delay=%i\n", stat_active, 
+	/*printf("active=%i, prev=%i:%i, next=%i:%i, pado_delay=%i\n", stat_active,
 	dpado_range_prev?dpado_range_prev->pado_delay:0,dpado_range_prev?dpado_range_prev->conn_cnt:0,
 	dpado_range_next?dpado_range_next->pado_delay:0,dpado_range_next?dpado_range_next->conn_cnt:0,
 	pado_delay);*/
@@ -52,7 +52,7 @@ void dpado_check_prev(int conn_cnt)
 		dpado_range_next = dpado_range_prev;
 		dpado_range_prev = list_entry(dpado_range_prev->entry.prev, typeof(*dpado_range_prev), entry);
 		pado_delay = dpado_range_prev->pado_delay;
-	/*printf("active=%i, prev=%i:%i, next=%i:%i, pado_delay=%i\n", stat_active, 
+	/*printf("active=%i, prev=%i:%i, next=%i:%i, pado_delay=%i\n", stat_active,
 	dpado_range_prev?dpado_range_prev->pado_delay:0,dpado_range_prev?dpado_range_prev->conn_cnt:0,
 	dpado_range_next?dpado_range_next->pado_delay:0,dpado_range_next?dpado_range_next->conn_cnt:0,
 	pado_delay);*/
@@ -144,7 +144,7 @@ int dpado_parse(const char *str)
 	if (conf_pado_delay)
 		_free(conf_pado_delay);
 	conf_pado_delay = _strdup(str);
-	/*printf("active=%i, prev=%i:%i, next=%i:%i, pado_delay=%i\n", stat_active, 
+	/*printf("active=%i, prev=%i:%i, next=%i:%i, pado_delay=%i\n", stat_active,
 	dpado_range_prev?dpado_range_prev->pado_delay:0,dpado_range_prev?dpado_range_prev->conn_cnt:0,
 	dpado_range_next?dpado_range_next->pado_delay:0,dpado_range_next?dpado_range_next->conn_cnt:0,
 	pado_delay);*/

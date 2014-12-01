@@ -113,7 +113,7 @@ static void ip_change_handler(struct sigchld_handler_t *h, int status)
 static void ev_ses_starting(struct ap_session *ses)
 {
 	struct pppd_compat_pd *pd;
-	
+
 	pd = _malloc(sizeof(*pd));
 	if (!pd) {
 		log_emerg("pppd_compat: out of memory\n");
@@ -139,7 +139,7 @@ static void ev_ses_pre_up(struct ap_session *ses)
 	char ipaddr[17];
 	char peer_ipaddr[17];
 	struct pppd_compat_pd *pd = find_pd(ses);
-	
+
 	if (!pd)
 		return;
 
@@ -169,7 +169,7 @@ static void ev_ses_pre_up(struct ap_session *ses)
 	argv[4] = ipaddr;
 	argv[5] = peer_ipaddr;
 	fill_argv(argv, pd, conf_ip_up);
-	
+
 	fill_env(env, env_mem, pd);
 
 	if (conf_ip_pre_up) {
@@ -210,14 +210,14 @@ static void ev_ses_started(struct ap_session *ses)
 	char ipaddr[17];
 	char peer_ipaddr[17];
 	struct pppd_compat_pd *pd = find_pd(ses);
-	
+
 	if (!pd)
 		return;
-	
+
 	argv[4] = ipaddr;
 	argv[5] = peer_ipaddr;
 	fill_argv(argv, pd, conf_ip_up);
-	
+
 	fill_env(env, env_mem, pd);
 
 	if (conf_ip_up) {
@@ -240,7 +240,7 @@ static void ev_ses_started(struct ap_session *ses)
 		} else
 			log_error("pppd_compat: fork: %s\n", strerror(errno));
 	}
-	
+
 	pd->started = 1;
 }
 
@@ -253,10 +253,10 @@ static void ev_ses_finished(struct ap_session *ses)
 	char ipaddr[17];
 	char peer_ipaddr[17];
 	struct pppd_compat_pd *pd = find_pd(ses);
-	
+
 	if (!pd)
 		return;
-	
+
 	if (!pd->started)
 		goto skip;
 
@@ -312,7 +312,7 @@ skip:
 	if (pd->radattr_saved)
 		remove_radattr(pd);
 #endif
-	
+
 	list_del(&pd->pd.entry);
 	_free(pd);
 }
@@ -339,7 +339,7 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 	char ipaddr[17];
 	char peer_ipaddr[17];
 	struct pppd_compat_pd *pd = find_pd(ev->ses);
-	
+
 	if (!pd)
 		return;
 
@@ -373,7 +373,7 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 static void remove_radattr(struct pppd_compat_pd *pd)
 {
 	char *fname;
-	
+
 	if (pd->tmp_fname) {
 		unlink(pd->tmp_fname);
 		_free(pd->tmp_fname);
@@ -464,7 +464,7 @@ static void write_radattr(struct pppd_compat_pd *pd, struct rad_packet_t *pack)
 		fclose(f);
 	} else
 		log_ppp_warn("pppd_compat: failed to create '%s': %s\n", fname1, strerror(errno));
-	
+
 	if (ses->state == AP_STATE_ACTIVE) {
 		_free(fname1);
 		_free(fname2);
@@ -484,7 +484,7 @@ static struct pppd_compat_pd *find_pd(struct ap_session *ses)
 			return cpd;
 		}
 	}
-	
+
 	//log_ppp_warn("pppd_compat: pd not found\n");
 	return NULL;
 }
@@ -516,10 +516,10 @@ static void fill_env(char **env, char *mem, struct pppd_compat_pd *pd)
 	struct ap_session *ses = pd->ses;
 	uint64_t tx_bytes, rx_bytes;
 	int n = 0;
-	
+
 	tx_bytes = (uint64_t)ses->acct_tx_bytes + 4294967296llu*ses->acct_output_gigawords;
 	rx_bytes = (uint64_t)ses->acct_rx_bytes + 4294967296llu*ses->acct_input_gigawords;
-	
+
 	env[n++] = mem;
 	mem += sprintf(mem, "PEERNAME=%s", pd->ses->username) + 1;
 	env[n++] = mem;
@@ -546,7 +546,7 @@ static void fill_env(char **env, char *mem, struct pppd_compat_pd *pd)
 		inet_ntop(AF_INET6, &a->addr, mem, ENV_MEM); mem = strchr(mem, 0);
 		mem += sprintf(mem, "/%i", a->prefix_len) + 1;
 	}
-	
+
 	if (pd->ses->stop_time) {
 		env[n++] = mem;
 		mem += sprintf(mem, "CONNECT_TIME=%lu", pd->ses->stop_time - pd->ses->start_time) + 1;

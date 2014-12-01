@@ -70,9 +70,9 @@ struct rad_req_t {
 
 	struct radius_pd_t *rpd;
 	struct rad_server_t *serv;
-	
+
 	in_addr_t server_addr;
-	
+
 	int server_port;
 	int type:8;
 	int try:6;
@@ -214,7 +214,7 @@ int rad_server_realloc(struct rad_req_t *);
 void rad_server_fail(struct rad_server_t *);
 void rad_server_timeout(struct rad_server_t *);
 void rad_server_reply(struct rad_server_t *);
-			
+
 void radius_restore_session(struct ap_session *ses, struct radius_pd_t *rpd);
 
 struct rtnl_link_stats;

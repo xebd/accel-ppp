@@ -92,7 +92,7 @@ void __export md_free(void *ptr, const char *fname, int line)
 		       mem->size, mem->fname, mem->line, fname, line);
 		abort();
 	}
-	
+
 	mem->magic1 = 0;
 	mem->magic2 = 0;
 
@@ -232,7 +232,7 @@ void __export md_check(void *ptr)
 
 	if (!ptr)
 		abort();
-	
+
 	if (mem->magic1 != MAGIC1)
 		abort();
 

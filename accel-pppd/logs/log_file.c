@@ -91,15 +91,15 @@ static int log_file_open(struct log_file_t *lf, const char *fname)
 	if (lf->fd < 0) {
 		log_emerg("log_file: open '%s': %s\n", fname, strerror(errno));
 		return -1;
-	} 
-	
+	}
+
 	return 0;
 }
 
 static void purge(struct list_head *list)
 {
 	struct log_msg_t *msg;
-	
+
 	while (!list_empty(list)) {
 		msg = list_first_entry(list, typeof(*msg), entry);
 		list_del(&msg->entry);
@@ -117,7 +117,7 @@ static void *log_thread(void *unused)
 	LIST_HEAD(msg_list);
 	LIST_HEAD(free_list);
 	sigset_t set;
-	
+
 	sigfillset(&set);
 	sigdelset(&set, SIGKILL);
 	sigdelset(&set, SIGSTOP);
@@ -132,7 +132,7 @@ static void *log_thread(void *unused)
 		pthread_mutex_unlock(&lock);
 
 		iov_cnt = 0;
-		
+
 		while (1) {
 			if (lf->new_fd != -1) {
 				close(lf->fd);
@@ -156,13 +156,13 @@ static void *log_thread(void *unused)
 					mempool_free(lf->lpd);
 				} else
 					spin_unlock(&lf->lock);
-		
+
 				break;
 			}
-			
+
 			list_splice_init(&lf->msgs, &msg_list);
 			spin_unlock(&lf->lock);
-			
+
 			while (!list_empty(&msg_list)) {
 				msg = list_first_entry(&msg_list, typeof(*msg), entry);
 
@@ -183,7 +183,7 @@ static void *log_thread(void *unused)
 						purge(&free_list);
 					}
 				}
-				
+
 				list_move_tail(&msg->entry, &free_list);
 			}
 		}
@@ -243,7 +243,7 @@ static void set_hdr(struct log_msg_t *msg, struct ap_session *ses)
 	localtime_r(&msg->timestamp.tv_sec, &tm);
 
 	strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &tm);
-	sprintf(msg->hdr->msg, "%s[%s]: %s: %s%s%s", conf_color ? level_color[msg->level] : "", 
+	sprintf(msg->hdr->msg, "%s[%s]: %s: %s%s%s", conf_color ? level_color[msg->level] : "",
 		timestamp, level_name[msg->level],
 		ses ? ses->ifname : "",
 		ses ? ": " : "",
@@ -319,7 +319,7 @@ static void per_user_log(struct log_target_t *t, struct log_msg_t *msg, struct a
 static void per_session_log(struct log_target_t *t, struct log_msg_t *msg, struct ap_session *ses)
 {
 	struct log_file_pd_t *lpd;
-	
+
 	if (!ses) {
 		log_free_msg(msg);
 		return;
@@ -339,7 +339,7 @@ static void per_session_log(struct log_target_t *t, struct log_msg_t *msg, struc
 static void fail_log(struct log_target_t *t, struct log_msg_t *msg, struct ap_session *ses)
 {
 	struct fail_log_pd_t *fpd;
-	
+
 	if (!ses || !conf_fail_log) {
 		log_free_msg(msg);
 		return;
@@ -365,7 +365,7 @@ static void fail_reopen(void)
 		log_emerg("log_file: open '%s': %s\n", fname, strerror(errno));
 		return;
 	}
-	
+
 	spin_lock(&fail_log_file->lock);
 	if (fail_log_file->queued)
 		fail_log_file->new_fd = fd;
@@ -434,7 +434,7 @@ static void ev_ses_authorized2(struct ap_session *ses)
 	fpd = find_fpd(ses, &pd_key3);
 	if (!fpd)
 		return;
-	
+
 	while (!list_empty(&fpd->msgs)) {
 		msg = list_entry(fpd->msgs.next, typeof(*msg), entry);
 		list_del(&msg->entry);
@@ -453,7 +453,7 @@ static void ev_ses_authorized1(struct ap_session *ses)
 	lpd = find_lpd(ses, &pd_key1);
 	if (!lpd)
 		return;
-	
+
 	fname = _malloc(PATH_MAX);
 	if (!fname) {
 		log_emerg("log_file: out of memory\n");
@@ -599,7 +599,7 @@ static void ev_ses_starting(struct ap_session *ses)
 	lpd = find_lpd(ses, &pd_key2);
 	if (!lpd)
 		return;
-	
+
 	fname1 = _malloc(PATH_MAX);
 	if (!fname1) {
 		log_emerg("log_file: out of memory\n");
@@ -631,23 +631,23 @@ static void ev_ses_starting(struct ap_session *ses)
 	_free(fname2);
 }
 
-static struct log_target_t general_target = 
+static struct log_target_t general_target =
 {
 	.log = general_log,
 	.reopen = general_reopen,
 };
 
-static struct log_target_t per_user_target = 
+static struct log_target_t per_user_target =
 {
 	.log = per_user_log,
 };
 
-static struct log_target_t per_session_target = 
+static struct log_target_t per_session_target =
 {
 	.log = per_session_log,
 };
 
-static struct log_target_t fail_log_target = 
+static struct log_target_t fail_log_target =
 {
 	.log = fail_log,
 	.reopen = fail_reopen,
@@ -659,7 +659,7 @@ static void init(void)
 	const char *opt;
 
 	pthread_create(&log_thr, NULL, log_thread, NULL);
-	
+
 	lpd_pool = mempool_create(sizeof(struct log_file_pd_t));
 	fpd_pool = mempool_create(sizeof(struct fail_log_pd_t));
 
@@ -673,7 +673,7 @@ static void init(void)
 			_exit(EXIT_FAILURE);
 		}
 	}
-	
+
 	opt = conf_get_opt("log", "log-fail-file");
 	if (opt) {
 		fail_log_file = malloc(sizeof(*fail_log_file));
@@ -685,11 +685,11 @@ static void init(void)
 		}
 		conf_fail_log = 1;
 	}
-	
+
 	opt = conf_get_opt("log","color");
 	if (opt && atoi(opt) > 0)
 		conf_color = 1;
-	
+
 	opt = conf_get_opt("log", "per-user-dir");
 	if (opt)
 		conf_per_user_dir = _strdup(opt);
@@ -701,23 +701,23 @@ static void init(void)
 	opt = conf_get_opt("log", "per-session");
 	if (opt && atoi(opt) > 0)
 		conf_per_session = 1;
-	
+
 	opt = conf_get_opt("log", "copy");
 	if (opt && atoi(opt) > 0)
 		conf_copy = 1;
 
 	log_register_target(&general_target);
-	
+
 	if (conf_per_user_dir) {
 		log_register_target(&per_user_target);
 		triton_event_register_handler(EV_SES_AUTHORIZED, (triton_event_func)ev_ses_authorized1);
 	}
-	
+
 	if (conf_per_session_dir) {
 		log_register_target(&per_session_target);
 		triton_event_register_handler(EV_SES_STARTING, (triton_event_func)ev_ses_starting);
 	}
-	
+
 	if (conf_fail_log) {
 		log_register_target(&fail_log_target);
 		triton_event_register_handler(EV_SES_AUTHORIZED, (triton_event_func)ev_ses_authorized2);

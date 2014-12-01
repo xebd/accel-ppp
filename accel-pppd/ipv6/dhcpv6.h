@@ -158,7 +158,7 @@ struct dhcpv6_packet {
 	struct ap_session *ses;
 	struct dhcpv6_pd *pd;
 	struct sockaddr_in6 addr;
-	
+
 	struct dhcpv6_msg_hdr *hdr;
 	struct dhcpv6_opt_clientid *clientid;
 	struct dhcpv6_opt_serverid *serverid;

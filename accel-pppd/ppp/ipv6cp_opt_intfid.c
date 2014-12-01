@@ -159,7 +159,7 @@ static uint64_t generate_intf_id(struct ppp_t *ppp)
 
 	return id;
 }
-	
+
 static uint64_t generate_peer_intf_id(struct ppp_t *ppp)
 {
 	char str[4];
@@ -168,7 +168,7 @@ static uint64_t generate_peer_intf_id(struct ppp_t *ppp)
 		uint64_t intf_id;
 		uint16_t addr16[4];
 	} u;
-	
+
 	switch (conf_peer_intf_id) {
 		case INTF_ID_FIXED:
 			return conf_peer_intf_id_val;
@@ -204,10 +204,10 @@ static int alloc_ip(struct ppp_t *ppp)
 
 	if (!ppp->ses.ipv6->intf_id)
 		ppp->ses.ipv6->intf_id = generate_intf_id(ppp);
-	
+
 	if (conf_check_exists && check_exists(ppp))
 		return IPV6CP_OPT_FAIL;
-	
+
 	return 0;
 }
 
@@ -216,13 +216,13 @@ static int ipaddr_send_conf_req(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_optio
 	struct ipaddr_option_t *ipaddr_opt = container_of(opt, typeof(*ipaddr_opt), opt);
 	struct ipv6cp_opt64_t *opt64 = (struct ipv6cp_opt64_t *)ptr;
 	int r;
-	
+
 	if (!ipv6cp->ppp->ses.ipv6) {
 		r = alloc_ip(ipv6cp->ppp);
 		if (r)
 			return r;
 	}
-	
+
 	opt64->hdr.id = CI_INTFID;
 	opt64->hdr.len = 10;
 	opt64->val = ipv6cp->ppp->ses.ipv6->intf_id;
@@ -267,7 +267,7 @@ static int ipaddr_recv_conf_req(struct ppp_ipv6cp_t *ipv6cp, struct ipv6cp_optio
 		ipaddr_opt->started = 1;
 		return IPV6CP_OPT_ACK;
 	}
-		
+
 	return IPV6CP_OPT_NAK;
 }
 
@@ -281,7 +281,7 @@ static void ipaddr_print(void (*print)(const char *fmt,...), struct ipv6cp_optio
 		*(uint64_t *)(a.s6_addr + 8) = opt64->val;
 	else
 		*(uint64_t *)(a.s6_addr + 8) = ipaddr_opt->ppp->ses.ipv6->intf_id;
-	
+
 	print("<addr %x:%x:%x:%x>", ntohs(a.s6_addr16[4]), ntohs(a.s6_addr16[5]), ntohs(a.s6_addr16[6]), ntohs(a.s6_addr16[7]));
 }
 
@@ -297,7 +297,7 @@ static uint64_t parse_intfid(const char *opt)
 
 	if (sscanf(opt, "%x:%x:%x:%x", &n[0], &n[1], &n[2], &n[3]) != 4)
 		goto err;
-	
+
 	for (i = 0; i < 4; i++) {
 		if (n[i] < 0 || n[i] > 0xffff)
 			goto err;
@@ -329,7 +329,7 @@ static void load_config(void)
 			conf_intf_id_val = parse_intfid(opt);
 		}
 	}
-	
+
 	opt = conf_get_opt("ppp", "ipv6-peer-intf-id");
 	if (opt) {
 		if (!strcmp(opt, "random"))
@@ -343,7 +343,7 @@ static void load_config(void)
 			conf_peer_intf_id_val = parse_intfid(opt);
 		}
 	}
-	
+
 	opt = conf_get_opt("ppp", "ipv6-accept-peer-intf-id");
 	if (opt)
 		conf_accept_peer_intf_id = atoi(opt);

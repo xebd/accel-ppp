@@ -59,7 +59,7 @@ static int qdisc_htb_root(struct qdisc_opt *qopt, struct nlmsghdr *n)
 	opt.rate2quantum = qopt->quantum;
 	opt.version = 3;
 	opt.defcls = qopt->defcls;
-	
+
 	tail = NLMSG_TAIL(n);
 	addattr_l(n, TCA_BUF_MAX, TCA_OPTIONS, NULL, 0);
 	addattr_l(n, TCA_BUF_MAX, TCA_HTB_INIT, &opt, NLMSG_ALIGN(sizeof(opt)));
@@ -131,9 +131,9 @@ int tc_qdisc_modify(struct rtnl_handle *rth, int ifindex, int cmd, unsigned flag
 
 	if (opt->handle)
 		req.t.tcm_handle = opt->handle;
-	
+
 	req.t.tcm_parent = opt->parent;
-	
+
 	if (opt->kind)
 		addattr_l(&req.n, sizeof(req), TCA_KIND, opt->kind, strlen(opt->kind) + 1);
 
@@ -171,7 +171,7 @@ static int install_htb(struct rtnl_handle *rth, int ifindex, int rate, int burst
 		.defcls = 1,
 		.qdisc = qdisc_htb_root,
 	};
-	
+
 	struct qdisc_opt opt2 = {
 		.kind = "htb",
 		.handle = 0x00010001,
@@ -185,10 +185,10 @@ static int install_htb(struct rtnl_handle *rth, int ifindex, int rate, int burst
 
 	if (tc_qdisc_modify(rth, ifindex, RTM_NEWQDISC, NLM_F_EXCL|NLM_F_CREATE, &opt1))
 		return -1;
-	
+
 	if (tc_qdisc_modify(rth, ifindex, RTM_NEWTCLASS, NLM_F_EXCL|NLM_F_CREATE, &opt2))
 		return -1;
-	
+
 	return 0;
 }
 
@@ -211,7 +211,7 @@ static int install_police(struct rtnl_handle *rth, int ifindex, int rate, int bu
 		.handle = 0xffff0000,
 		.parent = TC_H_INGRESS,
 	};
-	
+
 	struct sel {
 		struct tc_u32_sel sel;
 		struct tc_u32_key key;
@@ -220,7 +220,7 @@ static int install_police(struct rtnl_handle *rth, int ifindex, int rate, int bu
 		.sel.flags = TC_U32_TERMINAL,
 		.key.off = 12,
 	};
-	
+
 	struct tc_police police = {
 		.action = TC_POLICE_SHOT,
 		.rate.rate = rate,
@@ -231,7 +231,7 @@ static int install_police(struct rtnl_handle *rth, int ifindex, int rate, int bu
 
 	if (tc_qdisc_modify(rth, ifindex, RTM_NEWQDISC, NLM_F_EXCL|NLM_F_CREATE, &opt1))
 		return -1;
-	
+
 	if (tc_calc_rtable(&police.rate, rtab, Rcell_log, mtu, linklayer) < 0) {
 		log_ppp_error("shaper: failed to calculate ceil rate table.\n");
 		return -1;
@@ -246,9 +246,9 @@ static int install_police(struct rtnl_handle *rth, int ifindex, int rate, int bu
 	req.t.tcm_ifindex = ifindex;
 	req.t.tcm_handle = 1;
 	req.t.tcm_parent = 0xffff0000;
-	
+
 	req.t.tcm_info = TC_H_MAKE(100 << 16, ntohs(ETH_P_IP));
-	
+
 	addattr_l(&req.n, sizeof(req), TCA_KIND, "u32", 4);
 
 	tail = NLMSG_TAIL(&req.n);
@@ -266,15 +266,15 @@ static int install_police(struct rtnl_handle *rth, int ifindex, int rate, int bu
 	addattr_l(&req.n, MAX_MSG, TCA_POLICE_TBF, &police, sizeof(police));
 	addattr_l(&req.n, MAX_MSG, TCA_POLICE_RATE, rtab, 1024);
 	tail3->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)tail3;
-	
+
 	tail2->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)tail2;
-	
+
 	tail1->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)tail1;
 
 	addattr_l(&req.n, MAX_MSG, TCA_U32_CLASSID, &flowid, 4);
 	addattr_l(&req.n, MAX_MSG, TCA_U32_SEL, &sel, sizeof(sel));
 	tail->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)tail;
- 	
+
 	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
 		return -1;
 
@@ -300,13 +300,13 @@ static int install_htb_ifb(struct rtnl_handle *rth, int ifindex, __u32 priority,
 		.quantum = conf_quantum,
 		.qdisc = qdisc_htb_class,
 	};
-	
+
 	struct qdisc_opt opt2 = {
 		.kind = "ingress",
 		.handle = 0xffff0000,
 		.parent = TC_H_INGRESS,
 	};
-	
+
 	struct sel {
 		struct tc_u32_sel sel;
 		struct tc_u32_key key;
@@ -315,11 +315,11 @@ static int install_htb_ifb(struct rtnl_handle *rth, int ifindex, __u32 priority,
 		.sel.flags = TC_U32_TERMINAL,
 		.key.off = 0,
 	};
-	
+
 	struct tc_skbedit p1 = {
 		.action = TC_ACT_PIPE,
 	};
-	
+
 	struct tc_mirred p2 = {
 		.eaction = TCA_EGRESS_REDIR,
 		.action = TC_ACT_STOLEN,
@@ -328,10 +328,10 @@ static int install_htb_ifb(struct rtnl_handle *rth, int ifindex, __u32 priority,
 
 	if (tc_qdisc_modify(rth, conf_ifb_ifindex, RTM_NEWTCLASS, NLM_F_EXCL|NLM_F_CREATE, &opt1))
 		return -1;
-	
+
 	if (tc_qdisc_modify(rth, ifindex, RTM_NEWQDISC, NLM_F_EXCL|NLM_F_CREATE, &opt2))
 		return -1;
-	
+
 	memset(&req, 0, sizeof(req));
 
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct tcmsg));
@@ -341,10 +341,10 @@ static int install_htb_ifb(struct rtnl_handle *rth, int ifindex, __u32 priority,
 	req.t.tcm_ifindex = ifindex;
 	req.t.tcm_handle = 1;
 	req.t.tcm_parent = 0xffff0000;
-	
+
 	req.t.tcm_info = TC_H_MAKE(100 << 16, ntohs(ETH_P_IP));
 
-	
+
 	addattr_l(&req.n, sizeof(req), TCA_KIND, "u32", 4);
 
 	tail = NLMSG_TAIL(&req.n);
@@ -353,7 +353,7 @@ static int install_htb_ifb(struct rtnl_handle *rth, int ifindex, __u32 priority,
 	tail1 = NLMSG_TAIL(&req.n);
 	addattr_l(&req.n, MAX_MSG, TCA_U32_ACT, NULL, 0);
 
-	// action skbedit priority X pipe 
+	// action skbedit priority X pipe
 	tail2 = NLMSG_TAIL(&req.n);
 	addattr_l(&req.n, MAX_MSG, 1, NULL, 0);
 	addattr_l(&req.n, MAX_MSG, TCA_ACT_KIND, "skbedit", 8);
@@ -363,9 +363,9 @@ static int install_htb_ifb(struct rtnl_handle *rth, int ifindex, __u32 priority,
 	addattr_l(&req.n, MAX_MSG, TCA_SKBEDIT_PARMS, &p1, sizeof(p1));
 	addattr_l(&req.n, MAX_MSG, TCA_SKBEDIT_PRIORITY, &priority, sizeof(priority));
 	tail3->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)tail3;
-	
+
 	tail2->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)tail2;
-	
+
 	tail1->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)tail1;
 
 	// action mirred egress redirect dev ifb0
@@ -377,16 +377,16 @@ static int install_htb_ifb(struct rtnl_handle *rth, int ifindex, __u32 priority,
 	addattr_l(&req.n, MAX_MSG, TCA_ACT_OPTIONS, NULL, 0);
 	addattr_l(&req.n, MAX_MSG, TCA_MIRRED_PARMS, &p2, sizeof(p2));
 	tail3->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)tail3;
-	
+
 	tail2->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)tail2;
-	
+
 	tail1->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)tail1;
   //
 
 	addattr32(&req.n, TCA_BUF_MAX, TCA_U32_CLASSID, 1);
 	addattr_l(&req.n, MAX_MSG, TCA_U32_SEL, &sel, sizeof(sel));
 	tail->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)tail;
- 	
+
 	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
 		return -1;
 
@@ -410,14 +410,14 @@ static int install_fwmark(struct rtnl_handle *rth, int ifindex, int parent)
 	req.n.nlmsg_type = RTM_NEWTFILTER;
 	req.t.tcm_family = AF_UNSPEC;
 	req.t.tcm_ifindex = ifindex;
-	req.t.tcm_handle = 1;
+	req.t.tcm_handle = conf_fwmark;
 	req.t.tcm_parent = parent;
 	req.t.tcm_info = TC_H_MAKE(90 << 16, ntohs(ETH_P_IP));
-	
+
 	addattr_l(&req.n, sizeof(req), TCA_KIND, "fw", 3);
 	tail = NLMSG_TAIL(&req.n);
 	addattr_l(&req.n, TCA_BUF_MAX, TCA_OPTIONS, NULL, 0);
-	addattr32(&req.n, TCA_BUF_MAX, TCA_FW_CLASSID, TC_H_MAKE(conf_fwmark << 16, 0));
+	addattr32(&req.n, TCA_BUF_MAX, TCA_FW_CLASSID, TC_H_MAKE(1 << 16, 0));
 	tail->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)tail;
 	return rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0);
 }
@@ -428,7 +428,7 @@ static int remove_root(struct rtnl_handle *rth, int ifindex)
 		.handle = 0x00010000,
 		.parent = TC_H_ROOT,
 	};
-	
+
 	return tc_qdisc_modify(rth, ifindex, RTM_DELQDISC, 0, &opt);
 }
 
@@ -438,7 +438,7 @@ static int remove_ingress(struct rtnl_handle *rth, int ifindex)
 		.handle = 0xffff0000,
 		.parent = TC_H_INGRESS,
 	};
-	
+
 	return tc_qdisc_modify(rth, ifindex, RTM_DELQDISC, 0, &opt);
 }
 
@@ -448,7 +448,7 @@ static int remove_htb_ifb(struct rtnl_handle *rth, int ifindex, int priority)
 		.handle = 0x00010001 + priority,
 		.parent = 0x00010000,
 	};
-	
+
 	return tc_qdisc_modify(rth, conf_ifb_ifindex, RTM_DELTCLASS, 0, &opt);
 }
 
@@ -456,7 +456,7 @@ int install_limiter(struct ap_session *ses, int down_speed, int down_burst, int 
 {
 	struct rtnl_handle rth;
 	int r;
-	
+
 	if (rtnl_open(&rth, 0)) {
 		log_ppp_error("shaper: cannot open rtnetlink\n");
 		return -1;
@@ -483,11 +483,9 @@ int install_limiter(struct ap_session *ses, int down_speed, int down_burst, int 
 			r = install_leaf_qdisc(&rth, conf_ifb_ifindex, 0x00010001 + ses->unit_idx + 1, (1 + ses->unit_idx + 1) << 16);
 	}
 
-	if (conf_fwmark) {
+	if (conf_fwmark)
 		install_fwmark(&rth, ses->ifindex, 0x00010000);
-		install_fwmark(&rth, ses->ifindex, TC_H_INGRESS);
-	}
-	
+
 	rtnl_close(&rth);
 
 	return r;
@@ -504,7 +502,7 @@ int remove_limiter(struct ap_session *ses)
 
 	remove_root(&rth, ses->ifindex);
 	remove_ingress(&rth, ses->ifindex);
-	
+
 	if (conf_up_limiter == LIM_HTB)
 		remove_htb_ifb(&rth, ses->ifindex, ses->unit_idx + 1);
 
@@ -525,7 +523,7 @@ int init_ifb(const char *name)
 			struct tcmsg 		t;
 			char buf[TCA_BUF_MAX];
 	} req;
-	
+
 	struct qdisc_opt opt = {
 		.kind = "htb",
 		.handle = 0x00010000,
@@ -536,7 +534,7 @@ int init_ifb(const char *name)
 
 	if (system("modprobe -q ifb"))
 		log_warn("failed to load ifb kernel module\n");
-	
+
 	memset(&ifr, 0, sizeof(ifr));
 	strcpy(ifr.ifr_name, name);
 
@@ -546,7 +544,7 @@ int init_ifb(const char *name)
 	}
 
 	conf_ifb_ifindex = ifr.ifr_ifindex;
-	
+
 	ifr.ifr_flags |= IFF_UP;
 
 	if (ioctl(sock_fd, SIOCSIFFLAGS, &ifr)) {
@@ -575,7 +573,7 @@ int init_ifb(const char *name)
 	req.t.tcm_handle = 1;
 	req.t.tcm_parent = 0x00010000;
 	req.t.tcm_info = TC_H_MAKE(100 << 16, ntohs(ETH_P_IP));
-	
+
 	addattr_l(&req.n, sizeof(req), TCA_KIND, "flow", 5);
 
 	tail = NLMSG_TAIL(&req.n);

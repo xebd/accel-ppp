@@ -253,7 +253,7 @@ static struct pppox_sock * lookup_chan(u16 call_id, __be32 s_addr)
 #else
 	read_unlock(&chan_lock);
 #endif
-	
+
 	return sock;
 }
 
@@ -266,13 +266,13 @@ static int lookup_chan_dst(u16 call_id, __be32 d_addr)
 	struct pppox_sock *sock;
 	struct pptp_opt *opt;
 	int i;
-	
+
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 	rcu_read_lock();
 #else
 	down(&chan_lock);
 #endif
-	for(i = find_next_bit(callid_bitmap,MAX_CALLID,1); i < MAX_CALLID; 
+	for(i = find_next_bit(callid_bitmap,MAX_CALLID,1); i < MAX_CALLID;
 	                i = find_next_bit(callid_bitmap, MAX_CALLID, i + 1)){
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 	    sock = rcu_dereference(callid_sock[i]);
@@ -289,7 +289,7 @@ static int lookup_chan_dst(u16 call_id, __be32 d_addr)
 #else
 	up(&chan_lock);
 #endif
-	
+
 	return i<MAX_CALLID;
 }
 
@@ -303,7 +303,7 @@ static int add_chan(struct pppox_sock *sock)
 #else
 	write_lock_bh(&chan_lock);
 #endif
-	
+
 	if (!sock->proto.pptp.src_addr.call_id)
 	{
 	    call_id=find_next_zero_bit(callid_bitmap,MAX_CALLID,call_id+1);
@@ -313,7 +313,7 @@ static int add_chan(struct pppox_sock *sock)
 	}
 	else if (test_bit(sock->proto.pptp.src_addr.call_id,callid_bitmap))
 		goto exit;
-	
+
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 	rcu_assign_pointer(callid_sock[sock->proto.pptp.src_addr.call_id],sock);
 #else
@@ -322,7 +322,7 @@ static int add_chan(struct pppox_sock *sock)
 	set_bit(sock->proto.pptp.src_addr.call_id,callid_bitmap);
 	res=0;
 
-exit:	
+exit:
 	#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 	spin_unlock(&chan_lock);
 	#else
@@ -362,8 +362,8 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 	int len;
 	unsigned char *data;
 	u32 seq_recv;
-	
-	
+
+
 	struct rtable *rt;     			/* Route to the other host */
 	struct net_device *tdev;			/* Device to other host */
 	struct iphdr  *iph;			/* Our new IP header */
@@ -444,11 +444,11 @@ static int pptp_xmit(struct ppp_channel *chan, struct sk_buff *skb)
 		data[0]=PPP_ALLSTATIONS;
 		data[1]=PPP_UI;
 	}
-	
+
 	len=skb->len;
-  
+
 	seq_recv = opt->seq_recv;
-  
+
 	if (opt->ack_sent == seq_recv) header_len-=sizeof(hdr->ack);
 
 	// Push down and install GRE header
@@ -581,7 +581,7 @@ static int pptp_rcv_core(struct sock *sk,struct sk_buff *skb)
 			goto drop;
 		return NET_RX_SUCCESS;
 	}
-	
+
 	header = (struct pptp_gre_header *)(skb->data);
 
 	/* test if acknowledgement present */
@@ -745,15 +745,15 @@ static int pptp_rcv(struct sk_buff *skb)
 		bh_unlock_sock(sk);
 		sock_put(sk);
 		return ret;
-		
+
 #else /* LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,0) */
-		
+
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,19)
 		return sk_receive_skb(sk_pppox(po), skb);
 #else
 		return sk_receive_skb(sk_pppox(po), skb, 0);
 #endif
-		
+
 #endif /* LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,0) */
 	}else {
 #ifdef DEBUG
@@ -775,7 +775,7 @@ static int pptp_bind(struct socket *sock,struct sockaddr *uservaddr,int sockaddr
 	struct pptp_opt *opt=&po->proto.pptp;
 	int error=0;
 
-#ifdef DEBUG	
+#ifdef DEBUG
 	if (log_level>=1)
 		printk(KERN_INFO"PPTP: bind: addr=%X call_id=%i\n",sp->sa_addr.pptp.sin_addr.s_addr,
 						sp->sa_addr.pptp.call_id);
@@ -809,13 +809,13 @@ static int pptp_connect(struct socket *sock, struct sockaddr *uservaddr,
 
 	if (sp->sa_protocol != PX_PROTO_PPTP)
 		return -EINVAL;
-	
+
 #ifdef DEBUG
 	if (log_level>=1)
 		printk(KERN_INFO"PPTP[%i]: connect: addr=%X call_id=%i\n",opt->src_addr.call_id,
 						sp->sa_addr.pptp.sin_addr.s_addr,sp->sa_addr.pptp.call_id);
 #endif
-	
+
 	if (lookup_chan_dst(sp->sa_addr.pptp.call_id,sp->sa_addr.pptp.sin_addr.s_addr))
 		return -EALREADY;
 
@@ -948,7 +948,7 @@ static int pptp_release(struct socket *sock)
 	    release_sock(sk);
 	    return -EBADF;
 	}
-		
+
 	po = pppox_sk(sk);
 	opt=&po->proto.pptp;
 	del_chan(po);
@@ -1213,7 +1213,7 @@ static int __init pptp_init_module(void)
 		printk(KERN_INFO "PPTP: can't register pppox_proto\n");
 		goto out_unregister_sk_proto;
 	}
-	
+
 	return 0;
 out_unregister_sk_proto:
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
@@ -1233,7 +1233,7 @@ out_inet_del_protocol:
 #endif
 out_free_mem:
 	vfree(callid_sock);
-	
+
 	return err;
 }
 

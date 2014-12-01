@@ -11,7 +11,7 @@ void l2tp_nl_delete_tunnel(int tid)
 {
 	struct nl_sock *nl_sock;
 	struct nl_msg *msg;
-	
+
 	nl_sock = nl_socket_alloc();
 	msg = nlmsg_alloc();
 
@@ -32,10 +32,10 @@ void l2tp_nl_create_tunnel(int fd, int tid, int peer_tid)
 {
 	struct nl_sock *nl_sock;
 	struct nl_msg *msg;
-	
+
 	nl_sock = nl_socket_alloc();
 	msg = nlmsg_alloc();
-	
+
 	genl_connect(nl_sock);
 
 	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family, 0, NLM_F_REQUEST, L2TP_CMD_TUNNEL_CREATE, L2TP_GENL_VERSION);
@@ -58,10 +58,10 @@ void l2tp_nl_create_session(int tid, int sid, int peer_sid)
 {
 	struct nl_sock *nl_sock;
 	struct nl_msg *msg;
-	
+
 	nl_sock = nl_socket_alloc();
 	msg = nlmsg_alloc();
-	
+
 	genl_connect(nl_sock);
 
 	genlmsg_put(msg, NL_AUTO_PID, NL_AUTO_SEQ, family, 0, NLM_F_REQUEST, L2TP_CMD_SESSION_CREATE, L2TP_GENL_VERSION);
@@ -83,11 +83,11 @@ void l2tp_nl_create_session(int tid, int sid, int peer_sid)
 static void init(void)
 {
 	struct nl_sock *nl_sock = nl_socket_alloc();
-	
+
 	genl_connect(nl_sock);
 
 	family = genl_ctrl_resolve(nl_sock, L2TP_GENL_NAME);
-	
+
 	nl_close(nl_sock);
 	nl_socket_free(nl_sock);
 }

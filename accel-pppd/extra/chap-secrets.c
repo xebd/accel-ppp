@@ -71,7 +71,7 @@ static char *skip_word(char *ptr)
 				*ptr = ' ';
 				break;
 			}
-		} else if (*ptr == ' ' || *ptr == '\t' || *ptr == '\n') 
+		} else if (*ptr == ' ' || *ptr == '\t' || *ptr == '\n')
 			break;
 	}
 
@@ -95,9 +95,9 @@ static int split(char *buf, char **ptr)
 		buf = skip_word(buf);
 		if (!*buf)
 			return i;
-	
+
 		*buf = 0;
-		
+
 		buf = skip_space(buf + 1);
 		if (!*buf)
 			return i;
@@ -135,7 +135,7 @@ static struct cs_pd_t *create_pd(struct ap_session *ses, const char *username)
 
 	if (!conf_chap_secrets)
 		return NULL;
-	
+
 #ifdef CRYPTO_OPENSSL
 	if (conf_encrypted && !list_empty(&hash_chain)) {
 		unsigned int size = 0;
@@ -153,7 +153,7 @@ static struct cs_pd_t *create_pd(struct ap_session *ses, const char *username)
 		username = username_hash;
 	}
 #endif
-	
+
 	f = fopen(conf_chap_secrets, "r");
 	if (!f) {
 		log_error("chap-secrets: open '%s': %s\n", conf_chap_secrets, strerror(errno));
@@ -166,7 +166,7 @@ static struct cs_pd_t *create_pd(struct ap_session *ses, const char *username)
 		fclose(f);
 		return NULL;
 	}
-	
+
 	while (fgets(buf, 4096, f)) {
 		if (buf[0] == '#')
 			continue;
@@ -209,14 +209,14 @@ found:
 			_free(pd);
 			goto out;
 		}
-		
+
 		for (i = 0; i < 16; i++) {
 			c = ptr[1][i*2 + 2];
 			ptr[1][i*2 + 2] = 0;
 			pd->passwd[i] = strtol(ptr[1] + i*2, NULL, 16);
 			ptr[1][i*2 + 2] = c;
 		}
-	} else 
+	} else
 #endif
 	{
 		pd->passwd = _strdup(ptr[1]);
@@ -290,7 +290,7 @@ static void ev_ses_pre_up(struct ap_session *ses)
 static struct ipv4db_item_t *get_ip(struct ap_session *ses)
 {
 	struct cs_pd_t *pd;
-	
+
 	if (!conf_gw_ip_address && ses->ctrl->ppp)
 		return NULL;
 
@@ -319,10 +319,10 @@ static char* get_passwd(struct pwdb_t *pwdb, struct ap_session *ses, const char 
 
 	if (!pd)
 		pd = create_pd(ses, username);
-	
+
 	if (!pd)
 		return NULL;
-	
+
 	return _strdup(pd->passwd);
 }
 
@@ -353,7 +353,7 @@ static void des_encrypt(const uint8_t *input, const uint8_t *key, uint8_t *outpu
 	DES_set_key_checked(&cb, &ks);
 	memcpy(cb, input, 8);
 	DES_ecb_encrypt(&cb, &res, &ks, DES_ENCRYPT);
-	memcpy(output, res, 8);	
+	memcpy(output, res, 8);
 }
 
 static int auth_pap(struct cs_pd_t *pd, const char *username, va_list args)
@@ -363,7 +363,7 @@ static int auth_pap(struct cs_pd_t *pd, const char *username, va_list args)
 	unsigned char z_hash[21];
 	char *u_passwd;
 	int i, len = strlen(passwd);
-	
+
 	u_passwd = _malloc(len * 2);
 	for (i = 0; i< len; i++) {
 		u_passwd[i * 2] = passwd[i];
@@ -380,10 +380,10 @@ static int auth_pap(struct cs_pd_t *pd, const char *username, va_list args)
 	/*des_encrypt(ad->val, z_hash, nt_hash);
 	des_encrypt(ad->val, z_hash + 7, nt_hash + 8);
 	des_encrypt(ad->val, z_hash + 14, nt_hash + 16);*/
-	
+
 	if (memcmp(z_hash, pd->passwd, 16))
 		return PWDB_DENIED;
-	
+
 	return PWDB_SUCCESS;
 }
 
@@ -421,7 +421,7 @@ static void derive_mppe_keys_mschap_v1(struct ap_session *ses, const uint8_t *z_
 	SHA1_Update(&sha_ctx, digest, 16);
 	SHA1_Update(&sha_ctx, digest, 16);
 	SHA1_Update(&sha_ctx, challenge, challenge_len);
-	SHA1_Final(digest, &sha_ctx);	
+	SHA1_Final(digest, &sha_ctx);
 
 	triton_event_fire(EV_MPPE_KEYS, &ev_mppe);
 }
@@ -439,7 +439,7 @@ int auth_mschap_v1(struct ap_session *ses, struct cs_pd_t *pd, const char *usern
 
 	memcpy(z_hash, pd->passwd, 16);
 	memset(z_hash + 16, 0, sizeof(z_hash) - 16);
-	
+
 	des_encrypt(challenge, z_hash, nt_hash);
 	des_encrypt(challenge, z_hash + 7, nt_hash + 8);
 	des_encrypt(challenge, z_hash + 14, nt_hash + 16);
@@ -460,7 +460,7 @@ static void generate_mschap_response(const uint8_t *nt_response, const uint8_t *
 	uint8_t pw_hash[MD4_DIGEST_LENGTH];
 	uint8_t response[SHA_DIGEST_LENGTH];
 	int i;
-	
+
 	uint8_t magic1[39] =
          {0x4D, 0x61, 0x67, 0x69, 0x63, 0x20, 0x73, 0x65, 0x72, 0x76,
           0x65, 0x72, 0x20, 0x74, 0x6F, 0x20, 0x63, 0x6C, 0x69, 0x65,
@@ -489,7 +489,7 @@ static void generate_mschap_response(const uint8_t *nt_response, const uint8_t *
 	SHA1_Update(&sha_ctx, c_hash, 8);
 	SHA1_Update(&sha_ctx, magic2, 41);
 	SHA1_Final(response, &sha_ctx);
-	
+
 	for (i = 0; i < 20; i++)
 		sprintf(authenticator + i*2, "%02X", response[i]);
 }
@@ -502,7 +502,7 @@ static void derive_mppe_keys_mschap_v2(struct ap_session *ses, const uint8_t *z_
 	uint8_t digest[20];
 	uint8_t send_key[20];
 	uint8_t recv_key[20];
-	
+
 	uint8_t pad1[40] =
    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -548,7 +548,7 @@ static void derive_mppe_keys_mschap_v2(struct ap_session *ses, const uint8_t *z_
 		.recv_key = recv_key,
 		.send_key = send_key,
 	};
-	
+
 	//NtPasswordHashHash
 	MD4_Init(&md4_ctx);
 	MD4_Update(&md4_ctx, z_hash, 16);
@@ -602,7 +602,7 @@ int auth_mschap_v2(struct ap_session *ses, struct cs_pd_t *pd, const char *usern
 
 	memcpy(z_hash, pd->passwd, 16);
 	memset(z_hash + 16, 0, sizeof(z_hash) - 16);
-	
+
 	des_encrypt(c_hash, z_hash, nt_hash);
 	des_encrypt(c_hash, z_hash + 7, nt_hash + 8);
 	des_encrypt(c_hash, z_hash + 14, nt_hash + 16);
@@ -613,7 +613,7 @@ int auth_mschap_v2(struct ap_session *ses, struct cs_pd_t *pd, const char *usern
 	if (ses->ctrl->ppp)
 		derive_mppe_keys_mschap_v2(ses, z_hash, response);
 
-	generate_mschap_response(response, c_hash, z_hash, authenticator);	
+	generate_mschap_response(response, c_hash, z_hash, authenticator);
 
 	return PWDB_SUCCESS;
 }
@@ -626,7 +626,7 @@ static int check_passwd(struct pwdb_t *pwdb, struct ap_session *ses, pwdb_callba
 
 	if (!conf_encrypted)
 		return PWDB_NO_IMPL;
-	
+
 	pd = find_pd(ses);
 
 	if (!pd)
@@ -634,7 +634,7 @@ static int check_passwd(struct pwdb_t *pwdb, struct ap_session *ses, pwdb_callba
 
 	if (!pd)
 		return PWDB_NO_IMPL;
-	
+
 	va_copy(args, _args);
 
 	switch (type) {
@@ -656,7 +656,7 @@ static int check_passwd(struct pwdb_t *pwdb, struct ap_session *ses, pwdb_callba
 			}
 			break;
 	}
-	
+
 	va_end(args);
 
 	return r;
@@ -692,7 +692,7 @@ static void parse_hash_chain(const char *opt)
 	char *ptr1 = str, *ptr2;
 	struct hash_chain *hc;
 	int f = 0;
-	
+
 	while (!f) {
 		for (ptr2 = ptr1 + 1; *ptr2 && *ptr2 != ','; ptr2++);
 		f = *ptr2 == 0;
@@ -748,13 +748,13 @@ static void load_config(void)
 	else {
 		conf_gw_ip_address = 0;
 	}
-	
+
 	opt = conf_get_opt("chap-secrets", "encrypted");
 	if (opt)
 		conf_encrypted = atoi(opt);
 	else
 		conf_encrypted = 0;
-	
+
 #ifdef CRYPTO_OPENSSL
 	clear_hash_chain();
 	opt = conf_get_opt("chap-secrets", "username-hash");
@@ -769,7 +769,7 @@ static void init(void)
 
 	pwdb_register(&pwdb);
 	ipdb_register(&ipdb);
-	
+
 	triton_event_register_handler(EV_SES_FINISHED, (triton_event_func)ev_ses_finished);
 	triton_event_register_handler(EV_SES_PRE_UP, (triton_event_func)ev_ses_pre_up);
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);

@@ -86,19 +86,19 @@ static int alloc_ip(struct ppp_t *ppp)
 		log_ppp_warn("ppp: no free IPv4 address\n");
 		return IPCP_OPT_CLOSE;
 	}
-	
+
 	if (iprange_tunnel_check(ppp->ses.ipv4->peer_addr)) {
 		log_ppp_warn("ppp:ipcp: to avoid kernel soft lockup requested IP cannot be assigned (%i.%i.%i.%i)\n",
-			ppp->ses.ipv4->peer_addr&0xff, 
-			(ppp->ses.ipv4->peer_addr >> 8)&0xff, 
-			(ppp->ses.ipv4->peer_addr >> 16)&0xff, 
+			ppp->ses.ipv4->peer_addr&0xff,
+			(ppp->ses.ipv4->peer_addr >> 8)&0xff,
+			(ppp->ses.ipv4->peer_addr >> 16)&0xff,
 			(ppp->ses.ipv4->peer_addr >> 24)&0xff);
 		return IPCP_OPT_FAIL;
 	}
-	
+
 	if (conf_check_exists && check_exists(ppp, ppp->ses.ipv4->peer_addr))
 		return IPCP_OPT_FAIL;
-	
+
 	return 0;
 }
 
@@ -107,13 +107,13 @@ static int ipaddr_send_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 	struct ipaddr_option_t *ipaddr_opt = container_of(opt, typeof(*ipaddr_opt), opt);
 	struct ipcp_opt32_t *opt32 = (struct ipcp_opt32_t *)ptr;
 	int r;
-	
+
 	if (!ipcp->ppp->ses.ipv4) {
 		r = alloc_ip(ipcp->ppp);
 		if (r)
 			return r;
 	}
-	
+
 	opt32->hdr.id = CI_ADDR;
 	opt32->hdr.len = 6;
 	opt32->val = ipcp->ppp->ses.ipv4->addr;
@@ -149,7 +149,7 @@ static int ipaddr_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *o
 		ipcp->delay_ack = ccp_ipcp_started(ipcp->ppp);
 		return IPCP_OPT_ACK;
 	}
-		
+
 	return IPCP_OPT_NAK;
 }
 
@@ -163,7 +163,7 @@ static void ipaddr_print(void (*print)(const char *fmt,...),struct ipcp_option_t
 		in.s_addr = opt32->val;
 	else if (ipaddr_opt->ppp->ses.ipv4)
 		in.s_addr = ipaddr_opt->ppp->ses.ipv4->addr;
-	
+
 	print("<addr %s>",inet_ntoa(in));
 }
 

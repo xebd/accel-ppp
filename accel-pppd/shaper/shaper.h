@@ -21,7 +21,7 @@ struct qdisc_opt {
 	int quantum;
 	int defcls;
 	int (*qdisc)(struct qdisc_opt *opt, struct nlmsghdr *n);
-};	
+};
 
 extern int conf_up_limiter;
 extern int conf_down_limiter;

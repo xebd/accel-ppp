@@ -78,7 +78,7 @@ static void disconnect(struct pptp_conn_t *conn)
 	log_ppp_debug("pptp: disconnect\n");
 
 	triton_md_unregister_handler(&conn->hnd, 1);
-	
+
 	if (conn->timeout_timer.tpd)
 		triton_timer_del(&conn->timeout_timer);
 
@@ -93,14 +93,14 @@ static void disconnect(struct pptp_conn_t *conn)
 		__sync_sub_and_fetch(&stat_starting, 1);
 
 	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp.ses);
-	
+
 	log_ppp_info1("disconnected\n");
 
 	triton_context_unregister(&conn->ctx);
 
 	if (conn->ppp.ses.chan_name)
 		_free(conn->ppp.ses.chan_name);
-	
+
 	_free(conn->in_buf);
 	_free(conn->out_buf);
 	_free(conn->ctrl.calling_station_id);
@@ -178,7 +178,7 @@ static int pptp_stop_ctrl_conn_rqst(struct pptp_conn_t *conn)
 }
 
 static int pptp_stop_ctrl_conn_rply(struct pptp_conn_t *conn)
-{	
+{
 	struct pptp_stop_ctrl_conn *msg = (struct pptp_stop_ctrl_conn*)conn->in_buf;
 	if (conf_verbose)
 		log_ppp_info2("recv [PPTP Stop-Ctrl-Conn-Reply <Result %i> <Error %i>]\n", msg->reason_result, msg->error_code);
@@ -342,7 +342,7 @@ static int pptp_out_call_rqst(struct pptp_conn_t *conn)
 	conn->state = STATE_PPP;
 	__sync_sub_and_fetch(&stat_starting, 1);
 	__sync_add_and_fetch(&stat_active, 1);
-	
+
 	if (conn->timeout_timer.tpd)
 		triton_timer_del(&conn->timeout_timer);
 
@@ -366,7 +366,7 @@ static int send_pptp_call_disconnect_notify(struct pptp_conn_t *conn, int result
 
 	if (conf_verbose)
 		log_ppp_info2("send [PPTP Call-Disconnect-Notify <Call-ID %x> <Result %i> <Error %i> <Cause %i>]\n", ntohs(msg.call_id), msg.result_code, msg.error_code, msg.cause_code);
-	
+
 	return post_msg(conn, &msg, sizeof(msg));
 }
 
@@ -409,7 +409,7 @@ static int pptp_echo_rqst(struct pptp_conn_t *conn)
 static int pptp_echo_rply(struct pptp_conn_t *conn)
 {
 	struct pptp_echo_rply *msg = (struct pptp_echo_rply *)conn->in_buf;
-	
+
 	if (conf_verbose)
 		log_ppp_debug("recv [PPTP Echo-Reply <Identifier %x>]\n", msg->identifier);
 
@@ -678,13 +678,13 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		conn->ctrl.ppp = 1;
 		conn->ctrl.name = "pptp";
 		conn->ctrl.mppe = conf_mppe;
-		
+
 		conn->ctrl.calling_station_id = _malloc(17);
 		conn->ctrl.called_station_id = _malloc(17);
 		u_inet_ntoa(addr.sin_addr.s_addr, conn->ctrl.calling_station_id);
 		getsockname(sock, &addr, &size);
 		u_inet_ntoa(addr.sin_addr.s_addr, conn->ctrl.called_station_id);
-	
+
 		ppp_init(&conn->ppp);
 		conn->ppp.ses.ctrl = &conn->ctrl;
 
@@ -739,7 +739,7 @@ static void load_config(void)
 	opt = conf_get_opt("pptp", "timeout");
 	if (opt && atoi(opt) > 0)
 		conf_timeout = atoi(opt);
-	
+
 	opt = conf_get_opt("pptp", "echo-interval");
 	if (opt && atoi(opt) >= 0)
 		conf_echo_interval = atoi(opt);
@@ -787,7 +787,7 @@ static void pptp_init(void)
 	}
 
 	fcntl(serv.hnd.fd, F_SETFD, fcntl(serv.hnd.fd, F_GETFD) | FD_CLOEXEC);
-  
+
 	addr.sin_family = AF_INET;
 
 	opt = conf_get_opt("pptp", "bind");
@@ -801,8 +801,8 @@ static void pptp_init(void)
 		addr.sin_port = htons(atoi(opt));
 	else
 		addr.sin_port = htons(PPTP_PORT);
-  
-  setsockopt(serv.hnd.fd, SOL_SOCKET, SO_REUSEADDR, &serv.hnd.fd, 4);  
+
+  setsockopt(serv.hnd.fd, SOL_SOCKET, SO_REUSEADDR, &serv.hnd.fd, 4);
   if (bind (serv.hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
     log_emerg("pptp: failed to bind socket: %s\n", strerror(errno));
 		close(serv.hnd.fd);
@@ -820,7 +820,7 @@ static void pptp_init(void)
 		close(serv.hnd.fd);
     return;
 	}
-	
+
 	conn_pool = mempool_create(sizeof(struct pptp_conn_t));
 
 	load_config();
@@ -831,7 +831,7 @@ static void pptp_init(void)
 	triton_context_wakeup(&serv.ctx);
 
 	cli_register_simple_cmd2(show_stat_exec, NULL, 2, "show", "stat");
-	
+
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 

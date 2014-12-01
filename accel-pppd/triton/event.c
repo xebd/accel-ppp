@@ -66,7 +66,7 @@ int __export triton_event_register_handler(int ev_id, triton_event_func func)
 
 	if (ev_id >= max_events)
 		return -1;
-	
+
 	ev = events[ev_id];
 	if (!ev) {
 		return -1;
@@ -94,7 +94,7 @@ void __export triton_event_fire(int ev_id, void *arg)
 
 	if (ev_id >= max_events)
 		return;
-	
+
 	ev = events[ev_id];
 	if (!ev)
 		return;

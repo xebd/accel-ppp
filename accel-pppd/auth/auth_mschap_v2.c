@@ -19,7 +19,7 @@
 
 #include "memdebug.h"
 
-#define MSCHAP_V2 0x81 
+#define MSCHAP_V2 0x81
 
 #define CHAP_CHALLENGE 1
 #define CHAP_RESPONSE  2
@@ -119,7 +119,7 @@ static void auth_data_free(struct ppp_t *ppp, struct auth_data_t *auth)
 
 	if (d->interval.tpd)
 		triton_timer_del(&d->interval);
-	
+
 	_free(d);
 }
 
@@ -177,7 +177,7 @@ static void chap_timeout_timer(struct triton_timer_t *t)
 static void chap_restart_timer(struct triton_timer_t *t)
 {
 	struct chap_auth_data *d = container_of(t, typeof(*d), interval);
-	
+
 	chap_send_challenge(d, 1);
 }
 
@@ -203,7 +203,7 @@ static void chap_send_failure(struct chap_auth_data *ad, char *mschap_error, cha
 	hdr->len = htons(HDR_LEN + strlen(mschap_error) + strlen(reply_msg) + 3);
 
 	sprintf((char *)(hdr + 1), "%s M=%s", mschap_error, reply_msg);
-	
+
 	if (conf_ppp_verbose)
 		log_ppp_info2("send [MSCHAP-v2 Failure id=%x \"%s\"]\n", hdr->id, (char *)(hdr + 1));
 
@@ -240,7 +240,7 @@ static int generate_response(struct chap_auth_data *ad, struct chap_response *ms
 	uint8_t c_hash[SHA_DIGEST_LENGTH];
 	uint8_t response[SHA_DIGEST_LENGTH];
 	int i;
-	
+
 	uint8_t magic1[39] =
          {0x4D, 0x61, 0x67, 0x69, 0x63, 0x20, 0x73, 0x65, 0x72, 0x76,
           0x65, 0x72, 0x20, 0x74, 0x6F, 0x20, 0x63, 0x6C, 0x69, 0x65,
@@ -290,10 +290,10 @@ static int generate_response(struct chap_auth_data *ad, struct chap_response *ms
 	SHA1_Update(&sha_ctx,c_hash,8);
 	SHA1_Update(&sha_ctx,magic2,41);
 	SHA1_Final(response,&sha_ctx);
-	
+
 	for(i=0; i<20; i++)
 		sprintf(authenticator+i*2,"%02X",response[i]);
-	
+
 	_free(passwd);
 	_free(u_passwd);
 
@@ -351,19 +351,19 @@ static void auth_result(struct chap_auth_data *ad, int res)
 			name = NULL;
 		}
 	}
-		
+
 	ad->id++;
 
 	if (ad->mschap_error != conf_msg_failure) {
 		_free(ad->mschap_error);
 		ad->mschap_error = conf_msg_failure;
 	}
-	
+
 	if (ad->reply_msg != conf_msg_failure2) {
 		_free(ad->reply_msg);
 		ad->reply_msg = conf_msg_failure2;
 	}
-	
+
 	if (name)
 		_free(name);
 }
@@ -398,7 +398,7 @@ static void chap_recv_response(struct chap_auth_data *ad, struct chap_hdr *hdr)
 
 	if (ad->name)
 		return;
-	
+
 	ad->mschap_error = conf_msg_failure;
 	ad->reply_msg = conf_msg_failure2;
 
@@ -427,7 +427,7 @@ static void chap_recv_response(struct chap_auth_data *ad, struct chap_hdr *hdr)
 			ppp_auth_failed(ad->ppp, NULL);
 		return;
 	}
-	
+
 	r = pwdb_check(&ad->ppp->ses, (pwdb_callback)auth_result, ad, name, PPP_CHAP, MSCHAP_V2, ad->id, ad->val, msg->peer_challenge, msg->reserved, msg->nt_hash, msg->flags, authenticator, &ad->mschap_error, &ad->reply_msg);
 
 	if (r == PWDB_WAIT) {
@@ -449,7 +449,7 @@ static void chap_recv_response(struct chap_auth_data *ad, struct chap_hdr *hdr)
 			ap_session_terminate(&ad->ppp->ses, TERM_AUTH_ERROR, 0);
 		else
 			ppp_auth_failed(ad->ppp, name);
-		
+
 		_free(name);
 
 		if (ad->mschap_error != conf_msg_failure) {
@@ -508,7 +508,7 @@ static void des_encrypt(const uint8_t *input, const uint8_t *key, uint8_t *outpu
 	DES_set_key_checked(&cb, &ks);
 	memcpy(cb,input,8);
 	DES_ecb_encrypt(&cb,&res,&ks,DES_ENCRYPT);
-	memcpy(output,res,8);	
+	memcpy(output,res,8);
 }
 
 static int chap_check_response(struct chap_auth_data *ad, struct chap_response *msg, const char *name)
@@ -521,7 +521,7 @@ static int chap_check_response(struct chap_auth_data *ad, struct chap_response *
 	char *passwd;
 	char *u_passwd;
 	int i;
-	
+
 	passwd = pwdb_get_passwd(&ad->ppp->ses, name);
 	if (!passwd) {
 		if (conf_ppp_verbose)
@@ -566,7 +566,7 @@ static void set_mppe_keys(struct chap_auth_data *ad, uint8_t *z_hash, uint8_t *n
 	uint8_t digest[20];
 	uint8_t send_key[20];
 	uint8_t recv_key[20];
-	
+
 	uint8_t pad1[40] =
    {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -612,7 +612,7 @@ static void set_mppe_keys(struct chap_auth_data *ad, uint8_t *z_hash, uint8_t *n
 		.recv_key = recv_key,
 		.send_key = send_key,
 	};
-	
+
 	//NtPasswordHashHash
 	MD4_Init(&md4_ctx);
 	MD4_Update(&md4_ctx, z_hash, 16);
@@ -652,7 +652,7 @@ static int chap_check(uint8_t *ptr)
 static int chap_restart(struct ppp_t *ppp, struct auth_data_t *auth)
 {
 	struct chap_auth_data *d = container_of(auth, typeof(*d), auth);
-	
+
 	chap_send_challenge(d, 1);
 
 	return 0;

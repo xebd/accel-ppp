@@ -124,9 +124,9 @@ typedef struct sessionTable_rowreq_ctx_s {
     /** this must be first for container compare to work */
     netsnmp_index        oid_idx;
     oid                  oid_tmp[MAX_sessionTable_IDX_LEN];
-    
+
     sessionTable_mib_index        tbl_idx;
-    
+
     sessionTable_data            * data;
 
     /*
@@ -138,7 +138,7 @@ typedef struct sessionTable_rowreq_ctx_s {
     /*
      * TODO:131:o: |   |-> Add useful data to sessionTable rowreq context.
      */
-    
+
     /*
      * storage for future expansion
      */

@@ -79,7 +79,7 @@ static int ccp_set_flags(int fd, int isopen, int isup)
 		log_ppp_error("ccp: failed to get flags: %s\n", strerror(errno));
 		return -1;
 	}
-	
+
 	flags &= ~(SC_CCP_OPEN | SC_CCP_UP);
 	flags |= (isopen ? SC_CCP_OPEN : 0) | (isup ? SC_CCP_UP : 0);
 
@@ -87,7 +87,7 @@ static int ccp_set_flags(int fd, int isopen, int isup)
 		log_ppp_error("ccp: failed to set flags: %s\n", strerror(errno));
 		return -1;
 	}
-	
+
 	return 0;
 }
 
@@ -95,24 +95,24 @@ static struct ppp_layer_data_t *ccp_layer_init(struct ppp_t *ppp)
 {
 	struct ppp_ccp_t *ccp = _malloc(sizeof(*ccp));
 	memset(ccp, 0, sizeof(*ccp));
-	
+
 	log_ppp_debug("ccp_layer_init\n");
 
 	ccp->ppp = ppp;
 	ccp->fsm.ppp = ppp;
-	
+
 	ccp->hnd.proto = PPP_CCP;
 	ccp->hnd.recv = ccp_recv;
 	ccp->hnd.recv_proto_rej = ccp_recv_proto_rej;
-	
+
 	ppp_register_unit_handler(ppp, &ccp->hnd);
-	
+
 	ccp->ld.passive = 1;
 	ccp->ld.optional = 1;
 
 	INIT_LIST_HEAD(&ccp->options);
 	ccp_options_init(ccp);
-	
+
 	ccp->fsm.proto = PPP_CCP;
 	ppp_fsm_init(&ccp->fsm);
 
@@ -136,7 +136,7 @@ static struct ppp_layer_data_t *ccp_layer_init(struct ppp_t *ppp)
 int ccp_layer_start(struct ppp_layer_data_t *ld)
 {
 	struct ppp_ccp_t *ccp = container_of(ld, typeof(*ccp), ld);
-	
+
 	log_ppp_debug("ccp_layer_start\n");
 
 	ccp_set_flags(ccp->ppp->unit_fd, 0, 0);
@@ -154,21 +154,21 @@ int ccp_layer_start(struct ppp_layer_data_t *ld)
 		if (ppp_fsm_open(&ccp->fsm))
 			return -1;
 	}
-	
+
 	if (ccp_set_flags(ccp->ppp->unit_fd, 1, 0)) {
 		ppp_fsm_close(&ccp->fsm);
 		return -1;
 	}
-	
+
 	return 0;
 }
 
 void ccp_layer_finish(struct ppp_layer_data_t *ld)
 {
 	struct ppp_ccp_t *ccp = container_of(ld, typeof(*ccp), ld);
-	
+
 	log_ppp_debug("ccp_layer_finish\n");
-	
+
 	ccp_set_flags(ccp->ppp->unit_fd, 0, 0);
 
 	ccp->fsm.fsm_state = FSM_Closed;
@@ -180,7 +180,7 @@ void ccp_layer_finish(struct ppp_layer_data_t *ld)
 void ccp_layer_free(struct ppp_layer_data_t *ld)
 {
 	struct ppp_ccp_t *ccp = container_of(ld, typeof(*ccp), ld);
-	
+
 	log_ppp_debug("ccp_layer_free\n");
 
 	ppp_unregister_handler(ccp->ppp, &ccp->hnd);
@@ -215,7 +215,7 @@ static void ccp_layer_finished(struct ppp_fsm_t *fsm)
 		ppp_layer_passive(ccp->ppp, &ccp->ld);
 	else if (!ccp->ppp->ses.terminating)
 		ap_session_terminate(&ccp->ppp->ses, TERM_USER_ERROR, 0);
-	
+
 	fsm->fsm_state = FSM_Closed;
 }
 
@@ -258,12 +258,12 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 	ccp_hdr->code = CONFREQ;
 	ccp_hdr->id = ccp->fsm.id;
 	ccp_hdr->len = 0;
-	
+
 	ptr = (uint8_t*)(ccp_hdr + 1);
 
 	if (conf_ppp_verbose)
 		log_ppp_info2("send [CCP ConfReq id=%x", ccp_hdr->id);
-	
+
 	list_for_each_entry(lopt, &ccp->options, entry) {
 		n = lopt->h->send_conf_req(ccp, lopt, ptr);
 		if (n < 0)
@@ -276,10 +276,10 @@ static int send_conf_req(struct ppp_fsm_t *fsm)
 		}
 		ptr += n;
 	}
-	
+
 	if (conf_ppp_verbose)
 		log_ppp_info2("]\n");
-	
+
 	ccp_hdr->len = htons(ptr - buf - 2);
 	ppp_unit_send(ccp->ppp, ccp_hdr, ptr - buf);
 
@@ -315,7 +315,7 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 	ccp_hdr->code = CONFNAK;
 	ccp_hdr->id = ccp->fsm.recv_id;
 	ccp_hdr->len = 0;
-	
+
 	ptr += sizeof(*ccp_hdr);
 
 	list_for_each_entry(lopt, &ccp->options, entry) {
@@ -327,7 +327,7 @@ static void send_conf_nak(struct ppp_fsm_t *fsm)
 			ptr += lopt->h->send_conf_nak(ccp, lopt, ptr);
 		}
 	}
-	
+
 	if (conf_ppp_verbose)
 		log_ppp_info2("]\n");
 
@@ -394,7 +394,7 @@ static int ccp_recv_conf_req(struct ppp_ccp_t *ccp, uint8_t *data, int size)
 
 		ropt = _malloc(sizeof(*ropt));
 		memset(ropt, 0, sizeof(*ropt));
-	
+
 		ropt->hdr = hdr;
 		ropt->len = hdr->len;
 		ropt->state = CCP_OPT_NONE;
@@ -403,7 +403,7 @@ static int ccp_recv_conf_req(struct ppp_ccp_t *ccp, uint8_t *data, int size)
 		data += hdr->len;
 		size -= hdr->len;
 	}
-	
+
 	if (conf_ppp_verbose)
 		log_ppp_info2("recv [CCP ConfReq id=%x", ccp->fsm.recv_id);
 
@@ -483,7 +483,7 @@ static int ccp_recv_conf_rej(struct ppp_ccp_t *ccp, uint8_t *data, int size)
 
 	while (size > 0) {
 		hdr = (struct ccp_opt_hdr_t *)data;
-		
+
 		if (!hdr->len || hdr->len > size)
 			break;
 
@@ -524,7 +524,7 @@ static int ccp_recv_conf_nak(struct ppp_ccp_t *ccp, uint8_t *data, int size)
 
 	while (size > 0) {
 		hdr = (struct ccp_opt_hdr_t *)data;
-		
+
 		if (!hdr->len || hdr->len > size)
 			break;
 
@@ -567,7 +567,7 @@ static int ccp_recv_conf_ack(struct ppp_ccp_t *ccp, uint8_t *data, int size)
 
 	while (size > 0) {
 		hdr = (struct ccp_opt_hdr_t *)data;
-		
+
 		if (!hdr->len || hdr->len > size)
 			break;
 
@@ -656,9 +656,9 @@ static void ccp_recv(struct ppp_handler_t*h)
 		return;
 
 	ccp->fsm.recv_id = hdr->id;
-	
+
 	switch(hdr->code) {
-		case CONFREQ:	
+		case CONFREQ:
 			r = ccp_recv_conf_req(ccp, (uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN);
 			if (ccp->ld.passive) {
 				ccp->ld.passive = 0;
@@ -684,7 +684,7 @@ static void ccp_recv(struct ppp_handler_t*h)
 				}
 			}
 			ccp_free_conf_req(ccp);
-			
+
 			if (r == CCP_OPT_FAIL)
 				ap_session_terminate(&ccp->ppp->ses, TERM_USER_ERROR, 0);
 			break;
@@ -738,7 +738,7 @@ static void ccp_recv_proto_rej(struct ppp_handler_t *h)
 
 	if (ccp->fsm.fsm_state == FSM_Initial || ccp->fsm.fsm_state == FSM_Closed)
 		return;
-	
+
 	ppp_fsm_lower_down(&ccp->fsm);
 	ppp_fsm_close(&ccp->fsm);
 }
@@ -748,9 +748,9 @@ int ccp_option_register(struct ccp_option_handler_t *h)
 	/*struct ccp_option_drv_t *p;
 
 	list_for_each_entry(p,option_drv_list,entry)
-		if (p->id==h->id) 
+		if (p->id==h->id)
 			return -1;*/
-	
+
 	list_add_tail(&h->entry,&option_handlers);
 
 	return 0;
@@ -764,11 +764,11 @@ struct ccp_option_t *ccp_find_option(struct ppp_t *ppp, struct ccp_option_handle
 {
 	struct ppp_ccp_t *ccp = container_of(ppp_find_layer_data(ppp, &ccp_layer), typeof(*ccp), ld);
 	struct ccp_option_t *opt;
-	
+
 	list_for_each_entry(opt, &ccp->options, entry)
 		if (opt->h == h)
 			return opt;
-	
+
 	log_emerg("ccp: BUG: option not found\n");
 	abort();
 }
@@ -795,7 +795,7 @@ static void load_config(void)
 	opt = conf_get_opt("ppp", "ccp");
 	if (opt && atoi(opt) >= 0)
 		conf_ccp = atoi(opt);
-	
+
 	opt = conf_get_opt("ppp", "ccp-max-configure");
 	if (opt && atoi(opt) > 0)
 		conf_ccp_max_configure = atoi(opt);

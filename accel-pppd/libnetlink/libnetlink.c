@@ -139,7 +139,7 @@ int __export rtnl_send_check(struct rtnl_handle *rth, const char *buf, int len)
 			struct nlmsgerr *err = (struct nlmsgerr*)NLMSG_DATA(h);
 			if (h->nlmsg_len < NLMSG_LENGTH(sizeof(struct nlmsgerr)))
 				log_debug("libnetlink: ""ERROR truncated\n");
-			else 
+			else
 				errno = -err->error;
 			return -1;
 		}

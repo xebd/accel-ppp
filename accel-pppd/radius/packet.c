@@ -61,7 +61,7 @@ int rad_packet_build(struct rad_packet_t *pack, uint8_t *RA)
 			log_emerg("radius:packet: out of memory\n");
 			return -1;
 		}
-		
+
 		pack->buf = ptr;
 	} else
 		ptr = pack->buf;
@@ -76,7 +76,7 @@ int rad_packet_build(struct rad_packet_t *pack, uint8_t *RA)
 			*ptr = 26; ptr++;
 			*ptr = attr->len + 2 + 6; ptr++;
 			*(uint32_t *)ptr = htonl(attr->vendor->id); ptr+=4;
-		} 
+		}
 		*ptr = attr->attr->id; ptr++;
 		*ptr = attr->len + 2; ptr++;
 		switch(attr->attr->type) {
@@ -133,7 +133,7 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 		log_emerg("radius:packet: out of memory\n");
 		goto out_err;
 	}
-	
+
 	pack->buf = ptr;
 	clock_gettime(CLOCK_MONOTONIC, &pack->tv);
 
@@ -225,7 +225,7 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 						goto out_err;
 					}
 					memcpy(attr->val.octets, ptr, len);
-					break;				
+					break;
 				case ATTR_TYPE_DATE:
 				case ATTR_TYPE_INTEGER:
 					attr->val.integer = ntohl(*(uint32_t*)ptr);
@@ -260,7 +260,7 @@ out_err:
 void rad_packet_free(struct rad_packet_t *pack)
 {
 	struct rad_attr_t *attr;
-	
+
 	if (pack->buf)
 		mempool_free(pack->buf);
 		//munmap(pack->buf, REQ_LENGTH_MAX);
@@ -286,7 +286,7 @@ void rad_packet_print(struct rad_packet_t *pack, struct rad_server_t *s, void (*
 		uint16_t u16[4];
 	} ifid_u;
 	in_addr_t addr;
-	
+
 	if (s)
 		print("[RADIUS(%i) ", s->id);
 	else
@@ -392,7 +392,7 @@ int __export rad_packet_add_int(struct rad_packet_t *pack, const char *vendor_na
 
 	if (!attr)
 		return -1;
-	
+
 	ra = mempool_alloc(attr_pool);
 	if (!ra)
 		return -1;
@@ -411,7 +411,7 @@ int __export rad_packet_add_int(struct rad_packet_t *pack, const char *vendor_na
 int __export rad_packet_change_int(struct rad_packet_t *pack, const char *vendor_name, const char *name, int val)
 {
 	struct rad_attr_t *ra;
-	
+
 	ra = rad_packet_find_attr(pack, vendor_name, name);
 	if (!ra)
 		return -1;
@@ -439,10 +439,10 @@ int __export rad_packet_add_octets(struct rad_packet_t *pack, const char *vendor
 		vendor = NULL;
 		attr = rad_dict_find_attr(name);
 	}
-	
+
 	if (!attr)
 		return -1;
-	
+
 	ra = mempool_alloc(attr_pool);
 	if (!ra) {
 		log_emerg("radius: out of memory\n");
@@ -473,7 +473,7 @@ int __export rad_packet_add_octets(struct rad_packet_t *pack, const char *vendor
 int __export rad_packet_change_octets(struct rad_packet_t *pack, const char *vendor_name, const char *name, const uint8_t *val, int len)
 {
 	struct rad_attr_t *ra;
-	
+
 	ra = rad_packet_find_attr(pack, vendor_name, name);
 	if (!ra)
 		return -1;
@@ -487,7 +487,7 @@ int __export rad_packet_change_octets(struct rad_packet_t *pack, const char *ven
 			log_emerg("radius: out of memory\n");
 			return -1;
 		}
-	
+
 		pack->len += len - ra->len;
 		ra->len = len;
 	}
@@ -521,7 +521,7 @@ int __export rad_packet_add_str(struct rad_packet_t *pack, const char *vendor_na
 
 	if (!attr)
 		return -1;
-	
+
 	ra = mempool_alloc(attr_pool);
 	if (!ra) {
 		log_emerg("radius: out of memory\n");
@@ -549,7 +549,7 @@ int __export rad_packet_add_str(struct rad_packet_t *pack, const char *vendor_na
 int __export rad_packet_change_str(struct rad_packet_t *pack, const char *vendor_name, const char *name, const char *val, int len)
 {
 	struct rad_attr_t *ra;
-	
+
 	ra = rad_packet_find_attr(pack, vendor_name, name);
 	if (!ra)
 		return -1;
@@ -563,7 +563,7 @@ int __export rad_packet_change_str(struct rad_packet_t *pack, const char *vendor
 			log_emerg("radius: out of memory\n");
 			return -1;
 		}
-	
+
 		pack->len += len - ra->len;
 		ra->len = len;
 	}
@@ -593,14 +593,14 @@ int __export rad_packet_add_val(struct rad_packet_t *pack, const char *vendor_na
 		vendor = NULL;
 		attr = rad_dict_find_attr(name);
 	}
-	
+
 	if (!attr)
 		return -1;
 
 	v = rad_dict_find_val_name(attr, val);
 	if (!v)
 		return -1;
-	
+
 	ra = mempool_alloc(attr_pool);
 	if (!ra)
 		return -1;
@@ -620,7 +620,7 @@ int __export rad_packet_change_val(struct rad_packet_t *pack, const char *vendor
 {
 	struct rad_attr_t *ra;
 	struct rad_dict_value_t *v;
-	
+
 	ra = rad_packet_find_attr(pack, vendor_name, name);
 	if (!ra)
 		return -1;
@@ -630,7 +630,7 @@ int __export rad_packet_change_val(struct rad_packet_t *pack, const char *vendor
 		return -1;
 
 	ra->val = v->val;
-	
+
 	return 0;
 }
 
@@ -660,7 +660,7 @@ int rad_packet_add_ifid(struct rad_packet_t *pack, const char *vendor_name, cons
 
 	if (!attr)
 		return -1;
-	
+
 	ra = mempool_alloc(attr_pool);
 	if (!ra)
 		return -1;
@@ -697,7 +697,7 @@ int rad_packet_add_ipv6prefix(struct rad_packet_t *pack, const char *vendor_name
 
 	if (!attr)
 		return -1;
-	
+
 	ra = mempool_alloc(attr_pool);
 	if (!ra)
 		return -1;
@@ -726,14 +726,14 @@ struct rad_attr_t __export *rad_packet_find_attr(struct rad_packet_t *pack, cons
 			return NULL;
 	} else
 		vendor = NULL;
-	
+
 	list_for_each_entry(ra, &pack->attrs, entry) {
 		if (vendor && vendor != ra->vendor)
 			continue;
 
 		if (strcmp(ra->attr->name, name))
 			continue;
-		
+
 		return ra;
 	}
 

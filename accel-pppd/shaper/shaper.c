@@ -155,7 +155,7 @@ static void parse_string(const char *str, int dir, int *speed, int *burst, int *
 			}
 			return;
 		}
-	
+
 		str1 = strstr(str, "rate-limit output");
 		if (str1) {
 			val = sscanf(str1, "rate-limit output %u %u %u", &n1, &n2, &n3);
@@ -175,7 +175,7 @@ static void parse_string(const char *str, int dir, int *speed, int *burst, int *
 			}
 			return;
 		}
-		
+
 		str1 = strstr(str, "rate-limit input");
 		if (str1) {
 			val = sscanf(str1, "rate-limit input %u %u %u", &n1, &n2, &n3);
@@ -183,8 +183,8 @@ static void parse_string(const char *str, int dir, int *speed, int *burst, int *
 				*speed = n1/1000;
 				*burst = n2;
 			}
+			return;
 		}
-		return;
 	}
 
 	val = strtol(str, &endptr, 10);
@@ -212,7 +212,7 @@ static void parse_string(const char *str, int dir, int *speed, int *burst, int *
 static struct time_range_pd_t *get_tr_pd(struct shaper_pd_t *pd, int id)
 {
 	struct time_range_pd_t *tr_pd;
-	
+
 	list_for_each_entry(tr_pd, &pd->tr_list, entry) {
 		if (tr_pd->id == id)
 			return tr_pd;
@@ -224,7 +224,7 @@ static struct time_range_pd_t *get_tr_pd(struct shaper_pd_t *pd, int id)
 
 	if (id == time_range_id || id == 0)
 		pd->cur_tr = tr_pd;
-	
+
 	list_add_tail(&tr_pd->entry, &pd->tr_list);
 
 	return tr_pd;
@@ -304,13 +304,13 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 		ev->res = -1;
 		return;
 	}
-	
+
 	clear_tr_pd(pd);
 	check_radius_attrs(pd, ev->request);
-		
+
 	if (pd->temp_down_speed || pd->temp_up_speed)
 		return;
-	
+
 	if (!pd->cur_tr) {
 		if (pd->down_speed || pd->up_speed) {
 			pd->down_speed = 0;
@@ -330,7 +330,7 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 			ev->res = -1;
 			return;
 		}
-		
+
 		if (pd->down_speed > 0 || pd->up_speed > 0) {
 			if (install_limiter(ev->ses, pd->cur_tr->down_speed, pd->cur_tr->down_burst, pd->cur_tr->up_speed, pd->cur_tr->up_burst)) {
 				ev->res= -1;
@@ -396,10 +396,10 @@ static void ev_ppp_pre_up(struct ap_session *ses)
 	int down_speed, down_burst;
 	int up_speed, up_burst;
 	struct shaper_pd_t *pd = find_pd(ses, 1);
-	
+
 	if (!pd)
 		return;
-	
+
 	if (temp_down_speed || temp_up_speed) {
 		pd->temp_down_speed = temp_down_speed;
 		pd->temp_up_speed = temp_up_speed;
@@ -476,7 +476,7 @@ static void shaper_change(struct shaper_pd_t *pd)
 		pd->down_speed = 0;
 		pd->up_speed = 0;
 	}
-	
+
 out:
 	if (__sync_sub_and_fetch(&pd->refs, 1) == 0) {
 		clear_tr_pd(pd);
@@ -499,10 +499,10 @@ static int shaper_change_exec(const char *cmd, char * const *f, int f_cnt, void 
 
 	//if (down_speed == 0 || up_speed == 0)
 	//	return CLI_CMD_INVAL;
-	
+
 	if (!strcmp(f[2], "all"))
 		all = 1;
-	
+
 	if (f_cnt == 5) {
 		if (strcmp(f[4], "temp"))
 			return CLI_CMD_SYNTAX;
@@ -583,12 +583,12 @@ static int shaper_restore_exec(const char *cmd, char * const *f, int f_cnt, void
 
 	if (f_cnt != 3)
 		return CLI_CMD_SYNTAX;
-	
+
 	if (strcmp(f[2], "all"))
 		all = 0;
 	else
 		all = 1;
-	
+
 	pthread_rwlock_rdlock(&shaper_lock);
 	if (all) {
 		temp_down_speed = 0;
@@ -612,7 +612,7 @@ static int shaper_restore_exec(const char *cmd, char * const *f, int f_cnt, void
 
 	if (!all && !found)
 		cli_send(cli, "not found\r\n");
-	
+
 	return CLI_CMD_OK;
 }
 
@@ -665,7 +665,7 @@ static void update_shaper_tr(struct shaper_pd_t *pd)
 			goto out;
 		remove_limiter(pd->ses);
 	}
-	
+
 	if (pd->cur_tr && (pd->cur_tr->down_speed || pd->cur_tr->up_speed)) {
 		pd->down_speed = pd->cur_tr->down_speed;
 		pd->up_speed = pd->cur_tr->up_speed;
@@ -707,7 +707,7 @@ static void time_range_end_timer(struct triton_timer_t *t)
 	struct shaper_pd_t *pd;
 
 	time_range_id = 0;
-	
+
 	log_debug("shaper: time_range_end_timer\n");
 
 	pthread_rwlock_rdlock(&shaper_lock);
@@ -730,7 +730,7 @@ static struct time_range_t *parse_range(time_t t, const char *val)
 		return NULL;
 	if (id <= 0)
 		return NULL;
-	
+
 	localtime_r(&t, &begin_tm);
 	begin_tm.tm_sec = 0;
 	end_tm = begin_tm;
@@ -738,11 +738,11 @@ static struct time_range_t *parse_range(time_t t, const char *val)
 	endptr = strptime(endptr + 1, "%H:%M", &begin_tm);
 	if (*endptr != '-')
 		return NULL;
-	
+
 	endptr = strptime(endptr + 1, "%H:%M", &end_tm);
 	if (*endptr)
 		return NULL;
-	
+
 	r = _malloc(sizeof(*r));
 	memset(r, 0, sizeof(*r));
 
@@ -766,7 +766,7 @@ static void load_time_ranges(void)
 
 	if (!s)
 		return;
-	
+
 	time(&ts);
 
 	while (!list_empty(&time_range_list)) {
@@ -813,7 +813,7 @@ static void load_time_ranges(void)
 			r->end.expire_tv.tv_sec += 24 * 60 * 60;
 
 		triton_timer_add(&shaper_ctx, &r->begin, 1);
-		
+
 		if (r->end.period)
 			triton_timer_add(&shaper_ctx, &r->end, 1);
 	}
@@ -851,7 +851,7 @@ static int parse_vendor_opt(const char *opt)
 	vendor = rad_dict_find_vendor_name(opt);
 	if (vendor)
 		return vendor->id;
-	
+
 	return atoi(opt);
 }
 #endif
@@ -875,7 +875,7 @@ static void load_config(void)
 		opt = conf_get_opt("shaper", "attr-down");
 		if (opt)
 			conf_attr_down = parse_attr_opt(opt);
-		
+
 		opt = conf_get_opt("shaper", "attr-up");
 		if (opt)
 			conf_attr_up = parse_attr_opt(opt);
@@ -886,13 +886,13 @@ static void load_config(void)
 		}
 	}
 #endif
-	
+
 	opt = conf_get_opt("shaper", "burst-factor");
 	if (opt) {
 		conf_down_burst_factor = strtod(opt, NULL);
 		conf_up_burst_factor = conf_down_burst_factor * 10;
 	}
-	
+
 	opt = conf_get_opt("shaper", "down-burst-factor");
 	if (opt)
 		conf_down_burst_factor = strtod(opt, NULL);
@@ -926,13 +926,13 @@ static void load_config(void)
 		conf_quantum = atoi(opt);
 	else
 		conf_quantum = 0;
-	
+
 	opt = conf_get_opt("shaper", "moderate-quantum");
 	if (opt)
 		conf_moderate_quantum = atoi(opt);
 	else
 		conf_moderate_quantum = 0;
-	
+
 	opt = conf_get_opt("shaper", "cburst");
 	if (opt && atoi(opt) >= 0)
 		conf_cburst = atoi(opt);
@@ -972,19 +972,19 @@ static void load_config(void)
 	opt = conf_get_opt("shaper", "verbose");
 	if (opt && atoi(opt) >= 0)
 		conf_verbose = atoi(opt) > 0;
-	
+
 	opt = conf_get_opt("shaper", "rate-multiplier");
 	if (opt && atof(opt) > 0)
 		conf_multiplier = atof(opt);
 	else
 		conf_multiplier = 1;
-	
+
 	opt = conf_get_opt("shaper", "fwmark");
 	if (opt)
-		conf_fwmark = atof(opt);
+		conf_fwmark = atoi(opt);
 	else
 		conf_fwmark = 0;
-	
+
 	triton_context_call(&shaper_ctx, (triton_event_func)load_time_ranges, NULL);
 }
 
@@ -993,7 +993,7 @@ static void init(void)
 	const char *opt;
 
 	tc_core_init();
-	
+
 	opt = conf_get_opt("shaper", "ifb");
 	if (opt && init_ifb(opt))
 		_exit(0);

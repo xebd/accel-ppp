@@ -51,16 +51,16 @@ static int session_save(struct ap_session *ses, struct backup_mod *m)
 
 	if (conn->ifcfg)
 		flags |= IPOE_FLAG_IFCFG;
-	
+
 	if (conn->dhcp_addr)
 		flags |= IPOE_FLAG_DHCP_ADDR;
-	
+
 	if (conn->relay_addr)
 		flags |= IPOE_FLAG_RELAY_ADDR;
-	
+
 	if (conn->l4_redirect)
 		flags |= IPOE_FLAG_L4_REDIR;
-	
+
 	if (conn->l4_redirect_set)
 		flags |= IPOE_FLAG_L4_REDIR_SET;
 
@@ -82,7 +82,7 @@ static int session_save(struct ap_session *ses, struct backup_mod *m)
 
 	if (conn->relay_agent)
 		add_tag(IPOE_TAG_RELAY_AGENT, conn->relay_agent->data, conn->relay_agent->len);
-	
+
 	add_tag_i(IPOE_TAG_IFINDEX, &conn->ifindex, 4);
 
 	return 0;
@@ -98,7 +98,7 @@ static int session_restore(struct ap_session *ses, struct backup_mod *m)
 
 static void set_dhcpv4_opt(struct dhcpv4_option **opt, struct backup_tag *t, uint8_t **ptr)
 {
-	*opt = (struct dhcpv4_option *)(*ptr); 
+	*opt = (struct dhcpv4_option *)(*ptr);
 	(*opt)->len = t->size;
 	memcpy((*opt)->data, t->data, t->size);
 	(*ptr) += sizeof(**opt) + t->size;
@@ -200,23 +200,23 @@ static struct ap_session *ctrl_restore(struct backup_mod *m)
 
 	if (flags & IPOE_FLAG_IFCFG)
 		ses->ifcfg = 1;
-	
+
 	if (flags & IPOE_FLAG_DHCP_ADDR) {
 		dhcpv4_reserve_ip(ses->serv->dhcpv4, ses->yiaddr);
 		ses->dhcp_addr = 1;
 	}
-	
+
 	if (flags & IPOE_FLAG_RELAY_ADDR)
 		ses->relay_addr = 1;
-	
+
 	if (flags & IPOE_FLAG_L4_REDIR)
 		ses->l4_redirect = 1;
-	
+
 	if (flags & IPOE_FLAG_L4_REDIR_SET && m->data->internal)
 		ses->l4_redirect = 1;
 
 	ses->serv = serv;
-	
+
 	triton_context_register(&ses->ctx, &ses->ses);
 	triton_context_wakeup(&ses->ctx);
 

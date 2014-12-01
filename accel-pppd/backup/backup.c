@@ -15,7 +15,7 @@ static LIST_HEAD(module_list);
 struct backup_tag __export *backup_add_tag(struct backup_mod *m, uint8_t id, int internal, const void *data, size_t size)
 {
 	struct backup_tag *t;
-	
+
 	t = m->data->storage->alloc_tag(m->data, size);
 	if (!t)
 		return NULL;
@@ -39,7 +39,7 @@ void backup_add_fd(struct backup_mod *m, int fd)
 struct backup_mod __export *backup_find_mod(struct backup_data *d, uint8_t mod_id)
 {
 	struct backup_mod *m;
-	
+
 	list_for_each_entry(m, &d->mod_list, entry) {
 		if (m->id == mod_id)
 			return m;
@@ -232,19 +232,19 @@ void __export backup_register_storage(struct backup_storage *s)
 
 void backup_restore_fd()
 {
-	
+
 }
 
 void backup_restore(int internal)
 {
 	struct backup_storage *storage;
 	struct backup_module *module;
-	
+
 	list_for_each_entry(storage, &storage_list, entry) {
 		if (storage->restore)
 			storage->restore(internal);
 	}
-		
+
 	list_for_each_entry(module, &module_list, entry) {
 		if (module->restore_complete)
 			module->restore_complete();

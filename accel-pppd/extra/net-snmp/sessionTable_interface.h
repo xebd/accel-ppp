@@ -9,7 +9,7 @@
  * \warning This code should not be modified, called directly,
  *          or used to interpret functionality. It is subject to
  *          change at any time.
- * 
+ *
  * @{
  */
 /*

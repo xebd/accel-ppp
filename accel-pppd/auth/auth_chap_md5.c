@@ -147,7 +147,7 @@ static int chap_finish(struct ppp_t *ppp, struct auth_data_t *auth)
 
 	if (d->interval.tpd)
 		triton_timer_del(&d->interval);
-	
+
 	if (d->name)
 		_free(d->name);
 
@@ -175,7 +175,7 @@ static void chap_timeout_timer(struct triton_timer_t *t)
 static void chap_restart_timer(struct triton_timer_t *t)
 {
 	struct chap_auth_data *d = container_of(t, typeof(*d), interval);
-	
+
 	chap_send_challenge(d, 1);
 }
 
@@ -201,7 +201,7 @@ static void chap_send_failure(struct chap_auth_data *ad)
 		.hdr.len = htons(sizeof(msg) - 1 - 2),
 		.message = MSG_FAILURE,
 	};
-	
+
 	if (conf_ppp_verbose)
 		log_ppp_info2("send [CHAP Failure id=%x \"%s\"]\n", msg.hdr.id, MSG_FAILURE);
 
@@ -217,7 +217,7 @@ static void chap_send_success(struct chap_auth_data *ad, int id)
 		.hdr.len = htons(sizeof(msg)-1-2),
 		.message = MSG_SUCCESS,
 	};
-	
+
 	if (conf_ppp_verbose)
 		log_ppp_info2("send [CHAP Success id=%x \"%s\"]\n", msg.hdr.id, MSG_SUCCESS);
 
@@ -301,7 +301,7 @@ static void chap_recv_response(struct chap_auth_data *ad, struct chap_hdr *hdr)
 		print_str(msg->name, ntohs(msg->hdr.len) - sizeof(*msg) + 2);
 		log_ppp_info2("\"]\n");
 	}
-	
+
 	if (ad->started && msg->hdr.id == ad->id - 1) {
 		chap_send_success(ad, msg->hdr.id);
 		return;
@@ -364,7 +364,7 @@ static void chap_recv_response(struct chap_auth_data *ad, struct chap_hdr *hdr)
 		MD5_Update(&md5_ctx,passwd,strlen(passwd));
 		MD5_Update(&md5_ctx,ad->val,VALUE_SIZE);
 		MD5_Final(md5,&md5_ctx);
-		
+
 		if (memcmp(md5,msg->val,sizeof(md5)))
 		{
 			if (conf_ppp_verbose)
@@ -389,7 +389,7 @@ static void chap_recv_response(struct chap_auth_data *ad, struct chap_hdr *hdr)
 				}
 			} else
 				_free(name);
-			
+
 			ad->id++;
 		}
 		_free(passwd);
@@ -429,7 +429,7 @@ static int chap_check(uint8_t *ptr)
 static int chap_restart(struct ppp_t *ppp, struct auth_data_t *auth)
 {
 	struct chap_auth_data *d = container_of(auth, typeof(*d), auth);
-	
+
 	chap_send_challenge(d, 1);
 
 	return 0;
@@ -491,7 +491,7 @@ static void auth_chap_md5_init()
 
 	if (ppp_auth_register_handler(&chap))
 		log_emerg("chap-md5: failed to register handler\n");
-	
+
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 

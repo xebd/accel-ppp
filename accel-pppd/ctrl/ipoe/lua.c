@@ -70,7 +70,7 @@ static int packet4_hdr(lua_State *L)
 
 	if (!ses || !ses->dhcpv4_request)
 		return 0;
-	
+
 	if (!strcmp(name, "xid"))
 		lua_pushinteger(L, ses->dhcpv4_request->hdr->xid);
 	else if (!strcmp(name, "ciaddr")) {
@@ -95,9 +95,9 @@ static int packet4_ifname(lua_State *L)
 
 	if (!ses)
 		return 0;
-	
+
 	lua_pushstring(L, ses->serv->ifname);
-	
+
 	return 1;
 }
 
@@ -129,7 +129,7 @@ static int packet4_options(lua_State *L)
 
 	if (!ses || !ses->dhcpv4_request)
 		return 0;
-	
+
 	lua_newtable(L);
 
 	list_for_each_entry(opt, &ses->dhcpv4_request->options, entry) {
@@ -146,12 +146,12 @@ static int packet4_agent_circuit_id(lua_State *L)
 
 	if (!ses || !ses->dhcpv4_request)
 		return 0;
-	
+
 	if (ses->agent_circuit_id)
 		lua_pushlstring(L, (char *)(ses->agent_circuit_id + 1), *ses->agent_circuit_id);
 	else
 		lua_pushnil(L);
-	
+
 	return 1;
 }
 
@@ -161,12 +161,12 @@ static int packet4_agent_remote_id(lua_State *L)
 
 	if (!ses || !ses->dhcpv4_request)
 		return 0;
-	
+
 	if (ses->agent_remote_id)
 		lua_pushlstring(L, (char *)(ses->agent_remote_id + 1), *ses->agent_remote_id);
 	else
 		lua_pushnil(L);
-	
+
 	return 1;
 }
 
@@ -264,7 +264,7 @@ char *ipoe_lua_get_username(struct ipoe_session *ses, const char *func)
 	lua_settop(L, 0);
 
 	return r;
-	
+
 out_err:
 	file_error = 1;
 	lua_close(L);

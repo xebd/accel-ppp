@@ -85,7 +85,7 @@ void *timer_thread(void *arg)
 			triton_log_error("timer:epoll_wait: %s", strerror(errno));
 			_exit(-1);
 		}
-		
+
 		for(i = 0; i < n; i++) {
 			t = (struct _triton_timer_t *)epoll_events[i].data.ptr;
 			if (!t->ud)
@@ -141,21 +141,21 @@ int __export triton_timer_add(struct triton_context_t *ctx, struct triton_timer_
 		return -1;
 	}
 
-	if (fcntl(t->fd, F_SETFL, O_NONBLOCK)) { 
+	if (fcntl(t->fd, F_SETFL, O_NONBLOCK)) {
     triton_log_error("timer: failed to set nonblocking mode: %s", strerror(errno));
     goto out_err;
 	}
-	
+
 	__sync_add_and_fetch(&t->ctx->refs, 1);
 	ud->tpd = t;
 
 	if (triton_timer_mod(ud, abs_time))
 		goto out_err;
-	
+
 	spin_lock(&t->ctx->lock);
 	list_add_tail(&t->entry, &t->ctx->timers);
 	spin_unlock(&t->ctx->lock);
-	
+
 	if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, t->fd, &t->epoll_event)) {
 		triton_log_error("timer:epoll_ctl: %s", strerror(errno));
 		spin_lock(&t->ctx->lock);
@@ -166,7 +166,7 @@ int __export triton_timer_add(struct triton_context_t *ctx, struct triton_timer_
 	}
 
 	triton_stat.timer_count++;
-	
+
 	return 0;
 
 out_err:
@@ -214,9 +214,9 @@ void __export triton_timer_del(struct triton_timer_t *ud)
 	pthread_mutex_lock(&freed_list_lock);
 	list_add_tail(&t->entry, &freed_list);
 	pthread_mutex_unlock(&freed_list_lock);
-	
+
 	ud->tpd = NULL;
-	
+
 	triton_stat.timer_count--;
 }
 

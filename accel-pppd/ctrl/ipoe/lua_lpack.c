@@ -109,7 +109,7 @@ static int l_unpack(lua_State *L) 		/** unpack(s,f,[init]) */
  {
   int c=*f++;
   int N=1;
-  if (isdigit(*f)) 
+  if (isdigit(*f))
   {
    N=0;
    while (isdigit(*f)) N=10*N+(*f++)-'0';
@@ -204,7 +204,7 @@ static int l_pack(lua_State *L) 		/** pack(f,...) */
  {
   int c=*f++;
   int N=1;
-  if (isdigit(*f)) 
+  if (isdigit(*f))
   {
    N=0;
    while (isdigit(*f)) N=10*N+(*f++)-'0';

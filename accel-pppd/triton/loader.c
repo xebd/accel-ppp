@@ -96,7 +96,7 @@ int load_modules(const char *name)
 int __export triton_module_loaded(const char *name)
 {
 	struct module_t *m;
-	
+
 	list_for_each_entry(m, &modules, entry) {
 		if (strcmp(m->name, name))
 			continue;

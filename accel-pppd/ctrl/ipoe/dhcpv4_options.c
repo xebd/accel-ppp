@@ -131,7 +131,7 @@ static void print_ip(const struct dhcpv4_option *opt, int elem_size, void (*prin
 {
 	int i, n = opt->len / elem_size;
 	uint32_t ip;
-	
+
 	for (i = 0; i < n; i++) {
 		ip = ntohl(*(uint32_t *)(opt->data + i*elem_size));
 
@@ -172,10 +172,10 @@ static void print_route(const struct dhcpv4_option *opt, int elem_size, void (*p
 	for (i = 0; i < n; i++) {
 		ip = ntohl(*(uint32_t *)(opt->data + i*8));
 		gw = ntohl(*(uint32_t *)(opt->data + i*8 + 4));
-		
+
 		if (i)
 			print(",");
-		
+
 		print("%i.%i.%i.%i via %i.%i.%i.%i",
 				(ip >> 24) & 0xff,
 				(ip >> 16) & 0xff,
@@ -275,7 +275,7 @@ static void print_classless_route(const struct dhcpv4_option *opt, int elem_size
 			ptr += 4;
 		gw = ntohl(*(uint32_t *)ptr);
 		ptr += 4;
-		
+
 		print("%i.%i.%i.%i/%i via %i.%i.%i.%i",
 				(ip >> 24) & 0xff,
 				(ip >> 16) & 0xff,

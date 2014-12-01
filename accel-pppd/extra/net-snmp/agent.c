@@ -45,7 +45,7 @@ static int snmp_term = 0;
 static int agent_log(int major, int minor, void *serv_arg, void *cl_arg)
 {
 	struct snmp_log_message *m = serv_arg;
-	
+
 	switch (m->priority) {
 		case LOG_EMERG:
 			log_emerg("net-snmp: %s", m->msg);
@@ -96,7 +96,7 @@ static void *snmp_thread(void *a)
 	snmp_enable_calllog();
 	//snmp_set_do_debugging(1);
 	//netsnmp_ds_set_boolean(NETSNMP_DS_APPLICATION_ID, NETSNMP_DS_AGENT_ROLE, 1);
-	
+
 	if (!conf_master)
 		netsnmp_enable_subagent();
 
@@ -117,11 +117,11 @@ static void *snmp_thread(void *a)
 
 	if (conf_master)
 		init_master_agent();
-	
+
 	while (!snmp_term) {
     agent_check_and_process(1);
 	}
-	
+
 	snmp_shutdown(conf_agent_name);
 
   SOCK_CLEANUP;
@@ -152,11 +152,11 @@ static void init(void)
 	opt = conf_get_opt("snmp", "agent-name");
 	if (opt)
 		conf_agent_name = opt;
-	
+
 	/*opt = conf_get_opt("snmp", "oid-prefix")
 	if (opt)
 		conf_oid_prefix = opt;*/
-	
+
 	pthread_create(&snmp_thr, NULL, snmp_thread, NULL);
 	triton_context_register(&ctx, NULL);
 	triton_context_wakeup(&ctx);

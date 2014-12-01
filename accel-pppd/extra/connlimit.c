@@ -35,7 +35,7 @@ int __export connlimit_check(uint64_t key)
 	LIST_HEAD(tmp_list);
 	int r = 1;
 
-	
+
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	pthread_mutex_lock(&lock);
@@ -87,13 +87,13 @@ int __export connlimit_check(uint64_t key)
 
 		r = 0;
 	}
-	
+
 	if (r == 0)
 		log_debug("connlimit: accept %" PRIu64 "\n", key);
 	else
 		log_debug("connlimit: drop %" PRIu64 "\n", key);
 
-	
+
 	while (!list_empty(&tmp_list)) {
 		it = list_entry(tmp_list.next, typeof(*it), entry);
 		list_del(&it->entry);
@@ -113,10 +113,10 @@ static int parse_limit(const char *opt, int *limit, int *time)
 		*time = 1;
 		return 0;
 	}
-	
+
 	if (*endptr != '/')
 		goto out_err;
-	
+
 	opt = endptr + 1;
 	*time = strtol(opt, &endptr, 10);
 
@@ -125,18 +125,18 @@ static int parse_limit(const char *opt, int *limit, int *time)
 
 	if (*endptr == 's')
 		return 0;
-	
+
 	if (*endptr == 'm') {
 		*time *= 60;
 		return 0;
 	}
-	
+
 	if (*endptr == 'h') {
 		*time *= 3600;
 		return 0;
 	}
-		
-out_err:	
+
+out_err:
 	log_error("connlimit: failed to parse '%s'\n", opt);
 	return -1;
 }
@@ -156,7 +156,7 @@ static void load_config()
 	opt = conf_get_opt("connlimit", "burst");
 	if (opt)
 		conf_burst = atoi(opt);
-	
+
 	opt = conf_get_opt("connlimit", "timeout");
 	if (opt)
 		conf_burst_timeout = atoi(opt) * 1000;

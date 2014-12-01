@@ -113,7 +113,7 @@ static int terminate_exec1(char * const *f, int f_cnt, void *cli)
 	pcre *re;
 	const char *pcre_err;
 	int pcre_offset;
-	
+
 	if (f_cnt == 5) {
 		if (!strcmp(f[4], "hard"))
 			hard = 1;
@@ -121,7 +121,7 @@ static int terminate_exec1(char * const *f, int f_cnt, void *cli)
 			return CLI_CMD_SYNTAX;
 	} else if (f_cnt != 4)
 		return CLI_CMD_SYNTAX;
-			
+
 	re = pcre_compile2(f[3], 0, NULL, &pcre_err, &pcre_offset, NULL);
 	if (!re) {
 		cli_sendv(cli, "match: %s at %i\r\n", pcre_err, pcre_offset);
@@ -140,9 +140,9 @@ static int terminate_exec1(char * const *f, int f_cnt, void *cli)
 			triton_context_call(ses->ctrl->ctx, (triton_event_func)__terminate_soft, ses);
 	}
 	pthread_rwlock_unlock(&ses_lock);
-	
+
 	pcre_free(re);
-	
+
 	return CLI_CMD_OK;
 }
 
@@ -151,7 +151,7 @@ static int terminate_exec2(int key, char * const *f, int f_cnt, void *cli)
 	struct ap_session *ses;
 	int hard = 0;
 	in_addr_t ipaddr = 0;
-	
+
 	if (f_cnt == 4) {
 		if (!strcmp(f[3], "hard"))
 			hard = 1;
@@ -159,10 +159,10 @@ static int terminate_exec2(int key, char * const *f, int f_cnt, void *cli)
 			return CLI_CMD_SYNTAX;
 	} else if (f_cnt != 3)
 		return CLI_CMD_SYNTAX;
-	
+
 	if (key == 1)
 		ipaddr = inet_addr(f[2]);
-			
+
 	pthread_rwlock_rdlock(&ses_lock);
 	list_for_each_entry(ses, &ses_list, entry) {
 		switch (key) {
@@ -205,7 +205,7 @@ static int terminate_exec(const char *cmd, char * const *fields, int fields_cnt,
 
 	if (fields_cnt == 1)
 		return CLI_CMD_SYNTAX;
-	
+
 	if (!strcmp(fields[1], "match") && fields_cnt > 3 && !strcmp(fields[2], "username"))
 		return terminate_exec1(fields, fields_cnt, client);
 	else if (!strcmp(fields[1], "username"))
@@ -220,7 +220,7 @@ static int terminate_exec(const char *cmd, char * const *fields, int fields_cnt,
 		return terminate_exec2(4, fields, fields_cnt, client);
 	else if (strcmp(fields[1], "all"))
 		return CLI_CMD_SYNTAX;
-	
+
 	if (fields_cnt == 3) {
 		if (!strcmp(fields[2], "hard"))
 			hard = 1;
@@ -228,7 +228,7 @@ static int terminate_exec(const char *cmd, char * const *fields, int fields_cnt,
 			return CLI_CMD_SYNTAX;
 	} else if (fields_cnt != 2)
 		return CLI_CMD_SYNTAX;
-	
+
 	pthread_rwlock_rdlock(&ses_lock);
 	list_for_each_entry(ses, &ses_list, entry) {
 		if (hard)
