@@ -765,7 +765,7 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 
 	if (req->hdr->giaddr)
 		r = dhcpv4_send_udp(serv, pack, req->hdr->giaddr, DHCP_SERV_PORT);
-	else if (pack->hdr->ciaddr)
+	else if (req->hdr->ciaddr && !(pack->hdr->flags & DHCP_F_BROADCAST))
 		r = dhcpv4_send_udp(serv, pack, req->hdr->ciaddr, DHCP_CLIENT_PORT);
 	else
 		r = dhcpv4_send_raw(serv, pack, siaddr, yiaddr);
