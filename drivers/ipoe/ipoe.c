@@ -152,6 +152,11 @@ static struct genl_family ipoe_nl_family;
 static struct genl_multicast_group ipoe_nl_mcg;
 #endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0)
+#define u64_stats_fetch_begin_bh u64_stats_fetch_begin_irq
+#define u64_stats_fetch_retry_bh u64_stats_fetch_retry_irq
+#endif
+
 static inline int hash_addr(__be32 addr)
 {
 #ifdef __LITTLE_ENDIAN
@@ -1168,7 +1173,11 @@ static int ipoe_create(__be32 peer_addr, __be32 addr, const char *link_ifname, c
 
 	sprintf(name, "ipoe%%d");
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,17,0)
+	dev = alloc_netdev(sizeof(*ses), name, NET_NAME_UNKNOWN, ipoe_netdev_setup);
+#else
 	dev = alloc_netdev(sizeof(*ses), name, ipoe_netdev_setup);
+#endif
 	if (dev == NULL) {
 		r = -ENOMEM;
 		goto failed;
