@@ -2121,7 +2121,7 @@ static int __init ipoe_init(void)
 {
 	int err, i;
 
-	printk("IPoE session driver v1.8.0.3\n");
+	printk("IPoE session driver v1.9.0\n");
 
 	/*err = register_pernet_device(&ipoe_net_ops);
 	if (err < 0)
