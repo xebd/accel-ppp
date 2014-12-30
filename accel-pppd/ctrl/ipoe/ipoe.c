@@ -1825,10 +1825,13 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 				if (attr->val.integer > 0 && attr->val.integer < 31)
 					ses->mask = attr->val.integer;
 			} else if (attr->attr->type == ATTR_TYPE_IPADDR) {
+				if (attr->val.ipaddr == 0xffffffff)
+					ses->mask = 32;
+				else
 #if __BYTE_ORDER == __LITTLE_ENDIAN
-				ses->mask = ffs(~attr->val.ipaddr) - 1;
+				ses->mask = 31 - ffs(htonl(attr->val.ipaddr));
 #else
-				ses->mask = ffs(~htole32(attr->val.ipaddr)) - 1;
+				ses->mask = 31 - ffs(attr->val.ipaddr);
 #endif
 			}
 		} else if (attr->attr->id == conf_attr_l4_redirect) {
