@@ -1038,7 +1038,7 @@ static void ipoe_session_free(struct ipoe_session *ses)
 		triton_timer_del(&ses->timer);
 
 	if (ses->l4_redirect_timer.tpd)
-		triton_timer_del(&ses->timer);
+		triton_timer_del(&ses->l4_redirect_timer);
 
 	if (ses->dhcpv4_request)
 		dhcpv4_packet_free(ses->dhcpv4_request);
