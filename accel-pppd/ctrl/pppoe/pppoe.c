@@ -487,6 +487,17 @@ static void print_packet(uint8_t *pack)
 
 	for (n = 0; n < ntohs(hdr->length); n += sizeof(*tag) + ntohs(tag->tag_len)) {
 		tag = (struct pppoe_tag *)(pack + ETH_HLEN + sizeof(*hdr) + n);
+
+		if (n + sizeof(*tag) > ntohs(hdr->length)) {
+			log_info2(" ...");
+			break;
+		}
+
+		if (n + sizeof(*tag) + ntohs(tag->tag_len) > ntohs(hdr->length)) {
+			log_info2(" ...");
+			break;
+		}
+
 		switch (ntohs(tag->tag_type)) {
 			case TAG_END_OF_LIST:
 				log_info2(" <End-Of-List>");
