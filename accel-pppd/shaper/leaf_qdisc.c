@@ -167,8 +167,15 @@ static int parse_fq_codel(char *str)
 	while (1) {
 		for (ptr1 = str + 1; *ptr1 && *ptr1 != ' '; ptr1++);
 
-		if (!*ptr1)
-			return -1;
+		if (!*ptr1) {
+			if (strcmp(str, "ecn") == 0)
+				conf_lq_arg6 = 1;
+			else if (strcmp(str, "noecn") == 0)
+				conf_lq_arg6 = 0;
+			else
+				return -1;
+			break;
+		}
 
 		*ptr1 = 0;
 
@@ -199,10 +206,6 @@ static int parse_fq_codel(char *str)
 		} else if (strcmp(str, "interval") == 0) {
 			if (parse_time(ptr1, &conf_lq_arg5))
 				return -1;
-		} else if (strcmp(str, "ecn") == 0) {
-			conf_lq_arg6 = 1;
-		} else if (strcmp(str, "noecn") == 0) {
-			conf_lq_arg6 = 0;
 		} else
 			return -1;
 
