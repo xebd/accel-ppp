@@ -633,7 +633,7 @@ static void ipoe_session_start(struct ipoe_session *ses)
 			return;
 
 		if (r == PWDB_NO_IMPL) {
-			passwd = pwdb_get_passwd(&ses->ses, ses->ses.username);
+			passwd = pwdb_get_passwd(&ses->ses, username);
 			if (!passwd)
 				r = PWDB_DENIED;
 			else {
