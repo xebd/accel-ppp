@@ -76,9 +76,6 @@ void __export ppp_init(struct ppp_t *ppp)
 
 int __export establish_ppp(struct ppp_t *ppp)
 {
-	struct pppunit_cache *uc = NULL;
-	struct ifreq ifr;
-
 	if (ap_shutdown)
 		return -1;
 
@@ -95,11 +92,53 @@ int __export establish_ppp(struct ppp_t *ppp)
 	}
 
 	fcntl(ppp->chan_fd, F_SETFD, fcntl(ppp->chan_fd, F_GETFD) | FD_CLOEXEC);
+	if (fcntl(ppp->chan_fd, F_SETFL, O_NONBLOCK)) {
+		log_ppp_error("ppp: cannot set nonblocking mode: %s\n",
+			      strerror(errno));
+		goto exit_close_chan;
+	}
 
 	if (ioctl(ppp->chan_fd, PPPIOCATTCHAN, &ppp->chan_idx) < 0) {
 		log_ppp_error("ioctl(PPPIOCATTCHAN): %s\n", strerror(errno));
 		goto exit_close_chan;
 	}
+
+	init_layers(ppp);
+	if (list_empty(&ppp->layers)) {
+		log_ppp_error("no layers to start\n");
+		goto exit_close_chan;
+	}
+
+	ppp->buf = mempool_alloc(buf_pool);
+
+	ppp->chan_hnd.fd = ppp->chan_fd;
+	ppp->chan_hnd.read = ppp_chan_read;
+
+	log_ppp_debug("ppp establishing\n");
+
+	if (ap_session_starting(&ppp->ses))
+		goto exit_free_buf;
+
+	triton_md_register_handler(ppp->ses.ctrl->ctx, &ppp->chan_hnd);
+	triton_md_enable_handler(&ppp->chan_hnd, MD_MODE_READ);
+
+	start_first_layer(ppp);
+
+	return 0;
+
+exit_free_buf:
+	mempool_free(ppp->buf);
+	ppp->buf = NULL;
+exit_close_chan:
+	close(ppp->chan_fd);
+
+	return -1;
+}
+
+int __export connect_ppp_channel(struct ppp_t *ppp)
+{
+	struct pppunit_cache *uc = NULL;
+	struct ifreq ifr;
 
 	if (uc_size) {
 		pthread_mutex_lock(&uc_lock);
@@ -119,7 +158,7 @@ int __export establish_ppp(struct ppp_t *ppp)
 		ppp->unit_fd = open("/dev/ppp", O_RDWR);
 		if (ppp->unit_fd < 0) {
 			log_ppp_error("open(unit) /dev/ppp: %s\n", strerror(errno));
-			goto exit_close_chan;
+			goto exit;
 		}
 
 		fcntl(ppp->unit_fd, F_SETFD, fcntl(ppp->unit_fd, F_GETFD) | FD_CLOEXEC);
@@ -141,11 +180,6 @@ int __export establish_ppp(struct ppp_t *ppp)
 		goto exit_close_unit;
 	}
 
-	if (fcntl(ppp->chan_fd, F_SETFL, O_NONBLOCK)) {
-		log_ppp_error("ppp: cannot set nonblocking mode: %s\n", strerror(errno));
-		goto exit_close_unit;
-	}
-
 	sprintf(ppp->ses.ifname, "ppp%i", ppp->ses.unit_idx);
 
 	log_ppp_info1("connect: %s <--> %s(%s)\n", ppp->ses.ifname, ppp->ses.ctrl->name, ppp->ses.chan_name);
@@ -161,53 +195,45 @@ int __export establish_ppp(struct ppp_t *ppp)
 		goto exit_close_unit;
 	}
 
-	init_layers(ppp);
-
-	if (list_empty(&ppp->layers)) {
-		log_ppp_error("no layers to start\n");
-		goto exit_close_unit;
-	}
-
-	ppp->buf = mempool_alloc(buf_pool);
-
-	ppp->chan_hnd.fd = ppp->chan_fd;
-	ppp->chan_hnd.read = ppp_chan_read;
 	ppp->unit_hnd.fd = ppp->unit_fd;
 	ppp->unit_hnd.read = ppp_unit_read;
 
-	log_ppp_debug("ppp established\n");
+	log_ppp_debug("ppp connected\n");
 
-	if (ap_session_starting(&ppp->ses))
-		goto exit_free_buf;
-
-	triton_md_register_handler(ppp->ses.ctrl->ctx, &ppp->chan_hnd);
 	triton_md_register_handler(ppp->ses.ctrl->ctx, &ppp->unit_hnd);
-
-	triton_md_enable_handler(&ppp->chan_hnd, MD_MODE_READ);
 	triton_md_enable_handler(&ppp->unit_hnd, MD_MODE_READ);
-
-	start_first_layer(ppp);
 
 	return 0;
 
-exit_free_buf:
-	mempool_free(ppp->buf);
-	ppp->buf = NULL;
 exit_close_unit:
 	close(ppp->unit_fd);
-exit_close_chan:
-	close(ppp->chan_fd);
-
+	ppp->unit_fd = -1;
+exit:
 	return -1;
+}
+
+static void destroy_ppp_channel(struct ppp_t *ppp)
+{
+	triton_md_unregister_handler(&ppp->chan_hnd, 1);
+	close(ppp->fd);
+	ppp->fd = -1;
+	ppp->chan_fd = -1;
+
+	_free_layers(ppp);
+
+	mempool_free(ppp->buf);
+
+	ap_session_finished(&ppp->ses);
 }
 
 static void destablish_ppp(struct ppp_t *ppp)
 {
 	struct pppunit_cache *uc;
 
-	triton_event_fire(EV_SES_PRE_FINISHED, &ppp->ses);
+	if (ppp->unit_fd < 0)
+		goto destroy_channel;
 
-	triton_md_unregister_handler(&ppp->chan_hnd, 1);
+	triton_event_fire(EV_SES_PRE_FINISHED, &ppp->ses);
 
 	if (conf_unit_cache) {
 		struct ifreq ifr;
@@ -235,18 +261,12 @@ static void destablish_ppp(struct ppp_t *ppp)
 		triton_md_unregister_handler(&ppp->unit_hnd, 1);
 
 skip:
-	close(ppp->fd);
-	ppp->fd = -1;
-	ppp->chan_fd = -1;
 	ppp->unit_fd = -1;
-
-	_free_layers(ppp);
 
 	log_ppp_debug("ppp destablished\n");
 
-	mempool_free(ppp->buf);
-
-	ap_session_finished(&ppp->ses);
+destroy_channel:
+	destroy_ppp_channel(ppp);
 }
 
 static void *uc_thread(void *unused)

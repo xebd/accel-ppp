@@ -96,6 +96,7 @@ struct ppp_handler_t
 
 void ppp_init(struct ppp_t *ppp);
 int establish_ppp(struct ppp_t *ppp);
+int connect_ppp_channel(struct ppp_t *ppp);
 int ppp_chan_send(struct ppp_t *ppp, void *data, int size);
 int ppp_unit_send(struct ppp_t *ppp, void *data, int size);
 void lcp_send_proto_rej(struct ppp_t *ppp, uint16_t proto);
