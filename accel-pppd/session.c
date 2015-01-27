@@ -61,6 +61,7 @@ void __export ap_session_init(struct ap_session *ses)
 	memset(ses, 0, sizeof(*ses));
 	INIT_LIST_HEAD(&ses->pd_list);
 	ses->ifindex = -1;
+	ses->unit_idx = -1;
 }
 
 void __export ap_session_set_ifindex(struct ap_session *ses)

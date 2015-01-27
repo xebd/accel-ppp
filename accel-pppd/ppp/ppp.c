@@ -163,7 +163,6 @@ int __export connect_ppp_channel(struct ppp_t *ppp)
 
 		fcntl(ppp->unit_fd, F_SETFD, fcntl(ppp->unit_fd, F_GETFD) | FD_CLOEXEC);
 
-		ppp->ses.unit_idx = -1;
 		if (ioctl(ppp->unit_fd, PPPIOCNEWUNIT, &ppp->ses.unit_idx) < 0) {
 			log_ppp_error("ioctl(PPPIOCNEWUNIT): %s\n", strerror(errno));
 			goto exit_close_unit;

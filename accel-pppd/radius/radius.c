@@ -146,6 +146,9 @@ int rad_proc_attrs(struct rad_req_t *req)
 				a->addr = attr->val.ipv6prefix.prefix;
 				list_add_tail(&a->entry, &rpd->ipv6_dp.prefix_list);
 				break;
+			case NAS_Port:
+				rpd->ses->unit_idx = attr->val.integer;
+				break;
 			case NAS_Port_Id:
 				ap_session_rename(rpd->ses, attr->val.string, attr->len);
 				break;
