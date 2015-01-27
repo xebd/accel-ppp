@@ -111,27 +111,20 @@ static int mru_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, ui
 		return LCP_OPT_NAK;
 
 	mru_opt->mtu = ntohs(opt16->val);
+	lcp->ppp->mtu = mru_opt->mtu;
+
 	return LCP_OPT_ACK;
 }
 
 static int mru_recv_conf_ack(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)
 {
 	struct mru_option_t *mru_opt = container_of(opt,typeof(*mru_opt), opt);
-	struct ifreq ifr = {
-		.ifr_mtu = mru_opt->mtu,
-	};
-
-	strcpy(ifr.ifr_name, lcp->ppp->ses.ifname);
 
 	if (ioctl(lcp->ppp->chan_fd, PPPIOCSMRU, &mru_opt->mru) &&
 	    errno != EIO && errno != ENOTTY)
 		log_ppp_error("lcp:mru: failed to set channel MRU: %s\n", strerror(errno));
 
-	if (ioctl(lcp->ppp->unit_fd, PPPIOCSMRU, &mru_opt->mru))
-		log_ppp_error("lcp:mru: failed to set MRU: %s\n", strerror(errno));
-
-	if (ioctl(sock_fd, SIOCSIFMTU, &ifr))
-		log_ppp_error("lcp:mru: failed to set MTU: %s\n", strerror(errno));
+	lcp->ppp->mru = mru_opt->mru;
 
 	return 0;
 }

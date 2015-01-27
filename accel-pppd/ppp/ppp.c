@@ -77,6 +77,7 @@ void __export ppp_init(struct ppp_t *ppp)
 int __export establish_ppp(struct ppp_t *ppp)
 {
 	struct pppunit_cache *uc = NULL;
+	struct ifreq ifr;
 
 	if (ap_shutdown)
 		return -1;
@@ -148,6 +149,17 @@ int __export establish_ppp(struct ppp_t *ppp)
 	sprintf(ppp->ses.ifname, "ppp%i", ppp->ses.unit_idx);
 
 	log_ppp_info1("connect: %s <--> %s(%s)\n", ppp->ses.ifname, ppp->ses.ctrl->name, ppp->ses.chan_name);
+
+	ifr.ifr_mtu = ppp->mtu;
+	strcpy(ifr.ifr_name, ppp->ses.ifname);
+	if (ioctl(sock_fd, SIOCSIFMTU, &ifr)) {
+		log_ppp_error("failed to set MTU: %s\n", strerror(errno));
+		goto exit_close_unit;
+	}
+	if (ioctl(ppp->unit_fd, PPPIOCSMRU, &ppp->mru)) {
+		log_ppp_error("failed to set MRU: %s\n", strerror(errno));
+		goto exit_close_unit;
+	}
 
 	init_layers(ppp);
 

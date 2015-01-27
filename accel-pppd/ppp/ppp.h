@@ -51,6 +51,9 @@ struct ppp_t
 
 	int chan_idx;
 
+	int mtu;
+	int mru;
+
 	void *buf;
 	int buf_size;
 
