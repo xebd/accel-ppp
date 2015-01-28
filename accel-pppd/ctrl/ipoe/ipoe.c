@@ -914,11 +914,10 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 
 	if (ses->serv->opt_mode == MODE_L2 && ses->serv->opt_ipv6 && sock6_fd != -1) {
 		ses->ses.ipv6 = ipdb_get_ipv6(&ses->ses);
-		if (!ses->ses.ipv6) {
+		if (!ses->ses.ipv6)
 			log_ppp_warn("ipoe: no free IPv6 address\n");
-			if (!ses->ses.ipv6->peer_intf_id)
-				ses->ses.ipv6->peer_intf_id = htobe64(1);
-		}
+		if (!ses->ses.ipv6->peer_intf_id)
+			ses->ses.ipv6->peer_intf_id = htobe64(1);
 	}
 
 	__sync_sub_and_fetch(&stat_starting, 1);
