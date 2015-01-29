@@ -310,31 +310,33 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 					}
 				}
 
-				list_for_each_entry(opt2, &opt->opt_list, entry) {
-					if (ntohs(opt2->hdr->code) == D6_OPTION_IAADDR) {
-						ia_addr = (struct dhcpv6_opt_ia_addr *)opt2->hdr;
+				if (code == D6_REPLY) {
+					list_for_each_entry(opt2, &opt->opt_list, entry) {
+						if (ntohs(opt2->hdr->code) == D6_OPTION_IAADDR) {
+							ia_addr = (struct dhcpv6_opt_ia_addr *)opt2->hdr;
 
-						if (IN6_IS_ADDR_UNSPECIFIED(&ia_addr->addr))
-							continue;
-
-						f1 = 0;
-						list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
-							build_addr(a, ses->ipv6->peer_intf_id, &addr);
-							if (memcmp(&addr, &ia_addr->addr, sizeof(addr)))
+							if (IN6_IS_ADDR_UNSPECIFIED(&ia_addr->addr))
 								continue;
-							f1 = 1;
-							break;
-						}
 
-						if (!f1) {
-							opt3 = dhcpv6_nested_option_alloc(reply, opt1, D6_OPTION_IAADDR, sizeof(*ia_addr) - sizeof(struct dhcpv6_opt_hdr));
-							memcpy(opt3->hdr->data, opt2->hdr->data, sizeof(*ia_addr) - sizeof(struct dhcpv6_opt_hdr));
+							f1 = 0;
+							list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
+								build_addr(a, ses->ipv6->peer_intf_id, &addr);
+								if (memcmp(&addr, &ia_addr->addr, sizeof(addr)))
+									continue;
+								f1 = 1;
+								break;
+							}
 
-							ia_addr = (struct dhcpv6_opt_ia_addr *)opt3->hdr;
-							ia_addr->pref_lifetime = 0;
-							ia_addr->valid_lifetime = 0;
+							if (!f1) {
+								opt3 = dhcpv6_nested_option_alloc(reply, opt1, D6_OPTION_IAADDR, sizeof(*ia_addr) - sizeof(struct dhcpv6_opt_hdr));
+								memcpy(opt3->hdr->data, opt2->hdr->data, sizeof(*ia_addr) - sizeof(struct dhcpv6_opt_hdr));
 
-							insert_status(reply, opt3, D6_STATUS_NotOnLink);
+								ia_addr = (struct dhcpv6_opt_ia_addr *)opt3->hdr;
+								ia_addr->pref_lifetime = 0;
+								ia_addr->valid_lifetime = 0;
+
+								insert_status(reply, opt3, D6_STATUS_NotOnLink);
+							}
 						}
 					}
 				}
@@ -381,31 +383,33 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 					ia_prefix->valid_lifetime = htonl(conf_valid_lifetime);
 				}
 
-				list_for_each_entry(opt2, &opt->opt_list, entry) {
-					if (ntohs(opt2->hdr->code) == D6_OPTION_IAPREFIX) {
-						ia_prefix = (struct dhcpv6_opt_ia_prefix *)opt2->hdr;
+				if (code == D6_REPLY) {
+					list_for_each_entry(opt2, &opt->opt_list, entry) {
+						if (ntohs(opt2->hdr->code) == D6_OPTION_IAPREFIX) {
+							ia_prefix = (struct dhcpv6_opt_ia_prefix *)opt2->hdr;
 
-						if (ia_prefix->prefix_len == 0 || IN6_IS_ADDR_UNSPECIFIED(&ia_prefix->prefix))
-							continue;
-
-						f1 = 0;
-						list_for_each_entry(a, &ses->ipv6_dp->prefix_list, entry) {
-							if (a->prefix_len != ia_prefix->prefix_len)
+							if (ia_prefix->prefix_len == 0 || IN6_IS_ADDR_UNSPECIFIED(&ia_prefix->prefix))
 								continue;
-							if (memcmp(&a->addr, &ia_prefix->prefix, sizeof(a->addr)))
-								continue;
-							f1 = 1;
-							break;
-						}
 
-						if (!f1) {
-							opt3 = dhcpv6_nested_option_alloc(reply, opt1, D6_OPTION_IAPREFIX, sizeof(*ia_prefix) - sizeof(struct dhcpv6_opt_hdr));
-							memcpy(opt3->hdr->data, opt2->hdr->data, sizeof(*ia_prefix) - sizeof(struct dhcpv6_opt_hdr));
-							ia_prefix = (struct dhcpv6_opt_ia_prefix *)opt3->hdr;
-							ia_prefix->pref_lifetime = 0;
-							ia_prefix->valid_lifetime = 0;
+							f1 = 0;
+							list_for_each_entry(a, &ses->ipv6_dp->prefix_list, entry) {
+								if (a->prefix_len != ia_prefix->prefix_len)
+									continue;
+								if (memcmp(&a->addr, &ia_prefix->prefix, sizeof(a->addr)))
+									continue;
+								f1 = 1;
+								break;
+							}
 
-							insert_status(reply, opt3, D6_STATUS_NotOnLink);
+							if (!f1) {
+								opt3 = dhcpv6_nested_option_alloc(reply, opt1, D6_OPTION_IAPREFIX, sizeof(*ia_prefix) - sizeof(struct dhcpv6_opt_hdr));
+								memcpy(opt3->hdr->data, opt2->hdr->data, sizeof(*ia_prefix) - sizeof(struct dhcpv6_opt_hdr));
+								ia_prefix = (struct dhcpv6_opt_ia_prefix *)opt3->hdr;
+								ia_prefix->pref_lifetime = 0;
+								ia_prefix->valid_lifetime = 0;
+
+								insert_status(reply, opt3, D6_STATUS_NotOnLink);
+							}
 						}
 					}
 				}
