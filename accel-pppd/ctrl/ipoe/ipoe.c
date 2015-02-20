@@ -343,6 +343,9 @@ static void ipoe_relay_timeout(struct triton_timer_t *t)
 
 static char *ipoe_session_get_username(struct ipoe_session *ses)
 {
+	if (ses->username)
+		return ses->username;
+
 #ifdef USE_LUA
 	if (ses->serv->opt_username == USERNAME_LUA)
 		return ipoe_lua_get_username(ses, ses->serv->opt_lua_username_func ? : conf_lua_username_func);
@@ -1707,6 +1710,7 @@ static void ipoe_recv_dhcpv4_relay(struct dhcpv4_packet *pack)
 static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struct ethhdr *eth, struct iphdr *iph)
 {
 	struct ipoe_session *ses;
+	uint8_t *hwaddr = eth->h_source;
 
 	if (ap_shutdown)
 		return NULL;
@@ -1722,10 +1726,14 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 	memcpy(ses->hwaddr, eth->h_source, 6);
 	ses->yiaddr = iph->saddr;
 
-	ses->ctrl.calling_station_id = _malloc(17);
 	ses->ctrl.called_station_id = _strdup(serv->ifname);
 
-	u_inet_ntoa(iph->saddr, ses->ctrl.calling_station_id);
+	ses->ctrl.calling_station_id = _malloc(19);
+	sprintf(ses->ctrl.calling_station_id, "%02x:%02x:%02x:%02x:%02x:%02x",
+			hwaddr[0], hwaddr[1], hwaddr[2], hwaddr[3], hwaddr[4], hwaddr[5]);
+
+	ses->username = _malloc(17);
+	u_inet_ntoa(iph->saddr, ses->username);
 
 	ses->ses.chan_name = ses->ctrl.calling_station_id;
 
