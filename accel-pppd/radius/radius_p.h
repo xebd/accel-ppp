@@ -39,7 +39,6 @@ struct radius_pd_t {
 	struct triton_timer_t acct_interim_timer;
 
 	struct triton_timer_t session_timeout;
-	struct triton_timer_t idle_timeout;
 
 	struct rad_packet_t *dm_coa_req;
 	struct sockaddr_in dm_coa_addr;

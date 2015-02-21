@@ -110,7 +110,7 @@ int rad_proc_attrs(struct rad_req_t *req)
 				rpd->session_timeout.expire_tv.tv_sec = attr->val.integer;
 				break;
 			case Idle_Timeout:
-				rpd->idle_timeout.period = attr->val.integer * 1000;
+				rpd->ses->idle_timeout = attr->val.integer;
 				break;
 			case Class:
 				if (!rpd->attr_class)
@@ -153,6 +153,11 @@ int rad_proc_attrs(struct rad_req_t *req)
 				ap_session_rename(rpd->ses, attr->val.string, attr->len);
 				break;
 		}
+	}
+
+	if (rpd->session_timeout.expire_tv.tv_sec && !(rpd->termination_action == Termination_Action_RADIUS_Request && rpd->ses->ctrl->ppp)) {
+		rpd->ses->session_timeout = rpd->session_timeout.expire_tv.tv_sec;
+		rpd->session_timeout.expire_tv.tv_sec = 0;
 	}
 
 	if (dns.ses)
@@ -281,21 +286,6 @@ static void session_timeout(struct triton_timer_t *t)
 		ap_session_terminate(rpd->ses, TERM_SESSION_TIMEOUT, 0);
 }
 
-static void idle_timeout(struct triton_timer_t *t)
-{
-	struct radius_pd_t *rpd = container_of(t, typeof(*rpd), idle_timeout);
-
-	if (rpd->ses->stop_time)
-		return;
-
-	ap_session_read_stats(rpd->ses, NULL);
-
-	if (_time() - rpd->ses->idle_time > t->period / 1000) {
-		log_ppp_msg("radius: idle timed out\n");
-		ap_session_terminate(rpd->ses, TERM_IDLE_TIMEOUT, 0);
-	}
-}
-
 static void ses_starting(struct ap_session *ses)
 {
 	struct radius_pd_t *rpd = mempool_alloc(rpd_pool);
@@ -351,11 +341,6 @@ static void ses_started(struct ap_session *ses)
 		rpd->session_timeout.expire = session_timeout;
 		triton_timer_add(ses->ctrl->ctx, &rpd->session_timeout, 0);
 	}
-
-	if (rpd->idle_timeout.period) {
-		rpd->idle_timeout.expire = idle_timeout;
-		triton_timer_add(ses->ctrl->ctx, &rpd->idle_timeout, 0);
-	}
 }
 
 static void ses_finishing(struct ap_session *ses)
@@ -405,9 +390,6 @@ static void ses_finished(struct ap_session *ses)
 
 	if (rpd->session_timeout.tpd)
 		triton_timer_del(&rpd->session_timeout);
-
-	if (rpd->idle_timeout.tpd)
-		triton_timer_del(&rpd->idle_timeout);
 
 	if (rpd->attr_class)
 		_free(rpd->attr_class);
