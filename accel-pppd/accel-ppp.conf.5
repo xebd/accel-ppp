@@ -213,7 +213,7 @@ then lua function with name
 .B username
 will be called to construct username from dhcp packet fields.
 .TP
-.BI "password=" username|empty|<string>
+.BI "password=" username|csid|empty|<string>
 Specifies how to generate password.
 .br
 If password=
@@ -223,6 +223,10 @@ then password will be same as username.
 If password=
 .B empty
 then password will be empty string.
+.br
+If password=
+.B csid
+then password will be same as Calling-Station-Id.
 .br
 Or you can specify fixed password in
 .B <string>.

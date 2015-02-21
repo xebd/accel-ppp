@@ -591,6 +591,7 @@ static void ipoe_session_start(struct ipoe_session *ses)
 	int r;
 	char *passwd;
 	char *username;
+	const char *pass;
 
 	if (ses->dhcpv4_request && conf_verbose) {
 		log_ppp_info2("recv ");
@@ -631,15 +632,23 @@ static void ipoe_session_start(struct ipoe_session *ses)
 		}
 #endif
 
+		if (conf_password) {
+			if (!strcmp(conf_password, "csid"))
+				pass = ses->ctrl.calling_station_id;
+			else
+				pass = conf_password;
+		} else
+			pass = username;
+
 		ses->username = username;
-		r = pwdb_check(&ses->ses, (pwdb_callback)auth_result, ses, username, PPP_PAP, conf_password ? conf_password : username);
+		r = pwdb_check(&ses->ses, (pwdb_callback)auth_result, ses, username, PPP_PAP, pass);
 
 		if (r == PWDB_WAIT)
 			return;
 
 		if (r == PWDB_NO_IMPL) {
 			passwd = pwdb_get_passwd(&ses->ses, username);
-			if (!passwd)
+			if (!passwd || strcmp(passwd, pass))
 				r = PWDB_DENIED;
 			else {
 				r = PWDB_SUCCESS;
