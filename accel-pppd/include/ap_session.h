@@ -96,6 +96,10 @@ struct ap_session
 
 	struct list_head pd_list;
 
+	int idle_timeout;
+	int session_timeout;
+	struct triton_timer_t timer;
+
 	uint32_t acct_rx_bytes;
 	uint32_t acct_tx_bytes;
 	uint32_t acct_input_gigawords;

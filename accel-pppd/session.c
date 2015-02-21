@@ -118,6 +118,27 @@ int __export ap_session_starting(struct ap_session *ses)
 	return 0;
 }
 
+static void ap_session_timer(struct triton_timer_t *t)
+{
+	struct timespec ts;
+	struct ap_session *ses = container_of(t, typeof(*ses), timer);
+
+	if (ap_session_read_stats(ses, NULL))
+		ap_session_terminate(ses, TERM_NAS_ERROR, 0);
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+
+	if (ses->idle_timeout && ts.tv_sec - ses->idle_time >= ses->idle_timeout) {
+		log_ppp_msg("idle timeout\n");
+		ap_session_terminate(ses, TERM_SESSION_TIMEOUT, 0);
+	} else if (ses->session_timeout) {
+		if (ts.tv_sec - ses->start_time >= ses->session_timeout) {
+			log_ppp_msg("session timeout\n");
+			ap_session_terminate(ses, TERM_SESSION_TIMEOUT, 0);
+		}
+	}
+}
+
 void __export ap_session_activate(struct ap_session *ses)
 {
 	if (ap_shutdown)
@@ -131,6 +152,16 @@ void __export ap_session_activate(struct ap_session *ses)
 	ses->state = AP_STATE_ACTIVE;
 	__sync_sub_and_fetch(&ap_session_stat.starting, 1);
 	__sync_add_and_fetch(&ap_session_stat.active, 1);
+
+	if (ses->idle_timeout) {
+		ses->timer.expire = ap_session_timer;
+		ses->timer.period = 60000;
+		triton_timer_add(ses->ctrl->ctx, &ses->timer, 0);
+	} else if (ses->session_timeout) {
+		ses->timer.expire = ap_session_timer;
+		ses->timer.expire_tv.tv_sec = ses->session_timeout;
+		triton_timer_add(ses->ctrl->ctx, &ses->timer, 0);
+	}
 
 #ifdef USE_BACKUP
 	if (!ses->backup)
@@ -197,6 +228,9 @@ void __export ap_session_finished(struct ap_session *ses)
 		ses->ifname_rename = NULL;
 	}
 
+	if (ses->timer.tpd)
+		triton_timer_del(&ses->timer);
+
 #ifdef USE_BACKUP
 	if (ses->backup)
 		ses->backup->storage->free(ses->backup);
@@ -220,6 +254,9 @@ void __export ap_session_terminate(struct ap_session *ses, int cause, int hard)
 
 	if (!ses->terminate_cause)
 		ses->terminate_cause = cause;
+
+	if (ses->timer.tpd)
+		triton_timer_del(&ses->timer);
 
 	if (ses->terminating) {
 		if (hard)
