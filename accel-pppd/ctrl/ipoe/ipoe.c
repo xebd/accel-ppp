@@ -126,6 +126,8 @@ static int conf_l4_redirect_on_reject;
 static const char *conf_l4_redirect_ipset;
 static int conf_vlan_timeout = 30;
 static int conf_max_request = 3;
+static int conf_session_timeout;
+static int conf_idle_timeout;
 
 static const char *conf_relay;
 
@@ -1784,6 +1786,9 @@ struct ipoe_session *ipoe_session_alloc(void)
 
 	ses->ses.ctrl = &ses->ctrl;
 
+	ses->ses.idle_timeout = conf_idle_timeout;
+	ses->ses.session_timeout = conf_session_timeout;
+
 	return ses;
 }
 
@@ -3173,6 +3178,18 @@ static void load_config(void)
 		conf_ip_unnumbered = atoi(opt);
 	else
 		conf_ip_unnumbered = 1;
+
+	opt = conf_get_opt("ipoe", "idle-timeout");
+	if (opt)
+		conf_idle_timeout = atoi(opt);
+	else
+		conf_idle_timeout = 0;
+
+	opt = conf_get_opt("ipoe", "session-timeout");
+	if (opt)
+		conf_session_timeout = atoi(opt);
+	else
+		conf_session_timeout = 0;
 
 #ifdef RADIUS
 	if (triton_module_loaded("radius"))
