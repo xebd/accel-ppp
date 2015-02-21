@@ -1895,6 +1895,16 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 				ipoe_change_addr(ses, attr->val.ipaddr);
 		} else if (attr->attr->id == conf_attr_dhcp_lease_time)
 			ses->lease_time = attr->val.integer;
+		else if (attr->attr->id == conf_attr_l4_redirect_table)
+			ses->l4_redirect_table = attr->val.integer;
+		else if (attr->attr->id == conf_attr_l4_redirect_ipset) {
+			if (attr->attr->type == ATTR_TYPE_STRING) {
+				if (ses->l4_redirect_ipset && strcmp(ses->l4_redirect_ipset, attr->val.string)) {
+					_free(ses->l4_redirect_ipset);
+					ses->l4_redirect_ipset = _strdup(attr->val.string);
+				}
+			}
+		}
 	}
 
 	//if (l4_redirect && !ses->l4_redirect) || (!l4_redirect && ses->l4_redirect))
