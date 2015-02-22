@@ -92,7 +92,7 @@ void ppp_ifup(struct ppp_t *ppp)
 		devconf(ppp, "forwarding", "1");
 
 		memset(&ifr6, 0, sizeof(ifr6));
-		ifr6.ifr6_addr.s6_addr32[0] = htons(0xfe80);
+		ifr6.ifr6_addr.s6_addr32[0] = htonl(0xfe800000);
 		*(uint64_t *)(ifr6.ifr6_addr.s6_addr + 8) = ppp->ses.ipv6->intf_id;
 		ifr6.ifr6_prefixlen = 64;
 		ifr6.ifr6_ifindex = ppp->ifindex;
@@ -161,7 +161,7 @@ void __export ppp_ifdown(struct ppp_t *ppp)
 
 	if (ppp->ses.ipv6) {
 		memset(&ifr6, 0, sizeof(ifr6));
-		ifr6.ifr6_addr.s6_addr32[0] = htons(0xfe80);
+		ifr6.ifr6_addr.s6_addr32[0] = htonl(0xfe800000);
 		*(uint64_t *)(ifr6.ifr6_addr.s6_addr + 8) = ppp->ses.ipv6->intf_id;
 		ifr6.ifr6_prefixlen = 64;
 		ifr6.ifr6_ifindex = ppp->ifindex;
