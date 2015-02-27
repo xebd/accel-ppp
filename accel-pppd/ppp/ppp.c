@@ -189,10 +189,19 @@ int __export connect_ppp_channel(struct ppp_t *ppp)
 		log_ppp_error("failed to set MTU: %s\n", strerror(errno));
 		goto exit_close_unit;
 	}
+
 	if (ioctl(ppp->unit_fd, PPPIOCSMRU, &ppp->mru)) {
 		log_ppp_error("failed to set MRU: %s\n", strerror(errno));
 		goto exit_close_unit;
 	}
+
+	if (ioctl(sock_fd, SIOCGIFINDEX, &ifr)) {
+		log_ppp_error("ioctl(SIOCGIFINDEX): %s\n", strerror(errno));
+		goto exit_close_unit;
+	}
+	ppp->ses.ifindex = ifr.ifr_ifindex;
+
+	ap_session_set_ifindex(&ppp->ses);
 
 	ppp->unit_hnd.fd = ppp->unit_fd;
 	ppp->unit_hnd.read = ppp_unit_read;
