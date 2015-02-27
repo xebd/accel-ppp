@@ -1886,11 +1886,17 @@ static int ipoe_nl_cmd_add_vlan_mon_vid(struct sk_buff *skb, struct genl_info *i
 	d->vid[vid / (8*sizeof(long))] &= ~(1lu << (vid % (8*sizeof(long))));
 	spin_unlock_irqrestore(&d->lock, flags);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
-	if (dev->features & NETIF_F_HW_VLAN_FILTER)
+	if (dev->features & NETIF_F_HW_VLAN_FILTER) {
+		rtnl_lock();
 		dev->netdev_ops->ndo_vlan_rx_add_vid(dev, vid);
+		rtnl_unlock();
+	}
 #else
-	if (dev->features & NETIF_F_HW_VLAN_CTAG_FILTER)
+	if (dev->features & NETIF_F_HW_VLAN_CTAG_FILTER) {
+		rtnl_lock();
 		dev->netdev_ops->ndo_vlan_rx_add_vid(dev, htons(ETH_P_8021Q), vid);
+		rtnl_unlock();
+	}
 #endif
 
 	up(&ipoe_wlock);
