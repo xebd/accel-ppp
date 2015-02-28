@@ -27,7 +27,7 @@ static int mru_send_conf_nak(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, ui
 static int mru_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr);
 static int mru_recv_conf_ack(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr);
 static int mru_recv_conf_nak(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr);
-static void mru_print(void (*print)(const char *fmt,...),struct lcp_option_t*, uint8_t *ptr);
+static void mru_print(void (*print)(const char *fmt, ...), struct lcp_option_t*, uint8_t *ptr);
 
 struct mru_option_t
 {
@@ -39,19 +39,20 @@ struct mru_option_t
 
 static struct lcp_option_handler_t mru_opt_hnd=
 {
-	.init=mru_init,
-	.send_conf_req=mru_send_conf_req,
-	.send_conf_nak=mru_send_conf_nak,
-	.recv_conf_req=mru_recv_conf_req,
-	.recv_conf_ack=mru_recv_conf_ack,
-	.recv_conf_nak=mru_recv_conf_nak,
-	.free=mru_free,
-	.print=mru_print,
+	.init = mru_init,
+	.send_conf_req = mru_send_conf_req,
+	.send_conf_nak = mru_send_conf_nak,
+	.recv_conf_req = mru_recv_conf_req,
+	.recv_conf_ack = mru_recv_conf_ack,
+	.recv_conf_nak = mru_recv_conf_nak,
+	.free = mru_free,
+	.print = mru_print,
 };
 
 static struct lcp_option_t *mru_init(struct ppp_lcp_t *lcp)
 {
-	struct mru_option_t *mru_opt=_malloc(sizeof(*mru_opt));
+	struct mru_option_t *mru_opt = _malloc(sizeof(*mru_opt));
+
 	memset(mru_opt, 0, sizeof(*mru_opt));
 	mru_opt->mru = (conf_mru && conf_mru <= lcp->ppp->ses.ctrl->max_mtu) ? conf_mru : lcp->ppp->ses.ctrl->max_mtu;
 	if (mru_opt->mru > conf_max_mtu)
@@ -61,6 +62,9 @@ static struct lcp_option_t *mru_init(struct ppp_lcp_t *lcp)
 		mru_opt->mtu = conf_max_mtu;
 	mru_opt->opt.id = CI_MRU;
 	mru_opt->opt.len = 4;
+
+	lcp->ppp->mru = mru_opt->mru;
+	lcp->ppp->mtu = mru_opt->mtu;
 
 	return &mru_opt->opt;
 }
@@ -74,7 +78,7 @@ static void mru_free(struct ppp_lcp_t *lcp, struct lcp_option_t *opt)
 
 static int mru_send_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)
 {
-	struct mru_option_t *mru_opt = container_of(opt,typeof(*mru_opt),opt);
+	struct mru_option_t *mru_opt = container_of(opt, typeof(*mru_opt), opt);
 	struct lcp_opt16_t *opt16 = (struct lcp_opt16_t*)ptr;
 
 	if (mru_opt->naked)
@@ -88,8 +92,9 @@ static int mru_send_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, ui
 
 static int mru_send_conf_nak(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)
 {
-	struct mru_option_t *mru_opt = container_of(opt,typeof(*mru_opt),opt);
+	struct mru_option_t *mru_opt = container_of(opt, typeof(*mru_opt), opt);
 	struct lcp_opt16_t *opt16 = (struct lcp_opt16_t*)ptr;
+
 	opt16->hdr.id = CI_MRU;
 	opt16->hdr.len = 4;
 	opt16->val = htons(mru_opt->mtu);
@@ -98,7 +103,7 @@ static int mru_send_conf_nak(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, ui
 
 static int mru_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)
 {
-	struct mru_option_t *mru_opt = container_of(opt,typeof(*mru_opt),opt);
+	struct mru_option_t *mru_opt = container_of(opt, typeof(*mru_opt), opt);
 	struct lcp_opt16_t *opt16 = (struct lcp_opt16_t*)ptr;
 
 	/*if (!ptr)
@@ -118,7 +123,7 @@ static int mru_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, ui
 
 static int mru_recv_conf_ack(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)
 {
-	struct mru_option_t *mru_opt = container_of(opt,typeof(*mru_opt), opt);
+	struct mru_option_t *mru_opt = container_of(opt, typeof(*mru_opt), opt);
 
 	if (ioctl(lcp->ppp->chan_fd, PPPIOCSMRU, &mru_opt->mru) &&
 	    errno != EIO && errno != ENOTTY)
@@ -131,20 +136,21 @@ static int mru_recv_conf_ack(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, ui
 
 static int mru_recv_conf_nak(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)
 {
-	struct mru_option_t *mru_opt = container_of(opt,typeof(*mru_opt), opt);
+	struct mru_option_t *mru_opt = container_of(opt, typeof(*mru_opt), opt);
+
 	mru_opt->naked = 1;
 	return 0;
 }
 
-static void mru_print(void (*print)(const char *fmt,...), struct lcp_option_t *opt, uint8_t *ptr)
+static void mru_print(void (*print)(const char *fmt, ...), struct lcp_option_t *opt, uint8_t *ptr)
 {
 	struct mru_option_t *mru_opt = container_of(opt, typeof(*mru_opt), opt);
 	struct lcp_opt16_t *opt16 = (struct lcp_opt16_t*)ptr;
 
 	if (ptr)
-		print("<mru %i>",ntohs(opt16->val));
+		print("<mru %i>", ntohs(opt16->val));
 	else
-		print("<mru %i>",mru_opt->mru);
+		print("<mru %i>", mru_opt->mru);
 }
 
 static void load_config(void)

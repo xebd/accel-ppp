@@ -185,12 +185,12 @@ int __export connect_ppp_channel(struct ppp_t *ppp)
 
 	ifr.ifr_mtu = ppp->mtu;
 	strcpy(ifr.ifr_name, ppp->ses.ifname);
-	if (ioctl(sock_fd, SIOCSIFMTU, &ifr)) {
+	if (ppp->mtu && ioctl(sock_fd, SIOCSIFMTU, &ifr)) {
 		log_ppp_error("failed to set MTU: %s\n", strerror(errno));
 		goto exit_close_unit;
 	}
 
-	if (ioctl(ppp->unit_fd, PPPIOCSMRU, &ppp->mru)) {
+	if (ppp->mru && ioctl(ppp->unit_fd, PPPIOCSMRU, &ppp->mru)) {
 		log_ppp_error("failed to set MRU: %s\n", strerror(errno));
 		goto exit_close_unit;
 	}
