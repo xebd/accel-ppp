@@ -243,6 +243,11 @@ static int ipoe_check_interface(int ifindex)
 	return r;
 }
 
+#ifndef u64_stats_fetch_begin_bh
+#define u64_stats_fetch_begin_bh u64_stats_fetch_begin_irq
+#define u64_stats_fetch_retry_bh u64_stats_fetch_retry_irq
+#endif
+
 
 static int ipoe_do_nat(struct sk_buff *skb, __be32 new_addr, int to_peer)
 {
