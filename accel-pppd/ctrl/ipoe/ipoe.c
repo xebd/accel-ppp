@@ -120,6 +120,8 @@ static int conf_attr_l4_redirect;
 static int conf_attr_l4_redirect_table;
 static int conf_attr_l4_redirect_ipset;
 static const char *conf_attr_dhcp_opt82;
+static const char *conf_attr_dhcp_opt82_remote_id;
+static const char *conf_attr_dhcp_opt82_circuit_id;
 #endif
 static int conf_l4_redirect_table;
 static int conf_l4_redirect_on_reject;
@@ -626,7 +628,8 @@ static void ipoe_session_start(struct ipoe_session *ses)
 			return;
 
 #ifdef RADIUS
-		if (conf_attr_dhcp_opt82 && ses->relay_agent && radius_loaded) {
+		if ((conf_attr_dhcp_opt82 || conf_attr_dhcp_opt82_remote_id || conf_attr_dhcp_opt82_circuit_id) &&
+			ses->relay_agent && radius_loaded) {
 			ses->radius.send_access_request = ipoe_rad_send_request;
 			ses->radius.send_accounting_request = ipoe_rad_send_request;
 			rad_register_plugin(&ses->ses, &ses->radius);
@@ -1967,7 +1970,19 @@ static int ipoe_rad_send_request(struct rad_plugin_t *rad, struct rad_packet_t *
 	if (!ses->relay_agent)
 		return 0;
 
-	return rad_packet_add_octets(pack, NULL, conf_attr_dhcp_opt82, ses->relay_agent->data, ses->relay_agent->len);
+	if (conf_attr_dhcp_opt82 &&
+		rad_packet_add_octets(pack, NULL, conf_attr_dhcp_opt82, ses->relay_agent->data, ses->relay_agent->len))
+		return -1;
+
+	if (conf_attr_dhcp_opt82_remote_id && ses->agent_remote_id &&
+		rad_packet_add_octets(pack, NULL, conf_attr_dhcp_opt82_remote_id, ses->agent_remote_id + 1, *ses->agent_remote_id))
+		return -1;
+
+	if (conf_attr_dhcp_opt82_circuit_id && ses->agent_circuit_id &&
+		rad_packet_add_octets(pack, NULL, conf_attr_dhcp_opt82_circuit_id, ses->agent_circuit_id + 1, *ses->agent_circuit_id))
+		return -1;
+
+	return 0;
 }
 
 #endif
@@ -2773,6 +2788,8 @@ static void load_radius_attrs(void)
 	parse_conf_rad_attr("attr-l4-redirect-table", &conf_attr_l4_redirect_table);
 	parse_conf_rad_attr("attr-l4-redirect-ipset", &conf_attr_l4_redirect_ipset);
 	conf_attr_dhcp_opt82 = conf_get_opt("ipoe", "attr-dhcp-opt82");
+	conf_attr_dhcp_opt82_remote_id = conf_get_opt("ipoe", "attr-dhcp-opt82-remote-id");
+	conf_attr_dhcp_opt82_circuit_id = conf_get_opt("ipoe", "attr-dhcp-opt82-circuit-id");
 }
 #endif
 
