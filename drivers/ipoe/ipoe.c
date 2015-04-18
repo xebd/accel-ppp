@@ -157,6 +157,13 @@ static struct genl_multicast_group ipoe_nl_mcg;
 #define u64_stats_fetch_retry_bh u64_stats_fetch_retry_irq
 #endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,16,0)
+#ifndef u64_stats_fetch_begin_bh
+#define u64_stats_fetch_begin_bh u64_stats_fetch_begin_irq
+#define u64_stats_fetch_retry_bh u64_stats_fetch_retry_irq
+#endif
+#endif
+
 static inline int hash_addr(__be32 addr)
 {
 #ifdef __LITTLE_ENDIAN
@@ -242,12 +249,6 @@ static int ipoe_check_interface(int ifindex)
 
 	return r;
 }
-
-#ifndef u64_stats_fetch_begin_bh
-#define u64_stats_fetch_begin_bh u64_stats_fetch_begin_irq
-#define u64_stats_fetch_retry_bh u64_stats_fetch_retry_irq
-#endif
-
 
 static int ipoe_do_nat(struct sk_buff *skb, __be32 new_addr, int to_peer)
 {
