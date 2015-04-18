@@ -164,6 +164,10 @@ static struct genl_multicast_group ipoe_nl_mcg;
 #endif
 #endif
 
+#ifndef NETIF_F_HW_VLAN_FILTER
+#define NETIF_F_HW_VLAN_FILTER NETIF_F_HW_VLAN_CTAG_FILTER
+#endif
+
 static inline int hash_addr(__be32 addr)
 {
 #ifdef __LITTLE_ENDIAN
@@ -1156,7 +1160,7 @@ static void ipoe_netdev_setup(struct net_device *dev)
 	dev->iflink = 0;
 	dev->addr_len = ETH_ALEN;
 	dev->features  |= NETIF_F_NETNS_LOCAL;
-	dev->features  &= ~NETIF_F_HW_VLAN_CTAG_FILTER;
+	dev->features  &= ~NETIF_F_HW_VLAN_FILTER;
 	dev->header_ops	= &ipoe_hard_header_ops;
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35)
 	dev->priv_flags &= ~IFF_XMIT_DST_RELEASE;
@@ -1215,7 +1219,7 @@ static int ipoe_create(__be32 peer_addr, __be32 addr, const char *link_ifname, c
 #endif
 
 	if (link_dev) {
-		dev->features = link_dev->features;
+		dev->features = link_dev->features & ~NETIF_F_HW_VLAN_FILTER;
 		memcpy(dev->dev_addr, link_dev->dev_addr, ETH_ALEN);
 		memcpy(dev->broadcast, link_dev->broadcast, ETH_ALEN);
 	}
@@ -1511,7 +1515,7 @@ static int ipoe_nl_cmd_modify(struct sk_buff *skb, struct genl_info *info)
 		ses->link_dev = link_dev;
 
 		if (link_dev) {
-			ses->dev->features = link_dev->features;
+			ses->dev->features = link_dev->features & ~NETIF_F_HW_VLAN_FILTER;
 			memcpy(dev->dev_addr, link_dev->dev_addr, ETH_ALEN);
 			memcpy(dev->broadcast, link_dev->broadcast, ETH_ALEN);
 		}
