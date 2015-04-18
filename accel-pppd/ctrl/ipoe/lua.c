@@ -232,7 +232,7 @@ out_err:
 
 char *ipoe_lua_get_username(struct ipoe_session *ses, const char *func)
 {
-	char *r;
+	char *r = NULL;
 
 	if (file_error && serial == __serial)
 		return NULL;
@@ -251,26 +251,21 @@ char *ipoe_lua_get_username(struct ipoe_session *ses, const char *func)
 
 	if (lua_pcall(L, 1, 1, 0)) {
 		log_ppp_error("ipoe: lua: %s\n", lua_tostring(L, -1));
-		goto out_err;
+		lua_pop(L, 1);
+		goto out;
 	}
 
 	if (!lua_isstring(L, -1)) {
 		log_ppp_error("ipoe: lua: function '%s' must return a string\n", func);
-		goto out_err;
+		goto out;
 	}
 
 	r = _strdup(lua_tostring(L, -1));
 
+out:
 	lua_settop(L, 0);
 
 	return r;
-
-out_err:
-	file_error = 1;
-	lua_close(L);
-	L = NULL;
-	pthread_setspecific(__key, L);
-	return NULL;
 }
 
 static void load_config()
