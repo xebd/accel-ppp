@@ -148,6 +148,7 @@ static int conf_proto;
 static LIST_HEAD(conf_offer_delay);
 static const char *conf_vlan_name;
 static int conf_ip_unnumbered;
+static int conf_soft_terminate;
 
 static unsigned int stat_starting;
 static unsigned int stat_active;
@@ -309,7 +310,7 @@ static void ipoe_session_timeout(struct triton_timer_t *t)
 
 	log_ppp_info2("ipoe: session timed out\n");
 
-	ap_session_terminate(&ses->ses, TERM_LOST_CARRIER, 0);
+	ap_session_terminate(&ses->ses, TERM_LOST_CARRIER, 1);
 }
 
 static void ipoe_session_l4_redirect_timeout(struct triton_timer_t *t)
@@ -320,7 +321,7 @@ static void ipoe_session_l4_redirect_timeout(struct triton_timer_t *t)
 
 	log_ppp_info2("ipoe: session timed out\n");
 
-	ap_session_terminate(&ses->ses, TERM_NAS_REQUEST, 0);
+	ap_session_terminate(&ses->ses, TERM_NAS_REQUEST, 1);
 }
 
 static void ipoe_relay_timeout(struct triton_timer_t *t)
@@ -337,7 +338,7 @@ static void ipoe_relay_timeout(struct triton_timer_t *t)
 
 		log_ppp_info2("ipoe: relay timed out\n");
 
-		ap_session_terminate(&ses->ses, TERM_LOST_CARRIER, 0);
+		ap_session_terminate(&ses->ses, TERM_LOST_CARRIER, 1);
 	} else
 		dhcpv4_relay_send(ses->serv->dhcpv4_relay, ses->dhcpv4_request, ses->relay_server_id, ses->serv->ifname, conf_agent_remote_id);
 }
@@ -553,7 +554,7 @@ static void auth_result(struct ipoe_session *ses, int r)
 			log_ppp_warn("authentication failed\n");
 		if (conf_l4_redirect_on_reject && !ses->dhcpv4_request)
 			l4_redirect_list_add(ses->yiaddr);
-		ap_session_terminate(&ses->ses, TERM_AUTH_ERROR, 0);
+		ap_session_terminate(&ses->ses, TERM_AUTH_ERROR, 1);
 		return;
 	}
 
@@ -704,7 +705,7 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 	if (ses->dhcpv4_request) {
 		if (!ses->yiaddr) {
 			log_ppp_error("no free IPv4 address\n");
-			ap_session_terminate(&ses->ses, TERM_NAS_REQUEST, 0);
+			ap_session_terminate(&ses->ses, TERM_NAS_REQUEST, 1);
 			return;
 		}
 
@@ -736,7 +737,7 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 
 		if (!ses->router) {
 			log_ppp_error("can't determine router address\n");
-			ap_session_terminate(&ses->ses, TERM_NAS_REQUEST, 0);
+			ap_session_terminate(&ses->ses, TERM_NAS_REQUEST, 1);
 			return;
 		}
 
@@ -751,7 +752,7 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 
 		if (!ses->siaddr) {
 			log_ppp_error("can't determine Server-ID\n");
-			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 0);
+			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 1);
 			return;
 		}
 
@@ -779,7 +780,7 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 
 		if (!ses->siaddr) {
 			log_ppp_error("can't determine local address\n");
-			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 0);
+			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 1);
 			return;
 		}
 
@@ -899,7 +900,7 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 		}
 
 		if (ipoe_nl_modify(ses->ifindex, ses->yiaddr, addr, NULL, NULL)) {
-			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 0);
+			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 1);
 			return;
 		}
 	}
@@ -1019,7 +1020,7 @@ static void ipoe_session_decline(struct dhcpv4_packet *pack)
 
 	dhcpv4_packet_free(pack);
 
-	ap_session_terminate(&ses->ses, TERM_USER_REQUEST, 0);
+	ap_session_terminate(&ses->ses, TERM_USER_REQUEST, 1);
 }
 
 static void ipoe_session_started(struct ap_session *s)
@@ -1120,14 +1121,38 @@ static void ipoe_session_finished(struct ap_session *s)
 	triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_free, ses);
 }
 
+static void ipoe_session_terminated(struct ipoe_session *ses)
+{
+	if (ses->l4_redirect_set)
+		ipoe_change_l4_redirect(ses, 1);
+
+	ap_session_finished(&ses->ses);
+}
+
+static void ipoe_session_terminated_pkt(struct dhcpv4_packet *pack)
+{
+	struct ipoe_session *ses = container_of(triton_context_self(), typeof(*ses), ctx);
+
+	if (conf_verbose) {
+		log_ppp_info2("recv ");
+		dhcpv4_print_packet(pack, 0, log_ppp_info2);
+	}
+
+	dhcpv4_send_nak(ses->serv->dhcpv4, pack);
+
+	dhcpv4_packet_free(pack);
+
+	ipoe_session_terminated(ses);
+}
+
 static void ipoe_session_terminate(struct ap_session *s, int hard)
 {
 	struct ipoe_session *ses = container_of(s, typeof(*ses), ses);
 
-	if (ses->l4_redirect_set)
-		ipoe_change_l4_redirect(ses, 1);
-
-	ap_session_finished(s);
+	if (hard || !conf_soft_terminate)
+		ipoe_session_terminated(ses);
+	else
+		ses->terminate = 1;
 }
 
 
@@ -1227,9 +1252,14 @@ static struct ipoe_session *ipoe_session_create_dhcpv4(struct ipoe_serv *serv, s
 	return ses;
 }
 
-static void __ipoe_session_terminate(struct ap_session *ses)
+static void __ipoe_session_terminate(struct ap_session *s)
 {
-	ap_session_terminate(ses, TERM_USER_REQUEST, 0);
+	struct ipoe_session *ses = container_of(s, typeof(*ses), ses);
+
+	if (ses->terminate)
+		ipoe_session_terminated(ses);
+	else
+		ap_session_terminate(s, TERM_USER_REQUEST, 1);
 }
 
 static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *pack)
@@ -1245,6 +1275,13 @@ static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packe
 	if (conf_verbose) {
 		log_ppp_info2("recv ");
 		dhcpv4_print_packet(pack, 0, log_ppp_info2);
+	}
+
+	if (ses->terminate) {
+		if (pack->msg_type != DHCPDISCOVER)
+			dhcpv4_send_nak(dhcpv4, pack);
+		triton_context_call(ses->ctrl.ctx, (triton_event_func)ipoe_session_terminated, ses);
+		return;
 	}
 
 	if (pack->relay_agent && dhcpv4_parse_opt82(pack->relay_agent, &agent_circuit_id, &agent_remote_id)) {
@@ -1353,7 +1390,7 @@ static void ipoe_ses_recv_dhcpv4_request(struct dhcpv4_packet *pack)
 		if (pack->server_id == ses->siaddr)
 			dhcpv4_send_nak(ses->serv->dhcpv4, pack);
 
-		ap_session_terminate(&ses->ses, TERM_USER_REQUEST, 0);
+		ap_session_terminate(&ses->ses, TERM_USER_REQUEST, 1);
 
 		dhcpv4_packet_free(pack);
 		return;
@@ -1493,7 +1530,7 @@ static void port_change_detected(struct dhcpv4_packet *pack)
 
 	log_ppp_warn("port change detected\n");
 
-	ap_session_terminate(&ses->ses, TERM_USER_REQUEST, 0);
+	ap_session_terminate(&ses->ses, TERM_USER_REQUEST, 1);
 }
 
 static void mac_change_detected(struct dhcpv4_packet *pack)
@@ -1509,7 +1546,7 @@ static void mac_change_detected(struct dhcpv4_packet *pack)
 
 	log_ppp_warn("mac change detected\n");
 
-	ap_session_terminate(&ses->ses, TERM_USER_REQUEST, 0);
+	ap_session_terminate(&ses->ses, TERM_USER_REQUEST, 1);
 }
 
 static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *pack, int force)
@@ -1550,6 +1587,11 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 
 			ses = ipoe_session_create_dhcpv4(serv, pack);
 		}	else {
+			if (ses->terminate) {
+				triton_context_call(ses->ctrl.ctx, (triton_event_func)ipoe_session_terminated, ses);
+				goto out;
+			}
+
 			if ((opt82_ses && ses != opt82_ses) || (!opt82_ses && pack->relay_agent)) {
 				dhcpv4_packet_ref(pack);
 				triton_context_call(&ses->ctx, (triton_event_func)port_change_detected, pack);
@@ -1583,6 +1625,12 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 			} else if (list_empty(&conf_offer_delay) || ipoe_serv_request_check(serv, pack->hdr->xid))
 				dhcpv4_send_nak(dhcpv4, pack);
 		} else {
+			if (ses->terminate) {
+				dhcpv4_packet_ref(pack);
+				triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_terminated_pkt, pack);
+				goto out;
+			}
+
 			if ((opt82_ses && ses != opt82_ses) || (!opt82_ses && pack->relay_agent)) {
 				dhcpv4_packet_ref(pack);
 				triton_context_call(&ses->ctx, (triton_event_func)port_change_detected, pack);
@@ -1678,7 +1726,7 @@ static void ipoe_ses_recv_dhcpv4_relay(struct dhcpv4_packet *pack)
 
 	} else if (pack->msg_type == DHCPNAK) {
 		dhcpv4_send_nak(ses->dhcpv4 ?: ses->serv->dhcpv4, ses->dhcpv4_request);
-		ap_session_terminate(&ses->ses, TERM_NAS_REQUEST, 0);
+		ap_session_terminate(&ses->ses, TERM_NAS_REQUEST, 1);
 		return;
 	}
 
@@ -2051,7 +2099,7 @@ void __export ipoe_get_stat(unsigned int **starting, unsigned int **active)
 
 static void __terminate(struct ap_session *ses)
 {
-	ap_session_terminate(ses, TERM_NAS_REQUEST, 0);
+	ap_session_terminate(ses, TERM_NAS_REQUEST, 1);
 }
 
 static void ipoe_drop_sessions(struct ipoe_serv *serv, struct ipoe_session *skip)
@@ -3209,6 +3257,12 @@ static void load_config(void)
 		conf_session_timeout = atoi(opt);
 	else
 		conf_session_timeout = 0;
+
+	opt = conf_get_opt("ipoe", "soft-terminate");
+	if (opt)
+		conf_soft_terminate = atoi(opt);
+	else
+		conf_soft_terminate = 0;
 
 #ifdef RADIUS
 	if (triton_module_loaded("radius"))

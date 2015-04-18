@@ -95,6 +95,7 @@ struct ipoe_session {
 	int relay_addr:1;
 	int l4_redirect:1;
 	int l4_redirect_set:1;
+	int terminate:1;
 };
 
 struct ipoe_session_info {
