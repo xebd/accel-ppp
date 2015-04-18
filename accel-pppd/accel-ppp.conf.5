@@ -384,6 +384,9 @@ Specifies pattern of vlan interface name. Pattern may contain following macros:
 - number of vlan.
 .br
 By default vlan-name=%I.%N.
+.TP
+.BI "soft-terminate=" 0|1
+Turns on soft terminate mode. Soft terminate means that session won't be terminated immediately, but when next lease renewal request will be received.
 .SH [dns]
 .TP
 .BI "dns1=" x.x.x.x
