@@ -957,7 +957,7 @@ int dhcpv4_relay_send(struct dhcpv4_relay *relay, struct dhcpv4_packet *request,
 	struct dhcpv4_option *opt = NULL;
 	uint32_t _server_id;
 
-	if (!request->relay_agent && dhcpv4_packet_insert_opt82(request, agent_circuit_id, agent_remote_id))
+	if (!request->relay_agent && agent_remote_id && dhcpv4_packet_insert_opt82(request, agent_circuit_id, agent_remote_id))
 		return -1;
 
 	request->hdr->giaddr = relay->giaddr;
@@ -1022,7 +1022,7 @@ int dhcpv4_relay_send_release(struct dhcpv4_relay *relay, uint8_t *chaddr, uint3
 
 	if (relay_agent && dhcpv4_packet_add_opt(pack, 82, relay_agent->data, relay_agent->len))
 		goto out_err;
-	else if (!relay_agent) {
+	else if (!relay_agent && agent_remote_id) {
 		pack->ptr++;
 		if (dhcpv4_packet_insert_opt82(pack, agent_circuit_id, agent_remote_id))
 			goto out_err;

@@ -3203,7 +3203,7 @@ static void load_config(void)
 	if (opt)
 		conf_agent_remote_id = opt;
 	else
-		conf_agent_remote_id = "accel-pppd";
+		conf_agent_remote_id = NULL;
 
 	opt = conf_get_opt("ipoe", "ipv6");
 	if (opt)
