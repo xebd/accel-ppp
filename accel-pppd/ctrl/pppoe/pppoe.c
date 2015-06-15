@@ -880,7 +880,7 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	struct pppoe_tag *host_uniq_tag = NULL;
 	struct pppoe_tag *relay_sid_tag = NULL;
 	struct pppoe_tag *service_name_tag = NULL;
-	int len, n, service_match = 0;
+	int len, n, service_match = conf_service_name == NULL;
 	struct delayed_pado_t *pado;
 	struct timespec ts;
 
@@ -913,16 +913,14 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 			case TAG_END_OF_LIST:
 				break;
 			case TAG_SERVICE_NAME:
-				if (conf_service_name && tag->tag_len) {
+				if (conf_service_name) {
 					if (ntohs(tag->tag_len) != strlen(conf_service_name))
 						break;
 					if (memcmp(tag->tag_data, conf_service_name, ntohs(tag->tag_len)))
 						break;
 					service_match = 1;
-				} else {
+				} else
 					service_name_tag = tag;
-					service_match = 1;
-				}
 				break;
 			case TAG_HOST_UNIQ:
 				host_uniq_tag = tag;
