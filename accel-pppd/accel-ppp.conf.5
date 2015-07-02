@@ -387,6 +387,9 @@ By default vlan-name=%I.%N.
 .TP
 .BI "soft-terminate=" 0|1
 Turns on soft terminate mode. Soft terminate means that session won't be terminated immediately, but when next lease renewal request will be received.
+.TP
+.BI "check-mac-change=" 0|1
+If enabled accel-ppp will terminate session when detects change of mac address of client (by default it is enabled).
 .SH [dns]
 .TP
 .BI "dns1=" x.x.x.x

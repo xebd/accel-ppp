@@ -150,6 +150,7 @@ static int conf_proto;
 static LIST_HEAD(conf_offer_delay);
 static const char *conf_vlan_name;
 static int conf_ip_unnumbered;
+static int conf_check_mac_change;
 static int conf_soft_terminate;
 
 static unsigned int stat_starting;
@@ -199,13 +200,13 @@ static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct d
 	if (opt82_ses)
 		*opt82_ses = NULL;
 
-	if (pack->relay_agent && dhcpv4_parse_opt82(pack->relay_agent, &agent_circuit_id, &agent_remote_id)) {
+	if (!conf_check_mac_change || (pack->relay_agent && dhcpv4_parse_opt82(pack->relay_agent, &agent_circuit_id, &agent_remote_id))) {
 		agent_circuit_id = NULL;
 		agent_remote_id = NULL;
 	}
 
 	list_for_each_entry(ses, &serv->sessions, entry) {
-		opt82_match = pack->relay_agent != NULL;
+		opt82_match = conf_check_mac_change && pack->relay_agent != NULL;
 
 		if (agent_circuit_id && !ses->agent_circuit_id)
 			opt82_match = 0;
@@ -1322,7 +1323,7 @@ static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packe
 			opt82_match = 0;
 	}
 
-	if (pack->relay_agent && !opt82_match) {
+	if (conf_check_mac_change && pack->relay_agent && !opt82_match) {
 		log_ppp_info2("port change detected\n");
 		if (pack->msg_type == DHCPREQUEST)
 			dhcpv4_send_nak(dhcpv4, pack);
@@ -1595,7 +1596,7 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 				goto out;
 			}
 
-			if ((opt82_ses && ses != opt82_ses) || (!opt82_ses && pack->relay_agent)) {
+			if (conf_check_mac_change && ((opt82_ses && ses != opt82_ses) || (!opt82_ses && pack->relay_agent))) {
 				dhcpv4_packet_ref(pack);
 				triton_context_call(&ses->ctx, (triton_event_func)port_change_detected, pack);
 				if (opt82_ses)
@@ -1634,7 +1635,7 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 				goto out;
 			}
 
-			if ((opt82_ses && ses != opt82_ses) || (!opt82_ses && pack->relay_agent)) {
+			if (conf_check_mac_change && ((opt82_ses && ses != opt82_ses) || (!opt82_ses && pack->relay_agent))) {
 				dhcpv4_packet_ref(pack);
 				triton_context_call(&ses->ctx, (triton_event_func)port_change_detected, pack);
 				if (opt82_ses)
@@ -3280,6 +3281,12 @@ static void load_config(void)
 		conf_soft_terminate = atoi(opt);
 	else
 		conf_soft_terminate = 0;
+
+	opt = conf_get_opt("ipoe", "check-mac-change");
+	if (opt)
+		conf_check_mac_change = atoi(opt);
+	else
+		conf_check_mac_change = 1;
 
 #ifdef RADIUS
 	if (triton_module_loaded("radius"))
