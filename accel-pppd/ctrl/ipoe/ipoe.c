@@ -2932,7 +2932,7 @@ static void add_vlan_mon(const char *opt, long *mask)
 
 	for (ptr = opt; *ptr && *ptr != ','; ptr++);
 
-	if (ptr - opt >= sizeof(ifr.ifr_name)) {
+	if (ptr - opt >= IFNAMSIZ) {
 		log_error("ipoe: vlan-mon=%s: interface name is too long\n", opt);
 		return;
 	}
