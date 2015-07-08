@@ -155,6 +155,11 @@ struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifna
 		goto out_err;
 	}
 
+	if (setsockopt(sock, SOL_SOCKET, SO_NO_CHECK, &f, sizeof(f))) {
+		log_error("setsockopt(SO_NO_CHECK): %s\n", strerror(errno));
+		goto out_err;
+	}
+
 	if (bind(sock, &addr, sizeof(addr))) {
 		log_error("bind: %s\n", strerror(errno));
 		goto out_err;

@@ -265,7 +265,7 @@ int __export ap_session_rename(struct ap_session *ses, const char *ifname, int l
 	if (len == -1)
 		len = strlen(ifname);
 
-	if (len >= IFNAMSIZ - 1) {
+	if (len >= IFNAMSIZ) {
 		log_ppp_warn("cannot rename interface (name is too long)\n");
 		return -1;
 	}
