@@ -194,6 +194,10 @@ static void ipoe_kfree_rcu(struct rcu_head *head)
 }
 #endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,0,0)
+#define vlan_tx_tag_present(skb) skb_vlan_tag_present(skb)
+#endif
+
 static int ipoe_check_network(__be32 addr)
 {
 	struct ipoe_network *n;
@@ -764,8 +768,10 @@ static struct ipoe_session *ipoe_lookup(__be32 addr)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 static unsigned int ipt_in_hook(unsigned int hook, struct sk_buff *skb, const struct net_device *in, const struct net_device *out, int (*okfn)(struct sk_buff *skb))
-#else
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(4,1,0)
 static unsigned int ipt_in_hook(const struct nf_hook_ops *ops, struct sk_buff *skb, const struct net_device *in, const struct net_device *out, int (*okfn)(struct sk_buff *skb))
+#else
+static unsigned int ipt_in_hook(const struct nf_hook_ops *ops, struct sk_buff *skb, const struct nf_hook_state *state)
 #endif
 {
 	struct ipoe_session *ses = NULL;
@@ -806,7 +812,7 @@ static unsigned int ipt_in_hook(const struct nf_hook_ops *ops, struct sk_buff *s
 		if (!ipoe_check_network(iph->saddr))
 			return NF_ACCEPT;
 
-		if (!ipoe_check_interface(in->ifindex))
+		if (!ipoe_check_interface(state->in->ifindex))
 			return NF_ACCEPT;
 
 		ipoe_queue_u(skb, iph->saddr);
@@ -872,8 +878,10 @@ out:
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 static unsigned int ipt_out_hook(unsigned int hook, struct sk_buff *skb, const struct net_device *in, const struct net_device *out, int (*okfn)(struct sk_buff *skb))
-#else
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(4,1,0)
 static unsigned int ipt_out_hook(const struct nf_hook_ops *ops, struct sk_buff *skb, const struct net_device *in, const struct net_device *out, int (*okfn)(struct sk_buff *skb))
+#else
+static unsigned int ipt_out_hook(const struct nf_hook_ops *ops, struct sk_buff *skb, const struct nf_hook_state *state)
 #endif
 {
 	int noff, iif;
@@ -1138,7 +1146,9 @@ static int ipoe_hard_header(struct sk_buff *skb, struct net_device *dev,
 
 static const struct header_ops ipoe_hard_header_ops = {
 	.create  	= ipoe_hard_header,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,1,0)
 	.rebuild	= eth_rebuild_header,
+#endif
 	.parse		= eth_header_parse,
 	.cache		= eth_header_cache,
 	.cache_update	= eth_header_cache_update,
@@ -1157,7 +1167,9 @@ static void ipoe_netdev_setup(struct net_device *dev)
 	dev->hard_header_len = 0;
 	dev->mtu = ETH_DATA_LEN;
 	dev->flags = IFF_MULTICAST | IFF_POINTOPOINT;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,1,0)
 	dev->iflink = 0;
+#endif
 	dev->addr_len = ETH_ALEN;
 	dev->features  |= NETIF_F_NETNS_LOCAL;
 	dev->features  &= ~NETIF_F_HW_VLAN_FILTER;
@@ -1565,7 +1577,12 @@ static int fill_info(struct sk_buff *skb, struct ipoe_session *ses, u32 pid, u32
 	    nla_put_u32(skb, IPOE_ATTR_ADDR, ses->addr))
 		goto nla_put_failure;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,0,0)
+	genlmsg_end(skb, hdr);
+	return 0;
+#else
 	return genlmsg_end(skb, hdr);
+#endif
 
 nla_put_failure:
 	genlmsg_cancel(skb, hdr);
