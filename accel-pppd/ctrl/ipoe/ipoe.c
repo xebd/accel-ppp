@@ -95,6 +95,8 @@ struct request_item {
 	int cnt;
 };
 
+enum {SID_MAC, SID_IP};
+
 static int conf_dhcpv4 = 1;
 static int conf_up;
 static int conf_mode;
@@ -152,6 +154,7 @@ static const char *conf_vlan_name;
 static int conf_ip_unnumbered;
 static int conf_check_mac_change;
 static int conf_soft_terminate;
+static int conf_calling_sid = SID_MAC;
 
 static unsigned int stat_starting;
 static unsigned int stat_active;
@@ -1791,9 +1794,14 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 
 	ses->ctrl.called_station_id = _strdup(serv->ifname);
 
-	ses->ctrl.calling_station_id = _malloc(19);
-	sprintf(ses->ctrl.calling_station_id, "%02x:%02x:%02x:%02x:%02x:%02x",
-			hwaddr[0], hwaddr[1], hwaddr[2], hwaddr[3], hwaddr[4], hwaddr[5]);
+	if (conf_calling_sid == SID_MAC) {
+		ses->ctrl.calling_station_id = _malloc(19);
+		sprintf(ses->ctrl.calling_station_id, "%02x:%02x:%02x:%02x:%02x:%02x",
+				hwaddr[0], hwaddr[1], hwaddr[2], hwaddr[3], hwaddr[4], hwaddr[5]);
+	} else {
+		ses->ctrl.calling_station_id = _malloc(17);
+		u_inet_ntoa(iph->saddr, ses->ctrl.calling_station_id);
+	}
 
 	ses->username = _malloc(17);
 	u_inet_ntoa(iph->saddr, ses->username);
@@ -3287,6 +3295,17 @@ static void load_config(void)
 		conf_check_mac_change = atoi(opt);
 	else
 		conf_check_mac_change = 1;
+
+	opt = conf_get_opt("ipoe", "calling-sid");
+	if (opt) {
+		if (!strcmp(opt, "mac"))
+			conf_calling_sid = SID_MAC;
+		else if (!strcmp(opt, "ip"))
+			conf_calling_sid = SID_IP;
+		else
+			log_error("ipoe: failed to parse 'calling-sid=%s'\n", opt);
+	} else
+		conf_calling_sid = SID_MAC;
 
 #ifdef RADIUS
 	if (triton_module_loaded("radius"))
