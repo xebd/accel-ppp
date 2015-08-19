@@ -190,7 +190,8 @@ static void ipoe_session_keepalive(struct dhcpv4_packet *pack);
 static void add_interface(const char *ifname, int ifindex, const char *opt, int parent_ifindex, int vid);
 static int get_offer_delay();
 static void __ipoe_session_start(struct ipoe_session *ses);
-static int ipoe_rad_send_request(struct rad_plugin_t *rad, struct rad_packet_t *pack);
+static int ipoe_rad_send_auth_request(struct rad_plugin_t *rad, struct rad_packet_t *pack);
+static int ipoe_rad_send_acct_request(struct rad_plugin_t *rad, struct rad_packet_t *pack);
 
 static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct dhcpv4_packet *pack, struct ipoe_session **opt82_ses)
 {
@@ -634,8 +635,8 @@ static void ipoe_session_start(struct ipoe_session *ses)
 #ifdef RADIUS
 		if ((conf_attr_dhcp_opt82 || conf_attr_dhcp_opt82_remote_id || conf_attr_dhcp_opt82_circuit_id) &&
 			ses->relay_agent && radius_loaded) {
-			ses->radius.send_access_request = ipoe_rad_send_request;
-			ses->radius.send_accounting_request = ipoe_rad_send_request;
+			ses->radius.send_access_request = ipoe_rad_send_auth_request;
+			ses->radius.send_accounting_request = ipoe_rad_send_acct_request;
 			rad_register_plugin(&ses->ses, &ses->radius);
 		}
 #endif
@@ -1972,7 +1973,7 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 		ipoe_change_l4_redirect(ses, l4_redirect);
 }
 
-static int ipoe_rad_send_request(struct rad_plugin_t *rad, struct rad_packet_t *pack)
+static int ipoe_rad_send_acct_request(struct rad_plugin_t *rad, struct rad_packet_t *pack)
 {
 	struct ipoe_session *ses = container_of(rad, typeof(*ses), radius);
 
@@ -1994,6 +1995,18 @@ static int ipoe_rad_send_request(struct rad_plugin_t *rad, struct rad_packet_t *
 	return 0;
 }
 
+static int ipoe_rad_send_auth_request(struct rad_plugin_t *rad, struct rad_packet_t *pack)
+{
+	struct ipoe_session *ses = container_of(rad, typeof(*ses), radius);
+
+	if (ipoe_rad_send_acct_request(rad, pack))
+		return -1;
+
+	if (ses->yiaddr)
+		rad_packet_add_ipaddr(pack, NULL, "Framed-IP-Address", ses->yiaddr);
+
+	return 0;
+}
 #endif
 
 static void ipoe_serv_release(struct ipoe_serv *serv)
