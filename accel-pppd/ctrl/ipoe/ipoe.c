@@ -633,8 +633,7 @@ static void ipoe_session_start(struct ipoe_session *ses)
 			return;
 
 #ifdef RADIUS
-		if ((conf_attr_dhcp_opt82 || conf_attr_dhcp_opt82_remote_id || conf_attr_dhcp_opt82_circuit_id) &&
-			ses->relay_agent && radius_loaded) {
+		if (radius_loaded) {
 			ses->radius.send_access_request = ipoe_rad_send_auth_request;
 			ses->radius.send_accounting_request = ipoe_rad_send_acct_request;
 			rad_register_plugin(&ses->ses, &ses->radius);
