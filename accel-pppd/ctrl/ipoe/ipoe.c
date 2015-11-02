@@ -1803,8 +1803,12 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 		u_inet_ntoa(iph->saddr, ses->ctrl.calling_station_id);
 	}
 
-	ses->username = _malloc(17);
-	u_inet_ntoa(iph->saddr, ses->username);
+	if (ses->serv->opt_username == USERNAME_IFNAME)
+		ses->username = _strdup(serv->ifname);
+	else {
+		ses->username = _malloc(17);
+		u_inet_ntoa(iph->saddr, ses->username);
+	}
 
 	ses->ses.chan_name = ses->ctrl.calling_station_id;
 
