@@ -187,6 +187,9 @@ static void parse_string(const char *str, int dir, int *speed, int *burst, int *
 		}
 	}
 
+	if (conf_vendor == 9)
+		return;
+
 	val = strtol(str, &endptr, 10);
 	if (*endptr == 0) {
 		*speed = conf_multiplier * val;
