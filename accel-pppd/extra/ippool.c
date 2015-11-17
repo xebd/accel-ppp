@@ -449,16 +449,17 @@ static struct backup_module backup_mod = {
 #ifdef RADIUS
 static int parse_attr(struct ap_session *ses, struct rad_attr_t *attr)
 {
-	if (ses->ipv4_pool_name)
-		_free(ses->ipv4_pool_name);
+	if (conf_vendor == 9) {
+		if (attr->len > sizeof("ip:addr-pool=") && memcmp(attr->val.string, "ip:addr-pool=", sizeof("ip:addr-pool=") - 1) == 0) {
+			if (ses->ipv4_pool_name)
+				_free(ses->ipv4_pool_name);
+			ses->ipv4_pool_name = _strdup(attr->val.string + sizeof("ip:addr-pool=") - 1);
+		}
+	} else {
+		if (ses->ipv4_pool_name)
+			_free(ses->ipv4_pool_name);
 
-	if (attr->len > sizeof("ip:addr-pool=") && memcmp(attr->val.string, "ip:addr-pool=", sizeof("ip:addr-pool=") - 1) == 0)
-		ses->ipv4_pool_name = _strdup(attr->val.string + sizeof("ip:addr-pool=") - 1);
-	else if (!attr->vendor)
 		ses->ipv4_pool_name = _strdup(attr->val.string);
-	else {
-		ses->ipv4_pool_name = NULL;
-		return -1;
 	}
 
 	return 0;
@@ -477,9 +478,7 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 			continue;
 		if (attr->attr->id != conf_attr)
 			continue;
-		if (parse_attr(ev->ses, attr))
-			continue;
-		break;
+		parse_attr(ev->ses, attr);
 	}
 }
 
