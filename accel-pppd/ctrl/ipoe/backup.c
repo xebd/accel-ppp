@@ -27,6 +27,7 @@
 #define IPOE_TAG_MASK               13
 #define IPOE_TAG_RELAY_SERVER_ID    14
 #define IPOE_TAG_LEASE_TIME         15
+#define IPOE_TAG_RENEW_TIME         16
 
 #define IPOE_TAG_IFINDEX           100
 
@@ -75,6 +76,7 @@ static int session_save(struct ap_session *ses, struct backup_mod *m)
 	add_tag(IPOE_TAG_FLAGS, &flags, 4);
 	add_tag(IPOE_TAG_RELAY_SERVER_ID, &conn->relay_server_id, 4);
 	add_tag(IPOE_TAG_LEASE_TIME, &conn->lease_time, 4);
+	add_tag(IPOE_TAG_RENEW_TIME, &conn->renew_time, 4);
 	add_tag(IPOE_TAG_IFNAME, conn->serv->ifname, strlen(conn->serv->ifname) + 1);
 
 	if (conn->client_id)
@@ -194,6 +196,9 @@ static struct ap_session *ctrl_restore(struct backup_mod *m)
 				break;
 			case IPOE_TAG_LEASE_TIME:
 				ses->lease_time = *(uint32_t *)t->data;
+				break;
+			case IPOE_TAG_RENEW_TIME:
+				ses->renew_time = *(uint32_t *)t->data;
 				break;
 		}
 	}

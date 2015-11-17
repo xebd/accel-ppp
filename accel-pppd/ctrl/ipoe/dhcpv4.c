@@ -692,7 +692,7 @@ int dhcpv4_packet_add_opt(struct dhcpv4_packet *pack, int type, const void *data
 	return 0;
 }
 
-int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_packet *req, uint32_t yiaddr, uint32_t siaddr, uint32_t router, uint32_t mask, int lease_time, struct dhcpv4_packet *relay)
+int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_packet *req, uint32_t yiaddr, uint32_t siaddr, uint32_t router, uint32_t mask, int lease_time, int renew_time, struct dhcpv4_packet *relay)
 {
 	struct dhcpv4_packet *pack;
 	int val, r;
@@ -730,6 +730,12 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 	if (dhcpv4_packet_add_opt(pack, 51, &val, 4))
 		goto out_err;
 
+	val = ntohl(renew_time);
+	if (val > 0){
+		if (dhcpv4_packet_add_opt(pack, 58, &val, 4))
+			goto out_err;
+	}
+
 	if (router && dhcpv4_packet_add_opt(pack, 3, &router, 4))
 		goto out_err;
 
@@ -739,7 +745,7 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 
 	if (relay) {
 		list_for_each_entry(opt, &relay->options, entry) {
-			if (opt->type == 53 || opt->type == 54 || opt->type == 51 || opt->type == 1 || (opt->type == 3 && router))
+			if (opt->type == 53 || opt->type == 54 || opt->type == 51 || opt->type == 58 || opt->type == 1 || (opt->type == 3 && router))
 				continue;
 			if (opt->type == 6)
 				dns_avail = 1;

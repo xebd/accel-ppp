@@ -118,6 +118,7 @@ static int conf_attr_dhcp_client_ip;
 static int conf_attr_dhcp_router_ip;
 static int conf_attr_dhcp_mask;
 static int conf_attr_dhcp_lease_time;
+static int conf_attr_dhcp_renew_time;
 static int conf_attr_l4_redirect;
 static int conf_attr_l4_redirect_table;
 static int conf_attr_l4_redirect_ipset;
@@ -146,6 +147,7 @@ static LIST_HEAD(conf_gw_addr);
 static int conf_netmask = 24;
 static int conf_lease_time = 600;
 static int conf_lease_timeout = 660;
+static int conf_renew_time = 300;
 static int conf_verbose;
 static const char *conf_agent_remote_id;
 static int conf_proto;
@@ -766,7 +768,7 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 		if (ses->ses.ipv4 && !ses->ses.ipv4->addr)
 			ses->ses.ipv4->addr = ses->siaddr;
 
-		dhcpv4_send_reply(DHCPOFFER, ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
+		dhcpv4_send_reply(DHCPOFFER, ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->renew_time, ses->dhcpv4_relay_reply);
 
 		dhcpv4_packet_free(ses->dhcpv4_request);
 		ses->dhcpv4_request = NULL;
@@ -950,7 +952,7 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 
 	if (ses->dhcpv4_request) {
 		if (ses->ses.state == AP_STATE_ACTIVE)
-			dhcpv4_send_reply(DHCPACK, ses->dhcpv4 ?: ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
+			dhcpv4_send_reply(DHCPACK, ses->dhcpv4 ?: ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->renew_time, ses->dhcpv4_relay_reply);
 		else
 			dhcpv4_send_nak(ses->serv->dhcpv4, ses->dhcpv4_request);
 
@@ -1005,7 +1007,7 @@ static void ipoe_session_keepalive(struct dhcpv4_packet *pack)
 	}
 
 	if (ses->ses.state == AP_STATE_ACTIVE) {
-		dhcpv4_send_reply(DHCPACK, ses->dhcpv4 ?: ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
+		dhcpv4_send_reply(DHCPACK, ses->dhcpv4 ?: ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->renew_time, ses->dhcpv4_relay_reply);
 	} else
 		dhcpv4_send_nak(ses->dhcpv4 ?: ses->serv->dhcpv4, ses->dhcpv4_request);
 
@@ -1191,6 +1193,7 @@ static struct ipoe_session *ipoe_session_create_dhcpv4(struct ipoe_serv *serv, s
 	memcpy(ses->hwaddr, pack->hdr->chaddr, 6);
 	ses->giaddr = pack->hdr->giaddr;
 	ses->lease_time = conf_lease_time;
+	ses->renew_time = conf_renew_time;
 
 	if (pack->client_id)
 		dlen += sizeof(struct dhcpv4_option) + pack->client_id->len;
@@ -1340,7 +1343,7 @@ static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packe
 				dhcpv4_packet_ref(pack);
 				ipoe_session_keepalive(pack);
 			} else
-				dhcpv4_send_reply(DHCPOFFER, dhcpv4, pack, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
+				dhcpv4_send_reply(DHCPOFFER, dhcpv4, pack, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->renew_time, ses->dhcpv4_relay_reply);
 		}
 	} else if (pack->msg_type == DHCPREQUEST) {
 		ses->xid = pack->hdr->xid;
@@ -1375,7 +1378,7 @@ static void ipoe_ses_recv_dhcpv4_discover(struct dhcpv4_packet *pack)
 	}
 
 	if (ses->yiaddr)
-		dhcpv4_send_reply(DHCPOFFER, ses->dhcpv4 ?: ses->serv->dhcpv4, pack, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
+		dhcpv4_send_reply(DHCPOFFER, ses->dhcpv4 ?: ses->serv->dhcpv4, pack, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->renew_time, ses->dhcpv4_relay_reply);
 
 	dhcpv4_packet_free(pack);
 }
@@ -1703,6 +1706,10 @@ static void ipoe_ses_recv_dhcpv4_relay(struct dhcpv4_packet *pack)
 	if (opt)
 		ses->lease_time = ntohl(*(uint32_t *)opt->data);
 
+	opt = dhcpv4_packet_find_opt(pack, 58);
+	if (opt)
+		ses->renew_time = ntohl(*(uint32_t *)opt->data);
+
 	opt = dhcpv4_packet_find_opt(pack, 1);
 	if (opt)
 		ses->mask = parse_dhcpv4_mask(ntohl(*(uint32_t *)opt->data));
@@ -1724,12 +1731,12 @@ static void ipoe_ses_recv_dhcpv4_relay(struct dhcpv4_packet *pack)
 
 			__ipoe_session_start(ses);
 		} else
-			dhcpv4_send_reply(DHCPOFFER, ses->dhcpv4 ?: ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
+			dhcpv4_send_reply(DHCPOFFER, ses->dhcpv4 ?: ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->renew_time, ses->dhcpv4_relay_reply);
 	} else if (pack->msg_type == DHCPACK) {
 		if (ses->ses.state == AP_STATE_STARTING)
 			__ipoe_session_activate(ses);
 		else
-			dhcpv4_send_reply(DHCPACK, ses->dhcpv4 ?: ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->dhcpv4_relay_reply);
+			dhcpv4_send_reply(DHCPACK, ses->dhcpv4 ?: ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->router, ses->mask, ses->lease_time, ses->renew_time, ses->dhcpv4_relay_reply);
 
 	} else if (pack->msg_type == DHCPNAK) {
 		dhcpv4_send_nak(ses->dhcpv4 ?: ses->serv->dhcpv4, ses->dhcpv4_request);
@@ -1928,6 +1935,8 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 				ses->l4_redirect = 1;
 		} else if (attr->attr->id == conf_attr_dhcp_lease_time)
 			ses->lease_time = attr->val.integer;
+		else if (attr->attr->id == conf_attr_dhcp_renew_time)
+			ses->renew_time = attr->val.integer;
 		else if (attr->attr->id == conf_attr_l4_redirect_table)
 			ses->l4_redirect_table = attr->val.integer;
 		else if (attr->attr->id == conf_attr_l4_redirect_ipset) {
@@ -1959,6 +1968,8 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 				ipoe_change_addr(ses, attr->val.ipaddr);
 		} else if (attr->attr->id == conf_attr_dhcp_lease_time)
 			ses->lease_time = attr->val.integer;
+		else if (attr->attr->id == conf_attr_dhcp_renew_time)
+			ses->renew_time = attr->val.integer;
 		else if (attr->attr->id == conf_attr_l4_redirect_table)
 			ses->l4_redirect_table = attr->val.integer;
 		else if (attr->attr->id == conf_attr_l4_redirect_ipset) {
@@ -2809,6 +2820,7 @@ static void load_radius_attrs(void)
 	parse_conf_rad_attr("attr-dhcp-router-ip", &conf_attr_dhcp_router_ip);
 	parse_conf_rad_attr("attr-dhcp-mask", &conf_attr_dhcp_mask);
 	parse_conf_rad_attr("attr-dhcp-lease-time", &conf_attr_dhcp_lease_time);
+	parse_conf_rad_attr("attr-dhcp-renew-time", &conf_attr_dhcp_renew_time);
 	parse_conf_rad_attr("attr-l4-redirect", &conf_attr_l4_redirect);
 	parse_conf_rad_attr("attr-l4-redirect-table", &conf_attr_l4_redirect_table);
 	parse_conf_rad_attr("attr-l4-redirect-ipset", &conf_attr_l4_redirect_ipset);
@@ -3133,6 +3145,12 @@ static void load_config(void)
 		conf_lease_time = atoi(opt);
 	else
 		conf_lease_time = 600;
+
+	opt = conf_get_opt("ipoe", "renew-time");
+	if (opt)
+		conf_renew_time = atoi(opt);
+	else
+		conf_renew_time = conf_lease_time/2;
 
 	opt = conf_get_opt("ipoe", "max-lease-time");
 	if (opt)

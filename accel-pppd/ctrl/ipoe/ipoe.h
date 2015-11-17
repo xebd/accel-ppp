@@ -76,6 +76,7 @@ struct ipoe_session {
 	char *l4_redirect_ipset;
 	int mask;
 	int lease_time;
+	int renew_time;
 	uint8_t *data;
 	struct dhcpv4_packet *dhcpv4_request;
 	struct dhcpv4_packet *dhcpv4_relay_reply;
