@@ -17,8 +17,6 @@
 #define ETH_ALEN 6
 #endif
 
-struct arp_serv;
-
 struct ipoe_serv {
 	struct list_head entry;
 	struct triton_context_t ctx;
@@ -29,7 +27,7 @@ struct ipoe_serv {
 	struct list_head addr_list;
 	struct dhcpv4_serv *dhcpv4;
 	struct dhcpv4_relay *dhcpv4_relay;
-	struct arp_serv *arp;
+	void *arp;
 	struct list_head disc_list;
 	struct list_head req_list;
 	struct triton_timer_t disc_timer;
@@ -105,11 +103,6 @@ struct ipoe_session_info {
 	uint32_t peer_addr;
 };
 
-struct arp_serv {
-	struct triton_md_handler_t h;
-	struct ipoe_serv *ipoe;
-};
-
 #ifdef USE_LUA
 char *ipoe_lua_get_username(struct ipoe_session *, const char *func);
 #endif
@@ -138,8 +131,8 @@ int ipoe_nl_del_vlan_mon(int ifindex);
 int ipoe_nl_add_exclude(uint32_t addr, int mask);
 void ipoe_nl_del_exclude(uint32_t addr);
 
-struct arp_serv *arpd_start(struct ipoe_serv *ipoe);
-void arpd_stop(struct arp_serv *arp);
+void *arpd_start(struct ipoe_serv *ipoe);
+void arpd_stop(void *arp);
 
 #endif
 

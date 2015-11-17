@@ -91,6 +91,7 @@ ADD_EXECUTABLE(accel-pppd
 	iprange.c
 
 	utils.c
+	rbtree.c
 
 	log.c
 	main.c
