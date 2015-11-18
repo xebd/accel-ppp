@@ -2206,7 +2206,7 @@ static int get_offer_delay()
 
 static int make_vlan_name(const char *parent, int vid, char *name)
 {
-	char *ptr1 = name, *endptr = name + IFNAMSIZ - 1;
+	char *ptr1 = name, *endptr = name + IFNAMSIZ;
 	const char *ptr2 = conf_vlan_name;
 	char num[5], *ptr3 = num;
 
@@ -2225,9 +2225,12 @@ static int make_vlan_name(const char *parent, int vid, char *name)
 			*ptr1++ = *ptr2++;
 	}
 
+	if (ptr1 == endptr)
+		return 1;
+
 	*ptr1 = 0;
 
-	return ptr1 == endptr;
+	return 0;
 }
 
 void ipoe_vlan_notify(int ifindex, int vid)
