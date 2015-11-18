@@ -1,0 +1,16 @@
+[Unit]
+Description=Accel-PPP
+After=network.target
+
+[Service]
+ExecStart=/usr/sbin/accel-pppd -d -p /var/run/accel-pppd.pid -c /etc/accel-ppp.conf
+StandardOutput=null
+ExecReload=/bin/kill -SIGUSR1 $MAINPID
+PIDFile=/var/run/accel-pppd.pid
+Type=forking
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+Alias=accel-ppp.service
+
