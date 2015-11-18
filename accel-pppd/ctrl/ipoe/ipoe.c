@@ -927,7 +927,8 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 
 		ipoe_nl_add_exclude(ses->yiaddr, 32);
 
-		iproute_add(ses->serv->ifindex, ses->siaddr, ses->yiaddr, 0, conf_proto);
+		if (ses->serv->opt_mode == MODE_L3)
+			iproute_add(ses->serv->ifindex, ses->siaddr, ses->yiaddr, 0, conf_proto);
 
 		ses->ctrl.dont_ifcfg = 1;
 	} else if (ses->ctrl.dont_ifcfg && ses->serv->opt_mode == MODE_L2)
