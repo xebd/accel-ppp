@@ -1156,7 +1156,7 @@ static int ipoe_session_terminate(struct ap_session *s, int hard)
 {
 	struct ipoe_session *ses = container_of(s, typeof(*ses), ses);
 
-	if (hard || !conf_soft_terminate)
+	if (hard || !conf_soft_terminate || ses->UP)
 		ipoe_session_terminated(ses);
 	else
 		ses->terminate = 1;
@@ -1798,6 +1798,7 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 	ses->serv = serv;
 	memcpy(ses->hwaddr, eth->h_source, 6);
 	ses->yiaddr = iph->saddr;
+	ses->UP = 1;
 
 	ses->ctrl.called_station_id = _strdup(serv->ifname);
 
