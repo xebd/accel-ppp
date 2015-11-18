@@ -10,6 +10,7 @@ int iplink_get_stats(int ifindex, struct rtnl_link_stats *stats);
 
 int iplink_vlan_add(const char *ifname, int ifindex, int vid);
 int iplink_vlan_del(int ifindex);
+int iplink_vlan_get_vid(int ifindex);
 
 int ipaddr_add(int ifindex, in_addr_t addr, int mask);
 int ipaddr_del(int ifindex, in_addr_t addr, int mask);

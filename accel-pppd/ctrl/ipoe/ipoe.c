@@ -2205,13 +2205,14 @@ static int get_offer_delay()
 	return 0;
 }
 
-static int make_vlan_name(const char *parent, int vid, char *name)
+static int make_vlan_name(const char *parent, int svid, int cvid, char *name)
 {
 	char *ptr1 = name, *endptr = name + IFNAMSIZ;
 	const char *ptr2 = conf_vlan_name;
-	char num[5], *ptr3 = num;
+	char svid_str[5], cvid_str[5], *ptr3;
 
-	sprintf(num, "%i", vid);
+	sprintf(svid_str, "%i", svid);
+	sprintf(cvid_str, "%i", cvid);
 
 	while (ptr1 < endptr && *ptr2) {
 		if (ptr2[0] == '%' && ptr2[1] == 'I') {
@@ -2219,6 +2220,12 @@ static int make_vlan_name(const char *parent, int vid, char *name)
 				*ptr1++ = *parent++;
 			ptr2 += 2;
 		} else if (ptr2[0] == '%' && ptr2[1] == 'N') {
+			ptr3 = cvid_str;
+			while (ptr1 < endptr && *ptr3)
+				*ptr1++ = *ptr3++;
+			ptr2 += 2;
+		} else if (ptr2[0] == '%' && ptr2[1] == 'P') {
+			ptr3 = svid_str;
 			while (ptr1 < endptr && *ptr3)
 				*ptr1++ = *ptr3++;
 			ptr2 += 2;
@@ -2240,7 +2247,7 @@ void ipoe_vlan_notify(int ifindex, int vid)
 	struct conf_option_t *opt;
 	struct ifreq ifr;
 	char *ptr;
-	int len, r;
+	int len, r, svid;
 	pcre *re = NULL;
 	const char *pcre_err;
 	char *pattern;
@@ -2257,7 +2264,9 @@ void ipoe_vlan_notify(int ifindex, int vid)
 		return;
 	}
 
-	if (make_vlan_name(ifr.ifr_name, vid, ifname)) {
+	svid = iplink_vlan_get_vid(ifindex);
+
+	if (make_vlan_name(ifr.ifr_name, svid, vid, ifname)) {
 		log_error("ipoe: vlan-mon: %s.%i: interface name is too long\n", ifr.ifr_name, vid);
 		return;
 	}

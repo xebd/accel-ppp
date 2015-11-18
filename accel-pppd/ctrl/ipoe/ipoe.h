@@ -35,6 +35,7 @@ struct ipoe_serv {
 	pthread_mutex_t lock;
 	int parent_ifindex;
 	int vid;
+	int parent_vid;
 	int opt_mode;
 	uint32_t opt_src;
 	int opt_arp;
