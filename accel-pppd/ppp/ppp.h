@@ -106,7 +106,7 @@ void ppp_layer_started(struct ppp_t *ppp,struct ppp_layer_data_t*);
 void ppp_layer_finished(struct ppp_t *ppp,struct ppp_layer_data_t*);
 void ppp_layer_passive(struct ppp_t *ppp,struct ppp_layer_data_t*);
 
-void ppp_terminate(struct ap_session *ses, int hard);
+int ppp_terminate(struct ap_session *ses, int hard);
 
 void ppp_register_chan_handler(struct ppp_t *, struct ppp_handler_t *);
 void ppp_register_unit_handler(struct ppp_t * ,struct ppp_handler_t *);

@@ -50,7 +50,7 @@ struct ap_ctrl
 	int ppp:1;
 	void (*started)(struct ap_session*);
 	void (*finished)(struct ap_session *);
-	void (*terminate)(struct ap_session *, int hard);
+	int (*terminate)(struct ap_session *, int hard);
 };
 
 struct ap_private
@@ -92,6 +92,7 @@ struct ap_session
 
 	int terminating:1;
 	int terminated:1;
+	int down:1;
 	int terminate_cause;
 
 	struct list_head pd_list;

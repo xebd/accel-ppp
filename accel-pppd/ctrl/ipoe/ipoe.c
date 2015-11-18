@@ -1154,7 +1154,7 @@ static void ipoe_session_terminated_pkt(struct dhcpv4_packet *pack)
 	ipoe_session_terminated(ses);
 }
 
-static void ipoe_session_terminate(struct ap_session *s, int hard)
+static int ipoe_session_terminate(struct ap_session *s, int hard)
 {
 	struct ipoe_session *ses = container_of(s, typeof(*ses), ses);
 
@@ -1162,6 +1162,8 @@ static void ipoe_session_terminate(struct ap_session *s, int hard)
 		ipoe_session_terminated(ses);
 	else
 		ses->terminate = 1;
+
+	return 0;
 }
 
 
@@ -3156,7 +3158,7 @@ static void load_config(void)
 	if (opt)
 		conf_lease_timeout = atoi(opt);
 	else
-		conf_lease_timeout = 660;
+		conf_lease_timeout = conf_lease_time;
 
 	opt = conf_get_opt("ipoe", "unit-cache");
 	if (opt)

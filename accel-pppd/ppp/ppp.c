@@ -236,12 +236,10 @@ static void destroy_ppp_channel(struct ppp_t *ppp)
 
 static void destablish_ppp(struct ppp_t *ppp)
 {
-	struct pppunit_cache *uc;
+	struct pppunit_cache *uc = NULL;
 
 	if (ppp->unit_fd < 0)
 		goto destroy_channel;
-
-	triton_event_fire(EV_SES_PRE_FINISHED, &ppp->ses);
 
 	if (conf_unit_cache) {
 		struct ifreq ifr;
@@ -256,15 +254,10 @@ static void destablish_ppp(struct ppp_t *ppp)
 		}
 
 		triton_md_unregister_handler(&ppp->unit_hnd, 0);
+
 		uc = mempool_alloc(uc_pool);
 		uc->fd = ppp->unit_fd;
 		uc->unit_idx = ppp->ses.unit_idx;
-
-		pthread_mutex_lock(&uc_lock);
-		list_add_tail(&uc->entry, &uc_list);
-		if (++uc_size > conf_unit_cache)
-			pthread_cond_signal(&uc_cond);
-		pthread_mutex_unlock(&uc_lock);
 	} else
 		triton_md_unregister_handler(&ppp->unit_hnd, 1);
 
@@ -275,6 +268,14 @@ skip:
 
 destroy_channel:
 	destroy_ppp_channel(ppp);
+
+	if (uc) {
+		pthread_mutex_lock(&uc_lock);
+		list_add_tail(&uc->entry, &uc_list);
+		if (++uc_size > conf_unit_cache)
+			pthread_cond_signal(&uc_cond);
+		pthread_mutex_unlock(&uc_lock);
+	}
 }
 
 static void *uc_thread(void *unused)
@@ -524,7 +525,7 @@ void __export ppp_layer_finished(struct ppp_t *ppp, struct ppp_layer_data_t *d)
 	destablish_ppp(ppp);
 }
 
-void __export ppp_terminate(struct ap_session *ses, int hard)
+int __export ppp_terminate(struct ap_session *ses, int hard)
 {
 	struct ppp_t *ppp = container_of(ses, typeof(*ppp), ses);
 	struct layer_node_t *n;
@@ -533,7 +534,7 @@ void __export ppp_terminate(struct ap_session *ses, int hard)
 
 	if (hard) {
 		destablish_ppp(ppp);
-		return;
+		return 0;
 	}
 
 	list_for_each_entry(n,&ppp->layers,entry) {
@@ -544,10 +545,11 @@ void __export ppp_terminate(struct ap_session *ses, int hard)
 			}
 		}
 	}
-	if (s)
-		return;
 
-	destablish_ppp(ppp);
+	if (!s)
+		destablish_ppp(ppp);
+
+	return 1;
 }
 
 void __export ppp_register_chan_handler(struct ppp_t *ppp,struct ppp_handler_t *h)
