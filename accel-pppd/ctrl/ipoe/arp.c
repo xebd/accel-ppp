@@ -253,7 +253,7 @@ void *arpd_start(struct ipoe_serv *ipoe)
 void arpd_stop(void *arg)
 {
 	struct arp_node *n = arg;
-	struct arp_tree *t = &arp_tree[n->ipoe->ifindex];
+	struct arp_tree *t = &arp_tree[n->ipoe->ifindex & HASH_BITS];
 
 	pthread_mutex_lock(&t->lock);
 	rb_erase(&n->node, &t->root);
