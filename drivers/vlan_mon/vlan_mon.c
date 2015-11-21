@@ -323,6 +323,8 @@ static int vlan_mon_nl_cmd_add_vlan_mon(struct sk_buff *skb, struct genl_info *i
 		d->proto = 0;
 
 		rcu_assign_pointer(dev->ml_priv, d);
+
+		list_add_tail(&d->entry, &vlan_devices);
 	}
 
 	d->proto |= 1 << proto;
@@ -351,10 +353,11 @@ static int vlan_mon_nl_cmd_add_vlan_mon(struct sk_buff *skb, struct genl_info *i
 #endif
 	}
 
-	list_add_tail_rcu(&d->entry, &vlan_devices);
 	up(&vlan_mon_lock);
 
 	dev_put(dev);
+
+	synchronize_rcu();
 
 	return 0;
 }
@@ -449,7 +452,8 @@ static int vlan_mon_nl_cmd_del_vlan_mon(struct sk_buff *skb, struct genl_info *i
 		ifindex = -1;
 
 	down(&vlan_mon_lock);
-	list_for_each_entry(d, &vlan_devices, entry) {
+	list_for_each_safe(pos, n, &vlan_devices) {
+		d = list_entry(pos, typeof(*d), entry);
 		if ((ifindex == -1 || d->ifindex == ifindex) && (d->proto & proto)) {
 			//pr_info("del net %08x/%08x\n", n->addr, n->mask);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34)
@@ -460,9 +464,10 @@ static int vlan_mon_nl_cmd_del_vlan_mon(struct sk_buff *skb, struct genl_info *i
 			dev = dev_get_by_index(&init_net, d->ifindex);
 #endif
 
+			d->proto &= ~proto;
+
 			if (dev) {
 				if (dev->ml_priv == d) {
-					d->proto &= ~proto;
 					if (!d->proto)
 						rcu_assign_pointer(dev->ml_priv, NULL);
 				}
@@ -471,7 +476,7 @@ static int vlan_mon_nl_cmd_del_vlan_mon(struct sk_buff *skb, struct genl_info *i
 
 			if (!d->proto) {
 				//pr_info("vlan_mon del %i\n", ifindex);
-				list_del_rcu(&d->entry);
+				list_del(&d->entry);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
 				kfree_rcu(d, rcu_head);
 #else
@@ -491,6 +496,8 @@ static int vlan_mon_nl_cmd_del_vlan_mon(struct sk_buff *skb, struct genl_info *i
 		}
 	}
 	spin_unlock_irqrestore(&vlan_lock, flags);
+
+	synchronize_rcu();
 
 	return 0;
 }
