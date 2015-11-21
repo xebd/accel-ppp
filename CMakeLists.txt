@@ -76,4 +76,8 @@ if (BUILD_IPOE_DRIVER)
 	add_subdirectory(drivers/ipoe)
 endif (BUILD_IPOE_DRIVER)
 
+if (BUILD_VLAN_MON_DRIVER)
+	add_subdirectory(drivers/vlan_mon)
+endif ()
+
 CONFIGURE_FILE(${CMAKE_CURRENT_SOURCE_DIR}/config.h.in ${CMAKE_CURRENT_BINARY_DIR}/config.h)
