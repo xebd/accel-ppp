@@ -252,6 +252,13 @@ static int pppoe_rad_send_accounting_request(struct rad_plugin_t *rad, struct ra
 }
 #endif
 
+static void pppoe_conn_ctx_switch(struct triton_context_t *ctx, void *arg)
+{
+	struct pppoe_conn_t *conn = arg;
+	net = conn->serv->net;
+	log_switch(ctx, &conn->ppp.ses);
+}
+
 static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const uint8_t *addr, const struct pppoe_tag *host_uniq, const struct pppoe_tag *relay_sid, const struct pppoe_tag *service_name, const struct pppoe_tag *tr101, const uint8_t *cookie)
 {
 	struct pppoe_conn_t *conn;
@@ -318,7 +325,7 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 
 	memcpy(conn->cookie, cookie, COOKIE_LENGTH - 4);
 
-	conn->ctx.before_switch = log_switch;
+	conn->ctx.before_switch = pppoe_conn_ctx_switch;
 	conn->ctx.close = pppoe_conn_close;
 	conn->ctrl.ctx = &conn->ctx;
 	conn->ctrl.started = ppp_started;
@@ -386,7 +393,7 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 	if (conf_ip_pool)
 		conn->ppp.ses.ipv4_pool_name = _strdup(conf_ip_pool);
 
-	triton_context_register(&conn->ctx, &conn->ppp.ses);
+	triton_context_register(&conn->ctx, conn);
 
 	pthread_mutex_lock(&serv->lock);
 	list_add_tail(&conn->entry, &serv->conn_list);
@@ -1301,6 +1308,13 @@ void pppoe_server_start(const char *opt, void *cli)
 		__pppoe_server_start(opt, opt, cli, 0, 0);
 }
 
+static void pppoe_serv_ctx_switch(struct triton_context_t *ctx, void *arg)
+{
+	struct pppoe_serv_t *serv = arg;
+	net = serv->net;
+	log_switch(ctx, NULL);
+}
+
 static void __pppoe_server_start(const char *ifname, const char *opt, void *cli, int parent_ifindex, int vid)
 {
 	struct pppoe_serv_t *serv;
@@ -1380,9 +1394,10 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli,
 	}
 
 	serv->ctx.close = pppoe_serv_close;
-	serv->ctx.before_switch = log_switch;
+	serv->ctx.before_switch = pppoe_serv_ctx_switch;
 	serv->ifname = _strdup(ifname);
 	serv->ifindex = ifr.ifr_ifindex;
+	serv->net = &def_net;
 	pthread_mutex_init(&serv->lock, NULL);
 
 	INIT_LIST_HEAD(&serv->conn_list);
@@ -1390,7 +1405,7 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli,
 	INIT_LIST_HEAD(&serv->padi_list);
 	serv->padi_limit = padi_limit;
 
-	triton_context_register(&serv->ctx, NULL);
+	triton_context_register(&serv->ctx, serv);
 
 	if (vid) {
 		serv->parent_ifindex = parent_ifindex;
@@ -1407,8 +1422,6 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli,
 	pthread_rwlock_unlock(&serv_lock);
 
 	triton_context_wakeup(&serv->ctx);
-
-	pppoe_disc_start(serv);
 
 	return;
 

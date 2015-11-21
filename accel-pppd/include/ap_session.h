@@ -36,9 +36,17 @@
 struct ap_session;
 struct backup_data;
 struct rtnl_link_stats;
+struct sockaddr;
 
-struct ap_ctrl
-{
+struct ap_net {
+	int (*pppox_socket)(int proto);
+	int (*pppox_connect)(int sock, const struct sockaddr *, socklen_t len);
+	int (*ppp_open)();
+	int (*ppp_ioctl)(int fd, unsigned long request, void *arg);
+	int (*sock_ioctl)(unsigned long request, void *arg);
+};
+
+struct ap_ctrl {
 	struct triton_context_t *ctx;
 	int type;
 	const char *name;
@@ -127,6 +135,9 @@ extern int sock_fd; // internet socket for ioctls
 extern int sock6_fd; // internet socket for ioctls
 extern int urandom_fd;
 extern struct ap_session_stat ap_session_stat;
+
+extern __thread const struct ap_net *net;
+extern const struct ap_net def_net;
 
 void ap_session_init(struct ap_session *ses);
 void ap_session_set_ifindex(struct ap_session *ses);

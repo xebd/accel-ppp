@@ -69,6 +69,8 @@ struct pppoe_serv_t
 	struct triton_context_t ctx;
 	struct rb_node node;
 
+	struct ap_net *net;
+
 	uint8_t hwaddr[ETH_ALEN];
 	char *ifname;
 	int ifindex;

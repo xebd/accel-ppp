@@ -253,6 +253,12 @@ static inline int nsnr_cmp(uint16_t ns, uint16_t nr)
 	return (sub_nsnr != 0 && sub_nsnr < ref) - (sub_nsnr >= ref);
 }
 
+static void l2tp_ctx_switch(struct triton_context_t *ctx, void *arg)
+{
+	net = &def_net;
+	log_switch(ctx, arg);
+}
+
 static inline struct l2tp_conn_t *l2tp_tunnel_self(void)
 {
 	return container_of(triton_context_self(), struct l2tp_conn_t, ctx);
@@ -1684,7 +1690,7 @@ static struct l2tp_conn_t *l2tp_tunnel_alloc(const struct sockaddr_in *peer,
 	conn->state = STATE_INIT;
 	conn->framing_cap = framing_cap;
 
-	conn->ctx.before_switch = log_switch;
+	conn->ctx.before_switch = l2tp_ctx_switch;
 	conn->ctx.close = l2tp_conn_close;
 	conn->hnd.read = l2tp_conn_read;
 	conn->timeout_timer.expire = l2tp_tunnel_timeout;
@@ -1741,7 +1747,7 @@ static inline int l2tp_tunnel_update_peerport(struct l2tp_conn_t *conn,
 
 static int l2tp_session_start_data_channel(struct l2tp_sess_t *sess)
 {
-	sess->apses_ctx.before_switch = log_switch;
+	sess->apses_ctx.before_switch = l2tp_ctx_switch;
 	sess->apses_ctx.close = apses_ctx_stop;
 
 	sess->ctrl.ctx = &sess->apses_ctx;
@@ -4436,7 +4442,7 @@ static struct l2tp_serv_t udp_serv =
 {
 	.hnd.read = l2tp_udp_read,
 	.ctx.close = l2tp_udp_close,
-	.ctx.before_switch = log_switch,
+	.ctx.before_switch = l2tp_ctx_switch,
 };
 
 /*static struct l2tp_serv_t ip_serv =

@@ -73,6 +73,12 @@ static void pptp_timeout(struct triton_timer_t *);
 static void ppp_started(struct ap_session *);
 static void ppp_finished(struct ap_session *);
 
+static void pptp_ctx_switch(struct triton_context_t *ctx, void *arg)
+{
+	net = &def_net;
+	pptp_ctx_switch(ctx, arg);
+}
+
 static void disconnect(struct pptp_conn_t *conn)
 {
 	log_ppp_debug("pptp: disconnect\n");
@@ -663,7 +669,7 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		conn->hnd.read = pptp_read;
 		conn->hnd.write = pptp_write;
 		conn->ctx.close = pptp_close;
-		conn->ctx.before_switch = log_switch;
+		conn->ctx.before_switch = pptp_ctx_switch;
 		conn->in_buf = _malloc(PPTP_CTRL_SIZE_MAX);
 		conn->out_buf = _malloc(PPTP_CTRL_SIZE_MAX);
 		conn->timeout_timer.expire = pptp_timeout;
@@ -714,7 +720,7 @@ static struct pptp_serv_t serv=
 {
 	.hnd.read = pptp_connect,
 	.ctx.close = pptp_serv_close,
-	.ctx.before_switch = log_switch,
+	.ctx.before_switch = pptp_ctx_switch,
 };
 
 static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)

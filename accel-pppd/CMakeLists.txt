@@ -55,6 +55,7 @@ ADD_EXECUTABLE(accel-pppd
 	session.c
 	session_backup.c
 	ifcfg.c
+	net.c
 
 	backup/backup.c
 

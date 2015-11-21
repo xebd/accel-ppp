@@ -196,6 +196,12 @@ static void __ipoe_session_start(struct ipoe_session *ses);
 static int ipoe_rad_send_auth_request(struct rad_plugin_t *rad, struct rad_packet_t *pack);
 static int ipoe_rad_send_acct_request(struct rad_plugin_t *rad, struct rad_packet_t *pack);
 
+static void ipoe_ctx_switch(struct triton_context_t *ctx, void *arg)
+{
+	net = &def_net;
+	ipoe_ctx_switch(ctx, arg);
+}
+
 static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct dhcpv4_packet *pack, struct ipoe_session **opt82_ses)
 {
 	struct ipoe_session *ses, *res = NULL;
@@ -1873,7 +1879,7 @@ struct ipoe_session *ipoe_session_alloc(void)
 
 	ses->ifindex = -1;
 
-	ses->ctx.before_switch = log_switch;
+	ses->ctx.before_switch = ipoe_ctx_switch;
 	ses->ctx.close = ipoe_session_close;
 	ses->ctrl.ctx = &ses->ctx;
 	ses->ctrl.started = ipoe_session_started;
@@ -2575,7 +2581,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	serv = _malloc(sizeof(*serv));
 	memset(serv, 0, sizeof(*serv));
 	serv->ctx.close = ipoe_serv_close;
-	serv->ctx.before_switch = log_switch;
+	serv->ctx.before_switch = ipoe_ctx_switch;
 	pthread_mutex_init(&serv->lock, NULL);
 	serv->ifname = _strdup(ifname);
 	serv->ifindex = ifindex;
