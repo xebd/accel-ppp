@@ -5,6 +5,7 @@ SET(sources
 	mac_filter.c
 	dpado.c
 	cli.c
+	disc.c
 )
 
 IF (RADIUS)

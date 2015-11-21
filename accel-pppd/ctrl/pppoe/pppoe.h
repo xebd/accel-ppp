@@ -6,6 +6,7 @@
 #include <linux/if.h>
 #include <linux/if_pppox.h>
 
+#include "rbtree.h"
 #include "crypto.h"
 
 /* PPPoE codes */
@@ -66,9 +67,11 @@ struct pppoe_serv_t
 {
 	struct list_head entry;
 	struct triton_context_t ctx;
-	struct triton_md_handler_t hnd;
+	struct rb_node node;
+
 	uint8_t hwaddr[ETH_ALEN];
 	char *ifname;
+	int ifindex;
 
 	uint8_t secret[SECRET_LENGTH];
 	DES_key_schedule des_ks;
@@ -106,9 +109,15 @@ extern unsigned long stat_filtered;
 extern pthread_rwlock_t serv_lock;
 extern struct list_head serv_list;
 
+extern int disc_sock;
+
 int mac_filter_check(const uint8_t *addr);
 void pppoe_server_start(const char *intf, void *client);
 void pppoe_server_stop(const char *intf);
+void pppoe_serv_read(uint8_t *data);
+void _server_stop(struct pppoe_serv_t *s);
+void pppoe_disc_start(struct pppoe_serv_t *serv);
+void pppoe_disc_stop(struct pppoe_serv_t *serv);
 
 extern int pado_delay;
 void dpado_check_next(int conn_cnt);
