@@ -2881,59 +2881,6 @@ out_err:
 	return -1;
 }
 
-static int parse_vlan_mon(const char *opt, long *mask)
-{
-	char *ptr, *ptr2;
-	int vid, vid2;
-
-	ptr = strchr(opt, ',');
-	if (!ptr)
-		ptr = strchr(opt, 0);
-
-	if (*ptr == ',')
-		memset(mask, 0xff, 4096/8);
-	else if (*ptr == 0) {
-		memset(mask, 0, 4096/8);
-		return 0;
-	} else
-		goto out_err;
-
-	while (1) {
-		vid = strtol(ptr + 1, &ptr2, 10);
-		if (vid <= 0 || vid >= 4096) {
-			log_error("ipoe: vlan-mon=%s: invalid vlan %i\n", opt, vid);
-			return -1;
-		}
-
-		if (*ptr2 == '-') {
-			vid2 = strtol(ptr2 + 1, &ptr2, 10);
-			if (vid2 <= 0 || vid2 >= 4096) {
-				log_error("ipoe: vlan-mon=%s: invalid vlan %i\n", opt, vid2);
-				return -1;
-			}
-
-			for (; vid < vid2; vid++)
-				mask[vid / (8*sizeof(long))] &= ~(1lu << (vid % (8*sizeof(long))));
-		}
-
-		mask[vid / (8*sizeof(long))] &= ~(1lu << (vid % (8*sizeof(long))));
-
-		if (*ptr2 == 0)
-			break;
-
-		if (*ptr2 != ',')
-			goto out_err;
-
-		ptr = ptr2;
-	}
-
-	return 0;
-
-out_err:
-	log_error("ipoe: vlan-mon=%s: failed to parse\n", opt);
-	return -1;
-}
-
 static void add_vlan_mon(const char *opt, long *mask)
 {
 	const char *ptr;

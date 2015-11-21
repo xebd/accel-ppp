@@ -10,6 +10,6 @@ int vlan_mon_add_vid(int ifindex, int proto, int vid);
 int vlan_mon_del(int ifindex, int proto);
 
 int make_vlan_name(const char *pattern, const char *parent, int svid, int cvid, char *name);
-
+int parse_vlan_mon(const char *opt, long *mask);
 
 #endif
