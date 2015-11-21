@@ -28,6 +28,7 @@
 
 #include "iputils.h"
 #include "connlimit.h"
+#include "vlan_mon.h"
 
 #include "pppoe.h"
 
@@ -75,11 +76,11 @@ struct padi_t
 	uint8_t addr[ETH_ALEN];
 };
 
-struct iplink_arg
-{
+struct iplink_arg {
 	pcre *re;
 	const char *opt;
 	void *cli;
+	long *arg1;
 };
 
 int conf_verbose;
@@ -95,6 +96,8 @@ static const char *conf_ip_pool;
 enum {CSID_MAC, CSID_IFNAME, CSID_IFNAME_MAC};
 static int conf_called_sid;
 static int conf_cookie_timeout;
+static const char *conf_vlan_name;
+static int conf_vlan_timeout;
 
 static mempool_t conn_pool;
 static mempool_t pado_pool;
@@ -127,7 +130,30 @@ static void pppoe_send_PADT(struct pppoe_conn_t *conn);
 static void _server_stop(struct pppoe_serv_t *serv);
 void pppoe_server_free(struct pppoe_serv_t *serv);
 static int init_secret(struct pppoe_serv_t *serv);
-static void __pppoe_server_start(const char *ifname, const char *opt, void *cli);
+static void __pppoe_server_start(const char *ifname, const char *opt, void *cli, int parent_ifindex, int vid);
+static void pppoe_serv_timeout(struct triton_timer_t *t);
+
+static void pppoe_serv_start_timer(struct pppoe_serv_t *serv)
+{
+	pthread_mutex_lock(&serv->lock);
+	if (serv->conn_cnt) {
+		pthread_mutex_unlock(&serv->lock);
+		return;
+	}
+
+	if (conf_vlan_timeout) {
+		serv->timer.expire = pppoe_serv_timeout;
+		serv->timer.expire_tv.tv_sec = conf_vlan_timeout;
+		if (serv->timer.tpd)
+			triton_timer_mod(&serv->timer, 0);
+		else
+			triton_timer_add(&serv->ctx, &serv->timer, 0);
+		pthread_mutex_unlock(&serv->lock);
+	} else {
+		pthread_mutex_lock(&serv->lock);
+		pppoe_server_free(serv);
+	}
+}
 
 static void disconnect(struct pppoe_conn_t *conn)
 {
@@ -148,9 +174,14 @@ static void disconnect(struct pppoe_conn_t *conn)
 	pthread_mutex_lock(&conn->serv->lock);
 	list_del(&conn->entry);
 	conn->serv->conn_cnt--;
-	if (conn->serv->stopping && conn->serv->conn_cnt == 0) {
-		pthread_mutex_unlock(&conn->serv->lock);
-		pppoe_server_free(conn->serv);
+	if (conn->serv->conn_cnt == 0) {
+		if (conn->serv->stopping) {
+			pthread_mutex_unlock(&conn->serv->lock);
+			pppoe_server_free(conn->serv);
+		} else if (conn->serv->vid) {
+			pthread_mutex_unlock(&conn->serv->lock);
+			triton_context_call(&conn->serv->ctx, (triton_event_func)pppoe_serv_start_timer, conn->serv);
+		}
 	} else
 		pthread_mutex_unlock(&conn->serv->lock);
 
@@ -1238,6 +1269,18 @@ static void pppoe_serv_close(struct triton_context_t *ctx)
 	pthread_mutex_unlock(&serv->lock);
 }
 
+static void pppoe_serv_timeout(struct triton_timer_t *t)
+{
+	struct pppoe_serv_t *serv = container_of(t, typeof(*serv), timer);
+
+	if (serv->conn_cnt) {
+		triton_timer_del(&serv->timer);
+		return;
+	}
+
+	_server_stop(serv);
+}
+
 static int parse_server(const char *opt, int *padi_limit)
 {
 	char *ptr, *endptr;
@@ -1260,7 +1303,7 @@ static int __pppoe_add_interface_re(int index, int flags, const char *name, stru
 	if (pcre_exec(arg->re, NULL, name, strlen(name), 0, 0, NULL, 0) < 0)
 		return 0;
 
-	__pppoe_server_start(name, arg->opt, arg->cli);
+	__pppoe_server_start(name, arg->opt, arg->cli, 0, 0);
 
 	return 0;
 }
@@ -1311,12 +1354,12 @@ void pppoe_server_start(const char *opt, void *cli)
 	if (ptr) {
 		memcpy(name, opt, ptr - opt);
 		name[ptr - opt] = 0;
-		__pppoe_server_start(name, ptr, cli);
+		__pppoe_server_start(name, ptr, cli, 0, 0);
 	} else
-		__pppoe_server_start(opt, opt, cli);
+		__pppoe_server_start(opt, opt, cli, 0, 0);
 }
 
-static void __pppoe_server_start(const char *ifname, const char *opt, void *cli)
+static void __pppoe_server_start(const char *ifname, const char *opt, void *cli, int parent_ifindex, int vid)
 {
 	struct pppoe_serv_t *serv;
 	int sock;
@@ -1415,6 +1458,8 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli)
 		goto out_err;
 	}
 
+	serv->ifindex = ifr.ifr_ifindex;
+
 	memset(&sa, 0, sizeof(sa));
 	sa.sll_family = AF_PACKET;
 	sa.sll_protocol = htons(ETH_P_PPP_DISC);
@@ -1447,6 +1492,17 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli)
 	serv->padi_limit = padi_limit;
 
 	triton_context_register(&serv->ctx, NULL);
+
+	if (vid) {
+		serv->parent_ifindex = parent_ifindex;
+		serv->vid = vid;
+		if (conf_vlan_timeout) {
+			serv->timer.expire = pppoe_serv_timeout;
+			serv->timer.expire_tv.tv_sec = conf_vlan_timeout;
+			triton_timer_add(&serv->ctx, &serv->timer, 0);
+		}
+	}
+
 	triton_md_register_handler(&serv->ctx, &serv->hnd);
 	triton_md_enable_handler(&serv->hnd, MD_MODE_READ);
 	triton_context_wakeup(&serv->ctx);
@@ -1501,7 +1557,17 @@ void pppoe_server_free(struct pppoe_serv_t *serv)
 		free_delayed_pado(pado);
 	}
 
+	if (serv->timer.tpd)
+		triton_timer_del(&serv->timer);
+
 	triton_md_unregister_handler(&serv->hnd, 1);
+
+	if (serv->vid) {
+		log_info2("ipoe: remove vlan %s\n", serv->ifname);
+		iplink_vlan_del(serv->ifindex);
+		vlan_mon_add_vid(serv->parent_ifindex, ETH_P_PPP_DISC, serv->vid);
+	}
+
 	triton_context_unregister(&serv->ctx);
 	_free(serv->ifname);
 	_free(serv);
@@ -1543,9 +1609,233 @@ static int init_secret(struct pppoe_serv_t *serv)
 	return 0;
 }
 
+void pppoe_vlan_mon_notify(int ifindex, int vid)
+{
+	struct conf_sect_t *sect = conf_get_section("pppoe");
+	struct conf_option_t *opt;
+	struct ifreq ifr;
+	char *ptr;
+	int len, r, svid;
+	pcre *re = NULL;
+	const char *pcre_err;
+	char *pattern;
+	int pcre_offset;
+	char ifname[IFNAMSIZ];
+
+	if (!sect)
+		return;
+
+	memset(&ifr, 0, sizeof(ifr));
+	ifr.ifr_ifindex = ifindex;
+	if (ioctl(sock_fd, SIOCGIFNAME, &ifr, sizeof(ifr))) {
+		log_error("pppoe: vlan-mon: failed to get interface name, ifindex=%i\n", ifindex);
+		return;
+	}
+
+	svid = iplink_vlan_get_vid(ifindex);
+
+	if (make_vlan_name(conf_vlan_name, ifr.ifr_name, svid, vid, ifname)) {
+		log_error("pppoe: vlan-mon: %s.%i: interface name is too long\n", ifr.ifr_name, vid);
+		return;
+	}
+
+	strcpy(ifr.ifr_name, ifname);
+	len = strlen(ifr.ifr_name);
+
+	if (iplink_vlan_add(ifr.ifr_name, ifindex, vid))
+		return;
+
+	log_info2("pppoe: create vlan %s parent %s\n", ifname, ifr.ifr_name);
+
+	ioctl(sock_fd, SIOCGIFFLAGS, &ifr, sizeof(ifr));
+	ifr.ifr_flags |= IFF_UP;
+	ioctl(sock_fd, SIOCSIFFLAGS, &ifr, sizeof(ifr));
+
+	if (ioctl(sock_fd, SIOCGIFINDEX, &ifr, sizeof(ifr))) {
+		log_error("pppoe: vlan-mon: %s: failed to get interface index\n", ifr.ifr_name);
+		return;
+	}
+
+	list_for_each_entry(opt, &sect->items, entry) {
+		if (strcmp(opt->name, "interface"))
+			continue;
+		if (!opt->val)
+			continue;
+
+		ptr = strchr(opt->val, ',');
+		if (!ptr)
+			ptr = strchr(opt->val, 0);
+
+		if (ptr - opt->val > 3 && memcmp(opt->val, "re:", 3) == 0) {
+			pattern = _malloc(ptr - (opt->val + 3) + 1);
+			memcpy(pattern, opt->val + 3, ptr - (opt->val + 3));
+			pattern[ptr - (opt->val + 3)] = 0;
+
+			re = pcre_compile2(pattern, 0, NULL, &pcre_err, &pcre_offset, NULL);
+
+			_free(pattern);
+
+			if (!re)
+				continue;
+
+			r = pcre_exec(re, NULL, ifr.ifr_name, len, 0, 0, NULL, 0);
+			pcre_free(re);
+
+			if (r < 0)
+				continue;
+
+			__pppoe_server_start(ifr.ifr_name, opt->val, NULL, ifindex, vid);
+		} else if (ptr - opt->val == len && memcmp(opt->val, ifr.ifr_name, len) == 0)
+			__pppoe_server_start(ifr.ifr_name, opt->val, NULL, ifindex, vid);
+	}
+}
+
+static void add_vlan_mon(const char *opt, long *mask)
+{
+	const char *ptr;
+	struct ifreq ifr;
+	int ifindex;
+	long mask1[4096/8/sizeof(long)];
+	struct pppoe_serv_t *serv;
+
+	for (ptr = opt; *ptr && *ptr != ','; ptr++);
+
+	if (ptr - opt >= IFNAMSIZ) {
+		log_error("pppoe: vlan-mon=%s: interface name is too long\n", opt);
+		return;
+	}
+
+	memset(&ifr, 0, sizeof(ifr));
+
+	memcpy(ifr.ifr_name, opt, ptr - opt);
+	ifr.ifr_name[ptr - opt] = 0;
+
+	if (ioctl(sock_fd, SIOCGIFINDEX, &ifr)) {
+		log_error("pppoe: '%s': ioctl(SIOCGIFINDEX): %s\n", ifr.ifr_name, strerror(errno));
+		return;
+	}
+
+	ifindex = ifr.ifr_ifindex;
+
+	ioctl(sock_fd, SIOCGIFFLAGS, &ifr);
+
+	if (!(ifr.ifr_flags & IFF_UP)) {
+		ifr.ifr_flags |= IFF_UP;
+
+		ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
+	}
+
+	memcpy(mask1, mask, sizeof(mask1));
+	list_for_each_entry(serv, &serv_list, entry) {
+		if (serv->vid && serv->parent_ifindex == ifindex)
+			mask1[serv->vid / (8*sizeof(long))] |= 1lu << (serv->vid % (8*sizeof(long)));
+	}
+
+	vlan_mon_add(ifindex, ETH_P_PPP_DISC, mask1, sizeof(mask1));
+}
+
+static int __load_vlan_mon_re(int index, int flags, const char *name, struct iplink_arg *arg)
+{
+	struct ifreq ifr;
+	long mask1[4096/8/sizeof(long)];
+	struct pppoe_serv_t *serv;
+
+	if (pcre_exec(arg->re, NULL, name, strlen(name), 0, 0, NULL, 0) < 0)
+		return 0;
+
+	memset(&ifr, 0, sizeof(ifr));
+	strcpy(ifr.ifr_name, name);
+
+	ioctl(sock_fd, SIOCGIFFLAGS, &ifr);
+
+	if (!(ifr.ifr_flags & IFF_UP)) {
+		ifr.ifr_flags |= IFF_UP;
+
+		ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
+	}
+
+	memcpy(mask1, arg->arg1, sizeof(mask1));
+	list_for_each_entry(serv, &serv_list, entry) {
+		if (serv->vid && serv->parent_ifindex == index)
+			mask1[serv->vid / (8*sizeof(long))] |= 1lu << (serv->vid % (8*sizeof(long)));
+	}
+
+	vlan_mon_add(index, ETH_P_PPP_DISC,  mask1, sizeof(mask1));
+
+	return 0;
+}
+
+static void load_vlan_mon_re(const char *opt, long *mask, int len)
+{
+	pcre *re = NULL;
+	const char *pcre_err;
+	char *pattern;
+	const char *ptr;
+	int pcre_offset;
+	struct iplink_arg arg;
+
+	for (ptr = opt; *ptr && *ptr != ','; ptr++);
+
+	pattern = _malloc(ptr - (opt + 3) + 1);
+	memcpy(pattern, opt + 3, ptr - (opt + 3));
+	pattern[ptr - (opt + 3)] = 0;
+
+	re = pcre_compile2(pattern, 0, NULL, &pcre_err, &pcre_offset, NULL);
+
+	if (!re) {
+		log_error("ipoe: '%s': %s at %i\r\n", pattern, pcre_err, pcre_offset);
+		return;
+	}
+
+	arg.re = re;
+	arg.opt = opt;
+	arg.arg1 = mask;
+
+	iplink_list((iplink_list_func)__load_vlan_mon_re, &arg);
+
+	pcre_free(re);
+	_free(pattern);
+
+}
+
+static void load_vlan_mon(struct conf_sect_t *sect)
+{
+	struct conf_option_t *opt;
+	long mask[4096/8/sizeof(long)];
+	static int registered = 0;
+
+	if (!triton_module_loaded("vlan-mon"))
+		return;
+
+	if (!registered) {
+		vlan_mon_register_proto(ETH_P_PPP_DISC, pppoe_vlan_mon_notify);
+		registered = 1;
+	}
+
+	vlan_mon_del(-1, ETH_P_PPP_DISC);
+
+	list_for_each_entry(opt, &sect->items, entry) {
+		if (strcmp(opt->name, "vlan-mon"))
+			continue;
+
+		if (!opt->val)
+			continue;
+
+		if (parse_vlan_mon(opt->val, mask))
+			continue;
+
+		if (strlen(opt->val) > 3 && !memcmp(opt->val, "re:", 3))
+			load_vlan_mon_re(opt->val, mask, sizeof(mask));
+		else
+			add_vlan_mon(opt->val, mask);
+	}
+}
+
+
 static void load_config(void)
 {
 	char *opt;
+	struct conf_sect_t *s = conf_get_section("pppoe");
 
 	opt = conf_get_opt("pppoe", "verbose");
 	if (opt)
@@ -1634,6 +1924,20 @@ static void load_config(void)
 		else
 			log_error("pppoe: unknown called-sid type\n");
 	}
+
+	opt = conf_get_opt("pppoe", "vlan-name");
+	if (opt)
+		conf_vlan_name = opt;
+	else
+		conf_vlan_name = "%I.%N";
+
+	opt = conf_get_opt("pppoe", "vlan-timeout");
+	if (opt && atoi(opt) > 0)
+		conf_vlan_timeout = atoi(opt);
+	else
+		conf_vlan_timeout = 60;
+
+	load_vlan_mon(s);
 }
 
 static void load_interfaces()

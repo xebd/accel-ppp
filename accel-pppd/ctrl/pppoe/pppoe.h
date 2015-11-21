@@ -69,6 +69,11 @@ struct pppoe_serv_t
 	struct triton_md_handler_t hnd;
 	uint8_t hwaddr[ETH_ALEN];
 	char *ifname;
+	int ifindex;
+
+	int parent_ifindex;
+	int vid;
+	struct triton_timer_t timer;
 
 	uint8_t secret[SECRET_LENGTH];
 	DES_key_schedule des_ks;
