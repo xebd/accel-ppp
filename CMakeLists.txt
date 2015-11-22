@@ -66,6 +66,7 @@ if (NOT BUILD_DRIVER_ONLY)
 	add_subdirectory(accel-pppd)
 	add_subdirectory(crypto)
 	add_subdirectory(accel-cmd)
+	add_subdirectory(accel-dpdk)
 endif (NOT BUILD_DRIVER_ONLY)
 
 if (BUILD_PPTP_DRIVER)
