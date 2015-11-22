@@ -712,17 +712,17 @@ static void add_tag2(uint8_t *pack, const struct pppoe_tag *t)
 	hdr->length = htons(ntohs(hdr->length) + sizeof(*tag) + ntohs(t->tag_len));
 }
 
-static void pppoe_send(int ifindex, const uint8_t *pack)
+static void pppoe_send(struct pppoe_serv_t *serv, const uint8_t *pack)
 {
 	struct sockaddr_ll addr = {
 		.sll_family = AF_PACKET,
 		.sll_protocol = htons(ETH_P_PPP_DISC),
-		.sll_ifindex = ifindex,
+		.sll_ifindex = serv->ifindex,
 	};
 
 	struct pppoe_hdr *hdr = (struct pppoe_hdr *)(pack + ETH_HLEN);
 	int len = ETH_HLEN + sizeof(*hdr) + ntohs(hdr->length);
-	sendto(disc_sock, pack, len, MSG_DONTWAIT, (struct sockaddr *)&addr, sizeof(addr));
+	sendto(serv->disc_sock, pack, len, MSG_DONTWAIT, (struct sockaddr *)&addr, sizeof(addr));
 }
 
 static void pppoe_send_PADO(struct pppoe_serv_t *serv, const uint8_t *addr, const struct pppoe_tag *host_uniq, const struct pppoe_tag *relay_sid, const struct pppoe_tag *service_name)
@@ -755,7 +755,7 @@ static void pppoe_send_PADO(struct pppoe_serv_t *serv, const uint8_t *addr, cons
 	}
 
 	__sync_add_and_fetch(&stat_PADO_sent, 1);
-	pppoe_send(serv->ifindex, pack);
+	pppoe_send(serv, pack);
 }
 
 static void pppoe_send_err(struct pppoe_serv_t *serv, const uint8_t *addr, const struct pppoe_tag *host_uniq, const struct pppoe_tag *relay_sid, int code, int tag_type)
@@ -778,7 +778,7 @@ static void pppoe_send_err(struct pppoe_serv_t *serv, const uint8_t *addr, const
 		print_packet(pack);
 	}
 
-	pppoe_send(serv->ifindex, pack);
+	pppoe_send(serv, pack);
 }
 
 static void pppoe_send_PADS(struct pppoe_conn_t *conn)
@@ -803,7 +803,7 @@ static void pppoe_send_PADS(struct pppoe_conn_t *conn)
 	}
 
 	__sync_add_and_fetch(&stat_PADS_sent, 1);
-	pppoe_send(conn->serv->ifindex, pack);
+	pppoe_send(conn->serv, pack);
 }
 
 static void pppoe_send_PADT(struct pppoe_conn_t *conn)
@@ -824,7 +824,7 @@ static void pppoe_send_PADT(struct pppoe_conn_t *conn)
 		print_packet(pack);
 	}
 
-	pppoe_send(conn->serv->ifindex, pack);
+	pppoe_send(conn->serv, pack);
 }
 
 static void free_delayed_pado(struct delayed_pado_t *pado)
@@ -1407,6 +1407,13 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli,
 	serv->padi_limit = padi_limit;
 
 	triton_context_register(&serv->ctx, serv);
+
+	serv->disc_sock = pppoe_disc_start(serv);
+	if (serv->disc_sock < 0) {
+		log_error("pppoe: %s: failed to create discovery socket\n", ifname);
+		triton_context_unregister(&serv->ctx);
+		goto out_err;
+	}
 
 	if (vid) {
 		serv->parent_ifindex = parent_ifindex;

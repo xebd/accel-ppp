@@ -15,6 +15,7 @@
 #include "log.h"
 #include "mempool.h"
 
+#include "ap_net.h"
 #include "pppoe.h"
 
 #include "memdebug.h"
@@ -25,24 +26,101 @@ struct tree {
 };
 
 #define HASH_BITS 0xff
-static struct tree *tree;
+
+struct disc_net {
+	struct triton_context_t ctx;
+	struct list_head entry;
+	struct triton_md_handler_t hnd;
+	const struct ap_net *net;
+	struct tree tree[0];
+};
 
 static uint8_t bc_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
-static struct triton_md_handler_t disc_hnd;
-
 static mempool_t pkt_pool;
 
-int disc_sock;
+static LIST_HEAD(nets);
 
-void pppoe_disc_start(struct pppoe_serv_t *serv)
+static void disc_close(struct triton_context_t *ctx);
+static int disc_read(struct triton_md_handler_t *h);
+
+static struct disc_net *init_net(const struct ap_net *net)
 {
+	struct sockaddr_ll addr;
+	int i, f = 1;
+	struct disc_net *n;
+	struct tree *tree;
+	int sock;
+
+	sock = net->socket(PF_PACKET, SOCK_RAW, htons(ETH_P_PPP_DISC));
+	if (sock < 0)
+		return NULL;
+
+	memset(&addr, 0, sizeof(addr));
+	addr.sll_family = AF_PACKET;
+	addr.sll_protocol = htons(ETH_P_PPP_DISC);
+
+	net->setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &f, sizeof(f));
+
+	if (net->bind(sock, (struct sockaddr *)&addr, sizeof(addr))) {
+		log_error("pppoe: disc: bind: %s\n", strerror(errno));
+		close(sock);
+		return NULL;
+	}
+
+	fcntl(sock, F_SETFD, FD_CLOEXEC);
+	net->set_nonblocking(sock, 1);
+
+	n = malloc(sizeof(*net) + (HASH_BITS + 1) * sizeof(struct tree));
+	tree = n->tree;
+
+	for (i = 0; i <= HASH_BITS; i++) {
+		pthread_mutex_init(&tree[i].lock, NULL);
+		tree[i].root = RB_ROOT;
+	}
+
+	n->ctx.close = disc_close;
+	n->hnd.fd = sock;
+	n->hnd.read = disc_read;
+	n->net = net;
+
+	triton_context_register(&n->ctx, NULL);
+	triton_md_register_handler(&n->ctx, &n->hnd);
+	triton_md_enable_handler(&n->hnd, MD_MODE_READ);
+	triton_context_wakeup(&n->ctx);
+
+	list_add_tail(&n->entry, &nets);
+
+	return n;
+}
+
+static struct disc_net *find_net(const struct ap_net *net)
+{
+	struct disc_net *n;
+
+	list_for_each_entry(n, &nets, entry) {
+		if (n->net == net)
+			return n;
+	}
+
+	return NULL;
+}
+
+int pppoe_disc_start(struct pppoe_serv_t *serv)
+{
+	struct disc_net *net = find_net(serv->net);
 	struct rb_node **p, *parent = NULL;
 	struct tree *t;
 	int ifindex = serv->ifindex, i;
 	struct pppoe_serv_t *n;
 
-	t = &tree[ifindex & HASH_BITS];
+	if (!net) {
+		net = init_net(serv->net);
+		if (!net)
+			return -1;
+	}
+
+	t = &net->tree[ifindex & HASH_BITS];
 
 	pthread_mutex_lock(&t->lock);
 
@@ -60,7 +138,7 @@ void pppoe_disc_start(struct pppoe_serv_t *serv)
 		else {
 			pthread_mutex_unlock(&t->lock);
 			log_error("pppoe: disc: attempt to add duplicate ifindex\n");
-			return;
+			return -1;
 		}
 	}
 
@@ -68,21 +146,24 @@ void pppoe_disc_start(struct pppoe_serv_t *serv)
 	rb_insert_color(&serv->node, &t->root);
 
 	pthread_mutex_unlock(&t->lock);
+
+	return net->hnd.fd;
 }
 
 void pppoe_disc_stop(struct pppoe_serv_t *serv)
 {
-	struct tree *t = &tree[serv->ifindex & HASH_BITS];
+	struct disc_net *n = find_net(serv->net);
+	struct tree *t = &n->tree[serv->ifindex & HASH_BITS];
 
 	pthread_mutex_lock(&t->lock);
 	rb_erase(&serv->node, &t->root);
 	pthread_mutex_unlock(&t->lock);
 }
 
-static int forward(int ifindex, void *pkt, int len)
+static int forward(struct disc_net *net, int ifindex, void *pkt, int len)
 {
 	struct pppoe_serv_t *n;
-	struct tree *t = &tree[ifindex & HASH_BITS];
+	struct tree *t = &net->tree[ifindex & HASH_BITS];
 	struct rb_node **p = &t->root.rb_node, *parent = NULL;
 	int r = 0;
 	struct ethhdr *ethhdr = (struct ethhdr *)(pkt + 4);
@@ -112,10 +193,10 @@ static int forward(int ifindex, void *pkt, int len)
 	return r;
 }
 
-static void notify_down(int ifindex)
+static void notify_down(struct disc_net *net, int ifindex)
 {
 	struct pppoe_serv_t *n;
-	struct tree *t = &tree[ifindex & HASH_BITS];
+	struct tree *t = &net->tree[ifindex & HASH_BITS];
 	struct rb_node **p = &t->root.rb_node, *parent = NULL;
 
 	pthread_mutex_lock(&t->lock);
@@ -139,6 +220,7 @@ static void notify_down(int ifindex)
 
 static int disc_read(struct triton_md_handler_t *h)
 {
+	struct disc_net *net = container_of(h, typeof(*net), hnd);
 	uint8_t *pack = NULL;
 	struct ethhdr *ethhdr;
 	struct pppoe_hdr *hdr;
@@ -150,14 +232,14 @@ static int disc_read(struct triton_md_handler_t *h)
 		if (!pack)
 			pack = mempool_alloc(pkt_pool);
 
-		n = recvfrom(disc_sock, pack + 4, ETHER_MAX_LEN, MSG_DONTWAIT, (struct sockaddr *)&src, &slen);
+		n = net->net->recvfrom(h->fd, pack + 4, ETHER_MAX_LEN, MSG_DONTWAIT, (struct sockaddr *)&src, &slen);
 
 		if (n < 0) {
 			if (errno == EAGAIN)
 				break;
 
 			if (errno == ENETDOWN) {
-				notify_down(src.sll_ifindex);
+				notify_down(net, src.sll_ifindex);
 				continue;
 			}
 
@@ -211,7 +293,7 @@ static int disc_read(struct triton_md_handler_t *h)
 				log_warn("pppoe: discarding packet (unsupported type %i)\n", hdr->type);
 		}
 
-		if (forward(src.sll_ifindex, pack, n))
+		if (forward(net, src.sll_ifindex, pack, n))
 			pack = NULL;
 	}
 
@@ -220,60 +302,17 @@ static int disc_read(struct triton_md_handler_t *h)
 	return 0;
 }
 
-static void disc_close(struct triton_context_t *ctx);
-
-static struct triton_context_t disc_ctx = {
-	.close = disc_close,
-};
-
-static struct triton_md_handler_t disc_hnd = {
-	.read = disc_read,
-};
-
 static void disc_close(struct triton_context_t *ctx)
 {
-	triton_md_unregister_handler(&disc_hnd, 1);
+	struct disc_net *n = container_of(ctx, typeof(*n), ctx);
+
+	triton_md_unregister_handler(&n->hnd, 1);
 	triton_context_unregister(ctx);
 }
 
 static void init()
 {
-	struct sockaddr_ll addr;
-	int i, f = 1;
-
 	pkt_pool = mempool_create(ETHER_MAX_LEN + 4);
-
-	tree = malloc((HASH_BITS + 1) * sizeof(struct tree));
-	for (i = 0; i <= HASH_BITS; i++) {
-		pthread_mutex_init(&tree[i].lock, NULL);
-		tree[i].root = RB_ROOT;
-	}
-
-	disc_sock = socket(PF_PACKET, SOCK_RAW, htons(ETH_P_PPP_DISC));
-	if (disc_sock < 0)
-		return;
-
-	memset(&addr, 0, sizeof(addr));
-	addr.sll_family = AF_PACKET;
-	addr.sll_protocol = htons(ETH_P_PPP_DISC);
-
-	setsockopt(disc_sock, SOL_SOCKET, SO_BROADCAST, &f, sizeof(f));
-
-	if (bind(disc_sock, (struct sockaddr *)&addr, sizeof(addr))) {
-		log_error("pppoe: disc: bind: %s\n", strerror(errno));
-		close(disc_sock);
-		return;
-	}
-
-	fcntl(disc_sock, F_SETFL, O_NONBLOCK);
-	fcntl(disc_sock, F_SETFD, FD_CLOEXEC);
-
-	disc_hnd.fd = disc_sock;
-
-	triton_context_register(&disc_ctx, NULL);
-	triton_md_register_handler(&disc_ctx, &disc_hnd);
-	triton_md_enable_handler(&disc_hnd, MD_MODE_READ);
-	triton_context_wakeup(&disc_ctx);
 }
 
 DEFINE_INIT(1, init);

@@ -70,6 +70,7 @@ struct pppoe_serv_t
 	struct rb_node node;
 
 	const struct ap_net *net;
+	int disc_sock;
 
 	uint8_t hwaddr[ETH_ALEN];
 	char *ifname;
@@ -115,14 +116,13 @@ extern unsigned long stat_filtered;
 extern pthread_rwlock_t serv_lock;
 extern struct list_head serv_list;
 
-extern int disc_sock;
-
 int mac_filter_check(const uint8_t *addr);
 void pppoe_server_start(const char *intf, void *client);
 void pppoe_server_stop(const char *intf);
 void pppoe_serv_read(uint8_t *data);
 void _server_stop(struct pppoe_serv_t *s);
-void pppoe_disc_start(struct pppoe_serv_t *serv);
+
+int pppoe_disc_start(struct pppoe_serv_t *serv);
 void pppoe_disc_stop(struct pppoe_serv_t *serv);
 
 extern int pado_delay;
