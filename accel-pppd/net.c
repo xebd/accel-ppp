@@ -4,7 +4,9 @@
 
 #include "triton.h"
 
-#include "ap_session.h"
+#include "ap_net.h"
+
+extern int sock_fd;
 
 __export __thread const struct ap_net *net;
 
@@ -53,6 +55,11 @@ static int def_set_nonblocking(int sock, int f)
 	return fcntl(sock, F_SETFL, O_NONBLOCK);
 }
 
+static int def_setsockopt(int sock, int level, int optname, const void *optval, socklen_t optlen)
+{
+	return setsockopt(sock, level, optname, optval, optlen);
+}
+
 static int def_ppp_open()
 {
 	return open("/dev/ppp", O_RDWR);
@@ -78,6 +85,7 @@ __export const struct ap_net def_net = {
 	.send = def_send,
 	.sendto = def_sendto,
 	.set_nonblocking = def_set_nonblocking,
+	.setsockopt = def_setsockopt,
 	.ppp_open = def_ppp_open,
 	.ppp_ioctl = def_ppp_ioctl,
 	.sock_ioctl = def_sock_ioctl,

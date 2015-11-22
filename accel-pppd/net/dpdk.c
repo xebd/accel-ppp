@@ -8,7 +8,7 @@
 #include <linux/if.h>
 
 #include "triton.h"
-#include "ap_session.h"
+#include "ap_net.h"
 #include "log.h"
 
 #include "if_dpdk.h"
@@ -311,6 +311,12 @@ static int dpdk_set_nonblocking(int sock, int f)
 	return 0;
 }
 
+static int dpdk_setsockopt(int sock, int level, int optname, const void *optval, socklen_t optlen)
+{
+	return 0;
+}
+
+
 static int dpdk_ppp_open()
 {
 	int id = MSG_PPP_OPEN;
@@ -451,6 +457,7 @@ static const struct ap_net dpdk_net = {
 	.send = dpdk_send,
 	.sendto = dpdk_sendto,
 	.set_nonblocking = dpdk_set_nonblocking,
+	.setsockopt = dpdk_setsockopt,
 	.ppp_open = dpdk_ppp_open,
 	.ppp_ioctl = dpdk_ppp_ioctl,
 	.sock_ioctl = dpdk_sock_ioctl,
