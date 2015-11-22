@@ -411,7 +411,7 @@ static void connect_channel(struct pppoe_conn_t *conn)
 	triton_event_fire(EV_CTRL_STARTING, &conn->ppp.ses);
 	triton_event_fire(EV_CTRL_STARTED, &conn->ppp.ses);
 
-	sock = socket(AF_PPPOX, SOCK_STREAM, PX_PROTO_OE);
+	sock = net->pppox_socket(PX_PROTO_OE);
 	if (!sock) {
 		log_error("pppoe: socket(PPPOX): %s\n", strerror(errno));
 		goto out_err;
@@ -427,7 +427,7 @@ static void connect_channel(struct pppoe_conn_t *conn)
 	strcpy(sp.sa_addr.pppoe.dev, conn->serv->ifname);
 	memcpy(sp.sa_addr.pppoe.remote, conn->addr, ETH_ALEN);
 
-	if (connect(sock, (struct sockaddr *)&sp, sizeof(sp))) {
+	if (net->pppox_connect(sock, (struct sockaddr *)&sp, sizeof(sp))) {
 		log_error("pppoe: connect: %s\n", strerror(errno));
 		goto out_err_close;
 	}
@@ -1320,6 +1320,7 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli,
 	struct pppoe_serv_t *serv;
 	struct ifreq ifr;
 	int padi_limit = conf_padi_limit;
+	const struct ap_net *net = &def_net;
 
 	if (parse_server(opt, &padi_limit)) {
 		if (cli)
@@ -1350,7 +1351,7 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli,
 	}
 
 	strncpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
-	if (ioctl(sock_fd, SIOCGIFHWADDR, &ifr)) {
+	if (net->sock_ioctl(SIOCGIFHWADDR, &ifr)) {
 		if (cli)
 			cli_sendv(cli, "ioctl(SIOCGIFHWADDR): %s\r\n", strerror(errno));
 		log_error("pppoe: ioctl(SIOCGIFHWADDR): %s\n", strerror(errno));
@@ -1373,7 +1374,7 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli,
 
 	memcpy(serv->hwaddr, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
 
-	if (ioctl(sock_fd, SIOCGIFMTU, &ifr)) {
+	if (net->sock_ioctl(SIOCGIFMTU, &ifr)) {
 		if (cli)
 			cli_sendv(cli, "ioctl(SIOCGIFMTU): %s\r\n", strerror(errno));
 		log_error("pppoe: ioctl(SIOCGIFMTU): %s\n", strerror(errno));
@@ -1386,7 +1387,7 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli,
 		log_error("pppoe: interface %s has MTU of %i, should be %i\n", ifname, ifr.ifr_mtu, ETH_DATA_LEN);
 	}
 
-	if (ioctl(sock_fd, SIOCGIFINDEX, &ifr)) {
+	if (net->sock_ioctl(SIOCGIFINDEX, &ifr)) {
 		if (cli)
 			cli_sendv(cli, "ioctl(SIOCGIFINDEX): %s\r\n", strerror(errno));
 		log_error("pppoe: ioctl(SIOCGIFINDEX): %s\n", strerror(errno));
@@ -1397,7 +1398,7 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli,
 	serv->ctx.before_switch = pppoe_serv_ctx_switch;
 	serv->ifname = _strdup(ifname);
 	serv->ifindex = ifr.ifr_ifindex;
-	serv->net = &def_net;
+	serv->net = net;
 	pthread_mutex_init(&serv->lock, NULL);
 
 	INIT_LIST_HEAD(&serv->conn_list);

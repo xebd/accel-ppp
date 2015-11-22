@@ -33,7 +33,7 @@ static int def_sock_ioctl(unsigned long request, void *arg)
 	return ioctl(sock_fd, request, arg);
 }
 
-const struct ap_net def_net = {
+__export const struct ap_net def_net = {
 	.pppox_socket = def_pppox_socket,
 	.pppox_connect = def_pppox_connect,
 	.ppp_open = def_ppp_open,

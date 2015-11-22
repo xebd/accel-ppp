@@ -80,12 +80,12 @@ int __export establish_ppp(struct ppp_t *ppp)
 		return -1;
 
 	/* Open an instance of /dev/ppp and connect the channel to it */
-	if (ioctl(ppp->fd, PPPIOCGCHAN, &ppp->chan_idx) == -1) {
+	if (net->ppp_ioctl(ppp->fd, PPPIOCGCHAN, &ppp->chan_idx) == -1) {
 		log_ppp_error("ioctl(PPPIOCGCHAN): %s\n", strerror(errno));
 		return -1;
 	}
 
-	ppp->chan_fd = open("/dev/ppp", O_RDWR);
+	ppp->chan_fd = net->ppp_open();
 	if (ppp->chan_fd < 0) {
 		log_ppp_error("open(chan) /dev/ppp: %s\n", strerror(errno));
 		return -1;
@@ -98,7 +98,7 @@ int __export establish_ppp(struct ppp_t *ppp)
 		goto exit_close_chan;
 	}
 
-	if (ioctl(ppp->chan_fd, PPPIOCATTCHAN, &ppp->chan_idx) < 0) {
+	if (net->ppp_ioctl(ppp->chan_fd, PPPIOCATTCHAN, &ppp->chan_idx) < 0) {
 		log_ppp_error("ioctl(PPPIOCATTCHAN): %s\n", strerror(errno));
 		goto exit_close_chan;
 	}
@@ -155,7 +155,7 @@ int __export connect_ppp_channel(struct ppp_t *ppp)
 		ppp->ses.unit_idx = uc->unit_idx;
 		mempool_free(uc);
 	} else {
-		ppp->unit_fd = open("/dev/ppp", O_RDWR);
+		ppp->unit_fd = net->ppp_open();
 		if (ppp->unit_fd < 0) {
 			log_ppp_error("open(unit) /dev/ppp: %s\n", strerror(errno));
 			goto exit;
@@ -163,7 +163,7 @@ int __export connect_ppp_channel(struct ppp_t *ppp)
 
 		fcntl(ppp->unit_fd, F_SETFD, fcntl(ppp->unit_fd, F_GETFD) | FD_CLOEXEC);
 
-		if (ioctl(ppp->unit_fd, PPPIOCNEWUNIT, &ppp->ses.unit_idx) < 0) {
+		if (net->ppp_ioctl(ppp->unit_fd, PPPIOCNEWUNIT, &ppp->ses.unit_idx) < 0) {
 			log_ppp_error("ioctl(PPPIOCNEWUNIT): %s\n", strerror(errno));
 			goto exit_close_unit;
 		}
@@ -174,7 +174,7 @@ int __export connect_ppp_channel(struct ppp_t *ppp)
 		}
 	}
 
-	if (ioctl(ppp->chan_fd, PPPIOCCONNECT, &ppp->ses.unit_idx) < 0) {
+	if (net->ppp_ioctl(ppp->chan_fd, PPPIOCCONNECT, &ppp->ses.unit_idx) < 0) {
 		log_ppp_error("ioctl(PPPIOCCONNECT): %s\n", strerror(errno));
 		goto exit_close_unit;
 	}
@@ -185,17 +185,17 @@ int __export connect_ppp_channel(struct ppp_t *ppp)
 
 	ifr.ifr_mtu = ppp->mtu;
 	strcpy(ifr.ifr_name, ppp->ses.ifname);
-	if (ppp->mtu && ioctl(sock_fd, SIOCSIFMTU, &ifr)) {
+	if (ppp->mtu && net->sock_ioctl(SIOCSIFMTU, &ifr)) {
 		log_ppp_error("failed to set MTU: %s\n", strerror(errno));
 		goto exit_close_unit;
 	}
 
-	if (ppp->mru && ioctl(ppp->unit_fd, PPPIOCSMRU, &ppp->mru)) {
+	if (ppp->mru && net->ppp_ioctl(ppp->unit_fd, PPPIOCSMRU, &ppp->mru)) {
 		log_ppp_error("failed to set MRU: %s\n", strerror(errno));
 		goto exit_close_unit;
 	}
 
-	if (ioctl(sock_fd, SIOCGIFINDEX, &ifr)) {
+	if (net->sock_ioctl(SIOCGIFINDEX, &ifr)) {
 		log_ppp_error("ioctl(SIOCGIFINDEX): %s\n", strerror(errno));
 		goto exit_close_unit;
 	}
@@ -247,7 +247,7 @@ static void destablish_ppp(struct ppp_t *ppp)
 		sprintf(ifr.ifr_newname, "ppp%i", ppp->ses.unit_idx);
 		if (strcmp(ifr.ifr_newname, ppp->ses.ifname)) {
 			strncpy(ifr.ifr_name, ppp->ses.ifname, IFNAMSIZ);
-			if (ioctl(sock_fd, SIOCSIFNAME, &ifr)) {
+			if (net->sock_ioctl(SIOCSIFNAME, &ifr)) {
 				triton_md_unregister_handler(&ppp->unit_hnd, 1);
 				goto skip;
 			}

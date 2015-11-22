@@ -89,7 +89,7 @@ int __export ap_session_starting(struct ap_session *ses)
 		memset(&ifr, 0, sizeof(ifr));
 		strcpy(ifr.ifr_name, ses->ifname);
 
-		if (ioctl(sock_fd, SIOCGIFINDEX, &ifr)) {
+		if (net->sock_ioctl(SIOCGIFINDEX, &ifr)) {
 			log_ppp_error("ioctl(SIOCGIFINDEX): %s\n", strerror(errno));
 			return -1;
 		}

@@ -76,13 +76,13 @@ void ppp_ifup(struct ppp_t *ppp)
 		addr.sin_addr.s_addr = ppp->ses.ipv4->addr;
 		memcpy(&ifr.ifr_addr,&addr,sizeof(addr));
 
-		if (ioctl(sock_fd, SIOCSIFADDR, &ifr))
+		if (net->sock_ioctl(SIOCSIFADDR, &ifr))
 			log_ppp_error("ppp: failed to set IPv4 address: %s\n", strerror(errno));
 
 		addr.sin_addr.s_addr = ppp->ses.ipv4->peer_addr;
 		memcpy(&ifr.ifr_dstaddr,&addr,sizeof(addr));
 
-		if (ioctl(sock_fd, SIOCSIFDSTADDR, &ifr))
+		if (net->sock_ioctl(SIOCSIFDSTADDR, &ifr))
 			log_ppp_error("ppp: failed to set peer IPv4 address: %s\n", strerror(errno));
 	}
 
@@ -112,19 +112,19 @@ void ppp_ifup(struct ppp_t *ppp)
 		}
 	}
 
-	if (ioctl(sock_fd, SIOCGIFFLAGS, &ifr))
+	if (net->sock_ioctl(SIOCGIFFLAGS, &ifr))
 		log_ppp_error("ppp: failed to get interface flags: %s\n", strerror(errno));
 
 	ifr.ifr_flags |= IFF_UP | IFF_POINTOPOINT;
 
-	if (ioctl(sock_fd, SIOCSIFFLAGS, &ifr))
+	if (net->sock_ioctl(SIOCSIFFLAGS, &ifr))
 		log_ppp_error("ppp: failed to set interface flags: %s\n", strerror(errno));
 
 	if (ppp->ses.ipv4) {
 		np.protocol = PPP_IP;
 		np.mode = NPMODE_PASS;
 
-		if (ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
+		if (net->ppp_ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
 			log_ppp_error("ppp: failed to set NP (IPv4) mode: %s\n", strerror(errno));
 	}
 
@@ -132,7 +132,7 @@ void ppp_ifup(struct ppp_t *ppp)
 		np.protocol = PPP_IPV6;
 		np.mode = NPMODE_PASS;
 
-		if (ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
+		if (net->ppp_ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
 			log_ppp_error("ppp: failed to set NP (IPv6) mode: %s\n", strerror(errno));
 	}
 
@@ -150,13 +150,13 @@ void __export ppp_ifdown(struct ppp_t *ppp)
 
 	memset(&ifr, 0, sizeof(ifr));
 	strcpy(ifr.ifr_name, ppp->ifname);
-	ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
+	net->sock_ioctl(SIOCSIFFLAGS, &ifr);
 
 	if (ppp->ses.ipv4) {
 		memset(&addr, 0, sizeof(addr));
 		addr.sin_family = AF_INET;
 		memcpy(&ifr.ifr_addr,&addr,sizeof(addr));
-		ioctl(sock_fd, SIOCSIFADDR, &ifr);
+		net->sock_ioctl(SIOCSIFADDR, &ifr);
 	}
 
 	if (ppp->ses.ipv6) {

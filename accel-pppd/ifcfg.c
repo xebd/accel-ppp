@@ -101,13 +101,13 @@ void __export ap_session_accounting_started(struct ap_session *ses)
 	strcpy(ifr.ifr_name, ses->ifname);
 
 	if (ses->ctrl->dont_ifcfg) {
-		if (ioctl(sock_fd, SIOCGIFFLAGS, &ifr))
+		if (net->sock_ioctl(SIOCGIFFLAGS, &ifr))
 			log_ppp_error("failed to get interface flags: %s\n", strerror(errno));
 
 		if (!(ifr.ifr_flags & IFF_UP)) {
 			ifr.ifr_flags |= IFF_UP;
 
-			if (ioctl(sock_fd, SIOCSIFFLAGS, &ifr))
+			if (net->sock_ioctl(SIOCSIFFLAGS, &ifr))
 				log_ppp_error("failed to set interface flags: %s\n", strerror(errno));
 		}
 	} else {
@@ -120,7 +120,7 @@ void __export ap_session_accounting_started(struct ap_session *ses)
 				addr.sin_addr.s_addr = ses->ipv4->addr;
 				memcpy(&ifr.ifr_addr, &addr, sizeof(addr));
 
-				if (ioctl(sock_fd, SIOCSIFADDR, &ifr))
+				if (net->sock_ioctl(SIOCSIFADDR, &ifr))
 					log_ppp_error("failed to set IPv4 address: %s\n", strerror(errno));
 
 				/*if (ses->ctrl->type == CTRL_TYPE_IPOE) {
@@ -143,7 +143,7 @@ void __export ap_session_accounting_started(struct ap_session *ses)
 				} else*/ {
 					memcpy(&ifr.ifr_dstaddr, &addr, sizeof(addr));
 
-					if (ioctl(sock_fd, SIOCSIFDSTADDR, &ifr))
+					if (net->sock_ioctl(SIOCSIFDSTADDR, &ifr))
 						log_ppp_error("failed to set peer IPv4 address: %s\n", strerror(errno));
 				}
 			}
@@ -179,12 +179,12 @@ void __export ap_session_accounting_started(struct ap_session *ses)
 				}
 			}
 
-			if (ioctl(sock_fd, SIOCGIFFLAGS, &ifr))
+			if (net->sock_ioctl(SIOCGIFFLAGS, &ifr))
 				log_ppp_error("failed to get interface flags: %s\n", strerror(errno));
 
 			ifr.ifr_flags |= IFF_UP;
 
-			if (ioctl(sock_fd, SIOCSIFFLAGS, &ifr))
+			if (net->sock_ioctl(SIOCSIFFLAGS, &ifr))
 				log_ppp_error("failed to set interface flags: %s\n", strerror(errno));
 
 			if (ses->ctrl->ppp) {
@@ -193,7 +193,7 @@ void __export ap_session_accounting_started(struct ap_session *ses)
 					np.protocol = PPP_IP;
 					np.mode = NPMODE_PASS;
 
-					if (ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
+					if (net->ppp_ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
 						log_ppp_error("failed to set NP (IPv4) mode: %s\n", strerror(errno));
 				}
 
@@ -201,7 +201,7 @@ void __export ap_session_accounting_started(struct ap_session *ses)
 					np.protocol = PPP_IPV6;
 					np.mode = NPMODE_PASS;
 
-					if (ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
+					if (net->ppp_ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
 						log_ppp_error("failed to set NP (IPv6) mode: %s\n", strerror(errno));
 				}
 			}
@@ -228,13 +228,13 @@ void __export ap_session_ifdown(struct ap_session *ses)
 	memset(&ifr, 0, sizeof(ifr));
 	strcpy(ifr.ifr_name, ses->ifname);
 
-	ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
+	net->sock_ioctl(SIOCSIFFLAGS, &ifr);
 
 	if (ses->ipv4) {
 		memset(&addr, 0, sizeof(addr));
 		addr.sin_family = AF_INET;
 		memcpy(&ifr.ifr_addr,&addr,sizeof(addr));
-		ioctl(sock_fd, SIOCSIFADDR, &ifr);
+		net->sock_ioctl(SIOCSIFADDR, &ifr);
 	}
 
 	if (ses->ipv6) {
@@ -275,15 +275,15 @@ int __export ap_session_rename(struct ap_session *ses, const char *ifname, int l
 	memcpy(ifr.ifr_newname, ifname, len);
 	ifr.ifr_newname[len] = 0;
 
-	r = ioctl(sock_fd, SIOCSIFNAME, &ifr);
+	r = net->sock_ioctl(SIOCSIFNAME, &ifr);
 	if (r && errno == EBUSY) {
-		ioctl(sock_fd, SIOCGIFFLAGS, &ifr);
+		net->sock_ioctl(SIOCGIFFLAGS, &ifr);
 		ifr.ifr_flags &= ~IFF_UP;
-		ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
+		net->sock_ioctl(SIOCSIFFLAGS, &ifr);
 
 		memcpy(ifr.ifr_newname, ifname, len);
 		ifr.ifr_newname[len] = 0;
-		r = ioctl(sock_fd, SIOCSIFNAME, &ifr);
+		r = net->sock_ioctl(SIOCSIFNAME, &ifr);
 
 		up = 1;
 	}
@@ -302,7 +302,7 @@ int __export ap_session_rename(struct ap_session *ses, const char *ifname, int l
 	if (up) {
 		strcpy(ifr.ifr_name, ses->ifname);
 		ifr.ifr_flags |= IFF_UP;
-		ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
+		net->sock_ioctl(SIOCSIFFLAGS, &ifr);
 	}
 
 	return r;

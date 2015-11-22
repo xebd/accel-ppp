@@ -125,7 +125,7 @@ static int mru_recv_conf_ack(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, ui
 {
 	struct mru_option_t *mru_opt = container_of(opt, typeof(*mru_opt), opt);
 
-	if (ioctl(lcp->ppp->chan_fd, PPPIOCSMRU, &mru_opt->mru) &&
+	if (net->ppp_ioctl(lcp->ppp->chan_fd, PPPIOCSMRU, &mru_opt->mru) &&
 	    errno != EIO && errno != ENOTTY)
 		log_ppp_error("lcp:mru: failed to set channel MRU: %s\n", strerror(errno));
 
