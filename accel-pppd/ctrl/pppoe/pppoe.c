@@ -411,7 +411,7 @@ static void connect_channel(struct pppoe_conn_t *conn)
 	triton_event_fire(EV_CTRL_STARTING, &conn->ppp.ses);
 	triton_event_fire(EV_CTRL_STARTED, &conn->ppp.ses);
 
-	sock = net->pppox_socket(PX_PROTO_OE);
+	sock = net->socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OE);
 	if (!sock) {
 		log_error("pppoe: socket(PPPOX): %s\n", strerror(errno));
 		goto out_err;
@@ -427,7 +427,7 @@ static void connect_channel(struct pppoe_conn_t *conn)
 	strcpy(sp.sa_addr.pppoe.dev, conn->serv->ifname);
 	memcpy(sp.sa_addr.pppoe.remote, conn->addr, ETH_ALEN);
 
-	if (net->pppox_connect(sock, (struct sockaddr *)&sp, sizeof(sp))) {
+	if (net->connect(sock, (struct sockaddr *)&sp, sizeof(sp))) {
 		log_error("pppoe: connect: %s\n", strerror(errno));
 		goto out_err_close;
 	}

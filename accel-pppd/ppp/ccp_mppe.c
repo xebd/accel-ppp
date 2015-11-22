@@ -129,14 +129,14 @@ static int decrease_mtu(struct ppp_t *ppp)
 
 	strcpy(ifr.ifr_name, ppp->ses.ifname);
 
-	if (net->ppp_ioctl(sock_fd, SIOCGIFMTU, &ifr)) {
+	if (net->sock_ioctl(SIOCGIFMTU, &ifr)) {
 		log_ppp_error("mppe: failed to get MTU: %s\n", strerror(errno));
 		return -1;
 	}
 
 	ifr.ifr_mtu -= MPPE_PAD;
 
-	if (net->ppp_ioctl(sock_fd, SIOCSIFMTU, &ifr)) {
+	if (net->sock_ioctl(SIOCSIFMTU, &ifr)) {
 		log_ppp_error("mppe: failed to set MTU: %s\n", strerror(errno));
 		return -1;
 	}
