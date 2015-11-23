@@ -1,3 +1,4 @@
+#include <unistd.h>
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
@@ -30,9 +31,9 @@ static int def_listen(int sock, int backlog)
 	return listen(sock, backlog);
 }
 
-static ssize_t def_recv(int sock, void *buf, size_t len, int flags)
+static ssize_t def_read(int sock, void *buf, size_t len)
 {
-	return recv(sock, buf, len, flags);
+	return read(sock, buf, len);
 }
 
 static ssize_t def_recvfrom(int sock, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen)
@@ -40,9 +41,9 @@ static ssize_t def_recvfrom(int sock, void *buf, size_t len, int flags, struct s
 	return recvfrom(sock, buf, len, flags, src_addr, addrlen);
 }
 
-static ssize_t def_send(int sock, const void *buf, size_t len, int flags)
+static ssize_t def_write(int sock, const void *buf, size_t len)
 {
-	return send(sock, buf, len, flags);
+	return write(sock, buf, len);
 }
 
 static ssize_t def_sendto(int sock, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen)
@@ -80,9 +81,9 @@ __export const struct ap_net def_net = {
 	.connect = def_connect,
 	.bind = def_bind,
 	.listen = def_listen,
-	.recv = def_recv,
+	.read = def_read,
 	.recvfrom = def_recvfrom,
-	.send = def_send,
+	.write = def_write,
 	.sendto = def_sendto,
 	.set_nonblocking = def_set_nonblocking,
 	.setsockopt = def_setsockopt,

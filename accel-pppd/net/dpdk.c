@@ -147,12 +147,12 @@ static int dpdk_listen(int sock, int backlog)
 	return 0;
 }
 
-static ssize_t dpdk_recv(int sock, void *buf, size_t len, int flags)
+static ssize_t dpdk_read(int sock, void *buf, size_t len)
 {
 	struct msg_recv msg = {
 		.id = MSG_RECV,
 		.len = len,
-		.flags = flags,
+		.flags = 0,
 		.addrlen = 0,
 	};
 	struct msg_result res;
@@ -230,12 +230,12 @@ again:
 	return res.len;
 }
 
-static ssize_t dpdk_send(int sock, const void *buf, size_t len, int flags)
+static ssize_t dpdk_write(int sock, const void *buf, size_t len)
 {
 	struct msg_send msg = {
 		.id = MSG_SEND,
 		.len = len,
-		.flags = flags,
+		.flags = 0,
 		.addrlen = 0,
 	};
 	struct msg_result res;
@@ -452,9 +452,9 @@ static const struct ap_net dpdk_net = {
 	.connect = dpdk_connect,
 	.bind = dpdk_bind,
 	.listen = dpdk_listen,
-	.recv = dpdk_recv,
+	.read = dpdk_read,
 	.recvfrom = dpdk_recvfrom,
-	.send = dpdk_send,
+	.write = dpdk_write,
 	.sendto = dpdk_sendto,
 	.set_nonblocking = dpdk_set_nonblocking,
 	.setsockopt = dpdk_setsockopt,

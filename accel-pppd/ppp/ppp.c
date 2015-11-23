@@ -327,7 +327,7 @@ int __export ppp_chan_send(struct ppp_t *ppp, void *data, int size)
 	//printf("ppp_chan_send: ");
 	//print_buf((uint8_t*)data,size);
 
-	n = write(ppp->chan_fd,data,size);
+	n = net->write(ppp->chan_fd, data, size);
 	if (n < size)
 		log_ppp_error("ppp_chan_send: short write %i, excpected %i\n", n, size);
 	return n;
@@ -340,7 +340,7 @@ int __export ppp_unit_send(struct ppp_t *ppp, void *data, int size)
 	//printf("ppp_unit_send: ");
 	//print_buf((uint8_t*)data,size);
 
-	n=write(ppp->unit_fd, data, size);
+	n = net->write(ppp->unit_fd, data, size);
 	if (n < size)
 		log_ppp_error("ppp_unit_send: short write %i, excpected %i\n",n,size);
 	return n;
@@ -354,7 +354,7 @@ static int ppp_chan_read(struct triton_md_handler_t *h)
 
 	while(1) {
 cont:
-		ppp->buf_size = read(h->fd, ppp->buf, PPP_MRU);
+		ppp->buf_size = net->read(h->fd, ppp->buf, PPP_MRU);
 		if (ppp->buf_size < 0) {
 			if (errno == EAGAIN)
 				return 0;
@@ -399,7 +399,7 @@ static int ppp_unit_read(struct triton_md_handler_t *h)
 
 	while (1) {
 cont:
-		ppp->buf_size = read(h->fd, ppp->buf, PPP_MRU);
+		ppp->buf_size = net->read(h->fd, ppp->buf, PPP_MRU);
 		if (ppp->buf_size < 0) {
 			if (errno == EAGAIN)
 				return 0;
