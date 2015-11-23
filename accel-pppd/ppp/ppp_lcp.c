@@ -792,9 +792,11 @@ static void lcp_recv(struct ppp_handler_t*h)
 		case CONFREQ:
 			r = lcp_recv_conf_req(lcp, (uint8_t*)(hdr + 1), ntohs(hdr->len) - PPP_HDRLEN);
 			if (lcp->started) {
-				if (r == LCP_OPT_ACK)
+				if (r == LCP_OPT_ACK) {
 					send_conf_ack(&lcp->fsm);
-				else
+					lcp_free_conf_req(lcp);
+					break;
+				} else
 					r = LCP_OPT_FAIL;
 			}
 			switch(r) {
