@@ -85,7 +85,7 @@ int __export genl_resolve_mcg(const char *family, const char *name, int *fam_id)
 		goto out;
 
 	if (fam_id)
-		*fam_id =	*(uint32_t *)(RTA_DATA(tb[CTRL_ATTR_FAMILY_ID]));
+		*fam_id =	*(uint16_t *)(RTA_DATA(tb[CTRL_ATTR_FAMILY_ID]));
 
 	parse_rtattr_nested(tb2, GENL_MAX_FAM_GRPS, tb[CTRL_ATTR_MCAST_GROUPS]);
 
