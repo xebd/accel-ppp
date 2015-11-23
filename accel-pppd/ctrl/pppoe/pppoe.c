@@ -150,7 +150,7 @@ static void pppoe_serv_start_timer(struct pppoe_serv_t *serv)
 			triton_timer_add(&serv->ctx, &serv->timer, 0);
 		pthread_mutex_unlock(&serv->lock);
 	} else {
-		pthread_mutex_lock(&serv->lock);
+		pthread_mutex_unlock(&serv->lock);
 		pppoe_server_free(serv);
 	}
 }
@@ -179,8 +179,8 @@ static void disconnect(struct pppoe_conn_t *conn)
 			pthread_mutex_unlock(&conn->serv->lock);
 			pppoe_server_free(conn->serv);
 		} else if (conn->serv->vid) {
-			pthread_mutex_unlock(&conn->serv->lock);
 			triton_context_call(&conn->serv->ctx, (triton_event_func)pppoe_serv_start_timer, conn->serv);
+			pthread_mutex_unlock(&conn->serv->lock);
 		}
 	} else
 		pthread_mutex_unlock(&conn->serv->lock);
@@ -1273,12 +1273,15 @@ static void pppoe_serv_timeout(struct triton_timer_t *t)
 {
 	struct pppoe_serv_t *serv = container_of(t, typeof(*serv), timer);
 
+	pthread_mutex_lock(&serv->lock);
 	if (serv->conn_cnt) {
 		triton_timer_del(&serv->timer);
+		pthread_mutex_unlock(&serv->lock);
 		return;
 	}
 
-	_server_stop(serv);
+	pthread_mutex_unlock(&serv->lock);
+	pppoe_server_free(serv);
 }
 
 static int parse_server(const char *opt, int *padi_limit)
