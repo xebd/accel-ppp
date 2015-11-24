@@ -5,7 +5,11 @@ find_library(rte_malloc NAMES librte_malloc.a PATHS ${DPDK}/build/lib)
 find_library(rte_mempool NAMES librte_mempool.a PATHS ${DPDK}/build/lib)
 find_library(rte_ring NAMES librte_ring.a PATHS ${DPDK}/build/lib)
 
-add_executable(accel-dpdk main.c)
+add_executable(accel-dpdk
+    main.c
+    conf_file.c
+)
+
 target_link_libraries(accel-dpdk dl pthread
 	-Wl,-whole-archive
 	${rte_eal}
