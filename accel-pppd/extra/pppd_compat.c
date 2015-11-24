@@ -429,7 +429,7 @@ static void write_radattr(struct pppd_compat_pd *pd, struct rad_packet_t *pack)
 		}
 	} else {
 		sprintf(fname1, "%s.XXXXXX", conf_radattr_prefix);
-		mktemp(fname1);
+		mkstemp(fname1);
 	}
 
 	f = fopen(fname1, "w");

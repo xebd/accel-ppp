@@ -360,7 +360,7 @@ int __export ap_session_read_stats(struct ap_session *ses, struct rtnl_link_stat
 	stats->rx_bytes -= ses->acct_rx_bytes_i;
 	stats->tx_bytes -= ses->acct_tx_bytes_i;
 
-	if (stats->rx_bytes != ses->acct_rx_bytes || stats->tx_bytes != ses->acct_tx_bytes)
+	if (stats->rx_bytes != ses->acct_rx_bytes)
 		ses->idle_time = _time();
 
 	if (stats->rx_bytes < ses->acct_rx_bytes)

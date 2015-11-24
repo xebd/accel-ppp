@@ -577,15 +577,12 @@ cont:
 	if (ses->serv->opt_nat)
 		ses->ses.ipv4 = ipdb_get_ipv4(&ses->ses);
 
-	if (ses->serv->opt_shared == 0 && (!ses->ses.ipv4 || ses->ses.ipv4->peer_addr == ses->yiaddr)) {
-		strncpy(ses->ses.ifname, ses->serv->ifname, AP_IFNAME_LEN);
-		ses->ses.ifindex = ses->serv->ifindex;
-	} else if (ses->ifindex == -1) {
+	if (ses->serv->opt_shared == 0 && ses->ses.ipv4 && ses->ses.ipv4->peer_addr != ses->yiaddr) {
 		if (ipoe_create_interface(ses))
 			return;
-	}
 
-	ap_session_set_ifindex(&ses->ses);
+		ap_session_set_ifindex(&ses->ses);
+	}
 
 	if (ses->dhcpv4_request && ses->serv->dhcpv4_relay) {
 		dhcpv4_relay_send(ses->serv->dhcpv4_relay, ses->dhcpv4_request, ses->relay_server_id, ses->serv->ifname, conf_agent_remote_id);
@@ -1093,12 +1090,6 @@ static void ipoe_session_finished(struct ap_session *s)
 
 	log_ppp_info1("ipoe: session finished\n");
 
-	pthread_mutex_lock(&ses->serv->lock);
-	list_del(&ses->entry);
-	if  ((ses->serv->vid || ses->serv->need_close) && list_empty(&ses->serv->sessions))
-		triton_context_call(&ses->serv->ctx, (triton_event_func)ipoe_serv_release, ses->serv);
-	pthread_mutex_unlock(&ses->serv->lock);
-
 	if (ses->ifindex != -1) {
 		if (uc_size < conf_unit_cache && ipoe_nl_modify(ses->ifindex, 0, 0, "", NULL)) {
 			uc = mempool_alloc(uc_pool);
@@ -1125,6 +1116,29 @@ static void ipoe_session_finished(struct ap_session *s)
 		dhcpv4_free(ses->dhcpv4);
 
 	triton_event_fire(EV_CTRL_FINISHED, s);
+
+	if (s->ifindex == ses->serv->ifindex && strcmp(s->ifname, ses->serv->ifname)) {
+		struct ifreq ifr;
+
+		strcpy(ifr.ifr_name, s->ifname);
+
+		ioctl(sock_fd, SIOCGIFFLAGS, &ifr);
+		ifr.ifr_flags &= ~IFF_UP;
+		ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
+
+		strcpy(ifr.ifr_newname, ses->serv->ifname);
+		ioctl(sock_fd, SIOCSIFNAME, &ifr);
+
+		strcpy(ifr.ifr_name, ses->serv->ifname);
+		ifr.ifr_flags |= IFF_UP;
+		ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
+	}
+
+	pthread_mutex_lock(&ses->serv->lock);
+	list_del(&ses->entry);
+	if  ((ses->serv->vid || ses->serv->need_close) && list_empty(&ses->serv->sessions))
+		triton_context_call(&ses->serv->ctx, (triton_event_func)ipoe_serv_release, ses->serv);
+	pthread_mutex_unlock(&ses->serv->lock);
 
 	triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_free, ses);
 }

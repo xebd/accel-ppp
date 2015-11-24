@@ -261,6 +261,7 @@ void __export ap_session_ifdown(struct ap_session *ses)
 int __export ap_session_rename(struct ap_session *ses, const char *ifname, int len)
 {
 	struct ifreq ifr;
+	int r, up = 0;
 
 	if (len == -1)
 		len = strlen(ifname);
@@ -274,19 +275,36 @@ int __export ap_session_rename(struct ap_session *ses, const char *ifname, int l
 	memcpy(ifr.ifr_newname, ifname, len);
 	ifr.ifr_newname[len] = 0;
 
-	if (ioctl(sock_fd, SIOCSIFNAME, &ifr)) {
+	r = ioctl(sock_fd, SIOCSIFNAME, &ifr);
+	if (r && errno == EBUSY) {
+		ioctl(sock_fd, SIOCGIFFLAGS, &ifr);
+		ifr.ifr_flags &= ~IFF_UP;
+		ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
+
+		memcpy(ifr.ifr_newname, ifname, len);
+		ifr.ifr_newname[len] = 0;
+		r = ioctl(sock_fd, SIOCSIFNAME, &ifr);
+
+		up = 1;
+	}
+
+	if (r) {
 		if (!ses->ifname_rename)
 			ses->ifname_rename = _strdup(ifr.ifr_newname);
-		else {
+		else
 			log_ppp_warn("interface rename failed: %s\n", strerror(errno));
-			return -1;
-		}
 	} else {
 		log_ppp_info2("rename interface to '%s'\n", ifr.ifr_newname);
 		memcpy(ses->ifname, ifname, len);
 		ses->ifname[len] = 0;
 	}
 
-	return 0;
+	if (up) {
+		strcpy(ifr.ifr_name, ses->ifname);
+		ifr.ifr_flags |= IFF_UP;
+		ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
+	}
+
+	return r;
 }
 
