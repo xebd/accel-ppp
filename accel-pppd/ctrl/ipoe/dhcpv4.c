@@ -692,6 +692,17 @@ int dhcpv4_packet_add_opt(struct dhcpv4_packet *pack, int type, const void *data
 	return 0;
 }
 
+static inline int dhcpv4_packet_add_opt_u8(struct dhcpv4_packet *pack, int type, uint8_t val)
+{
+	return dhcpv4_packet_add_opt(pack, type, &val, 1);
+}
+
+static inline int dhcpv4_packet_add_opt_u32(struct dhcpv4_packet *pack, int type, uint32_t val)
+{
+	val = htonl(val);
+	return dhcpv4_packet_add_opt(pack, type, &val, 4);
+}
+
 int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_packet *req, uint32_t yiaddr, uint32_t siaddr, uint32_t router, uint32_t mask, int lease_time, int renew_time, struct dhcpv4_packet *relay)
 {
 	struct dhcpv4_packet *pack;
@@ -720,19 +731,17 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 	pack->hdr->siaddr = 0;
 	pack->hdr->giaddr = req->hdr->giaddr;
 
-	if (dhcpv4_packet_add_opt(pack, 53, &msg_type, 1))
+	if (dhcpv4_packet_add_opt_u8(pack, 53, msg_type))
 		goto out_err;
 
 	if (dhcpv4_packet_add_opt(pack, 54, &siaddr, 4))
 		goto out_err;
 
-	val = ntohl(lease_time);
-	if (dhcpv4_packet_add_opt(pack, 51, &val, 4))
+	if (dhcpv4_packet_add_opt_u32(pack, 51, lease_time))
 		goto out_err;
 
-	val = ntohl(renew_time);
-	if (val > 0){
-		if (dhcpv4_packet_add_opt(pack, 58, &val, 4))
+	if (renew_time) {
+		if (dhcpv4_packet_add_opt_u32(pack, 58, renew_time))
 			goto out_err;
 	}
 
