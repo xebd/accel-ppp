@@ -181,7 +181,8 @@ static void disconnect(struct pppoe_conn_t *conn)
 		} else if (conn->serv->vid) {
 			triton_context_call(&conn->serv->ctx, (triton_event_func)pppoe_serv_start_timer, conn->serv);
 			pthread_mutex_unlock(&conn->serv->lock);
-		}
+		} else
+			pthread_mutex_unlock(&conn->serv->lock);
 	} else
 		pthread_mutex_unlock(&conn->serv->lock);
 
