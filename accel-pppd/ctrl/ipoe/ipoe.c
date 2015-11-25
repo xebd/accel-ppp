@@ -1919,6 +1919,7 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 {
 	struct ipoe_session *ses = container_of(ev->ses, typeof(*ses), ses);
 	struct rad_attr_t *attr;
+	int lease_time_set = 0, renew_time_set = 0;
 
 	if (ev->ses->ctrl->type != CTRL_TYPE_IPOE)
 		return;
@@ -1948,16 +1949,25 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 					ses->l4_redirect = 1;
 			} else if (attr->val.integer != 0)
 				ses->l4_redirect = 1;
-		} else if (attr->attr->id == conf_attr_dhcp_lease_time)
+		} else if (attr->attr->id == conf_attr_dhcp_lease_time) {
 			ses->lease_time = attr->val.integer;
-		else if (attr->attr->id == conf_attr_dhcp_renew_time)
+			lease_time_set = 1;
+		}	else if (attr->attr->id == conf_attr_dhcp_renew_time) {
 			ses->renew_time = attr->val.integer;
-		else if (attr->attr->id == conf_attr_l4_redirect_table)
+			renew_time_set = 1;
+		} else if (attr->attr->id == conf_attr_l4_redirect_table)
 			ses->l4_redirect_table = attr->val.integer;
 		else if (attr->attr->id == conf_attr_l4_redirect_ipset) {
 			if (attr->attr->type == ATTR_TYPE_STRING)
 				ses->l4_redirect_ipset = _strdup(attr->val.string);
 		}
+	}
+
+	if (lease_time_set && !renew_time_set)
+		ses->renew_time = ses->lease_time / 2;
+	else if (renew_time_set && ses->renew_time > ses->lease_time) {
+		log_ppp_warn("ipoe: overriding renew time\n");
+		ses->renew_time = ses->lease_time / 2;
 	}
 }
 
@@ -1966,6 +1976,7 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 	struct ipoe_session *ses = container_of(ev->ses, typeof(*ses), ses);
 	struct rad_attr_t *attr;
 	int l4_redirect;
+	int lease_time_set = 0, renew_time_set = 0;
 
 	if (ev->ses->ctrl->type != CTRL_TYPE_IPOE)
 		return;
@@ -1981,11 +1992,13 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 		} else if (strcmp(attr->attr->name, "Framed-IP-Address") == 0) {
 			if (ses->ses.ipv4 && ses->ses.ipv4->peer_addr != attr->val.ipaddr)
 				ipoe_change_addr(ses, attr->val.ipaddr);
-		} else if (attr->attr->id == conf_attr_dhcp_lease_time)
+		} else if (attr->attr->id == conf_attr_dhcp_lease_time) {
 			ses->lease_time = attr->val.integer;
-		else if (attr->attr->id == conf_attr_dhcp_renew_time)
+			lease_time_set = 1;
+		} else if (attr->attr->id == conf_attr_dhcp_renew_time) {
 			ses->renew_time = attr->val.integer;
-		else if (attr->attr->id == conf_attr_l4_redirect_table)
+			renew_time_set = 1;
+		} else if (attr->attr->id == conf_attr_l4_redirect_table)
 			ses->l4_redirect_table = attr->val.integer;
 		else if (attr->attr->id == conf_attr_l4_redirect_ipset) {
 			if (attr->attr->type == ATTR_TYPE_STRING) {
@@ -1995,6 +2008,13 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 				}
 			}
 		}
+	}
+
+	if (lease_time_set && !renew_time_set)
+		ses->renew_time = ses->lease_time / 2;
+	else if (renew_time_set && ses->renew_time > ses->lease_time) {
+		log_ppp_warn("ipoe: overriding renew time\n");
+		ses->renew_time = ses->lease_time / 2;
 	}
 
 	//if (l4_redirect && !ses->l4_redirect) || (!l4_redirect && ses->l4_redirect))
