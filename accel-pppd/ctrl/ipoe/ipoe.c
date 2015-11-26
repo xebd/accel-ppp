@@ -366,7 +366,7 @@ static char *ipoe_session_get_username(struct ipoe_session *ses)
 	if (!ses->dhcpv4_request)
 		return _strdup(ses->ctrl.calling_station_id);
 
-	return _strdup(ses->ses.ifname);
+	return _strdup(ses->serv->ifname);
 }
 
 static void l4_redirect_list_add(in_addr_t addr)
@@ -608,8 +608,6 @@ static void ipoe_session_start(struct ipoe_session *ses)
 	__sync_add_and_fetch(&stat_starting, 1);
 
 	assert(!ses->ses.username);
-
-	strncpy(ses->ses.ifname, ses->serv->ifname, AP_IFNAME_LEN);
 
 	username = ipoe_session_get_username(ses);
 
@@ -1201,7 +1199,9 @@ static struct ipoe_session *ipoe_session_create_dhcpv4(struct ipoe_serv *serv, s
 
 	ses->serv = serv;
 	ses->dhcpv4_request = pack;
-	strncpy(ses->ses.ifname, serv->ifname, AP_IFNAME_LEN);
+
+	if (!serv->opt_shared)
+		strncpy(ses->ses.ifname, serv->ifname, AP_IFNAME_LEN);
 
 	ses->xid = pack->hdr->xid;
 	memcpy(ses->hwaddr, pack->hdr->chaddr, 6);
