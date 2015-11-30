@@ -401,7 +401,7 @@ static void write_radattr(struct pppd_compat_pd *pd, struct rad_packet_t *pack)
 	struct ap_session *ses = pd->ses;
 	struct rad_attr_t *attr;
 	struct rad_dict_value_t *val;
-	FILE *f;
+	FILE *f = NULL;
 	char *fname1, *fname2 = NULL;
 	int i;
 	in_addr_t addr;
@@ -424,15 +424,22 @@ static void write_radattr(struct pppd_compat_pd *pd, struct rad_packet_t *pack)
 	if (ses->state == AP_STATE_ACTIVE) {
 		sprintf(fname1, "%s.%s", conf_radattr_prefix, ses->ifname);
 		sprintf(fname2, "%s_old.%s", conf_radattr_prefix, ses->ifname);
-		if (rename(fname1, fname2)) {
+		if (rename(fname1, fname2))
 			log_ppp_warn("pppd_compat: rename: %s\n", strerror(errno));
-		}
+
+		f = fopen(fname1, "w");
 	} else {
+		int fd;
+
 		sprintf(fname1, "%s.XXXXXX", conf_radattr_prefix);
-		mkstemp(fname1);
+
+		fd = mkstemp(fname1);
+		if (fd < 0)
+			log_ppp_warn("pppd_compat: mkstemp: %s\n", strerror(errno));
+		else
+			f = fdopen(fd, "w");
 	}
 
-	f = fopen(fname1, "w");
 	if (f) {
 		list_for_each_entry(attr, &pack->attrs, entry) {
 			fprintf(f, "%s ", attr->attr->name);
