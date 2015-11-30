@@ -476,7 +476,7 @@ static void format_bytes(char *buf, unsigned long long bytes)
 	double d;
 
 	if (bytes < 1024) {
-		sprintf(buf, "%u (%u B)", (unsigned)bytes, (unsigned)bytes);
+		sprintf(buf, "%u B", (unsigned)bytes);
 		return;
 	}
 
@@ -492,7 +492,7 @@ static void format_bytes(char *buf, unsigned long long bytes)
 	}
 
 	d = (double)bytes/m;
-	sprintf(buf, "%llu (%.1f %s)", bytes, d, suffix);
+	sprintf(buf, "%.1f %s", d, suffix);
 }
 
 static void print_rx_bytes(struct ap_session *ses, char *buf)
@@ -511,6 +511,24 @@ static void print_tx_bytes(struct ap_session *ses, char *buf)
 		stats_set = 1;
 	}
 	format_bytes(buf, 4294967296ll*ses->acct_output_gigawords + stats.tx_bytes);
+}
+
+static void print_rx_bytes_raw(struct ap_session *ses, char *buf)
+{
+	if (!stats_set) {
+		ap_session_read_stats(ses, &stats);
+		stats_set = 1;
+	}
+	sprintf(buf, "%llu", 4294967296ll*ses->acct_input_gigawords + stats.rx_bytes);
+}
+
+static void print_tx_bytes_raw(struct ap_session *ses, char *buf)
+{
+	if (!stats_set) {
+		ap_session_read_stats(ses, &stats);
+		stats_set = 1;
+	}
+	sprintf(buf, "%llu", 4294967296ll*ses->acct_output_gigawords + stats.tx_bytes);
 }
 
 static void print_rx_pkts(struct ap_session *ses, char *buf)
@@ -568,8 +586,10 @@ static void init(void)
 	cli_show_ses_register("called-sid", "called station id", print_called_sid);
 	cli_show_ses_register("sid", "session id", print_sid);
 	cli_show_ses_register("comp", "compression/ecnryption method", print_comp);
-	cli_show_ses_register("rx-bytes", "received bytes", print_rx_bytes);
-	cli_show_ses_register("tx-bytes", "transmitted bytes", print_tx_bytes);
+	cli_show_ses_register("rx-bytes", "received bytes (human readable)", print_rx_bytes);
+	cli_show_ses_register("tx-bytes", "transmitted bytes (human readable)", print_tx_bytes);
+	cli_show_ses_register("rx-bytes-raw", "received bytes", print_rx_bytes_raw);
+	cli_show_ses_register("tx-bytes-raw", "transmitted bytes", print_tx_bytes_raw);
 	cli_show_ses_register("rx-pkts", "received packets", print_rx_pkts);
 	cli_show_ses_register("tx-pkts", "transmitted packets", print_tx_pkts);
 
