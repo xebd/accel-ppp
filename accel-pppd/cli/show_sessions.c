@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <arpa/inet.h>
+#include <linux/if_link.h>
 
 #include "triton.h"
 #include "events.h"
@@ -22,7 +23,7 @@ struct column_t
 	struct list_head entry;
 	const char *name;
 	const char *desc;
-	void (*print)(const struct ap_session *ses, char *buf);
+	void (*print)(struct ap_session *ses, char *buf);
 };
 
 struct col_t
@@ -51,7 +52,10 @@ struct cell_t
 static LIST_HEAD(col_list);
 static char *conf_def_columns = NULL;
 
-void __export cli_show_ses_register(const char *name, const char *desc, void (*print)(const struct ap_session *ses, char *buf))
+static __thread struct rtnl_link_stats stats;
+static __thread int stats_set;
+
+void __export cli_show_ses_register(const char *name, const char *desc, void (*print)(struct ap_session *ses, char *buf))
 {
 	struct column_t *c = malloc(sizeof(*c));
 	c->name = name;
@@ -224,6 +228,7 @@ static int show_ses_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 
 	pthread_rwlock_rdlock(&ses_lock);
 	list_for_each_entry(ses, &ses_list, entry) {
+		stats_set = 0;
 		row = _malloc(sizeof(*row));
 		if (!row)
 			goto oom;
@@ -374,12 +379,12 @@ early_out:
 	goto out;
 }
 
-static void print_ifname(const struct ap_session *ses, char *buf)
+static void print_ifname(struct ap_session *ses, char *buf)
 {
 	snprintf(buf, CELL_SIZE, "%s", ses->ifname);
 }
 
-static void print_username(const struct ap_session *ses, char *buf)
+static void print_username(struct ap_session *ses, char *buf)
 {
 	if (ses->username)
 		snprintf(buf, CELL_SIZE, "%s", ses->username);
@@ -387,17 +392,17 @@ static void print_username(const struct ap_session *ses, char *buf)
 		*buf = 0;
 }
 
-static void print_ip(const struct ap_session *ses, char *buf)
+static void print_ip(struct ap_session *ses, char *buf)
 {
 	u_inet_ntoa(ses->ipv4 ? ses->ipv4->peer_addr : 0, buf);
 }
 
-static void print_type(const struct ap_session *ses, char *buf)
+static void print_type(struct ap_session *ses, char *buf)
 {
 	snprintf(buf, CELL_SIZE, "%s", ses->ctrl->name);
 }
 
-static void print_state(const struct ap_session *ses, char *buf)
+static void print_state(struct ap_session *ses, char *buf)
 {
 	char *state;
 	switch (ses->state) {
@@ -416,7 +421,7 @@ static void print_state(const struct ap_session *ses, char *buf)
 	sprintf(buf, "%s", state);
 }
 
-static void print_uptime(const struct ap_session *ses, char *buf)
+static void print_uptime(struct ap_session *ses, char *buf)
 {
 	time_t uptime;
 	int day,hour,min,sec;
@@ -441,27 +446,89 @@ static void print_uptime(const struct ap_session *ses, char *buf)
 	sprintf(buf, "%s", time_str);
 }
 
-static void print_calling_sid(const struct ap_session *ses, char *buf)
+static void print_calling_sid(struct ap_session *ses, char *buf)
 {
 	snprintf(buf, CELL_SIZE, "%s", ses->ctrl->calling_station_id);
 }
 
-static void print_called_sid(const struct ap_session *ses, char *buf)
+static void print_called_sid(struct ap_session *ses, char *buf)
 {
 	snprintf(buf, CELL_SIZE, "%s", ses->ctrl->called_station_id);
 }
 
-static void print_sid(const struct ap_session *ses, char *buf)
+static void print_sid(struct ap_session *ses, char *buf)
 {
 	snprintf(buf, CELL_SIZE, "%s", ses->sessionid);
 }
 
-static void print_comp(const struct ap_session *ses, char *buf)
+static void print_comp(struct ap_session *ses, char *buf)
 {
 	if (ses->comp)
 		snprintf(buf, CELL_SIZE, "%s", ses->comp);
 	else
 		buf[0] = 0;
+}
+
+static void format_bytes(char *buf, unsigned long long bytes)
+{
+	const char *suffix;
+	unsigned int m;
+	double d;
+
+	if (bytes < 1024) {
+		sprintf(buf, "%u (%u B)", (unsigned)bytes, (unsigned)bytes);
+		return;
+	}
+
+	if (bytes < 1024*1024) {
+		suffix = "KiB";
+		m = 1024;
+	} else if (bytes < 1024*1024*1024) {
+		suffix = "MiB";
+		m = 1024*1024;
+	} else {
+		suffix = "GiB";
+		m = 1024*1024*1024;
+	}
+
+	d = (double)bytes/m;
+	sprintf(buf, "%llu (%.1f %s)", bytes, d, suffix);
+}
+
+static void print_rx_bytes(struct ap_session *ses, char *buf)
+{
+	if (!stats_set) {
+		ap_session_read_stats(ses, &stats);
+		stats_set = 1;
+	}
+	format_bytes(buf, 4294967296ll*ses->acct_input_gigawords + stats.rx_bytes);
+}
+
+static void print_tx_bytes(struct ap_session *ses, char *buf)
+{
+	if (!stats_set) {
+		ap_session_read_stats(ses, &stats);
+		stats_set = 1;
+	}
+	format_bytes(buf, 4294967296ll*ses->acct_output_gigawords + stats.tx_bytes);
+}
+
+static void print_rx_pkts(struct ap_session *ses, char *buf)
+{
+	if (!stats_set) {
+		ap_session_read_stats(ses, &stats);
+		stats_set = 1;
+	}
+	sprintf(buf, "%u", stats.rx_packets);
+}
+
+static void print_tx_pkts(struct ap_session *ses, char *buf)
+{
+	if (!stats_set) {
+		ap_session_read_stats(ses, &stats);
+		stats_set = 1;
+	}
+	sprintf(buf, "%u", stats.tx_packets);
 }
 
 static void load_config(void *data)
@@ -501,6 +568,10 @@ static void init(void)
 	cli_show_ses_register("called-sid", "called station id", print_called_sid);
 	cli_show_ses_register("sid", "session id", print_sid);
 	cli_show_ses_register("comp", "compression/ecnryption method", print_comp);
+	cli_show_ses_register("rx-bytes", "received bytes", print_rx_bytes);
+	cli_show_ses_register("tx-bytes", "transmitted bytes", print_tx_bytes);
+	cli_show_ses_register("rx-pkts", "received packets", print_rx_pkts);
+	cli_show_ses_register("tx-pkts", "transmitted packets", print_tx_pkts);
 
 	triton_event_register_handler(EV_CONFIG_RELOAD, load_config);
 }

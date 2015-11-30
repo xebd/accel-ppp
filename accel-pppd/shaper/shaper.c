@@ -619,7 +619,7 @@ static int shaper_restore_exec(const char *cmd, char * const *f, int f_cnt, void
 	return CLI_CMD_OK;
 }
 
-static void print_rate(const struct ap_session *ses, char *buf)
+static void print_rate(struct ap_session *ses, char *buf)
 {
 	struct shaper_pd_t *pd = find_pd((struct ap_session *)ses, 0);
 
