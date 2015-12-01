@@ -2661,6 +2661,7 @@ static void load_interface(const char *opt)
 {
 	const char *ptr;
 	struct ifreq ifr;
+	struct ipoe_serv *serv;
 
 	for (ptr = opt; *ptr && *ptr != ','; ptr++);
 
@@ -2669,6 +2670,16 @@ static void load_interface(const char *opt)
 
 	memcpy(ifr.ifr_name, opt, ptr - opt);
 	ifr.ifr_name[ptr - opt] = 0;
+
+	list_for_each_entry(serv, &serv_list, entry) {
+		if (serv->active)
+			continue;
+
+		if (!strcmp(serv->ifname, ifr.ifr_name)) {
+			add_interface(serv->ifname, serv->ifindex, opt, 0, 0);
+			return;
+		}
+	}
 
 	if (ioctl(sock_fd, SIOCGIFINDEX, &ifr)) {
 		log_error("ipoe: '%s': ioctl(SIOCGIFINDEX): %s\n", ifr.ifr_name, strerror(errno));
@@ -2696,6 +2707,7 @@ static void load_interface_re(const char *opt)
 	const char *ptr;
 	int pcre_offset;
 	struct iplink_arg arg;
+	struct ipoe_serv *serv;
 
 	for (ptr = opt; *ptr && *ptr != ','; ptr++);
 
@@ -2714,6 +2726,14 @@ static void load_interface_re(const char *opt)
 	arg.opt = opt;
 
 	iplink_list((iplink_list_func)__load_interface_re, &arg);
+
+	list_for_each_entry(serv, &serv_list, entry) {
+		if (serv->active)
+			continue;
+
+		if (pcre_exec(re, NULL, serv->ifname, strlen(serv->ifname), 0, 0, NULL, 0) >= 0)
+			add_interface(serv->ifname, serv->ifindex, opt, 0, 0);
+	}
 
 	pcre_free(re);
 	_free(pattern);
