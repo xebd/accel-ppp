@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
+#include <net/if.h>
 
 /* Include the Lua API header files. */
 #include <lua.h>
@@ -261,6 +262,53 @@ char *ipoe_lua_get_username(struct ipoe_session *ses, const char *func)
 	}
 
 	r = _strdup(lua_tostring(L, -1));
+
+out:
+	lua_settop(L, 0);
+
+	return r;
+}
+
+int ipoe_lua_make_vlan_name(const char *func, const char *parent, int svid, int cvid, char *name)
+{
+	int r = -1;
+	const char *res;
+
+	if (file_error && serial == __serial)
+		return -1;
+
+	if (L && serial != __serial) {
+		lua_close(L);
+		init_lua();
+	} else if (!L)
+		init_lua();
+
+	if (!L)
+		return -1;
+
+	lua_getglobal(L, func);
+	lua_pushstring(L, parent);
+	lua_pushinteger(L, svid);
+	lua_pushinteger(L, cvid);
+
+	if (lua_pcall(L, 3, 1, 0)) {
+		log_ppp_error("ipoe: lua: %s\n", lua_tostring(L, -1));
+		lua_pop(L, 1);
+		goto out;
+	}
+
+	if (!lua_isstring(L, -1)) {
+		log_ppp_error("ipoe: lua: function '%s' must return a string\n", func);
+		goto out;
+	}
+
+	res = lua_tostring(L, -1);
+
+	if (strlen(res) >= IFNAMSIZ)
+		goto out;
+
+	strcpy(name, res);
+	r = 0;
 
 out:
 	lua_settop(L, 0);

@@ -2245,6 +2245,11 @@ static int make_vlan_name(const char *parent, int svid, int cvid, char *name)
 	const char *ptr2 = conf_vlan_name;
 	char svid_str[5], cvid_str[5], *ptr3;
 
+#ifdef USE_LUA
+	if (!memcmp(conf_vlan_name, "lua:", 4))
+		return ipoe_lua_make_vlan_name(conf_vlan_name + 4, parent, svid, cvid, name);
+#endif
+
 	sprintf(svid_str, "%i", svid);
 	sprintf(cvid_str, "%i", cvid);
 

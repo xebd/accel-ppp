@@ -108,6 +108,7 @@ struct ipoe_session_info {
 
 #ifdef USE_LUA
 char *ipoe_lua_get_username(struct ipoe_session *, const char *func);
+int ipoe_lua_make_vlan_name(const char *func, const char *parent, int svid, int cvid, char *name);
 #endif
 
 struct iphdr;
