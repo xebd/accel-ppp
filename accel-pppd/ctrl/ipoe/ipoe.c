@@ -2177,6 +2177,16 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	return CLI_CMD_OK;
 }
 
+static void print_session_type(struct ap_session *s, char *buf)
+{
+	struct ipoe_session *ses = container_of(s, typeof(*ses), ses);
+
+	if (ses->UP)
+		strcpy(buf, "up");
+	else
+		strcpy(buf, "dhcp");
+}
+
 void __export ipoe_get_stat(unsigned int **starting, unsigned int **active)
 {
 	*starting = &stat_starting;
@@ -3450,6 +3460,7 @@ static void ipoe_init(void)
 		ipset_flush(conf_l4_redirect_ipset);
 
 	cli_register_simple_cmd2(show_stat_exec, NULL, 2, "show", "stat");
+	cli_show_ses_register("ipoe-type", "IPoE session type", print_session_type);
 
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 
