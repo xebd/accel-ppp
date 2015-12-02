@@ -11,12 +11,12 @@
 #include "ap_net.h"
 #include "log.h"
 
-#include "if_dpdk.h"
+#include "if_dp.h"
 
-static struct sockaddr_un dpdk_addr;
-static int dpdk_sock;
+static struct sockaddr_un dp_addr;
+static int dp_sock;
 
-static int dpdk_socket(int domain, int type, int proto)
+static int dp_socket(int domain, int type, int proto)
 {
 	struct msg_socket msg = {
 		.id = MSG_SOCKET,
@@ -30,7 +30,7 @@ static int dpdk_socket(int domain, int type, int proto)
 	if (sock < 0)
 		return -1;
 
-	if (connect(sock, (struct sockaddr *)&dpdk_addr, sizeof(dpdk_addr))) {
+	if (connect(sock, (struct sockaddr *)&dp_addr, sizeof(dp_addr))) {
 		close(sock);
 		return -1;
 	}
@@ -55,7 +55,7 @@ static int dpdk_socket(int domain, int type, int proto)
 	return sock;
 }
 
-static int dpdk_connect(int sock, const struct sockaddr *addr, socklen_t len)
+static int dp_connect(int sock, const struct sockaddr *addr, socklen_t len)
 {
 	struct msg_connect msg = {
 		.id = MSG_CONNECT,
@@ -89,7 +89,7 @@ static int dpdk_connect(int sock, const struct sockaddr *addr, socklen_t len)
 	return 0;
 }
 
-static int dpdk_bind(int sock, const struct sockaddr *addr, socklen_t len)
+static int dp_bind(int sock, const struct sockaddr *addr, socklen_t len)
 {
 	struct msg_bind msg = {
 		.id = MSG_BIND,
@@ -123,7 +123,7 @@ static int dpdk_bind(int sock, const struct sockaddr *addr, socklen_t len)
 	return 0;
 }
 
-static int dpdk_listen(int sock, int backlog)
+static int dp_listen(int sock, int backlog)
 {
 	struct msg_listen msg = {
 		.id = MSG_LISTEN,
@@ -147,7 +147,7 @@ static int dpdk_listen(int sock, int backlog)
 	return 0;
 }
 
-static ssize_t dpdk_read(int sock, void *buf, size_t len)
+static ssize_t dp_read(int sock, void *buf, size_t len)
 {
 	struct msg_recv msg = {
 		.id = MSG_RECV,
@@ -187,7 +187,7 @@ again:
 	return res.len;
 }
 
-static ssize_t dpdk_recvfrom(int sock, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen)
+static ssize_t dp_recvfrom(int sock, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen)
 {
 	struct msg_recv msg = {
 		.id = MSG_RECV,
@@ -230,7 +230,7 @@ again:
 	return res.len;
 }
 
-static ssize_t dpdk_write(int sock, const void *buf, size_t len)
+static ssize_t dp_write(int sock, const void *buf, size_t len)
 {
 	struct msg_send msg = {
 		.id = MSG_SEND,
@@ -266,7 +266,7 @@ static ssize_t dpdk_write(int sock, const void *buf, size_t len)
 	return res.len;
 }
 
-static ssize_t dpdk_sendto(int sock, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen)
+static ssize_t dp_sendto(int sock, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen)
 {
 	struct msg_send msg = {
 		.id = MSG_SEND,
@@ -306,27 +306,27 @@ static ssize_t dpdk_sendto(int sock, const void *buf, size_t len, int flags, con
 	return res.len;
 }
 
-static int dpdk_set_nonblocking(int sock, int f)
+static int dp_set_nonblocking(int sock, int f)
 {
 	return 0;
 }
 
-static int dpdk_setsockopt(int sock, int level, int optname, const void *optval, socklen_t optlen)
+static int dp_setsockopt(int sock, int level, int optname, const void *optval, socklen_t optlen)
 {
 	return 0;
 }
 
 
-static int dpdk_ppp_open()
+static int dp_ppp_open()
 {
 	int id = MSG_PPP_OPEN;
 	struct msg_result res;
-	int sock = socket(AF_UNIX, SOCK_DGRAM, 0);
+	int sock = socket(AF_UNIX, SOCK_STREAM, 0);
 
 	if (sock < 0)
 		return -1;
 
-	if (connect(sock, (struct sockaddr *)&dpdk_addr, sizeof(dpdk_addr))) {
+	if (connect(sock, (struct sockaddr *)&dp_addr, sizeof(dp_addr))) {
 		close(sock);
 		return -1;
 	}
@@ -351,10 +351,10 @@ static int dpdk_ppp_open()
 	return sock;
 }
 
-static int dpdk_ppp_ioctl(int fd, unsigned long request, void *arg)
+static int dp_ppp_ioctl(int fd, unsigned long request, void *arg)
 {
 	struct msg_ioctl msg = {
-		.id = MSG_PPP_IOCTL,
+		.id = MSG_IOCTL,
 		.request = request,
 	};
 	struct msg_result res;
@@ -410,7 +410,7 @@ static int dpdk_ppp_ioctl(int fd, unsigned long request, void *arg)
 	return res.len;
 }
 
-static int dpdk_sock_ioctl(unsigned long request, void *arg)
+static int dp_sock_ioctl(unsigned long request, void *arg)
 {
 	struct msg_ioctl msg = {
 		.id = MSG_SOCK_IOCTL,
@@ -428,13 +428,13 @@ static int dpdk_sock_ioctl(unsigned long request, void *arg)
 		}
 	};
 
-	if (writev(dpdk_sock, iov, 2) < 0)
+	if (writev(dp_sock, iov, 2) < 0)
 		return -1;
 
 	iov[0].iov_base = &res;
 	iov[0].iov_len = sizeof(res);
 
-	if (readv(dpdk_sock, iov, 2) < sizeof(res)) {
+	if (readv(dp_sock, iov, 2) < sizeof(res)) {
 		errno = EBADE;
 		return -1;
 	}
@@ -447,20 +447,20 @@ static int dpdk_sock_ioctl(unsigned long request, void *arg)
 	return res.len;
 }
 
-static const struct ap_net dpdk_net = {
-	.socket = dpdk_socket,
-	.connect = dpdk_connect,
-	.bind = dpdk_bind,
-	.listen = dpdk_listen,
-	.read = dpdk_read,
-	.recvfrom = dpdk_recvfrom,
-	.write = dpdk_write,
-	.sendto = dpdk_sendto,
-	.set_nonblocking = dpdk_set_nonblocking,
-	.setsockopt = dpdk_setsockopt,
-	.ppp_open = dpdk_ppp_open,
-	.ppp_ioctl = dpdk_ppp_ioctl,
-	.sock_ioctl = dpdk_sock_ioctl,
+static const struct ap_net dp_net = {
+	.socket = dp_socket,
+	.connect = dp_connect,
+	.bind = dp_bind,
+	.listen = dp_listen,
+	.read = dp_read,
+	.recvfrom = dp_recvfrom,
+	.write = dp_write,
+	.sendto = dp_sendto,
+	.set_nonblocking = dp_set_nonblocking,
+	.setsockopt = dp_setsockopt,
+	.ppp_open = dp_ppp_open,
+	.ppp_ioctl = dp_ppp_ioctl,
+	.sock_ioctl = dp_sock_ioctl,
 };
 
 static void init()
@@ -470,22 +470,22 @@ static void init()
 	if (!opt)
 		return;
 
-	if (strlen(opt) >= sizeof(dpdk_addr.sun_path)) {
+	if (strlen(opt) >= sizeof(dp_addr.sun_path)) {
 		log_error("net-dpdk: socket path is too long\n");
 		return;
 	}
 
-	strcpy(dpdk_addr.sun_path, opt);
+	strcpy(dp_addr.sun_path, opt);
 
-	dpdk_addr.sun_family = AF_UNIX;
+	dp_addr.sun_family = AF_UNIX;
 
-	dpdk_sock = socket(AF_UNIX, SOCK_DGRAM, 0);
-	if (dpdk_sock < 0)
+	dp_sock = socket(AF_UNIX, SOCK_DGRAM, 0);
+	if (dp_sock < 0)
 		return;
 
-	if (connect(dpdk_sock, (struct sockaddr *)&dpdk_addr, sizeof(dpdk_addr))) {
+	if (connect(dp_sock, (struct sockaddr *)&dp_addr, sizeof(dp_addr))) {
 		log_error("dpdk: connect: %s\n", strerror(errno));
-		close(dpdk_sock);
+		close(dp_sock);
 		return;
 	}
 }

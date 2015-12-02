@@ -68,7 +68,7 @@ if (NOT BUILD_DRIVER_ONLY)
 	add_subdirectory(accel-cmd)
 
 	if (ACCEL_DP)
-		add_subdirectory(accel-dpdk)
+		add_subdirectory(accel-dp)
 	endif()
 endif (NOT BUILD_DRIVER_ONLY)
 

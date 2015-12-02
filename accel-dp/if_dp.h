@@ -1,57 +1,67 @@
-#ifndef __IF_DPDK_H
-#define __IF_DPDK_H
+#ifndef __IF_DP_H
+#define __IF_DP_H
 
-#define MSG_SOCKET      1
-#define MSG_CONNECT     2
-#define MSG_BIND        3
-#define MSG_LISTEN      4
-#define MSG_RECV        5
-#define MSG_SEND        6
-#define MSG_PPP_OPEN    7
-#define MSG_PPP_IOCTL   8
-#define MSG_SOCK_IOCTL  9
-#define MSG_RESULT      10
+#include <stdint.h>
+
+enum {
+	MSG_SOCKET,
+	MSG_CONNECT,
+	MSG_BIND,
+	MSG_LISTEN,
+	MSG_RECV,
+	MSG_SEND,
+	MSG_IOCTL,
+	MSG_PPP_OPEN,
+	MSG_SOCK_IOCTL,
+	__MSG_MAX_ID
+};
+
+#define MSG_MAX_ID (__MSG_MAX_ID - 1)
+
+struct msg_hdr {
+	uint8_t id;
+};
 
 struct msg_socket {
-	int id;
+	uint8_t id;
 	int domain;
 	int type;
 	int proto;
 };
 
 struct msg_connect {
-	int id;
+	uint8_t id;
 	socklen_t addrlen;
 	char addr[0];
 };
 
 struct msg_bind {
-	int id;
+	uint8_t id;
 	socklen_t addrlen;
 	char addr[0];
 };
 
 struct msg_listen {
-	int id;
+	uint8_t id;
 	int backlog;
 };
 
 struct msg_recv {
-	int id;
+	uint8_t id;
 	size_t len;
 	int flags;
 	socklen_t addrlen;
 };
 
 struct msg_send {
-	int id;
+	uint8_t id;
 	size_t len;
 	int flags;
 	socklen_t addrlen;
 };
 
 struct msg_ioctl {
-	int id;
+	uint8_t id;
 	unsigned long request;
 	char arg[0];
 };

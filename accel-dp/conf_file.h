@@ -17,6 +17,7 @@ struct conf_sect {
 
 struct conf_sect *conf_get_sect(const char *name);
 const char *conf_get_opt(const char *sect, const char *name);
+const char *conf_get_subopt(const struct conf_opt *opt, const char *name);
 
 int conf_load(const char *fname);
 

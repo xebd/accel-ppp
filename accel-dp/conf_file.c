@@ -22,7 +22,7 @@ static char* skip_word(char *str);
 static struct conf_sect *find_sect(const char *name);
 static struct conf_sect *create_sect(const char *name);
 static int sect_add_item(struct conf_ctx *ctx, const char *name, char *val, char *raw);
-static struct conf_opt *find_item(struct conf_sect *, const char *name);
+static struct conf_opt *find_item(struct conf_opt *list, const char *name);
 static int load_file(struct conf_ctx *ctx);
 
 static char *buf;
@@ -141,7 +141,7 @@ static int load_file(struct conf_ctx *ctx)
 					*s = 0;
 					str2 += 2;
 				}
-				opt = find_item(cur_sect, str2);
+				opt = find_item(cur_sect->opt, str2);
 				if (!opt) {
 					fprintf(stderr, "conf_file:%s:%i: parent option not found\n", ctx->fname, ctx->line);
 					return -1;
@@ -208,7 +208,7 @@ static void conf_clear(struct conf_sect *s)
 	}
 }
 
-int conf_file_load(const char *fname)
+int conf_load(const char *fname)
 {
 	struct conf_sect *head = sect_head;
 	struct conf_ctx ctx;
@@ -230,7 +230,7 @@ int conf_file_load(const char *fname)
 
 	if (r)
 		sect_head = head;
-	else
+	else if (head)
 		conf_clear(head);
 
 	return r;
@@ -320,11 +320,11 @@ static int sect_add_item(struct conf_ctx *ctx, const char *name, char *val, char
 	return r;
 }
 
-static struct conf_opt *find_item(struct conf_sect *sect, const char *name)
+static struct conf_opt *find_item(struct conf_opt *list, const char *name)
 {
 	struct conf_opt *opt;
 
-	for (opt = sect->opt; opt; opt = opt->next) {
+	for (opt = list; opt; opt = opt->next) {
 		if (strcmp(opt->name, name) == 0)
 			return opt;
 	}
@@ -345,10 +345,20 @@ const char *conf_get_opt(const char *sect, const char *name)
 	if (!s)
 		return NULL;
 
-	opt = find_item(s, name);
+	opt = find_item(s->opt, name);
 	if (!opt)
 		return NULL;
 
 	return opt->val;
+}
+
+const char *conf_get_subopt(const struct conf_opt *opt, const char *name)
+{
+	if (!opt->child)
+		return NULL;
+
+	opt = find_item(opt->child, name);
+
+	return opt ? opt->val : NULL;
 }
 

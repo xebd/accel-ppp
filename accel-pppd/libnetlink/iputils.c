@@ -16,13 +16,20 @@
 //#include <linux/rtnetlink.h>
 #include <linux/fib_rules.h>
 
-#include "triton.h"
 #include "log.h"
 
 #include "libnetlink.h"
 #include "iputils.h"
 
+#ifdef ACCEL_DP
+#define _malloc(x) malloc(x)
+#define _free(x) free(x)
+#include "init.h"
+#include "common.h"
+#else
+#include "triton.h"
 #include "memdebug.h"
+#endif
 
 struct arg
 {
