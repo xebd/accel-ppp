@@ -83,6 +83,12 @@ struct sessionTable_data_s
 	unsigned long uptime;
 	char *calling_sid;
 	char *called_sid;
+	unsigned int rx_bytes;
+	unsigned int rx_gw;
+	unsigned int rx_pkts;
+	unsigned int tx_bytes;
+	unsigned int tx_gw;
+	unsigned int tx_pkts;
 };
 typedef struct sessionTable_data_s sessionTable_data;
 

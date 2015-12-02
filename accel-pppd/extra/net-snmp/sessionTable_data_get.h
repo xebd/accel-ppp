@@ -50,6 +50,10 @@ extern "C" {
     int sesUptime_get( sessionTable_rowreq_ctx *rowreq_ctx, u_long * sesUptime_val_ptr );
     int sesCallingSID_get( sessionTable_rowreq_ctx *rowreq_ctx, char **sesCallingSID_val_ptr_ptr, size_t *sesCallingSID_val_ptr_len_ptr );
     int sesCalledSID_get( sessionTable_rowreq_ctx *rowreq_ctx, char **sesCalledSID_val_ptr_ptr, size_t *sesCalledSID_val_ptr_len_ptr );
+    int sesRxBytes_get( sessionTable_rowreq_ctx *rowreq_ctx, U64 * sesRxBytes_val_ptr );
+    int sesRxPkts_get( sessionTable_rowreq_ctx *rowreq_ctx, u_long * sesRxPkts_val_ptr );
+    int sesTxBytes_get( sessionTable_rowreq_ctx *rowreq_ctx, U64 * sesTxBytes_val_ptr );
+    int sesTxPkts_get( sessionTable_rowreq_ctx *rowreq_ctx, u_long * sesTxPkts_val_ptr );
 
 
 int sessionTable_indexes_set_tbl_idx(sessionTable_mib_index *tbl_idx, char *sesSID_val_ptr,  size_t sesSID_val_ptr_len);

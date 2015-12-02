@@ -9,6 +9,8 @@
 #include <net-snmp/net-snmp-includes.h>
 #include <net-snmp/agent/net-snmp-agent-includes.h>
 
+#include <linux/if_link.h>
+
 /* include our parent header */
 #include "sessionTable.h"
 
@@ -199,6 +201,7 @@ sessionTable_container_load(netsnmp_container *container)
     sessionTable_rowreq_ctx *rowreq_ctx;
     size_t                 count = 0;
 		struct ap_session *ses;
+		struct rtnl_link_stats stats;
 
     DEBUGMSGTL(("verbose:sessionTable:sessionTable_container_load","called\n"));
 
@@ -232,6 +235,15 @@ sessionTable_container_load(netsnmp_container *container)
 				rowreq_ctx->data->uptime = (ses->stop_time ? ses->stop_time : _time()) - ses->start_time;
 				rowreq_ctx->data->calling_sid = _strdup(ses->ctrl->calling_station_id);
 				rowreq_ctx->data->called_sid = _strdup(ses->ctrl->called_station_id);
+
+				ap_session_read_stats(ses, &stats);
+				rowreq_ctx->data->rx_pkts = stats.rx_packets;
+				rowreq_ctx->data->rx_bytes = stats.rx_bytes;
+				rowreq_ctx->data->rx_gw = ses->acct_input_gigawords;
+				rowreq_ctx->data->tx_pkts = stats.tx_packets;
+				rowreq_ctx->data->tx_bytes = stats.tx_bytes;
+				rowreq_ctx->data->tx_gw = ses->acct_output_gigawords;
+
 
         CONTAINER_INSERT(container, rowreq_ctx);
         ++count;

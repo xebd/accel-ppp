@@ -694,4 +694,194 @@ sesCalledSID_get( sessionTable_rowreq_ctx *rowreq_ctx, char **sesCalledSID_val_p
     return MFD_SUCCESS;
 } /* sesCalledSID_get */
 
+/*---------------------------------------------------------------------
+ * ACCEL-PPP-MIB::sessionEntry.sesRxBytes
+ * sesRxBytes is subid 10 of sessionEntry.
+ * Its status is Current, and its access level is ReadOnly.
+ * OID: .1.3.6.1.4.1.8072.100.2.1.1.10
+ * Description:
+Received bytes
+ *
+ * Attributes:
+ *   accessible 1     isscalar 0     enums  0      hasdefval 0
+ *   readable   1     iscolumn 1     ranges 0      hashint   0
+ *   settable   0
+ *
+ *
+ * Its syntax is INTEGER (based on perltype INTEGER)
+ * The net-snmp type is ASN_INTEGER. The C type decl is long (long)
+ */
+/**
+ * Extract the current value of the sesRxBytes data.
+ *
+ * Set a value using the data context for the row.
+ *
+ * @param rowreq_ctx
+ *        Pointer to the row request context.
+ * @param sesRxBytes_val_ptr
+ *        Pointer to storage for a long variable
+ *
+ * @retval MFD_SUCCESS         : success
+ * @retval MFD_SKIP            : skip this node (no value for now)
+ * @retval MFD_ERROR           : Any other error
+ */
+int
+sesRxBytes_get( sessionTable_rowreq_ctx *rowreq_ctx, U64 * sesRxBytes_val_ptr )
+{
+   /** we should have a non-NULL pointer */
+   netsnmp_assert( NULL != sesRxBytes_val_ptr );
+
+
+    DEBUGMSGTL(("verbose:sessionTable:sesRxBytes_get","called\n"));
+
+    netsnmp_assert(NULL != rowreq_ctx);
+
+		sesRxBytes_val_ptr->high = rowreq_ctx->data->rx_gw;
+		sesRxBytes_val_ptr->low = rowreq_ctx->data->rx_bytes;
+
+    return MFD_SUCCESS;
+} /* sesRxBytes_get */
+
+/*---------------------------------------------------------------------
+ * ACCEL-PPP-MIB::sessionEntry.sesRxPkts
+ * sesRxPkts is subid 11 of sessionEntry.
+ * Its status is Current, and its access level is ReadOnly.
+ * OID: .1.3.6.1.4.1.8072.100.2.1.1.11
+ * Description:
+Received packets
+ *
+ * Attributes:
+ *   accessible 1     isscalar 0     enums  0      hasdefval 0
+ *   readable   1     iscolumn 1     ranges 0      hashint   0
+ *   settable   0
+ *
+ *
+ * Its syntax is INTEGER (based on perltype INTEGER)
+ * The net-snmp type is ASN_INTEGER. The C type decl is long (long)
+ */
+/**
+ * Extract the current value of the sesRxPkts data.
+ *
+ * Set a value using the data context for the row.
+ *
+ * @param rowreq_ctx
+ *        Pointer to the row request context.
+ * @param sesRxPkts_val_ptr
+ *        Pointer to storage for a long variable
+ *
+ * @retval MFD_SUCCESS         : success
+ * @retval MFD_SKIP            : skip this node (no value for now)
+ * @retval MFD_ERROR           : Any other error
+ */
+int
+sesRxPkts_get( sessionTable_rowreq_ctx *rowreq_ctx, u_long * sesRxPkts_val_ptr )
+{
+   /** we should have a non-NULL pointer */
+   netsnmp_assert( NULL != sesRxPkts_val_ptr );
+
+
+    DEBUGMSGTL(("verbose:sessionTable:sesRxPkts_get","called\n"));
+
+    netsnmp_assert(NULL != rowreq_ctx);
+
+		*sesRxPkts_val_ptr = rowreq_ctx->data->rx_pkts;
+
+    return MFD_SUCCESS;
+} /* sesRxPkts_get */
+
+/*---------------------------------------------------------------------
+ * ACCEL-PPP-MIB::sessionEntry.sesTxBytes
+ * sesTxBytes is subid 12 of sessionEntry.
+ * Its status is Current, and its access level is ReadOnly.
+ * OID: .1.3.6.1.4.1.8072.100.2.1.1.12
+ * Description:
+Transmitted bytes
+ *
+ * Attributes:
+ *   accessible 1     isscalar 0     enums  0      hasdefval 0
+ *   readable   1     iscolumn 1     ranges 0      hashint   0
+ *   settable   0
+ *
+ *
+ * Its syntax is INTEGER (based on perltype INTEGER)
+ * The net-snmp type is ASN_INTEGER. The C type decl is long (long)
+ */
+/**
+ * Extract the current value of the sesTxBytes data.
+ *
+ * Set a value using the data context for the row.
+ *
+ * @param rowreq_ctx
+ *        Pointer to the row request context.
+ * @param sesTxBytes_val_ptr
+ *        Pointer to storage for a long variable
+ *
+ * @retval MFD_SUCCESS         : success
+ * @retval MFD_SKIP            : skip this node (no value for now)
+ * @retval MFD_ERROR           : Any other error
+ */
+int
+sesTxBytes_get( sessionTable_rowreq_ctx *rowreq_ctx, U64* sesTxBytes_val_ptr )
+{
+   /** we should have a non-NULL pointer */
+   netsnmp_assert( NULL != sesTxBytes_val_ptr );
+
+
+    DEBUGMSGTL(("verbose:sessionTable:sesTxBytes_get","called\n"));
+
+    netsnmp_assert(NULL != rowreq_ctx);
+
+		sesTxBytes_val_ptr->high = rowreq_ctx->data->tx_gw;
+		sesTxBytes_val_ptr->low = rowreq_ctx->data->tx_bytes;
+
+    return MFD_SUCCESS;
+} /* sesTxBytes_get */
+
+/*---------------------------------------------------------------------
+ * ACCEL-PPP-MIB::sessionEntry.sesTxPkts
+ * sesTxPkts is subid 13 of sessionEntry.
+ * Its status is Current, and its access level is ReadOnly.
+ * OID: .1.3.6.1.4.1.8072.100.2.1.1.13
+ * Description:
+Transmitted packets
+ *
+ * Attributes:
+ *   accessible 1     isscalar 0     enums  0      hasdefval 0
+ *   readable   1     iscolumn 1     ranges 0      hashint   0
+ *   settable   0
+ *
+ *
+ * Its syntax is INTEGER (based on perltype INTEGER)
+ * The net-snmp type is ASN_INTEGER. The C type decl is long (long)
+ */
+/**
+ * Extract the current value of the sesTxPkts data.
+ *
+ * Set a value using the data context for the row.
+ *
+ * @param rowreq_ctx
+ *        Pointer to the row request context.
+ * @param sesTxPkts_val_ptr
+ *        Pointer to storage for a long variable
+ *
+ * @retval MFD_SUCCESS         : success
+ * @retval MFD_SKIP            : skip this node (no value for now)
+ * @retval MFD_ERROR           : Any other error
+ */
+int
+sesTxPkts_get( sessionTable_rowreq_ctx *rowreq_ctx, u_long * sesTxPkts_val_ptr )
+{
+   /** we should have a non-NULL pointer */
+   netsnmp_assert( NULL != sesTxPkts_val_ptr );
+
+
+    DEBUGMSGTL(("verbose:sessionTable:sesTxPkts_get","called\n"));
+
+    netsnmp_assert(NULL != rowreq_ctx);
+
+		*sesTxPkts_val_ptr = rowreq_ctx->data->tx_pkts;
+
+    return MFD_SUCCESS;
+} /* sesTxPkts_get */
+
 /** @} */

@@ -209,7 +209,11 @@ sessionEntry ::= SEQUENCE {
 	sesState        INTEGER,
 	sesUptime       TimeTicks,
 	sesCallingSID   OCTET STRING,
-	sesCalledSID    OCTET STRING
+	sesCalledSID    OCTET STRING,
+	sesRxBytes      Counter64,
+	sesRxPkts       Counter32,
+	sesTxBytes      Counter64,
+	sesTxPkts       Counter32
 }
 
 sesSID OBJECT-TYPE
@@ -293,6 +297,38 @@ sesCalledSID OBJECT-TYPE
     DESCRIPTION
 			"Called-Station-ID"
     ::= { sessionEntry 9 }
+
+sesRxBytes OBJECT-TYPE
+    SYNTAX      Counter64
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"Received bytes"
+    ::= { sessionEntry 10 }
+
+sesRxPkts OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"Received packets"
+    ::= { sessionEntry 11 }
+
+sesTxBytes OBJECT-TYPE
+    SYNTAX      Counter64
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"Transmitted bytes"
+    ::= { sessionEntry 12 }
+
+sesTxPkts OBJECT-TYPE
+    SYNTAX      Counter32
+    MAX-ACCESS  read-only
+    STATUS      current
+    DESCRIPTION
+			"Transmitted packets"
+    ::= { sessionEntry 13 }
 
 --
 -- Administration
