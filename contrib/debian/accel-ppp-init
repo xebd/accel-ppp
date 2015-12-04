@@ -2,8 +2,8 @@
 # /etc/init.d/accel-pppd: set up the accel-ppp server
 ### BEGIN INIT INFO
 # Provides:          accel-ppp
-# Required-Start:    $networking
-# Required-Stop:     $networking
+# Required-Start:    $remote_fs $syslog $network $time
+# Required-Stop:     $remote_fs $syslog $network
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
 ### END INIT INFO
