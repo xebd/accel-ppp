@@ -1814,6 +1814,9 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 	ses->yiaddr = iph->saddr;
 	ses->UP = 1;
 
+	if (!serv->opt_shared)
+		strncpy(ses->ses.ifname, serv->ifname, AP_IFNAME_LEN);
+
 	ses->ctrl.called_station_id = _strdup(serv->ifname);
 
 	if (conf_calling_sid == SID_MAC) {
