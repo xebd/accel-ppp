@@ -1,0 +1,401 @@
+#include <unistd.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <errno.h>
+#include <string.h>
+#include <pthread.h>
+#include <fcntl.h>
+#include <sys/socket.h>
+#include <sys/ioctl.h>
+#include <net/ethernet.h>
+#include <netinet/ip.h>
+#include <arpa/inet.h>
+#include <linux/if.h>
+#include <linux/genetlink.h>
+
+#include "triton.h"
+#include "log.h"
+#include "genl.h"
+#include "libnetlink.h"
+#include "iputils.h"
+
+#include "vlan_mon.h"
+#include "if_vlan_mon.h"
+
+#include "memdebug.h"
+
+#define PKT_ATTR_MAX 256
+
+static struct rtnl_handle rth;
+static struct triton_md_handler_t mc_hnd;
+static int vlan_mon_genl_id;
+
+static vlan_mon_notify cb[2];
+
+static void init(void);
+
+void __export vlan_mon_register_proto(int proto, vlan_mon_notify func)
+{
+	if (proto == ETH_P_PPP_DISC)
+		proto = 1;
+	else
+		proto = 0;
+
+	cb[proto] = func;
+
+	if (!vlan_mon_genl_id)
+		init();
+}
+
+int __export vlan_mon_add(int ifindex, int proto, long *mask, int len)
+{
+	struct nlmsghdr *nlh;
+	struct genlmsghdr *ghdr;
+	struct {
+		struct nlmsghdr n;
+		char buf[1024];
+	} req;
+
+	if (rth.fd == -1)
+		return -1;
+
+	nlh = &req.n;
+	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
+	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+	nlh->nlmsg_type = vlan_mon_genl_id;
+
+	ghdr = NLMSG_DATA(&req.n);
+	ghdr->cmd = VLAN_MON_CMD_ADD;
+
+	addattr32(nlh, 1024, VLAN_MON_ATTR_IFINDEX, ifindex);
+	addattr_l(nlh, 1024, VLAN_MON_ATTR_VLAN_MASK, mask, len);
+	addattr32(nlh, 1024, VLAN_MON_ATTR_PROTO, proto);
+
+	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 ) {
+		log_error("vlan_mon: nl_add_vlan_mon: error talking to kernel\n");
+		return -1;
+	}
+
+	return 0;
+}
+
+int __export vlan_mon_add_vid(int ifindex, int proto, int vid)
+{
+	struct nlmsghdr *nlh;
+	struct genlmsghdr *ghdr;
+	struct {
+		struct nlmsghdr n;
+		char buf[1024];
+	} req;
+	int r = 0;
+
+	if (rth.fd == -1)
+		return -1;
+
+	nlh = &req.n;
+	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
+	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+	nlh->nlmsg_type = vlan_mon_genl_id;
+
+	ghdr = NLMSG_DATA(&req.n);
+	ghdr->cmd = VLAN_MON_CMD_ADD_VID;
+
+	addattr32(nlh, 1024, VLAN_MON_ATTR_IFINDEX, ifindex);
+	addattr32(nlh, 1024, VLAN_MON_ATTR_VID, vid);
+	addattr32(nlh, 1024, VLAN_MON_ATTR_PROTO, proto);
+
+	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 ) {
+		log_error("vlan_mon: nl_add_vlan_mon_vid: error talking to kernel\n");
+		r = -1;
+	}
+
+	return r;
+}
+
+int __export vlan_mon_del(int ifindex, int proto)
+{
+	struct nlmsghdr *nlh;
+	struct genlmsghdr *ghdr;
+	struct {
+		struct nlmsghdr n;
+		char buf[1024];
+	} req;
+
+	if (rth.fd == -1)
+		return -1;
+
+	nlh = &req.n;
+	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
+	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+	nlh->nlmsg_type = vlan_mon_genl_id;
+
+	ghdr = NLMSG_DATA(&req.n);
+	ghdr->cmd = VLAN_MON_CMD_DEL;
+
+	addattr32(nlh, 1024, VLAN_MON_ATTR_IFINDEX, ifindex);
+	addattr32(nlh, 1024, VLAN_MON_ATTR_PROTO, proto);
+
+	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 ) {
+		log_error("vlan_mon: nl_del_vlan_mon: error talking to kernel\n");
+		return -1;
+	}
+
+	return 0;
+}
+
+static void vlan_mon_handler(const struct sockaddr_nl *addr, struct nlmsghdr *h)
+{
+	struct rtattr *tb[PKT_ATTR_MAX + 1];
+	struct rtattr *tb2[VLAN_MON_ATTR_MAX + 1];
+	struct genlmsghdr *ghdr = NLMSG_DATA(h);
+	int len = h->nlmsg_len;
+	struct rtattr *attrs;
+	int i;
+	int ifindex, vid, proto;
+
+	len -= NLMSG_LENGTH(GENL_HDRLEN);
+
+	if (len < 0) {
+		log_warn("vlan_mon: wrong controller message length %d\n", len);
+		return;
+	}
+
+	attrs = (struct rtattr *)((char *)ghdr + GENL_HDRLEN);
+	parse_rtattr(tb, PKT_ATTR_MAX, attrs, len);
+
+	for (i = 1; i < PKT_ATTR_MAX; i++) {
+		if (!tb[i])
+			break;
+
+		parse_rtattr_nested(tb2, VLAN_MON_ATTR_MAX, tb[i]);
+
+		//if (!tb2[VLAN_MON_ATTR_IFINDEX] || !tb2[VLAN_MON_ATTR_VID] || !t)
+		//	continue;
+
+		ifindex = *(uint32_t *)(RTA_DATA(tb2[VLAN_MON_ATTR_IFINDEX]));
+		vid = *(uint32_t *)(RTA_DATA(tb2[VLAN_MON_ATTR_VID]));
+		proto = *(uint32_t *)(RTA_DATA(tb2[VLAN_MON_ATTR_PROTO]));
+
+		log_debug("vlan-mon: notify %i %i %04x\n", ifindex, vid, proto);
+
+		if (proto == ETH_P_PPP_DISC)
+			proto = 1;
+		else
+			proto = 0;
+
+		if (cb[proto])
+			cb[proto](ifindex, vid);
+	}
+}
+
+
+static int vlan_mon_mc_read(struct triton_md_handler_t *h)
+{
+	int status;
+	struct nlmsghdr *hdr;
+	struct genlmsghdr *ghdr;
+	struct sockaddr_nl nladdr;
+	struct iovec iov;
+	struct msghdr msg = {
+		.msg_name = &nladdr,
+		.msg_namelen = sizeof(nladdr),
+		.msg_iov = &iov,
+		.msg_iovlen = 1,
+	};
+	char   buf[8192];
+
+	memset(&nladdr, 0, sizeof(nladdr));
+	nladdr.nl_family = AF_NETLINK;
+	nladdr.nl_pid = 0;
+	nladdr.nl_groups = 0;
+
+	iov.iov_base = buf;
+	while (1) {
+		iov.iov_len = sizeof(buf);
+		status = recvmsg(h->fd, &msg, 0);
+
+		if (status < 0) {
+			if (errno == EAGAIN)
+				break;
+			log_error("vlan_mon: netlink error: %s\n", strerror(errno));
+			if (errno == ENOBUFS)
+				continue;
+			return 0;
+		}
+
+		if (status == 0) {
+			log_error("vlan_mon: EOF on netlink\n");
+			return 0;
+		}
+
+		if (msg.msg_namelen != sizeof(nladdr)) {
+			log_error("vlan_mon: netlink sender address length == %d\n", msg.msg_namelen);
+			return 0;
+		}
+
+		for (hdr = (struct nlmsghdr*)buf; status >= sizeof(*hdr); ) {
+			int len = hdr->nlmsg_len;
+			int l = len - sizeof(*h);
+
+			if (l<0 || len>status) {
+				if (msg.msg_flags & MSG_TRUNC) {
+					log_warn("vlan_mon: truncated netlink message\n");
+					continue;
+				}
+				log_error("vlan_mon: malformed netlink message\n");
+				continue;
+			}
+
+			ghdr = NLMSG_DATA(hdr);
+
+			if (ghdr->cmd == VLAN_MON_NOTIFY)
+				vlan_mon_handler(&nladdr, hdr);
+
+			status -= NLMSG_ALIGN(len);
+			hdr = (struct nlmsghdr*)((char*)hdr + NLMSG_ALIGN(len));
+		}
+
+		if (msg.msg_flags & MSG_TRUNC) {
+			log_warn("vlan_mon: netlink message truncated\n");
+			continue;
+		}
+
+		if (status) {
+			log_error("vlan_mon: netlink remnant of size %d\n", status);
+			return 0;
+		}
+	}
+
+	return 0;
+}
+
+int __export make_vlan_name(const char *pattern, const char *parent, int svid, int cvid, char *name)
+{
+	char *ptr1 = name, *endptr = name + IFNAMSIZ;
+	const char *ptr2 = pattern;
+	char svid_str[5], cvid_str[5], *ptr3;
+
+	sprintf(svid_str, "%i", svid);
+	sprintf(cvid_str, "%i", cvid);
+
+	while (ptr1 < endptr && *ptr2) {
+		if (ptr2[0] == '%' && ptr2[1] == 'I') {
+			while (ptr1 < endptr && *parent)
+				*ptr1++ = *parent++;
+			ptr2 += 2;
+		} else if (ptr2[0] == '%' && ptr2[1] == 'N') {
+			ptr3 = cvid_str;
+			while (ptr1 < endptr && *ptr3)
+				*ptr1++ = *ptr3++;
+			ptr2 += 2;
+		} else if (ptr2[0] == '%' && ptr2[1] == 'P') {
+			ptr3 = svid_str;
+			while (ptr1 < endptr && *ptr3)
+				*ptr1++ = *ptr3++;
+			ptr2 += 2;
+		} else
+			*ptr1++ = *ptr2++;
+	}
+
+	if (ptr1 == endptr)
+		return 1;
+
+	*ptr1 = 0;
+
+	return 0;
+}
+
+int __export parse_vlan_mon(const char *opt, long *mask)
+{
+	char *ptr, *ptr2;
+	int vid, vid2;
+
+	ptr = strchr(opt, ',');
+	if (!ptr)
+		ptr = strchr(opt, 0);
+
+	if (*ptr == ',')
+		memset(mask, 0xff, 4096/8);
+	else if (*ptr == 0) {
+		memset(mask, 0, 4096/8);
+		return 0;
+	} else
+		goto out_err;
+
+	while (1) {
+		vid = strtol(ptr + 1, &ptr2, 10);
+		if (vid <= 0 || vid >= 4096) {
+			log_error("vlan-mon=%s: invalid vlan %i\n", opt, vid);
+			return -1;
+		}
+
+		if (*ptr2 == '-') {
+			vid2 = strtol(ptr2 + 1, &ptr2, 10);
+			if (vid2 <= 0 || vid2 >= 4096) {
+				log_error("vlan-mon=%s: invalid vlan %i\n", opt, vid2);
+				return -1;
+			}
+
+			for (; vid < vid2; vid++)
+				mask[vid / (8*sizeof(long))] &= ~(1lu << (vid % (8*sizeof(long))));
+		}
+
+		mask[vid / (8*sizeof(long))] &= ~(1lu << (vid % (8*sizeof(long))));
+
+		if (*ptr2 == 0)
+			break;
+
+		if (*ptr2 != ',')
+			goto out_err;
+
+		ptr = ptr2;
+	}
+
+	return 0;
+
+out_err:
+	log_error("vlan-mon=%s: failed to parse\n", opt);
+	return -1;
+}
+
+
+static void vlan_mon_mc_close(struct triton_context_t *ctx)
+{
+	triton_md_unregister_handler(&mc_hnd, 0);
+	triton_context_unregister(ctx);
+}
+
+static struct triton_context_t mc_ctx = {
+	.close = vlan_mon_mc_close,
+};
+
+static struct triton_md_handler_t mc_hnd = {
+	.read = vlan_mon_mc_read,
+};
+
+static void init(void)
+{
+	int mcg_id = genl_resolve_mcg(VLAN_MON_GENL_NAME, VLAN_MON_GENL_MCG, &vlan_mon_genl_id);
+	if (mcg_id == -1) {
+		log_warn("vlan_mon: kernel module is not loaded\n");
+		rth.fd = -1;
+		vlan_mon_genl_id = -1;
+		return;
+	}
+
+	if (rtnl_open_byproto(&rth, 1 << (mcg_id - 1), NETLINK_GENERIC)) {
+		log_error("vlan_mon: cannot open generic netlink socket\n");
+		rth.fd = -1;
+		return;
+	}
+
+	fcntl(rth.fd, F_SETFL, O_NONBLOCK);
+	fcntl(rth.fd, F_SETFD, fcntl(rth.fd, F_GETFD) | FD_CLOEXEC);
+
+	triton_context_register(&mc_ctx, NULL);
+	mc_hnd.fd = rth.fd;
+	triton_md_register_handler(&mc_ctx, &mc_hnd);
+	triton_md_enable_handler(&mc_hnd, MD_MODE_READ);
+	triton_context_wakeup(&mc_ctx);
+}
+

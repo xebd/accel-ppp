@@ -73,6 +73,10 @@ struct pppoe_serv_t
 	char *ifname;
 	int ifindex;
 
+	int parent_ifindex;
+	int vid;
+	struct triton_timer_t timer;
+
 	uint8_t secret[SECRET_LENGTH];
 	DES_key_schedule des_ks;
 

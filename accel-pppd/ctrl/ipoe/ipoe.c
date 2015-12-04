@@ -33,6 +33,7 @@
 #include "ipset.h"
 
 #include "connlimit.h"
+#include "vlan_mon.h"
 
 #include "ipoe.h"
 
@@ -2119,7 +2120,7 @@ static void ipoe_serv_release(struct ipoe_serv *serv)
 	if (serv->vid) {
 		log_info2("ipoe: remove vlan %s\n", serv->ifname);
 		iplink_vlan_del(serv->ifindex);
-		ipoe_nl_add_vlan_mon_vid(serv->parent_ifindex, serv->vid);
+		vlan_mon_add_vid(serv->parent_ifindex, ETH_P_IP, serv->vid);
 	}
 
 	triton_context_unregister(&serv->ctx);
@@ -2255,48 +2256,7 @@ static int get_offer_delay()
 	return 0;
 }
 
-static int make_vlan_name(const char *parent, int svid, int cvid, char *name)
-{
-	char *ptr1 = name, *endptr = name + IFNAMSIZ;
-	const char *ptr2 = conf_vlan_name;
-	char svid_str[5], cvid_str[5], *ptr3;
-
-#ifdef USE_LUA
-	if (!memcmp(conf_vlan_name, "lua:", 4))
-		return ipoe_lua_make_vlan_name(conf_vlan_name + 4, parent, svid, cvid, name);
-#endif
-
-	sprintf(svid_str, "%i", svid);
-	sprintf(cvid_str, "%i", cvid);
-
-	while (ptr1 < endptr && *ptr2) {
-		if (ptr2[0] == '%' && ptr2[1] == 'I') {
-			while (ptr1 < endptr && *parent)
-				*ptr1++ = *parent++;
-			ptr2 += 2;
-		} else if (ptr2[0] == '%' && ptr2[1] == 'N') {
-			ptr3 = cvid_str;
-			while (ptr1 < endptr && *ptr3)
-				*ptr1++ = *ptr3++;
-			ptr2 += 2;
-		} else if (ptr2[0] == '%' && ptr2[1] == 'P') {
-			ptr3 = svid_str;
-			while (ptr1 < endptr && *ptr3)
-				*ptr1++ = *ptr3++;
-			ptr2 += 2;
-		} else
-			*ptr1++ = *ptr2++;
-	}
-
-	if (ptr1 == endptr)
-		return 1;
-
-	*ptr1 = 0;
-
-	return 0;
-}
-
-void ipoe_vlan_notify(int ifindex, int vid)
+void ipoe_vlan_mon_notify(int ifindex, int vid)
 {
 	struct conf_sect_t *sect = conf_get_section("ipoe");
 	struct conf_option_t *opt;
@@ -2321,20 +2281,24 @@ void ipoe_vlan_notify(int ifindex, int vid)
 
 	svid = iplink_vlan_get_vid(ifindex);
 
-	if (make_vlan_name(ifr.ifr_name, svid, vid, ifname)) {
+#ifdef USE_LUA
+	if (!memcmp(conf_vlan_name, "lua:", 4))
+		r = ipoe_lua_make_vlan_name(conf_vlan_name + 4, parent, svid, cvid, name);
+	else
+#endif
+	r = make_vlan_name(conf_vlan_name, ifr.ifr_name, svid, vid, ifname);
+	if (r) {
 		log_error("ipoe: vlan-mon: %s.%i: interface name is too long\n", ifr.ifr_name, vid);
 		return;
 	}
 
-	log_info2("ipoe: create vlan %s parent %s\n", ifname, ifr.ifr_name);
-
 	strcpy(ifr.ifr_name, ifname);
 	len = strlen(ifr.ifr_name);
 
-	if (iplink_vlan_add(ifr.ifr_name, ifindex, vid)) {
-		log_warn("ipoe: vlan-mon: %s: failed to add vlan\n", ifr.ifr_name);
+	if (iplink_vlan_add(ifr.ifr_name, ifindex, vid))
 		return;
-	}
+
+	log_info2("ipoe: create vlan %s parent %s\n", ifname, ifr.ifr_name);
 
 	ioctl(sock_fd, SIOCGIFFLAGS, &ifr, sizeof(ifr));
 	ifr.ifr_flags |= IFF_UP;
@@ -2993,59 +2957,6 @@ out_err:
 	return -1;
 }
 
-static int parse_vlan_mon(const char *opt, long *mask)
-{
-	char *ptr, *ptr2;
-	int vid, vid2;
-
-	ptr = strchr(opt, ',');
-	if (!ptr)
-		ptr = strchr(opt, 0);
-
-	if (*ptr == ',')
-		memset(mask, 0xff, 4096/8);
-	else if (*ptr == 0) {
-		memset(mask, 0, 4096/8);
-		return 0;
-	} else
-		goto out_err;
-
-	while (1) {
-		vid = strtol(ptr + 1, &ptr2, 10);
-		if (vid <= 0 || vid >= 4096) {
-			log_error("ipoe: vlan-mon=%s: invalid vlan %i\n", opt, vid);
-			return -1;
-		}
-
-		if (*ptr2 == '-') {
-			vid2 = strtol(ptr2 + 1, &ptr2, 10);
-			if (vid2 <= 0 || vid2 >= 4096) {
-				log_error("ipoe: vlan-mon=%s: invalid vlan %i\n", opt, vid2);
-				return -1;
-			}
-
-			for (; vid < vid2; vid++)
-				mask[vid / (8*sizeof(long))] &= ~(1lu << (vid % (8*sizeof(long))));
-		}
-
-		mask[vid / (8*sizeof(long))] &= ~(1lu << (vid % (8*sizeof(long))));
-
-		if (*ptr2 == 0)
-			break;
-
-		if (*ptr2 != ',')
-			goto out_err;
-
-		ptr = ptr2;
-	}
-
-	return 0;
-
-out_err:
-	log_error("ipoe: vlan-mon=%s: failed to parse\n", opt);
-	return -1;
-}
-
 static void add_vlan_mon(const char *opt, long *mask)
 {
 	const char *ptr;
@@ -3087,7 +2998,7 @@ static void add_vlan_mon(const char *opt, long *mask)
 			mask1[serv->vid / (8*sizeof(long))] |= 1lu << (serv->vid % (8*sizeof(long)));
 	}
 
-	ipoe_nl_add_vlan_mon(ifindex, mask1, sizeof(mask1));
+	vlan_mon_add(ifindex, ETH_P_IP, mask1, sizeof(mask1));
 }
 
 static int __load_vlan_mon_re(int index, int flags, const char *name, struct iplink_arg *arg)
@@ -3116,7 +3027,7 @@ static int __load_vlan_mon_re(int index, int flags, const char *name, struct ipl
 			mask1[serv->vid / (8*sizeof(long))] |= 1lu << (serv->vid % (8*sizeof(long)));
 	}
 
-	ipoe_nl_add_vlan_mon(index, mask1, sizeof(mask1));
+	vlan_mon_add(index, ETH_P_IP,  mask1, sizeof(mask1));
 
 	return 0;
 }
@@ -3158,8 +3069,17 @@ static void load_vlan_mon(struct conf_sect_t *sect)
 {
 	struct conf_option_t *opt;
 	long mask[4096/8/sizeof(long)];
+	static int registered = 0;
 
-	ipoe_nl_del_vlan_mon(-1);
+	if (!triton_module_loaded("vlan-mon"))
+		return;
+
+	if (!registered) {
+		vlan_mon_register_proto(ETH_P_IP, ipoe_vlan_mon_notify);
+		registered = 1;
+	}
+
+	vlan_mon_del(-1, ETH_P_IP);
 
 	list_for_each_entry(opt, &sect->items, entry) {
 		if (strcmp(opt->name, "vlan-mon"))

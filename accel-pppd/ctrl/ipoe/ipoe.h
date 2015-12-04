@@ -115,7 +115,6 @@ struct iphdr;
 struct ethhdr;
 
 void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph);
-void ipoe_vlan_notify(int ifindex, int vid);
 
 struct ipoe_session *ipoe_session_alloc(void);
 
@@ -129,9 +128,6 @@ int ipoe_nl_create(uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_
 void ipoe_nl_delete(int ifindex);
 int ipoe_nl_modify(int ifindex, uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_t *hwaddr);
 void ipoe_nl_get_sessions(struct list_head *list);
-int ipoe_nl_add_vlan_mon(int ifindex, long *mask, int len);
-int ipoe_nl_add_vlan_mon_vid(int ifindex, int vid);
-int ipoe_nl_del_vlan_mon(int ifindex);
 int ipoe_nl_add_exclude(uint32_t addr, int mask);
 void ipoe_nl_del_exclude(uint32_t addr);
 
