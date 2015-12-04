@@ -2179,12 +2179,15 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 
 static void print_session_type(struct ap_session *s, char *buf)
 {
-	struct ipoe_session *ses = container_of(s, typeof(*ses), ses);
+	if (s->ctrl->type == CTRL_TYPE_IPOE) {
+		struct ipoe_session *ses = container_of(s, typeof(*ses), ses);
 
-	if (ses->UP)
-		strcpy(buf, "up");
-	else
-		strcpy(buf, "dhcp");
+		if (ses->UP)
+			strcpy(buf, "up");
+		else
+			strcpy(buf, "dhcp");
+	} else
+		*buf = 0;
 }
 
 void __export ipoe_get_stat(unsigned int **starting, unsigned int **active)
