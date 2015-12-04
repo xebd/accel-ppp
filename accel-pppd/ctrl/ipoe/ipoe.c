@@ -2283,7 +2283,7 @@ void ipoe_vlan_mon_notify(int ifindex, int vid)
 
 #ifdef USE_LUA
 	if (!memcmp(conf_vlan_name, "lua:", 4))
-		r = ipoe_lua_make_vlan_name(conf_vlan_name + 4, parent, svid, cvid, name);
+		r = ipoe_lua_make_vlan_name(conf_vlan_name + 4, ifr.ifr_name, svid, vid, ifname);
 	else
 #endif
 	r = make_vlan_name(conf_vlan_name, ifr.ifr_name, svid, vid, ifname);
