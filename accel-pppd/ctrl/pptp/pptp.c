@@ -76,7 +76,7 @@ static void ppp_finished(struct ap_session *);
 static void pptp_ctx_switch(struct triton_context_t *ctx, void *arg)
 {
 	net = &def_net;
-	pptp_ctx_switch(ctx, arg);
+	log_switch(ctx, arg);
 }
 
 static void disconnect(struct pptp_conn_t *conn)

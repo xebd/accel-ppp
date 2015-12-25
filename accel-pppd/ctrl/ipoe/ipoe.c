@@ -199,7 +199,7 @@ static int ipoe_rad_send_acct_request(struct rad_plugin_t *rad, struct rad_packe
 static void ipoe_ctx_switch(struct triton_context_t *ctx, void *arg)
 {
 	net = &def_net;
-	ipoe_ctx_switch(ctx, arg);
+	log_switch(ctx, arg);
 }
 
 static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct dhcpv4_packet *pack, struct ipoe_session **opt82_ses)
