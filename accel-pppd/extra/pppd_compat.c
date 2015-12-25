@@ -8,6 +8,7 @@
 #include <limits.h>
 #include <inttypes.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include "linux_ppp.h"
@@ -436,8 +437,10 @@ static void write_radattr(struct pppd_compat_pd *pd, struct rad_packet_t *pack)
 		fd = mkstemp(fname1);
 		if (fd < 0)
 			log_ppp_warn("pppd_compat: mkstemp: %s\n", strerror(errno));
-		else
+		else {
+			fchmod(fd, 0644);
 			f = fdopen(fd, "w");
+		}
 	}
 
 	if (f) {
