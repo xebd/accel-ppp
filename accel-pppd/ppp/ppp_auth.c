@@ -84,6 +84,12 @@ static struct lcp_option_t *auth_init(struct ppp_lcp_t *lcp)
 
 	INIT_LIST_HEAD(&ad->auth_opt.auth_list);
 
+	if (conf_noauth) {
+		if (connect_ppp_channel(lcp->ppp))
+			return NULL;
+		return &ad->auth_opt.opt;
+	}
+
 	list_for_each_entry(h, &auth_handlers, entry) {
 		d = h->init(lcp->ppp);
 		d->h = h;
