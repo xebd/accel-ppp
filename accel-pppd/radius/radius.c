@@ -703,4 +703,4 @@ static void radius_init(void)
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 
-DEFINE_INIT(51, radius_init);
+DEFINE_INIT(52, radius_init);
