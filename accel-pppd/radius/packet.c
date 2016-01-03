@@ -254,7 +254,7 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 
 out_err:
 	rad_packet_free(pack);
-	return 0;
+	return 1;
 }
 
 void rad_packet_free(struct rad_packet_t *pack)
