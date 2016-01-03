@@ -862,7 +862,7 @@ static void ipoe_ifcfg_add(struct ipoe_session *ses)
 		ipoe_serv_add_addr(ses->serv, ses->siaddr, conf_ip_unnumbered ? 32 : ses->mask);
 
 	if (conf_ip_unnumbered) {
-		if (iproute_add(serv->ifindex, ses->serv->opt_src ? ses->serv->opt_src : ses->router, ses->yiaddr, 0, conf_proto))
+		if (iproute_add(serv->ifindex, ses->serv->opt_src ? ses->serv->opt_src : ses->router, ses->yiaddr, 0, conf_proto, 32))
 			log_ppp_warn("ipoe: failed to add route to interface '%s'\n", serv->ifname);
 	}
 
@@ -874,7 +874,7 @@ static void ipoe_ifcfg_del(struct ipoe_session *ses, int lock)
 	struct ipoe_serv *serv = ses->serv;
 
 	if (conf_ip_unnumbered) {
-		if (iproute_del(serv->ifindex, ses->yiaddr, conf_proto))
+		if (iproute_del(serv->ifindex, ses->yiaddr, conf_proto, 32))
 			log_ppp_warn("ipoe: failed to delete route from interface '%s'\n", serv->ifname);
 	}
 
@@ -905,9 +905,9 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 			in_addr_t gw;
 			iproute_get(ses->router, &gw);
 			if (gw)
-				iproute_add(0, ses->siaddr, ses->yiaddr, gw, conf_proto);
+				iproute_add(0, ses->siaddr, ses->yiaddr, gw, conf_proto, 32);
 			else
-				iproute_add(0, ses->siaddr, ses->router, gw, conf_proto);
+				iproute_add(0, ses->siaddr, ses->router, gw, conf_proto, 32);
 		}
 
 		if (ipoe_nl_modify(ses->ifindex, ses->yiaddr, addr, NULL, NULL)) {

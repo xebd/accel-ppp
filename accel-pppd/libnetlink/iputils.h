@@ -15,8 +15,8 @@ int iplink_vlan_get_vid(int ifindex);
 int ipaddr_add(int ifindex, in_addr_t addr, int mask);
 int ipaddr_del(int ifindex, in_addr_t addr, int mask);
 
-int iproute_add(int ifindex, in_addr_t src, in_addr_t dst, in_addr_t gw, int proto);
-int iproute_del(int ifindex, in_addr_t dst, int proto);
+int iproute_add(int ifindex, in_addr_t src, in_addr_t dst, in_addr_t gw, int proto, int mask);
+int iproute_del(int ifindex, in_addr_t dst, int proto, int mask);
 in_addr_t iproute_get(in_addr_t dst, in_addr_t *gw);
 
 int ip6route_add(int ifindex, struct in6_addr *dst, int prefix_len, int proto);

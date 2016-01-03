@@ -366,7 +366,7 @@ int __export ipaddr_del(int ifindex, in_addr_t addr, int mask)
 	return 0;
 }
 
-int __export iproute_add(int ifindex, in_addr_t src, in_addr_t dst, in_addr_t gw, int proto)
+int __export iproute_add(int ifindex, in_addr_t src, in_addr_t dst, in_addr_t gw, int proto, int mask)
 {
 	struct ipaddr_req {
 		struct nlmsghdr n;
@@ -390,7 +390,7 @@ int __export iproute_add(int ifindex, in_addr_t src, in_addr_t dst, in_addr_t gw
 	req.i.rtm_scope = ifindex ? RT_SCOPE_LINK : RT_SCOPE_UNIVERSE;
 	req.i.rtm_protocol = proto;
 	req.i.rtm_type = RTN_UNICAST;
-	req.i.rtm_dst_len = 32;
+	req.i.rtm_dst_len = mask;
 
 	if (ifindex)
 		addattr32(&req.n, sizeof(req), RTA_OIF, ifindex);
@@ -406,7 +406,7 @@ int __export iproute_add(int ifindex, in_addr_t src, in_addr_t dst, in_addr_t gw
 	return 0;
 }
 
-int __export iproute_del(int ifindex, in_addr_t dst, int proto)
+int __export iproute_del(int ifindex, in_addr_t dst, int proto, int mask)
 {
 	struct ipaddr_req {
 		struct nlmsghdr n;
@@ -427,13 +427,15 @@ int __export iproute_del(int ifindex, in_addr_t dst, int proto)
 	req.n.nlmsg_type = RTM_DELROUTE;
 	req.i.rtm_family = AF_INET;
 	req.i.rtm_table = RT_TABLE_MAIN;
-	req.i.rtm_scope = RT_SCOPE_LINK;
+	req.i.rtm_scope = ifindex ? RT_SCOPE_LINK : RT_SCOPE_UNIVERSE;
 	req.i.rtm_protocol = proto;
 	req.i.rtm_type = RTN_UNICAST;
-	req.i.rtm_dst_len = 32;
+	req.i.rtm_dst_len = mask;
 
 	addattr32(&req.n, sizeof(req), RTA_DST, dst);
-	addattr32(&req.n, sizeof(req), RTA_OIF, ifindex);
+
+	if (ifindex)
+		addattr32(&req.n, sizeof(req), RTA_OIF, ifindex);
 
 	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
 		return -1;
