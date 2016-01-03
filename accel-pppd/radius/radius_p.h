@@ -25,6 +25,13 @@ struct radius_auth_ctx {
 	char **reply_msg;
 };
 
+struct framed_route {
+	in_addr_t dst;
+	int mask;
+	in_addr_t gw;
+	struct framed_route *next;
+};
+
 struct radius_pd_t {
 	struct list_head entry;
 	struct ap_private pd;
@@ -53,6 +60,8 @@ struct radius_pd_t {
 	uint8_t *attr_state;
 	int attr_state_len;
 	int termination_action;
+
+	struct framed_route *fr;
 
 	struct radius_auth_ctx *auth_ctx;
 

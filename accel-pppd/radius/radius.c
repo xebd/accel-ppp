@@ -13,6 +13,8 @@
 #include "pwdb.h"
 #include "ipdb.h"
 #include "ppp_auth.h"
+#include "iputils.h"
+#include "utils.h"
 
 #include "radius_p.h"
 #include "attr_defs.h"
@@ -55,6 +57,84 @@ static struct ipdb_t ipdb;
 
 static mempool_t rpd_pool;
 static mempool_t auth_ctx_pool;
+
+static void parse_framed_route(struct radius_pd_t *rpd, const char *attr)
+{
+	char str[32];
+	char *ptr;
+	in_addr_t dst;
+	in_addr_t gw;
+	int mask;
+	struct framed_route *fr;
+
+	ptr = strchr(attr, '/');
+	if (ptr && ptr - attr > 16)
+		goto out_err;
+
+	if (ptr) {
+		memcpy(str, attr, ptr - attr);
+		str[ptr - attr] = 0;
+	} else {
+		ptr = strchr(attr, ' ');
+		if (ptr) {
+			memcpy(str, attr, ptr - attr);
+			str[ptr - attr] = 0;
+		} else
+			strcpy(str, attr);
+	}
+
+	dst = inet_addr(str);
+	if (dst == INADDR_NONE)
+		goto out_err;
+
+	if (ptr) {
+		if (*ptr == '/') {
+			char *ptr2;
+			for (ptr2 = ++ptr; *ptr2 && *ptr2 != '.' && *ptr2 != ' '; ptr2++);
+			if (*ptr2 == '.' && ptr2 - ptr <= 16) {
+				in_addr_t a;
+				memcpy(str, ptr, ptr2 - ptr);
+				str[ptr2 - ptr] = 0;
+				a = ntohl(inet_addr(str));
+				if (a == INADDR_NONE)
+					goto out_err;
+				mask = 33 - htonl(inet_addr(str));
+				if (~((1<<(32 - mask)) - 1) != a)
+					goto out_err;
+			} else if (*ptr2 == ' ' || *ptr2 == 0) {
+				char *ptr3;
+				mask = strtol(ptr, &ptr3, 10);
+				if (mask < 0 || mask > 32 || ptr3 != ptr2)
+					goto out_err;
+			} else
+				goto out_err;
+		} else
+			mask = 32;
+
+		for (++ptr; *ptr && *ptr != ' '; ptr++);
+		if (*ptr == ' ')
+			gw = inet_addr(ptr + 1);
+		else if (*ptr == 0)
+			gw = 0;
+		else
+			goto out_err;
+	} else {
+		mask = 32;
+		gw = 0;
+	}
+
+	fr = _malloc(sizeof (*fr));
+	fr->dst = dst;
+	fr->mask = mask;
+	fr->gw = gw;
+	fr->next = rpd->fr;
+	rpd->fr = fr;
+
+	return;
+
+out_err:
+	log_ppp_warn("radius: failed to parse Framed-Route=%s\n", attr);
+}
 
 int rad_proc_attrs(struct rad_req_t *req)
 {
@@ -151,6 +231,9 @@ int rad_proc_attrs(struct rad_req_t *req)
 				break;
 			case NAS_Port_Id:
 				ap_session_rename(rpd->ses, attr->val.string, attr->len);
+				break;
+			case Framed_Route:
+				parse_framed_route(rpd, attr->val.string);
 				break;
 		}
 	}
@@ -336,22 +419,38 @@ static void ses_acct_start(struct ap_session *ses)
 static void ses_started(struct ap_session *ses)
 {
 	struct radius_pd_t *rpd = find_pd(ses);
+	struct framed_route *fr;
 
 	if (rpd->session_timeout.expire_tv.tv_sec) {
 		rpd->session_timeout.expire = session_timeout;
 		triton_timer_add(ses->ctrl->ctx, &rpd->session_timeout, 0);
+	}
+
+	for (fr = rpd->fr; fr; fr = fr->next) {
+		if (iproute_add(fr->gw ? 0 : rpd->ses->ifindex, 0, fr->dst, fr->gw, 3, fr->mask)) {
+			char dst[17], gw[17];
+			u_inet_ntoa(fr->dst, dst);
+			u_inet_ntoa(fr->gw, gw);
+			log_ppp_warn("radius: failed to add route %s/%i%s\n", dst, fr->mask, gw);
+		}
 	}
 }
 
 static void ses_finishing(struct ap_session *ses)
 {
 	struct radius_pd_t *rpd = find_pd(ses);
+	struct framed_route *fr;
 
 	if (rpd->auth_ctx) {
 		rad_server_req_cancel(rpd->auth_ctx->req, 1);
 		rad_req_free(rpd->auth_ctx->req);
 		mempool_free(rpd->auth_ctx);
 		rpd->auth_ctx = NULL;
+	}
+
+	for (fr = rpd->fr; fr; fr = fr->next) {
+		if (fr->gw)
+			iproute_del(0, fr->dst, 3, fr->mask);
 	}
 
 	if (rpd->acct_started || rpd->acct_req)
@@ -362,6 +461,7 @@ static void ses_finished(struct ap_session *ses)
 {
 	struct radius_pd_t *rpd = find_pd(ses);
 	struct ipv6db_addr_t *a;
+	struct framed_route *fr = rpd->fr;
 
 	pthread_rwlock_wrlock(&sessions_lock);
 	pthread_mutex_lock(&rpd->lock);
@@ -407,6 +507,12 @@ static void ses_finished(struct ap_session *ses)
 		a = list_entry(rpd->ipv6_dp.prefix_list.next, typeof(*a), entry);
 		list_del(&a->entry);
 		_free(a);
+	}
+
+	while (fr) {
+		struct framed_route *next = fr->next;
+		_free(fr);
+		fr = next;
 	}
 
 	list_del(&rpd->pd.entry);
