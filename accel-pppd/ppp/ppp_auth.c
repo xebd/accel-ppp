@@ -343,10 +343,8 @@ int __export ppp_auth_succeeded(struct ppp_t *ppp, char *username)
 {
 	struct auth_layer_data_t *ad = container_of(ppp_find_layer_data(ppp, &auth_layer), typeof(*ad), ld);
 
-	if (ap_session_set_username(&ppp->ses, username)) {
-		_free(username);
+	if (ap_session_set_username(&ppp->ses, username))
 		return -1;
-	}
 
 	if (connect_ppp_channel(ppp))
 		return -1;
@@ -361,7 +359,9 @@ void __export ppp_auth_failed(struct ppp_t *ppp, char *username)
 	if (username) {
 		pthread_rwlock_wrlock(&ses_lock);
 		if (!ppp->ses.username)
-			ppp->ses.username = _strdup(username);
+			ppp->ses.username = username;
+		else
+			_free(username);
 		ppp->ses.terminate_cause = TERM_AUTH_ERROR;
 		pthread_rwlock_unlock(&ses_lock);
 		log_ppp_info1("%s: authentication failed\n", username);

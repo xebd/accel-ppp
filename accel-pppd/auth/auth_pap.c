@@ -179,9 +179,10 @@ static void pap_auth_result(struct pap_auth_data *p, int res)
 
 	if (res == PWDB_DENIED) {
 		pap_send_nak(p, p->req_id);
-		if (p->started)
+		if (p->started) {
 			ap_session_terminate(&p->ppp->ses, TERM_AUTH_ERROR, 0);
-		else
+			_free(peer_id);
+		} else
 			ppp_auth_failed(p->ppp, peer_id);
 	} else {
 		if (ppp_auth_succeeded(p->ppp, peer_id)) {
@@ -193,8 +194,6 @@ static void pap_auth_result(struct pap_auth_data *p, int res)
 			return;
 		}
 	}
-
-	_free(peer_id);
 }
 
 static int pap_recv_req(struct pap_auth_data *p, struct pap_hdr *hdr)
@@ -241,7 +240,6 @@ static int pap_recv_req(struct pap_auth_data *p, struct pap_hdr *hdr)
 		if (ppp_auth_succeeded(p->ppp, peer_id)) {
 			pap_send_nak(p, hdr->id);
 			ap_session_terminate(&p->ppp->ses, TERM_AUTH_ERROR, 0);
-			_free(peer_id);
 			return -1;
 		}
 		pap_send_ack(p, hdr->id);
@@ -281,7 +279,6 @@ static int pap_recv_req(struct pap_auth_data *p, struct pap_hdr *hdr)
 		if (ppp_auth_succeeded(p->ppp, peer_id)) {
 			pap_send_nak(p, hdr->id);
 			ap_session_terminate(&p->ppp->ses, TERM_AUTH_ERROR, 0);
-			_free(peer_id);
 			ret = -1;
 		} else {
 			pap_send_ack(p, hdr->id);
@@ -296,13 +293,13 @@ static int pap_recv_req(struct pap_auth_data *p, struct pap_hdr *hdr)
 
 failed:
 	pap_send_nak(p, hdr->id);
-	if (p->started)
+	if (p->started) {
 		ap_session_terminate(&p->ppp->ses, TERM_AUTH_ERROR, 0);
-	else
+		_free(peer_id);
+	} else
 		ppp_auth_failed(p->ppp, peer_id);
 
 	_free(passwd);
-	_free(peer_id);
 
 	return -1;
 }

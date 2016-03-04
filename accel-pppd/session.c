@@ -391,6 +391,7 @@ int __export ap_session_set_username(struct ap_session *s, char *username)
 				if (conf_single_session == 0) {
 					pthread_rwlock_unlock(&ses_lock);
 					log_ppp_info1("%s: second session denied\n", username);
+					_free(username);
 					return -1;
 				} else {
 					ap_session_ifdown(ses);
