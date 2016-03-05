@@ -20,16 +20,16 @@
 
 #include "memdebug.h"
 
+#define MAX_NET 2
+#define HASH_BITS 0xff
+
 struct tree {
 	pthread_mutex_t lock;
 	struct rb_root root;
 };
 
-#define HASH_BITS 0xff
-
 struct disc_net {
 	struct triton_context_t ctx;
-	struct list_head entry;
 	struct triton_md_handler_t hnd;
 	const struct ap_net *net;
 	struct tree tree[0];
@@ -39,7 +39,9 @@ static uint8_t bc_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 
 static mempool_t pkt_pool;
 
-static LIST_HEAD(nets);
+static struct disc_net *nets[MAX_NET];
+static int net_cnt;
+static pthread_mutex_t nets_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void disc_close(struct triton_context_t *ctx);
 static int disc_read(struct triton_md_handler_t *h);
@@ -51,6 +53,9 @@ static struct disc_net *init_net(const struct ap_net *net)
 	struct disc_net *n;
 	struct tree *tree;
 	int sock;
+
+	if (net_cnt == MAX_NET - 1)
+		return NULL;
 
 	sock = net->socket(PF_PACKET, SOCK_RAW, htons(ETH_P_PPP_DISC));
 	if (sock < 0)
@@ -87,20 +92,21 @@ static struct disc_net *init_net(const struct ap_net *net)
 	triton_context_register(&n->ctx, NULL);
 	triton_md_register_handler(&n->ctx, &n->hnd);
 	triton_md_enable_handler(&n->hnd, MD_MODE_READ);
-	triton_context_wakeup(&n->ctx);
 
-	list_add_tail(&n->entry, &nets);
+	nets[net_cnt++] = n;
+
+	triton_context_wakeup(&n->ctx);
 
 	return n;
 }
 
 static struct disc_net *find_net(const struct ap_net *net)
 {
-	struct disc_net *n;
+	int i;
 
-	list_for_each_entry(n, &nets, entry) {
-		if (n->net == net)
-			return n;
+	for (i = 0; i < net_cnt; i++) {
+		if (nets[i]->net == net)
+			return nets[i];
 	}
 
 	return NULL;
@@ -115,7 +121,14 @@ int pppoe_disc_start(struct pppoe_serv_t *serv)
 	struct pppoe_serv_t *n;
 
 	if (!net) {
-		net = init_net(serv->net);
+		pthread_mutex_lock(&nets_lock);
+
+		net = find_net(serv->net);
+		if (!net)
+			net = init_net(serv->net);
+
+		pthread_mutex_unlock(&nets_lock);
+
 		if (!net)
 			return -1;
 	}
