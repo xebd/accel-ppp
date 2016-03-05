@@ -218,7 +218,7 @@ static int install_police(struct rtnl_handle *rth, int ifindex, int rate, int bu
 	} sel = {
 		.sel.nkeys = 1,
 		.sel.flags = TC_U32_TERMINAL,
-		.key.off = 12,
+//		.key.off = 12,
 	};
 
 	struct tc_police police = {
@@ -247,7 +247,7 @@ static int install_police(struct rtnl_handle *rth, int ifindex, int rate, int bu
 	req.t.tcm_handle = 1;
 	req.t.tcm_parent = 0xffff0000;
 
-	req.t.tcm_info = TC_H_MAKE(100 << 16, ntohs(ETH_P_IP));
+	req.t.tcm_info = TC_H_MAKE(100 << 16, ntohs(ETH_P_ALL));
 
 	addattr_l(&req.n, sizeof(req), TCA_KIND, "u32", 4);
 
