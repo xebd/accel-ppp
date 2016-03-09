@@ -405,7 +405,6 @@ static netdev_tx_t ipoe_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct ipoe_session *ses = netdev_priv(dev);
 	struct net_device_stats *stats = &dev->stats;
 	struct iphdr  *iph;
-	struct ethhdr *eth;
 	struct sk_buff *skb1;
 	struct dst_entry *dst;
 	/*struct arphdr *arp;
@@ -490,11 +489,6 @@ static netdev_tx_t ipoe_xmit(struct sk_buff *skb, struct net_device *dev)
 			ip_local_out(skb);
 
 			return NETDEV_TX_OK;
-		} else {
-			eth = (struct ethhdr *)skb->data;
-
-			memcpy(eth->h_dest, ses->hwaddr, ETH_ALEN);
-			memcpy(eth->h_source, ses->link_dev->dev_addr, ETH_ALEN);
 		}
 	} /*else if (skb->protocol == htons(ETH_P_ARP)) {
 		if (!pskb_may_pull(skb, arp_hdr_len(dev) + noff))
@@ -741,6 +735,54 @@ static struct ipoe_session *ipoe_lookup(__be32 addr)
 	return NULL;
 }
 
+static struct ipoe_session *ipoe_lookup_rt(struct sk_buff *skb, __be32 addr)
+{
+	struct net *net = pick_net(skb);
+	struct rtable *rt;
+	struct net_device *dev;
+	struct ipoe_session *ses;
+
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,38)
+	struct flowi fl4;
+#else
+	struct flowi4 fl4;
+#endif
+
+	memset(&fl4, 0, sizeof(fl4));
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,38)
+	fl4.fl4_dst = addr;
+	fl4.fl4_tos = RT_TOS(0);
+	fl4.fl4_scope = RT_SCOPE_UNIVERSE;
+	if (ip_route_output_key(net, &rt, &fl4))
+		return NULL;
+#else
+	fl4.daddr = addr;
+	fl4.flowi4_tos = RT_TOS(0);
+	fl4.flowi4_scope = RT_SCOPE_UNIVERSE;
+	rt = ip_route_output_key(net, &fl4);
+	if (IS_ERR(rt))
+		return NULL;
+#endif
+
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,37)
+	dev      = rt->u.dst.dev;
+#else
+	dev      = rt->dst.dev;
+#endif
+
+	if (dev->netdev_ops != &ipoe_netdev_ops) {
+		ip_rt_put(rt);
+		return NULL;
+	}
+
+	ses = netdev_priv(dev);
+	atomic_inc(&ses->refs);
+
+	ip_rt_put(rt);
+
+	return ses;
+}
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 static unsigned int ipt_in_hook(unsigned int hook, struct sk_buff *skb, const struct net_device *in, const struct net_device *out, int (*okfn)(struct sk_buff *skb))
 #elif LINUX_VERSION_CODE < KERNEL_VERSION(4,1,0)
@@ -777,8 +819,7 @@ static unsigned int ipt_in_hook(const struct nf_hook_ops *ops, struct sk_buff *s
 		return NF_ACCEPT;
 
 	//pr_info("ipoe: recv %08x %08x\n", iph->saddr, iph->daddr);
-
-	ses = ipoe_lookup(iph->saddr);
+	ses = ipoe_lookup_rt(skb, iph->saddr);
 
 	if (!ses) {
 		if (ipoe_check_exclude(iph->saddr))
@@ -891,7 +932,7 @@ static unsigned int ipt_out_hook(const struct nf_hook_ops *ops, struct sk_buff *
 	if (ipoe_check_network(iph->saddr))
 		return NF_ACCEPT;
 
-	ses = ipoe_lookup(iph->daddr);
+	ses = ipoe_lookup_rt(skb, iph->daddr);
 	if (!ses)
 		return NF_ACCEPT;
 
@@ -1784,7 +1825,7 @@ static int __init ipoe_init(void)
 {
 	int err, i;
 
-	printk("IPoE session driver v1.10-rc1\n");
+	printk("IPoE session driver v1.11\n");
 
 	/*err = register_pernet_device(&ipoe_net_ops);
 	if (err < 0)
