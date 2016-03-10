@@ -486,7 +486,11 @@ static netdev_tx_t ipoe_xmit(struct sk_buff *skb, struct net_device *dev)
 			skb->vlan_tci = 0;
 			skb_set_queue_mapping(skb, 0);
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,4,0)
+			ip_local_out(pick_net(skb), skb->sk, skb);
+#else
 			ip_local_out(skb);
+#endif
 
 			return NETDEV_TX_OK;
 		} else {
@@ -772,8 +776,10 @@ static struct ipoe_session *ipoe_lookup_rt(struct sk_buff *skb, __be32 addr)
 static unsigned int ipt_in_hook(unsigned int hook, struct sk_buff *skb, const struct net_device *in, const struct net_device *out, int (*okfn)(struct sk_buff *skb))
 #elif LINUX_VERSION_CODE < KERNEL_VERSION(4,1,0)
 static unsigned int ipt_in_hook(const struct nf_hook_ops *ops, struct sk_buff *skb, const struct net_device *in, const struct net_device *out, int (*okfn)(struct sk_buff *skb))
-#else
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(4,4,0)
 static unsigned int ipt_in_hook(const struct nf_hook_ops *ops, struct sk_buff *skb, const struct nf_hook_state *state)
+#else
+static unsigned int ipt_in_hook(void *priv, struct sk_buff *skb, const struct nf_hook_state *state)
 #endif
 {
 	struct ipoe_session *ses = NULL;
@@ -885,8 +891,10 @@ out:
 static unsigned int ipt_out_hook(unsigned int hook, struct sk_buff *skb, const struct net_device *in, const struct net_device *out, int (*okfn)(struct sk_buff *skb))
 #elif LINUX_VERSION_CODE < KERNEL_VERSION(4,1,0)
 static unsigned int ipt_out_hook(const struct nf_hook_ops *ops, struct sk_buff *skb, const struct net_device *in, const struct net_device *out, int (*okfn)(struct sk_buff *skb))
-#else
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(4,4,0)
 static unsigned int ipt_out_hook(const struct nf_hook_ops *ops, struct sk_buff *skb, const struct nf_hook_state *state)
+#else
+static unsigned int ipt_out_hook(void *priv, struct sk_buff *skb, const struct nf_hook_state *state)
 #endif
 {
 	int noff, iif;
@@ -1772,21 +1780,27 @@ static struct nf_hook_ops ipt_ops[] __read_mostly = {
 		.pf = PF_INET,
 		.hooknum = NF_INET_POST_ROUTING,
 		.priority = NF_IP_PRI_LAST,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,4,0)
 		.owner = THIS_MODULE,
+#endif
 	},
 	{
 		.hook = ipt_out_hook,
 		.pf = PF_INET,
 		.hooknum = NF_INET_LOCAL_OUT,
 		.priority = NF_IP_PRI_LAST,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,4,0)
 		.owner = THIS_MODULE,
+#endif
 	},
 	{
 		.hook = ipt_in_hook,
 		.pf = PF_INET,
 		.hooknum = NF_INET_PRE_ROUTING,
 		.priority = NF_IP_PRI_FIRST,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,4,0)
 		.owner = THIS_MODULE,
+#endif
 	},
 };
 
