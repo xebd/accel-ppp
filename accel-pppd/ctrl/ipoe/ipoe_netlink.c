@@ -75,7 +75,7 @@ void ipoe_nl_add_net(uint32_t addr, int mask)
 	ghdr = NLMSG_DATA(&req.n);
 	ghdr->cmd = IPOE_CMD_ADD_NET;
 
-	mask = ((1 << mask) - 1) << (32 - mask);
+	mask = mask ? ~0 << (32 - mask) : 0;
 
 	addattr32(nlh, 1024, IPOE_ATTR_ADDR, addr);
 	addattr32(nlh, 1024, IPOE_ATTR_MASK, mask);
