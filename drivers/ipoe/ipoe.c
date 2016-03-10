@@ -489,28 +489,13 @@ static netdev_tx_t ipoe_xmit(struct sk_buff *skb, struct net_device *dev)
 			ip_local_out(skb);
 
 			return NETDEV_TX_OK;
+		} else {
+			struct ethhdr *eth = (struct ethhdr *)skb->data;
+
+			memcpy(eth->h_dest, ses->hwaddr, ETH_ALEN);
+			memcpy(eth->h_source, ses->link_dev->dev_addr, ETH_ALEN);
 		}
-	} /*else if (skb->protocol == htons(ETH_P_ARP)) {
-		if (!pskb_may_pull(skb, arp_hdr_len(dev) + noff))
-			goto drop;
-
-		arp = arp_hdr(skb);
-		arp_ptr = (unsigned char *)(arp + 1);
-
-		if (arp->ar_op == htons(ARPOP_REQUEST)) {
-			memcpy(&tip, arp_ptr + ETH_ALEN + 4 + ETH_ALEN, 4);
-			if (tip == ses->addr) {
-				if (skb_cloned(skb) &&
-						!skb_clone_writable(skb, arp_hdr_len(dev) + noff) &&
-						pskb_expand_head(skb, 0, 0, GFP_ATOMIC))
-					goto drop;
-
-				arp = arp_hdr(skb);
-				arp_ptr = (unsigned char *)(arp + 1);
-				memcpy(arp_ptr + ETH_ALEN + 4 + ETH_ALEN, &ses->peer_addr, 4);
-			}
-		}
-	}*/
+	}
 
 	if (ses->link_dev) {
 		cb_ptr = skb->cb + sizeof(skb->cb) - 2;
