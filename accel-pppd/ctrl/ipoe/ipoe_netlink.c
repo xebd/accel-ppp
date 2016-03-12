@@ -17,6 +17,7 @@
 #include "log.h"
 #include "genl.h"
 #include "libnetlink.h"
+#include "iputils.h"
 
 #include "ipoe.h"
 #include "if_ipoe.h"
@@ -28,61 +29,6 @@
 static struct rtnl_handle rth;
 static struct triton_md_handler_t mc_hnd;
 static int ipoe_genl_id;
-
-void ipoe_nl_delete_nets(void)
-{
-	struct nlmsghdr *nlh;
-	struct genlmsghdr *ghdr;
-	struct {
-		struct nlmsghdr n;
-		char buf[1024];
-	} req;
-
-	if (rth.fd == -1)
-		return;
-
-	nlh = &req.n;
-	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
-	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
-	nlh->nlmsg_type = ipoe_genl_id;
-
-	ghdr = NLMSG_DATA(&req.n);
-	ghdr->cmd = IPOE_CMD_DEL_NET;
-
-	addattr32(nlh, 1024, IPOE_ATTR_ADDR, 0);
-
-	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 )
-		log_error("ipoe: nl_del_net: error talking to kernel\n");
-}
-
-void ipoe_nl_add_net(uint32_t addr, int mask)
-{
-	struct nlmsghdr *nlh;
-	struct genlmsghdr *ghdr;
-	struct {
-		struct nlmsghdr n;
-		char buf[1024];
-	} req;
-
-	if (rth.fd == -1)
-		return;
-
-	nlh = &req.n;
-	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
-	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
-	nlh->nlmsg_type = ipoe_genl_id;
-
-	ghdr = NLMSG_DATA(&req.n);
-	ghdr->cmd = IPOE_CMD_ADD_NET;
-
-	mask = mask ? ~0 << (32 - mask) : 0;
-
-	addattr32(nlh, 1024, IPOE_ATTR_ADDR, addr);
-	addattr32(nlh, 1024, IPOE_ATTR_MASK, mask);
-
-	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 )
-		log_error("ipoe: nl_add_net: error talking to kernel\n");
-}
 
 int ipoe_nl_add_exclude(uint32_t addr, int mask)
 {
@@ -152,33 +98,7 @@ void ipoe_nl_del_exclude(uint32_t addr)
 	rtnl_close(&rth);
 }
 
-void ipoe_nl_delete_interfaces(void)
-{
-	struct nlmsghdr *nlh;
-	struct genlmsghdr *ghdr;
-	struct {
-		struct nlmsghdr n;
-		char buf[1024];
-	} req;
-
-	if (rth.fd == -1)
-		return;
-
-	nlh = &req.n;
-	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
-	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
-	nlh->nlmsg_type = ipoe_genl_id;
-
-	ghdr = NLMSG_DATA(&req.n);
-	ghdr->cmd = IPOE_CMD_DEL_IF;
-
-	addattr32(nlh, 1024, IPOE_ATTR_IFINDEX, -1);
-
-	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 )
-		log_error("ipoe: nl_del_iface: error talking to kernel\n");
-}
-
-void ipoe_nl_add_interface(int ifindex)
+void ipoe_nl_add_interface(int ifindex, uint8_t mode)
 {
 	struct nlmsghdr *nlh;
 	struct genlmsghdr *ghdr;
@@ -199,6 +119,7 @@ void ipoe_nl_add_interface(int ifindex)
 	ghdr->cmd = IPOE_CMD_ADD_IF;
 
 	addattr32(nlh, 1024, IPOE_ATTR_IFINDEX, ifindex);
+	addattr_l(nlh, 1024, IPOE_ATTR_MODE, &mode, 1);
 
 	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 )
 		log_error("ipoe: nl_add_iface: error talking to kernel\n");
@@ -230,7 +151,12 @@ void ipoe_nl_del_interface(int ifindex)
 		log_error("ipoe: nl_del_iface: error talking to kernel\n");
 }
 
-int ipoe_nl_create(uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_t *hwaddr)
+void ipoe_nl_delete_interfaces(void)
+{
+	ipoe_nl_del_interface(-1);
+}
+
+int ipoe_nl_create(int ifindex)
 {
 	struct rtnl_handle rth;
 	struct nlmsghdr *nlh;
@@ -243,10 +169,6 @@ int ipoe_nl_create(uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_
 		struct nlmsghdr n;
 		char buf[1024];
 	} req;
-	union {
-		uint8_t hwaddr[6];
-		uint64_t u64;
-	} u;
 
 	if (rtnl_open_byproto(&rth, 0, NETLINK_GENERIC)) {
 		log_ppp_error("ipoe: cannot open generic netlink socket\n");
@@ -261,19 +183,7 @@ int ipoe_nl_create(uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_
 	ghdr = NLMSG_DATA(&req.n);
 	ghdr->cmd = IPOE_CMD_CREATE;
 
-	if (peer_addr)
-		addattr32(nlh, 1024, IPOE_ATTR_PEER_ADDR, peer_addr);
-
-	if (addr)
-		addattr32(nlh, 1024, IPOE_ATTR_ADDR, addr);
-
-	if (hwaddr) {
-		memcpy(u.hwaddr, hwaddr, 6);
-		addattr_l(nlh, 1024, IPOE_ATTR_HWADDR, &u.u64, 8);
-	}
-
-	if (ifname)
-		addattr_l(nlh, 1024, IPOE_ATTR_IFNAME, ifname, strlen(ifname) + 1);
+	addattr32(nlh, 1024, IPOE_ATTR_IFINDEX, ifindex);
 
 	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 )
 		log_ppp_error("ipoe: nl_create: error talking to kernel\n");
@@ -313,7 +223,7 @@ out:
 	return ret;
 }
 
-int ipoe_nl_modify(int ifindex, uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_t *hwaddr)
+int ipoe_nl_modify(int ifindex, uint32_t peer_addr, uint32_t addr, uint32_t gw, int link_ifindex, uint8_t *hwaddr)
 {
 	struct rtnl_handle rth;
 	struct nlmsghdr *nlh;
@@ -323,10 +233,6 @@ int ipoe_nl_modify(int ifindex, uint32_t peer_addr, uint32_t addr, const char *i
 		struct nlmsghdr n;
 		char buf[1024];
 	} req;
-	union {
-		uint8_t hwaddr[6];
-		uint64_t u64;
-	} u;
 
 	if (rtnl_open_byproto(&rth, 0, NETLINK_GENERIC)) {
 		log_ppp_error("ipoe: cannot open generic netlink socket\n");
@@ -344,14 +250,11 @@ int ipoe_nl_modify(int ifindex, uint32_t peer_addr, uint32_t addr, const char *i
 	addattr32(nlh, 1024, IPOE_ATTR_IFINDEX, ifindex);
 	addattr32(nlh, 1024, IPOE_ATTR_PEER_ADDR, peer_addr);
 	addattr32(nlh, 1024, IPOE_ATTR_ADDR, addr);
+	addattr32(nlh, 1024, IPOE_ATTR_GW_ADDR, gw);
+	addattr32(nlh, 1024, IPOE_ATTR_LINK_IFINDEX, link_ifindex);
 
-	if (hwaddr) {
-		memcpy(u.hwaddr, hwaddr, 6);
-		addattr_l(nlh, 1024, IPOE_ATTR_HWADDR, &u.u64, 8);
-	}
-
-	if (ifname)
-		addattr_l(nlh, 1024, IPOE_ATTR_IFNAME, ifname, strlen(ifname) + 1);
+	if (hwaddr)
+		addattr_l(nlh, 1024, IPOE_ATTR_HWADDR, hwaddr, 6);
 
 	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 ) {
 		log_ppp_error("ipoe: nl_create: error talking to kernel\n");
@@ -631,6 +534,7 @@ static void init(void)
 	triton_context_wakeup(&mc_ctx);
 
 	ipoe_nl_del_exclude(0);
+	ipoe_nl_delete_interfaces();
 }
 
 DEFINE_INIT(19, init);

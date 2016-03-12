@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <pthread.h>
+#include <linux/if.h>
 
 #include "triton.h"
 #include "ap_session.h"
@@ -20,11 +21,10 @@
 struct ipoe_serv {
 	struct list_head entry;
 	struct triton_context_t ctx;
-	char *ifname;
+	char ifname[IFNAMSIZ];
 	int ifindex;
 	uint8_t hwaddr[ETH_ALEN];
 	struct list_head sessions;
-	struct list_head addr_list;
 	struct dhcpv4_serv *dhcpv4;
 	struct dhcpv4_relay *dhcpv4_relay;
 	void *arp;
@@ -88,7 +88,6 @@ struct ipoe_session {
 #ifdef RADIUS
 	struct rad_plugin_t radius;
 #endif
-	int ifcfg:1;
 	int started:1;
 	int terminating:1;
 	int dhcp_addr:1;
@@ -120,14 +119,12 @@ struct ipoe_session *ipoe_session_alloc(void);
 
 struct ipoe_serv *ipoe_find_serv(const char *ifname);
 
-void ipoe_nl_add_net(uint32_t addr, int mask);
-void ipoe_nl_delete_nets(void);
-void ipoe_nl_add_interface(int ifindex);
+void ipoe_nl_add_interface(int ifindex, uint8_t mode);
 void ipoe_nl_del_interface(int ifindex);
 void ipoe_nl_delete_interfaces(void);
-int ipoe_nl_create(uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_t *hwaddr);
+int ipoe_nl_create(int ifindex);
 void ipoe_nl_delete(int ifindex);
-int ipoe_nl_modify(int ifindex, uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_t *hwaddr);
+int ipoe_nl_modify(int ifindex, uint32_t peer_addr, uint32_t addr, uint32_t gw, int link_ifindex, uint8_t *hwaddr);
 void ipoe_nl_get_sessions(struct list_head *list);
 int ipoe_nl_add_exclude(uint32_t addr, int mask);
 void ipoe_nl_del_exclude(uint32_t addr);

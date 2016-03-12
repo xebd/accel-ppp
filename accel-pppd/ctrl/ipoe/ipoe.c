@@ -43,15 +43,8 @@
 #define USERNAME_IFNAME 1
 #define USERNAME_LUA 2
 
-#define MODE_L2 0
-#define MODE_L3 1
-
-struct ifaddr {
-	struct list_head entry;
-	in_addr_t addr;
-	int mask;
-	int refs;
-};
+#define MODE_L2 2
+#define MODE_L3 3
 
 struct iplink_arg {
 	pcre *re;
@@ -510,7 +503,8 @@ static int ipoe_create_interface(struct ipoe_session *ses)
 		mempool_free(uc);
 	} else {
 		pthread_mutex_unlock(&uc_lock);
-		ses->ifindex = ipoe_nl_create(0, 0, ses->serv->opt_mode == MODE_L2 ? ses->serv->ifname : NULL, ses->hwaddr);
+
+		ses->ifindex = ipoe_nl_create(ses->serv->ifindex);
 		if (ses->ifindex == -1) {
 			log_ppp_error("ipoe: failed to create interface\n");
 			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 1);
@@ -530,7 +524,6 @@ static int ipoe_create_interface(struct ipoe_session *ses)
 	strncpy(ses->ses.ifname, ifr.ifr_name, AP_IFNAME_LEN);
 	ses->ses.ifindex = ses->ifindex;
 	ses->ses.unit_idx = ses->ifindex;
-	ses->ctrl.dont_ifcfg = !conf_ip_unnumbered;
 
 	log_ppp_info2("create interface %s parent %s\n", ifr.ifr_name, ses->serv->ifname);
 
@@ -802,115 +795,39 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 	}
 }
 
-static void ipoe_serv_add_addr(struct ipoe_serv *serv, in_addr_t addr, int mask)
-{
-	struct ifaddr *a;
-
-	pthread_mutex_lock(&serv->lock);
-
-	if (serv->opt_shared) {
-		list_for_each_entry(a, &serv->addr_list, entry) {
-			if (a->addr == addr) {
-				a->refs++;
-				pthread_mutex_unlock(&serv->lock);
-
-				return;
-			}
-		}
-	}
-
-	a = _malloc(sizeof(*a));
-	a->addr = addr;
-	a->mask = mask;
-	a->refs = 1;
-	list_add_tail(&a->entry, &serv->addr_list);
-
-	if (ipaddr_add(serv->ifindex, a->addr, mask))
-		log_warn("ipoe: failed to add addess to interface '%s'\n", serv->ifname);
-
-	pthread_mutex_unlock(&serv->lock);
-}
-
-static void ipoe_serv_del_addr(struct ipoe_serv *serv, in_addr_t addr, int lock)
-{
-	struct ifaddr *a;
-
-	if (lock)
-		pthread_mutex_lock(&serv->lock);
-
-	list_for_each_entry(a, &serv->addr_list, entry) {
-		if (a->addr == addr) {
-			if (--a->refs == 0) {
-				if (ipaddr_del(serv->ifindex, a->addr, a->mask))
-					log_warn("ipoe: failed to delete addess from interface '%s'\n", serv->ifname);
-				list_del(&a->entry);
-				_free(a);
-			}
-			break;
-		}
-	}
-
-	if (lock)
-		pthread_mutex_unlock(&serv->lock);
-}
-
-static void ipoe_ifcfg_add(struct ipoe_session *ses)
-{
-	struct ipoe_serv *serv = ses->serv;
-
-	if (ses->serv->opt_ifcfg)
-		ipoe_serv_add_addr(ses->serv, ses->siaddr, conf_ip_unnumbered ? 32 : ses->mask);
-
-	if (conf_ip_unnumbered) {
-		if (iproute_add(serv->ifindex, ses->serv->opt_src ? ses->serv->opt_src : ses->router, ses->yiaddr, 0, conf_proto, 32))
-			log_ppp_warn("ipoe: failed to add route to interface '%s'\n", serv->ifname);
-	}
-
-	ses->ifcfg = 1;
-}
-
-static void ipoe_ifcfg_del(struct ipoe_session *ses, int lock)
-{
-	struct ipoe_serv *serv = ses->serv;
-
-	if (conf_ip_unnumbered) {
-		if (iproute_del(serv->ifindex, ses->yiaddr, conf_proto, 32))
-			log_ppp_warn("ipoe: failed to delete route from interface '%s'\n", serv->ifname);
-	}
-
-	if (ses->serv->opt_ifcfg)
-		ipoe_serv_del_addr(ses->serv, ses->siaddr, lock);
-}
-
 static void __ipoe_session_activate(struct ipoe_session *ses)
 {
-	uint32_t addr;
+	uint32_t addr, gw = 0;
+	struct ipoe_serv *serv = ses->serv;
 
 	if (ses->terminating)
 		return;
 
 	if (ses->ifindex != -1) {
 		addr = 0;
-		if (!ses->ses.ipv4) {
+		/*if (!ses->ses.ipv4) {
 			if (ses->serv->opt_mode == MODE_L3) {
 				addr = 1;
 				ses->ctrl.dont_ifcfg = 1;
 			}
-		} else if (ses->ses.ipv4->peer_addr != ses->yiaddr)
+		} else*/
+		if (ses->ses.ipv4 && ses->ses.ipv4->peer_addr != ses->yiaddr)
 			addr = ses->ses.ipv4->peer_addr;
-		else if (!conf_ip_unnumbered)
-			ses->ctrl.dont_ifcfg = 1;
 
-		if (ses->dhcpv4_request && ses->serv->opt_mode == MODE_L3) {
+		/*if (ses->dhcpv4_request && ses->serv->opt_mode == MODE_L3) {
 			in_addr_t gw;
-			iproute_get(ses->router, &gw);
+			iproute_get(ses->router, &gw, NULL);
 			if (gw)
 				iproute_add(0, ses->siaddr, ses->yiaddr, gw, conf_proto, 32);
 			else
 				iproute_add(0, ses->siaddr, ses->router, gw, conf_proto, 32);
-		}
+		}*/
 
-		if (ipoe_nl_modify(ses->ifindex, ses->yiaddr, addr, NULL, NULL)) {
+		if (serv->opt_mode == MODE_L3)
+			iproute_get(ses->yiaddr, &gw);
+
+		//if (ipoe_nl_modify(ses->ifindex, ses->yiaddr, addr, gw, gw ? 0 : ses->serv->ifindex, gw ? NULL : ses->hwaddr)) {
+		if (ipoe_nl_modify(ses->ifindex, ses->yiaddr, addr, gw, serv->ifindex, ses->hwaddr)) {
 			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 1);
 			return;
 		}
@@ -924,17 +841,15 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 	}
 
 	if (ses->ifindex == -1) {
-		if (ses->serv->opt_ifcfg || (ses->serv->opt_mode == MODE_L2))
-			ipoe_ifcfg_add(ses);
+		if (serv->opt_ifcfg)
+			ipaddr_add(serv->ifindex, ses->router, conf_ip_unnumbered ? 32 : ses->mask);
+		else if (!conf_ip_unnumbered)
+			iproute_add(serv->ifindex, ses->router, ses->yiaddr, 0, conf_proto, ses->mask);
 
-		ipoe_nl_add_exclude(ses->yiaddr, 32);
-
-		ses->ctrl.dont_ifcfg = 1;
-	} else if (ses->ctrl.dont_ifcfg && ses->serv->opt_mode == MODE_L2)
-		ipaddr_add(ses->ifindex, ses->siaddr, ses->mask);
-
-	if (ses->l4_redirect)
-		ipoe_change_l4_redirect(ses, 0);
+		if (conf_ip_unnumbered)
+			iproute_add(serv->ifindex, serv->opt_src ?: ses->router, ses->yiaddr, 0, conf_proto, 32);
+	} else
+		ses->ctrl.dont_ifcfg = 0;
 
 	if (ses->serv->opt_mode == MODE_L2 && ses->serv->opt_ipv6 && sock6_fd != -1) {
 		ses->ses.ipv6 = ipdb_get_ipv6(&ses->ses);
@@ -949,6 +864,9 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 	ses->started = 1;
 
 	ap_session_activate(&ses->ses);
+
+	if (ses->l4_redirect)
+		ipoe_change_l4_redirect(ses, 0);
 
 	if (ses->dhcpv4_request) {
 		if (ses->ses.state == AP_STATE_ACTIVE)
@@ -1090,12 +1008,13 @@ static void ipoe_session_free(struct ipoe_session *ses)
 static void ipoe_session_finished(struct ap_session *s)
 {
 	struct ipoe_session *ses = container_of(s, typeof(*ses), ses);
+	struct ipoe_serv *serv = ses->serv;
 	struct unit_cache *uc;
 
 	log_ppp_info1("ipoe: session finished\n");
 
 	if (ses->ifindex != -1) {
-		if (uc_size < conf_unit_cache && ipoe_nl_modify(ses->ifindex, 0, 0, "", NULL)) {
+		if (uc_size < conf_unit_cache && !ipoe_nl_modify(ses->ifindex, 0, 0, 0, 0, NULL)) {
 			uc = mempool_alloc(uc_pool);
 			uc->ifindex = ses->ifindex;
 			pthread_mutex_lock(&uc_lock);
@@ -1104,17 +1023,20 @@ static void ipoe_session_finished(struct ap_session *s)
 			pthread_mutex_unlock(&uc_lock);
 		} else
 			ipoe_nl_delete(ses->ifindex);
-	} else
-		ipoe_nl_del_exclude(ses->yiaddr);
+	} else if (ses->started) {
+		if (serv->opt_ifcfg)
+			ipaddr_del(serv->ifindex, ses->router, conf_ip_unnumbered ? 32 : ses->mask);
+		else if (conf_ip_unnumbered)
+			iproute_del(serv->ifindex, ses->yiaddr, conf_proto, 32);
+		else
+			iproute_del(serv->ifindex, ses->yiaddr, conf_proto, ses->mask);
+	}
 
 	if (ses->dhcp_addr)
 		dhcpv4_put_ip(ses->serv->dhcpv4, ses->yiaddr);
 
 	if (ses->relay_addr && ses->serv->dhcpv4_relay)
 		dhcpv4_relay_send_release(ses->serv->dhcpv4_relay, ses->hwaddr, ses->xid, ses->yiaddr, ses->client_id, ses->relay_agent, ses->serv->ifname, conf_agent_remote_id);
-
-	if (ses->ifcfg)
-		ipoe_ifcfg_del(ses, 1);
 
 	if (ses->dhcpv4)
 		dhcpv4_free(ses->dhcpv4);
@@ -1151,9 +1073,6 @@ static void ipoe_session_terminated(struct ipoe_session *ses)
 {
 	if (ses->l4_redirect_set)
 		ipoe_change_l4_redirect(ses, 1);
-
-	if (!ses->serv->opt_shared)
-		ses->ctrl.dont_ifcfg = 1;
 
 	ap_session_finished(&ses->ses);
 }
@@ -1850,6 +1769,8 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 	if (conf_ip_pool)
 		ses->ses.ipv4_pool_name = _strdup(conf_ip_pool);
 
+	ses->ctrl.dont_ifcfg = 1;
+
 	triton_context_register(&ses->ctx, &ses->ses);
 
 	triton_context_wakeup(&ses->ctx);
@@ -2098,10 +2019,8 @@ static void ipoe_serv_release(struct ipoe_serv *serv)
 	if (serv->dhcpv4)
 		dhcpv4_free(serv->dhcpv4);
 
-	if (serv->dhcpv4_relay) {
-		ipoe_serv_del_addr(serv, serv->dhcpv4_relay->giaddr, 0);
+	if (serv->dhcpv4_relay)
 		dhcpv4_relay_free(serv->dhcpv4_relay, &serv->ctx);
-	}
 
 	if (serv->arp)
 		arpd_stop(serv->arp);
@@ -2126,8 +2045,7 @@ static void ipoe_serv_release(struct ipoe_serv *serv)
 	if (serv->timer.tpd)
 		triton_timer_del(&serv->timer);
 
-	if (serv->opt_up)
-		ipoe_nl_del_interface(serv->ifindex);
+	ipoe_nl_del_interface(serv->ifindex);
 
 	if (serv->vid) {
 		log_info2("ipoe: remove vlan %s\n", serv->ifname);
@@ -2226,10 +2144,6 @@ static void ipoe_drop_sessions(struct ipoe_serv *serv, struct ipoe_session *skip
 			continue;
 
 		ses->terminating = 1;
-		if (ses->ifcfg) {
-			ipoe_ifcfg_del(ses, 0);
-			ses->ifcfg = 0;
-		}
 
 		if (ses->ses.state == AP_STATE_ACTIVE)
 			ap_session_ifdown(&ses->ses);
@@ -2490,7 +2404,9 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	}
 
 	if (opt_up)
-		ipoe_nl_add_interface(ifindex);
+		ipoe_nl_add_interface(ifindex, opt_mode);
+	else
+		ipoe_nl_add_interface(ifindex, 0);
 
 	pthread_mutex_lock(&serv_lock);
 	list_for_each_entry(serv, &serv_list, entry) {
@@ -2516,17 +2432,12 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 
 		if (serv->dhcpv4_relay &&
 				(serv->dhcpv4_relay->addr != relay_addr || serv->dhcpv4_relay->giaddr != opt_giaddr)) {
-			if (serv->opt_ifcfg)
-				ipoe_serv_del_addr(serv, serv->dhcpv4_relay->giaddr, 0);
 			dhcpv4_relay_free(serv->dhcpv4_relay, &serv->ctx);
 			serv->dhcpv4_relay = NULL;
 		}
 
-		if (!serv->dhcpv4_relay && serv->opt_dhcpv4 && opt_relay) {
-			if (opt_ifcfg)
-				ipoe_serv_add_addr(serv, opt_giaddr, 32);
+		if (!serv->dhcpv4_relay && serv->opt_dhcpv4 && opt_relay)
 			serv->dhcpv4_relay = dhcpv4_relay_create(opt_relay, opt_giaddr, &serv->ctx, (triton_event_func)ipoe_recv_dhcpv4_relay);
-		}
 
 		if (serv->arp && !conf_arp) {
 			arpd_stop(serv->arp);
@@ -2589,7 +2500,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	serv->ctx.close = ipoe_serv_close;
 	serv->ctx.before_switch = ipoe_ctx_switch;
 	pthread_mutex_init(&serv->lock, NULL);
-	serv->ifname = _strdup(ifname);
+	strcpy(serv->ifname, ifname);
 	serv->ifindex = ifindex;
 	serv->opt_shared = opt_shared;
 	serv->opt_dhcpv4 = opt_dhcpv4;
@@ -2608,7 +2519,6 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	serv->vid = vid;
 	serv->active = 1;
 	INIT_LIST_HEAD(&serv->sessions);
-	INIT_LIST_HEAD(&serv->addr_list);
 	INIT_LIST_HEAD(&serv->disc_list);
 	INIT_LIST_HEAD(&serv->req_list);
 	memcpy(serv->hwaddr, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
@@ -2621,11 +2531,8 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 		if (serv->dhcpv4)
 			serv->dhcpv4->recv = ipoe_recv_dhcpv4;
 
-		if (opt_relay) {
-			if (opt_ifcfg)
-				ipoe_serv_add_addr(serv, opt_giaddr, 32);
+		if (opt_relay)
 			serv->dhcpv4_relay = dhcpv4_relay_create(opt_relay, opt_giaddr, &serv->ctx, (triton_event_func)ipoe_recv_dhcpv4_relay);
-		}
 	}
 
 	if (serv->opt_arp)
@@ -2741,8 +2648,6 @@ static void load_interfaces(struct conf_sect_t *sect)
 	struct ipoe_serv *serv;
 	struct conf_option_t *opt;
 
-	ipoe_nl_delete_interfaces();
-
 	list_for_each_entry(serv, &serv_list, entry)
 		serv->active = 0;
 
@@ -2760,57 +2665,10 @@ static void load_interfaces(struct conf_sect_t *sect)
 
 	list_for_each_entry(serv, &serv_list, entry) {
 		if (!serv->active && !serv->vid) {
+			ipoe_nl_del_interface(serv->ifindex);
 			ipoe_drop_sessions(serv, NULL);
 			triton_context_call(&serv->ctx, (triton_event_func)ipoe_serv_release, serv);
 		}
-	}
-}
-
-static void parse_local_net(const char *opt)
-{
-	const char *ptr;
-	char str[17];
-	in_addr_t addr;
-	int mask;
-	char *endptr;
-
-	ptr = strchr(opt, '/');
-	if (ptr) {
-		memcpy(str, opt, ptr - opt);
-		str[ptr - opt] = 0;
-		addr = inet_addr(str);
-		if (addr == INADDR_NONE)
-			goto out_err;
-		mask = strtoul(ptr + 1, &endptr, 10);
-		if (mask > 32)
-			goto out_err;
-	} else {
-		addr = inet_addr(opt);
-		if (addr == INADDR_NONE)
-			goto out_err;
-		mask = 24;
-	}
-
-	ipoe_nl_add_net(addr, mask);
-
-	return;
-
-out_err:
-	log_error("ipoe: failed to parse 'local-net=%s'\n", opt);
-}
-
-static void load_local_nets(struct conf_sect_t *sect)
-{
-	struct conf_option_t *opt;
-
-	ipoe_nl_delete_nets();
-
-	list_for_each_entry(opt, &sect->items, entry) {
-		if (strcmp(opt->name, "local-net"))
-			continue;
-		if (!opt->val)
-			continue;
-		parse_local_net(opt->val);
 	}
 }
 
@@ -3369,7 +3227,6 @@ static void load_config(void)
 	parse_offer_delay(conf_get_opt("ipoe", "offer-delay"));
 
 	load_interfaces(s);
-	load_local_nets(s);
 	load_vlan_mon(s);
 	load_gw_addr(s);
 }

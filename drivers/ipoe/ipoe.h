@@ -9,8 +9,6 @@ enum {
 	IPOE_CMD_DELETE,
 	IPOE_CMD_MODIFY,
 	IPOE_CMD_GET,
-	IPOE_CMD_ADD_NET,
-	IPOE_CMD_DEL_NET,
 	IPOE_CMD_ADD_IF,
 	IPOE_CMD_DEL_IF,
 	IPOE_REP_PKT,
@@ -25,12 +23,14 @@ enum {
 	IPOE_ATTR_NONE,			 /* no data */
 	IPOE_ATTR_ADDR,		   /* u32 */
 	IPOE_ATTR_PEER_ADDR,	 /* u32 */
-	IPOE_ATTR_IFNAME,	   /* u32 */
+	IPOE_ATTR_GW_ADDR,	   /* u32 */
 	IPOE_ATTR_HWADDR,	   /* u32 */
 	IPOE_ATTR_MASK,	   /* u32 */
 	IPOE_ATTR_IFINDEX,	   /* u32 */
+	IPOE_ATTR_LINK_IFINDEX,	   /* u32 */
 	IPOE_ATTR_ETH_HDR,	   /* u32 */
 	IPOE_ATTR_IP_HDR,	   /* u32 */
+	IPOE_ATTR_MODE,	   /* u8 */
 	__IPOE_ATTR_MAX,
 };
 
@@ -41,7 +41,7 @@ enum {
  */
 #define IPOE_GENL_NAME		  "IPoE"
 #define IPOE_GENL_MCG_PKT		"Packet"
-#define IPOE_GENL_VERSION	  0x1
+#define IPOE_GENL_VERSION	  0x02
 
 #endif
 
