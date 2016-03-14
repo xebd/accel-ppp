@@ -343,8 +343,6 @@ static netdev_tx_t ipoe_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (!ses->peer_addr)
 		goto drop;
 
-	skb->tc_verd = SET_TC_NCLS(0);
-
 	noff = skb_network_offset(skb);
 
 	if (skb->protocol == htons(ETH_P_IP)) {
@@ -715,7 +713,6 @@ static rx_handler_result_t ipoe_recv(struct sk_buff **pskb)
 
 	skb->dev = ses->dev;
 	skb->skb_iif = ses->dev->ifindex;
-	skb->tc_verd = SET_TC_NCLS(0);
 	memset(skb->cb, 0, sizeof(skb->cb));
 
 	ipoe_update_stats(skb, this_cpu_ptr(ses->rx_stats), 0);
