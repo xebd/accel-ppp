@@ -67,13 +67,6 @@ static struct genl_family vlan_mon_nl_family;
 static struct genl_multicast_group vlan_mon_nl_mcg;
 #endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,0,0)
-static void vlan_mon_kfree_rcu(struct rcu_head *head)
-{
-	kfree(head);
-}
-#endif
-
 static DEFINE_SEMAPHORE(vlan_mon_lock);
 
 static inline int vlan_mon_proto(int proto)
@@ -255,9 +248,7 @@ static int vlan_mon_nl_cmd_noop(struct sk_buff *skb, struct genl_info *info)
 
 	genlmsg_end(msg, hdr);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,32)
-	return genlmsg_unicast(msg, info->snd_pid);
-#elif LINUX_VERSION_CODE < KERNEL_VERSION(3,7,0)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,7,0)
 	return genlmsg_unicast(genl_info_net(info), msg, info->snd_pid);
 #else
 	return genlmsg_unicast(genl_info_net(info), msg, info->snd_portid);
@@ -290,13 +281,7 @@ static int vlan_mon_nl_cmd_add_vlan_mon(struct sk_buff *skb, struct genl_info *i
 
 	ifindex = nla_get_u32(info->attrs[VLAN_MON_ATTR_IFINDEX]);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34)
-	rtnl_lock();
-	dev = __dev_get_by_index(&init_net, ifindex);
-	rtnl_unlock();
-#else
 	dev = dev_get_by_index(&init_net, ifindex);
-#endif
 
 	if (!dev)
 		return -ENODEV;
@@ -357,8 +342,6 @@ static int vlan_mon_nl_cmd_add_vlan_mon(struct sk_buff *skb, struct genl_info *i
 
 	dev_put(dev);
 
-	synchronize_rcu();
-
 	return 0;
 }
 
@@ -382,13 +365,7 @@ static int vlan_mon_nl_cmd_add_vlan_mon_vid(struct sk_buff *skb, struct genl_inf
 	if (proto < 0)
 		return proto;
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34)
-	rtnl_lock();
-	dev = __dev_get_by_index(&init_net, ifindex);
-	rtnl_unlock();
-#else
 	dev = dev_get_by_index(&init_net, ifindex);
-#endif
 
 	if (!dev)
 		return -ENODEV;
@@ -452,40 +429,34 @@ static int vlan_mon_nl_cmd_del_vlan_mon(struct sk_buff *skb, struct genl_info *i
 		ifindex = -1;
 
 	down(&vlan_mon_lock);
+
+	rtnl_lock();
 	list_for_each_safe(pos, n, &vlan_devices) {
 		d = list_entry(pos, typeof(*d), entry);
 		if ((ifindex == -1 || d->ifindex == ifindex) && (d->proto & proto)) {
 			//pr_info("del net %08x/%08x\n", n->addr, n->mask);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34)
-			rtnl_lock();
-			dev = __dev_get_by_index(&init_net, d->ifindex);
-			rtnl_unlock();
-#else
-			dev = dev_get_by_index(&init_net, d->ifindex);
-#endif
-
 			d->proto &= ~proto;
 
+			dev = __dev_get_by_index(&init_net, d->ifindex);
 			if (dev) {
 				if (dev->ml_priv == d) {
 					if (!d->proto)
 						rcu_assign_pointer(dev->ml_priv, NULL);
 				}
-				dev_put(dev);
 			}
 
 			if (!d->proto) {
 				//pr_info("vlan_mon del %i\n", ifindex);
 				list_del(&d->entry);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
 				kfree_rcu(d, rcu_head);
-#else
-				call_rcu(&d->rcu_head, vlan_mon_kfree_rcu);
-#endif
 			}
 		}
 	}
+	rtnl_unlock();
+
 	up(&vlan_mon_lock);
+
+	synchronize_net();
 
 	spin_lock_irqsave(&vlan_lock, flags);
 	list_for_each_safe(pos, n, &vlan_notifies) {
@@ -496,8 +467,6 @@ static int vlan_mon_nl_cmd_del_vlan_mon(struct sk_buff *skb, struct genl_info *i
 		}
 	}
 	spin_unlock_irqrestore(&vlan_lock, flags);
-
-	synchronize_rcu();
 
 	return 0;
 }
@@ -572,24 +541,6 @@ static int __init vlan_mon_init(void)
 
 	INIT_WORK(&vlan_notify_work, vlan_do_notify);
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35)
-	err = genl_register_family(&vlan_mon_nl_family);
-	if (err < 0) {
-		printk(KERN_INFO "vlan_mon: can't register netlink interface\n");
-		goto out;
-	}
-
-	for (i = 0; i < ARRAY_SIZE(vlan_mon_nl_ops); i++) {
-		err = genl_register_ops(&vlan_mon_nl_family, &vlan_mon_nl_ops[i]);
-		if (err)
-			break;
-	}
-
-	if (err < 0) {
-		printk(KERN_INFO "vlan_mon: can't register netlink interface\n");
-		goto out_unreg;
-	}
-#else
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 	err = genl_register_family_with_ops(&vlan_mon_nl_family, vlan_mon_nl_ops, ARRAY_SIZE(vlan_mon_nl_ops));
 #else
@@ -599,7 +550,6 @@ static int __init vlan_mon_init(void)
 		printk(KERN_INFO "vlan_mon: can't register netlink interface\n");
 		goto out;
 	}
-#endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 	err = genl_register_mc_group(&vlan_mon_nl_family, &vlan_mon_nl_mcg);
@@ -637,24 +587,18 @@ static void __exit vlan_mon_fini(void)
 	down(&vlan_mon_lock);
 	up(&vlan_mon_lock);
 
+	rtnl_lock();
 	while (!list_empty(&vlan_devices)) {
 		d = list_first_entry(&vlan_devices, typeof(*d), entry);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34)
-		rtnl_lock();
 		dev = __dev_get_by_index(&init_net, d->ifindex);
-		rtnl_unlock();
-#else
-		dev = dev_get_by_index(&init_net, d->ifindex);
-#endif
 		if (dev)
 			rcu_assign_pointer(dev->ml_priv, NULL);
 		list_del(&d->entry);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
 		kfree_rcu(d, rcu_head);
-#else
-		call_rcu(&d->rcu_head, vlan_mon_kfree_rcu);
-#endif
 	}
+	rtnl_unlock();
+
+	synchronize_net();
 
 	while (!list_empty(&vlan_notifies)) {
 		vn = list_first_entry(&vlan_notifies, typeof(*vn), entry);
