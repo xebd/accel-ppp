@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <pthread.h>
-#include <net/if.h>
 
 /* Include the Lua API header files. */
 #include <lua.h>
