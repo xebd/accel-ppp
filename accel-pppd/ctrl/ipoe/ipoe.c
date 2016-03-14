@@ -2055,7 +2055,6 @@ static void ipoe_serv_release(struct ipoe_serv *serv)
 
 	triton_context_unregister(&serv->ctx);
 
-	_free(serv->ifname);
 	_free(serv);
 }
 
@@ -2218,13 +2217,13 @@ void ipoe_vlan_mon_notify(int ifindex, int vid)
 		return;
 	}
 
-	strcpy(ifr.ifr_name, ifname);
-	len = strlen(ifr.ifr_name);
-
-	if (iplink_vlan_add(ifr.ifr_name, ifindex, vid))
+	if (iplink_vlan_add(ifname, ifindex, vid))
 		return;
 
 	log_info2("ipoe: create vlan %s parent %s\n", ifname, ifr.ifr_name);
+
+	len = strlen(ifname);
+	memcpy(ifr.ifr_name, ifname, len + 1);
 
 	ioctl(sock_fd, SIOCGIFFLAGS, &ifr, sizeof(ifr));
 	ifr.ifr_flags |= IFF_UP;
@@ -2234,6 +2233,7 @@ void ipoe_vlan_mon_notify(int ifindex, int vid)
 		log_error("ipoe: vlan-mon: %s: failed to get interface index\n", ifr.ifr_name);
 		return;
 	}
+
 
 	list_for_each_entry(opt, &sect->items, entry) {
 		if (strcmp(opt->name, "interface"))
@@ -2257,15 +2257,15 @@ void ipoe_vlan_mon_notify(int ifindex, int vid)
 			if (!re)
 				continue;
 
-			r = pcre_exec(re, NULL, ifr.ifr_name, len, 0, 0, NULL, 0);
+			r = pcre_exec(re, NULL, ifname, len, 0, 0, NULL, 0);
 			pcre_free(re);
 
 			if (r < 0)
 				continue;
 
-			add_interface(ifr.ifr_name, ifr.ifr_ifindex, opt->val, ifindex, vid);
-		} else if (ptr - opt->val == len && memcmp(opt->val, ifr.ifr_name, len) == 0)
-			add_interface(ifr.ifr_name, ifr.ifr_ifindex, opt->val, ifindex, vid);
+			add_interface(ifname, ifr.ifr_ifindex, opt->val, ifindex, vid);
+		} else if (ptr - opt->val == len && memcmp(opt->val, ifname, len) == 0)
+			add_interface(ifname, ifr.ifr_ifindex, opt->val, ifindex, vid);
 	}
 }
 

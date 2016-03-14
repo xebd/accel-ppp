@@ -1450,7 +1450,7 @@ static int ipoe_nl_cmd_del_interface(struct sk_buff *skb, struct genl_info *info
 
 			kfree_rcu(i, rcu_head);
 
-			if (ifindex == -1)
+			if (ifindex != -1)
 				break;
 		}
 	}
