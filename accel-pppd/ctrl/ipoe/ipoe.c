@@ -1831,13 +1831,16 @@ void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph)
 		if (serv->ifindex != ifindex)
 			continue;
 
-		if (!serv->opt_up)
+		if (!serv->opt_up) {
+			pthread_mutex_unlock(&serv_lock);
 			return;
+		}
 
 		pthread_mutex_lock(&serv->lock);
 		list_for_each_entry(ses, &serv->sessions, entry) {
 			if (ses->yiaddr == iph->saddr) {
 				pthread_mutex_unlock(&serv->lock);
+				pthread_mutex_unlock(&serv_lock);
 				return;
 			}
 		}
