@@ -151,7 +151,7 @@ static void vlan_mon_handler(const struct sockaddr_nl *addr, struct nlmsghdr *h)
 	int len = h->nlmsg_len;
 	struct rtattr *attrs;
 	int i;
-	int ifindex, vid, proto;
+	int ifindex, vid, proto, vlan_ifindex;
 
 	len -= NLMSG_LENGTH(GENL_HDRLEN);
 
@@ -176,7 +176,12 @@ static void vlan_mon_handler(const struct sockaddr_nl *addr, struct nlmsghdr *h)
 		vid = *(uint32_t *)(RTA_DATA(tb2[VLAN_MON_ATTR_VID]));
 		proto = *(uint32_t *)(RTA_DATA(tb2[VLAN_MON_ATTR_PROTO]));
 
-		log_debug("vlan-mon: notify %i %i %04x\n", ifindex, vid, proto);
+		if (tb2[VLAN_MON_ATTR_VLAN_IFINDEX])
+			vlan_ifindex = *(uint32_t *)(RTA_DATA(tb2[VLAN_MON_ATTR_VLAN_IFINDEX]));
+		else
+			vlan_ifindex = 0;
+
+		log_debug("vlan-mon: notify %i %i %04x %i\n", ifindex, vid, proto, vlan_ifindex);
 
 		if (proto == ETH_P_PPP_DISC)
 			proto = 1;
@@ -184,7 +189,7 @@ static void vlan_mon_handler(const struct sockaddr_nl *addr, struct nlmsghdr *h)
 			proto = 0;
 
 		if (cb[proto])
-			cb[proto](ifindex, vid);
+			cb[proto](ifindex, vid, vlan_ifindex);
 	}
 }
 

@@ -20,6 +20,7 @@ enum {
 	VLAN_MON_ATTR_PROTO,	   /* u32 */
 	VLAN_MON_ATTR_IFINDEX,	   /* u32 */
 	VLAN_MON_ATTR_VID,	   /* u32 */
+	VLAN_MON_ATTR_VLAN_IFINDEX,	   /* u32 */
 	__VLAN_MON_ATTR_MAX,
 };
 

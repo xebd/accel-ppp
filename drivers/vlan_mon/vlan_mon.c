@@ -53,6 +53,7 @@ struct vlan_dev {
 struct vlan_notify {
 	struct list_head entry;
 	int ifindex;
+	int vlan_ifindex;
 	int vid;
 	int proto;
 };
@@ -85,6 +86,7 @@ static int vlan_pt_recv(struct sk_buff *skb, struct net_device *dev, struct pack
 	struct vlan_dev *d;
 	struct vlan_notify *n;
 	int vid;
+	int vlan_ifindex = 0;
 	int proto;
 
 	if (!dev->ml_priv)
@@ -120,6 +122,19 @@ static int vlan_pt_recv(struct sk_buff *skb, struct net_device *dev, struct pack
 		d->vid[proto][vid / (8*sizeof(long))] |= 1lu << (vid % (8*sizeof(long)));
 		spin_unlock(&d->lock);
 	}
+
+	if (vid > 0) {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
+		struct net_device *vd = __vlan_find_dev_deep(dev, vid);
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0)
+		struct net_device *vd = __vlan_find_dev_deep(dev, skb->vlan_proto, vid);
+#else
+		struct net_device *vd = __vlan_find_dev_deep_rcu(dev, skb->vlan_proto, vid);
+#endif
+		if (vd)
+			vlan_ifindex = vd->ifindex;
+	}
+
 	rcu_read_unlock();
 
 	if (vid == -1)
@@ -132,6 +147,7 @@ static int vlan_pt_recv(struct sk_buff *skb, struct net_device *dev, struct pack
 		goto out;
 
 	n->ifindex = dev->ifindex;
+	n->vlan_ifindex = vlan_ifindex;
 	n->vid = vid;
 	n->proto = ntohs(skb->protocol);
 
@@ -153,19 +169,18 @@ static void vlan_do_notify(struct work_struct *w)
 	void *header = NULL;
 	struct nlattr *ns;
 	int id = 1;
-	unsigned long flags;
 
 	//pr_info("vlan_do_notify\n");
 
 	while (1) {
-		spin_lock_irqsave(&vlan_lock, flags);
+		spin_lock_bh(&vlan_lock);
 		if (list_empty(&vlan_notifies))
 			n = NULL;
 		else {
 			n = list_first_entry(&vlan_notifies, typeof(*n), entry);
 			list_del(&n->entry);
 		}
-		spin_unlock_irqrestore(&vlan_lock, flags);
+		spin_unlock_bh(&vlan_lock);
 
 		if (!n)
 			break;
@@ -186,6 +201,9 @@ static void vlan_do_notify(struct work_struct *w)
 			goto nl_err;
 
 		if (nla_put_u32(report_skb, VLAN_MON_ATTR_IFINDEX, n->ifindex))
+			goto nl_err;
+
+		if (n->vlan_ifindex && nla_put_u32(report_skb, VLAN_MON_ATTR_VLAN_IFINDEX, n->vlan_ifindex))
 			goto nl_err;
 
 		if (nla_put_u16(report_skb, VLAN_MON_ATTR_VID, n->vid))
@@ -350,15 +368,12 @@ static int vlan_mon_nl_cmd_add_vlan_mon_vid(struct sk_buff *skb, struct genl_inf
 	struct vlan_dev *d;
 	int ifindex, vid, proto;
 	struct net_device *dev;
-	unsigned long flags;
 
 	if (!info->attrs[VLAN_MON_ATTR_IFINDEX] || !info->attrs[VLAN_MON_ATTR_VID] || !info->attrs[VLAN_MON_ATTR_PROTO])
 		return -EINVAL;
 
 	ifindex = nla_get_u32(info->attrs[VLAN_MON_ATTR_IFINDEX]);
 	vid = nla_get_u16(info->attrs[VLAN_MON_ATTR_VID]);
-	proto = nla_get_u16(info->attrs[VLAN_MON_ATTR_PROTO]);
-
 	proto = nla_get_u16(info->attrs[VLAN_MON_ATTR_PROTO]);
 
 	proto = vlan_mon_proto(proto);
@@ -380,9 +395,9 @@ static int vlan_mon_nl_cmd_add_vlan_mon_vid(struct sk_buff *skb, struct genl_inf
 
 	d = dev->ml_priv;
 
-	spin_lock_irqsave(&d->lock, flags);
+	spin_lock_bh(&d->lock);
 	d->vid[proto][vid / (8*sizeof(long))] &= ~(1lu << (vid % (8*sizeof(long))));
-	spin_unlock_irqrestore(&d->lock, flags);
+	spin_unlock_bh(&d->lock);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
 	if (dev->features & NETIF_F_HW_VLAN_FILTER) {
 		rtnl_lock();
@@ -536,8 +551,7 @@ static int __init vlan_mon_init(void)
 	int i;
 #endif
 
-
-	printk("vlan-mon driver v1.10-rc1\n");
+	printk("vlan-mon driver v1.11\n");
 
 	INIT_WORK(&vlan_notify_work, vlan_do_notify);
 

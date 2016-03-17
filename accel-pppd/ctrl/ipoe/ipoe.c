@@ -2181,7 +2181,7 @@ static int get_offer_delay()
 	return 0;
 }
 
-void ipoe_vlan_mon_notify(int ifindex, int vid)
+void ipoe_vlan_mon_notify(int ifindex, int vid, int vlan_ifindex)
 {
 	struct conf_sect_t *sect = conf_get_section("ipoe");
 	struct conf_option_t *opt;
@@ -2217,23 +2217,58 @@ void ipoe_vlan_mon_notify(int ifindex, int vid)
 		return;
 	}
 
-	if (iplink_vlan_add(ifname, ifindex, vid))
-		return;
+	if (vlan_ifindex) {
+		struct ipoe_serv *serv;
 
-	log_info2("ipoe: create vlan %s parent %s\n", ifname, ifr.ifr_name);
+		pthread_mutex_lock(&serv_lock);
+		list_for_each_entry(serv, &serv_list, entry) {
+			if (serv->ifindex == vlan_ifindex) {
+				pthread_mutex_unlock(&serv_lock);
+				return;
+			}
+		}
+		pthread_mutex_unlock(&serv_lock);
+
+		log_info2("ipoe: create vlan %s parent %s\n", ifname, ifr.ifr_name);
+
+		ifr.ifr_ifindex = vlan_ifindex;
+		if (ioctl(sock_fd, SIOCGIFNAME, &ifr, sizeof(ifr))) {
+			log_error("ipoe: vlan-mon: failed to get interface name, ifindex=%i\n", ifindex);
+			return;
+		}
+
+		if (ioctl(sock_fd, SIOCGIFFLAGS, &ifr, sizeof(ifr)))
+			return;
+
+		if (ifr.ifr_flags & IFF_UP) {
+			ifr.ifr_flags &= ~IFF_UP;
+
+			if (ioctl(sock_fd, SIOCSIFFLAGS, &ifr, sizeof(ifr)))
+				return;
+		}
+
+		if (strcmp(ifr.ifr_name, ifname)) {
+			strcpy(ifr.ifr_newname, ifname);
+			if (ioctl(sock_fd, SIOCSIFNAME, &ifr, sizeof(ifr))) {
+				log_error("ipoe: vlan-mon: failed to rename interface %s to %s\n", ifr.ifr_name, ifr.ifr_newname);
+				return;
+			}
+			strcpy(ifr.ifr_name, ifname);
+		}
+	} else {
+		log_info2("ipoe: create vlan %s parent %s\n", ifname, ifr.ifr_name);
+
+		if (iplink_vlan_add(ifname, ifindex, vid))
+			return;
+	}
 
 	len = strlen(ifname);
 	memcpy(ifr.ifr_name, ifname, len + 1);
-
-	ioctl(sock_fd, SIOCGIFFLAGS, &ifr, sizeof(ifr));
-	ifr.ifr_flags |= IFF_UP;
-	ioctl(sock_fd, SIOCSIFFLAGS, &ifr, sizeof(ifr));
 
 	if (ioctl(sock_fd, SIOCGIFINDEX, &ifr, sizeof(ifr))) {
 		log_error("ipoe: vlan-mon: %s: failed to get interface index\n", ifr.ifr_name);
 		return;
 	}
-
 
 	list_for_each_entry(opt, &sect->items, entry) {
 		if (strcmp(opt->name, "interface"))
@@ -2482,6 +2517,10 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	memset(&ifr, 0, sizeof(ifr));
 	strcpy(ifr.ifr_name, ifname);
 
+	((struct sockaddr_in *)&ifr.ifr_addr)->sin_family = AF_INET;
+
+	ioctl(sock_fd, SIOCSIFADDR, &ifr, sizeof(ifr));
+
 	if (ioctl(sock_fd, SIOCGIFHWADDR, &ifr)) {
 		log_error("ipoe: '%s': ioctl(SIOCGIFHWADDR): %s\n", ifname, strerror(errno));
 		return;
@@ -2489,11 +2528,13 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 
 	ioctl(sock_fd, SIOCGIFFLAGS, &ifr);
 
-	if (!(ifr.ifr_flags & IFF_UP)) {
-		ifr.ifr_flags |= IFF_UP;
-
+	if (ifr.ifr_flags & IFF_UP) {
+		ifr.ifr_flags &= ~IFF_UP;
 		ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
 	}
+
+	ifr.ifr_flags |= IFF_UP;
+	ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
 
 	serv = _malloc(sizeof(*serv));
 	memset(serv, 0, sizeof(*serv));

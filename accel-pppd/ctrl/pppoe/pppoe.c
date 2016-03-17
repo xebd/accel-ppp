@@ -1351,6 +1351,19 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli,
 	}
 
 	strncpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
+
+	if (net->sock_ioctl(SIOCGIFFLAGS, &ifr)) {
+		if (cli)
+			cli_sendv(cli, "%s: %s\r\n", ifname, strerror(errno));
+		log_error("pppoe: %s: %s\n", ifname, strerror(errno));
+		goto out_err;
+	}
+
+	if (!ifr.ifr_flags & IFF_UP) {
+		ifr.ifr_flags |= IFF_UP;
+		net->sock_ioctl(SIOCSIFFLAGS, &ifr);
+	}
+
 	if (net->sock_ioctl(SIOCGIFHWADDR, &ifr)) {
 		if (cli)
 			cli_sendv(cli, "ioctl(SIOCGIFHWADDR): %s\r\n", strerror(errno));
@@ -1526,7 +1539,7 @@ static int init_secret(struct pppoe_serv_t *serv)
 	return 0;
 }
 
-void pppoe_vlan_mon_notify(int ifindex, int vid)
+void pppoe_vlan_mon_notify(int ifindex, int vid, int vlan_ifindex)
 {
 	struct conf_sect_t *sect = conf_get_section("pppoe");
 	struct conf_option_t *opt;
@@ -1556,17 +1569,53 @@ void pppoe_vlan_mon_notify(int ifindex, int vid)
 		return;
 	}
 
+	if (vlan_ifindex) {
+		struct pppoe_serv_t *serv;
+
+		pthread_rwlock_rdlock(&serv_lock);
+		list_for_each_entry(serv, &serv_list, entry) {
+			if (serv->ifindex == vlan_ifindex) {
+				pthread_rwlock_unlock(&serv_lock);
+				return;
+			}
+		}
+		pthread_rwlock_unlock(&serv_lock);
+
+		log_info2("pppoe: create vlan %s parent %s\n", ifname, ifr.ifr_name);
+
+		ifr.ifr_ifindex = vlan_ifindex;
+		if (ioctl(sock_fd, SIOCGIFNAME, &ifr, sizeof(ifr))) {
+			log_error("pppoe: vlan-mon: failed to get interface name, ifindex=%i\n", ifindex);
+			return;
+		}
+
+		if (ioctl(sock_fd, SIOCGIFFLAGS, &ifr, sizeof(ifr)))
+			return;
+
+		if (ifr.ifr_flags & IFF_UP) {
+			ifr.ifr_flags &= ~IFF_UP;
+
+			if (ioctl(sock_fd, SIOCSIFFLAGS, &ifr, sizeof(ifr)))
+				return;
+		}
+
+		if (strcmp(ifr.ifr_name, ifname)) {
+			strcpy(ifr.ifr_newname, ifname);
+			if (ioctl(sock_fd, SIOCSIFNAME, &ifr, sizeof(ifr))) {
+				log_error("pppoe: vlan-mon: failed to rename interface %s to %s\n", ifr.ifr_name, ifr.ifr_newname);
+				return;
+			}
+			strcpy(ifr.ifr_name, ifname);
+		}
+	} else {
+		log_info2("pppoe: create vlan %s parent %s\n", ifname, ifr.ifr_name);
+
+		if (iplink_vlan_add(ifr.ifr_name, ifindex, vid))
+			return;
+	}
+
 	strcpy(ifr.ifr_name, ifname);
-	len = strlen(ifr.ifr_name);
-
-	if (iplink_vlan_add(ifr.ifr_name, ifindex, vid))
-		return;
-
-	log_info2("pppoe: create vlan %s parent %s\n", ifname, ifr.ifr_name);
-
-	ioctl(sock_fd, SIOCGIFFLAGS, &ifr, sizeof(ifr));
-	ifr.ifr_flags |= IFF_UP;
-	ioctl(sock_fd, SIOCSIFFLAGS, &ifr, sizeof(ifr));
+	len = strlen(ifname);
 
 	if (ioctl(sock_fd, SIOCGIFINDEX, &ifr, sizeof(ifr))) {
 		log_error("pppoe: vlan-mon: %s: failed to get interface index\n", ifr.ifr_name);
@@ -1602,9 +1651,14 @@ void pppoe_vlan_mon_notify(int ifindex, int vid)
 				continue;
 
 			__pppoe_server_start(ifr.ifr_name, opt->val, NULL, ifindex, vid);
-		} else if (ptr - opt->val == len && memcmp(opt->val, ifr.ifr_name, len) == 0)
+			return;
+		} else if (ptr - opt->val == len && memcmp(opt->val, ifr.ifr_name, len) == 0) {
 			__pppoe_server_start(ifr.ifr_name, opt->val, NULL, ifindex, vid);
+			return;
+		}
 	}
+
+	log_warn("pppoe: vlan %s not started\n", ifname);
 }
 
 static void add_vlan_mon(const char *opt, long *mask)
