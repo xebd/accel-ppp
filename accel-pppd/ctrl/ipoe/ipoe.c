@@ -1826,17 +1826,21 @@ void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph)
 	struct ipoe_serv *serv;
 	struct ipoe_session *ses;
 
+	pthread_mutex_lock(&serv_lock);
 	list_for_each_entry(serv, &serv_list, entry) {
 		if (serv->ifindex != ifindex)
 			continue;
 
-		if (!serv->opt_up)
+		if (!serv->opt_up) {
+			pthread_mutex_unlock(&serv_lock);
 			return;
+		}
 
 		pthread_mutex_lock(&serv->lock);
 		list_for_each_entry(ses, &serv->sessions, entry) {
 			if (ses->yiaddr == iph->saddr) {
 				pthread_mutex_unlock(&serv->lock);
+				pthread_mutex_unlock(&serv_lock);
 				return;
 			}
 		}
@@ -1846,6 +1850,7 @@ void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph)
 
 		break;
 	}
+	pthread_mutex_unlock(&serv_lock);
 }
 
 #ifdef RADIUS
@@ -2299,9 +2304,14 @@ void ipoe_vlan_mon_notify(int ifindex, int vid, int vlan_ifindex)
 				continue;
 
 			add_interface(ifname, ifr.ifr_ifindex, opt->val, ifindex, vid);
-		} else if (ptr - opt->val == len && memcmp(opt->val, ifname, len) == 0)
+			return;
+		} else if (ptr - opt->val == len && memcmp(opt->val, ifname, len) == 0) {
 			add_interface(ifname, ifr.ifr_ifindex, opt->val, ifindex, vid);
+			return;
+		}
 	}
+
+	log_warn("ipoe: vlan %s not started\n", ifname);
 }
 
 static void ipoe_serv_timeout(struct triton_timer_t *t)
@@ -2438,11 +2448,6 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 		close(sock);
 	}
 
-	if (opt_up)
-		ipoe_nl_add_interface(ifindex, opt_mode);
-	else
-		ipoe_nl_add_interface(ifindex, 0);
-
 	pthread_mutex_lock(&serv_lock);
 	list_for_each_entry(serv, &serv_list, entry) {
 		if (strcmp(ifname, serv->ifname))
@@ -2507,6 +2512,11 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 		return;
 	}
 	pthread_mutex_unlock(&serv_lock);
+
+	if (opt_up)
+		ipoe_nl_add_interface(ifindex, opt_mode);
+	else
+		ipoe_nl_add_interface(ifindex, 0);
 
 	opt = strchr(opt, ',');
 	if (opt)

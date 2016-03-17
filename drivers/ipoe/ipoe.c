@@ -1444,7 +1444,8 @@ static int ipoe_nl_cmd_del_interface(struct sk_buff *skb, struct genl_info *info
 		if (ifindex == -1 || ifindex == i->ifindex) {
 			dev = __dev_get_by_index(&init_net, i->ifindex);
 
-			netdev_rx_handler_unregister(dev);
+			if (dev)
+				netdev_rx_handler_unregister(dev);
 
 			list_del(&i->entry);
 
