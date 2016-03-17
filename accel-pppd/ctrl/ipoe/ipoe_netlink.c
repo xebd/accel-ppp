@@ -100,6 +100,7 @@ void ipoe_nl_del_exclude(uint32_t addr)
 
 void ipoe_nl_add_interface(int ifindex, uint8_t mode)
 {
+	struct rtnl_handle rth;
 	struct nlmsghdr *nlh;
 	struct genlmsghdr *ghdr;
 	struct {
@@ -107,8 +108,10 @@ void ipoe_nl_add_interface(int ifindex, uint8_t mode)
 		char buf[1024];
 	} req;
 
-	if (rth.fd == -1)
+	if (rtnl_open_byproto(&rth, 0, NETLINK_GENERIC)) {
+		log_ppp_error("ipoe: cannot open generic netlink socket\n");
 		return;
+	}
 
 	nlh = &req.n;
 	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
@@ -123,10 +126,13 @@ void ipoe_nl_add_interface(int ifindex, uint8_t mode)
 
 	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 )
 		log_error("ipoe: nl_add_iface: error talking to kernel\n");
+
+	rtnl_close(&rth);
 }
 
 void ipoe_nl_del_interface(int ifindex)
 {
+	struct rtnl_handle rth;
 	struct nlmsghdr *nlh;
 	struct genlmsghdr *ghdr;
 	struct {
@@ -134,8 +140,10 @@ void ipoe_nl_del_interface(int ifindex)
 		char buf[1024];
 	} req;
 
-	if (rth.fd == -1)
+	if (rtnl_open_byproto(&rth, 0, NETLINK_GENERIC)) {
+		log_ppp_error("ipoe: cannot open generic netlink socket\n");
 		return;
+	}
 
 	nlh = &req.n;
 	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
@@ -149,6 +157,8 @@ void ipoe_nl_del_interface(int ifindex)
 
 	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 )
 		log_error("ipoe: nl_del_iface: error talking to kernel\n");
+
+	rtnl_close(&rth);
 }
 
 void ipoe_nl_delete_interfaces(void)
