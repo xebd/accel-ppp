@@ -1826,6 +1826,7 @@ void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph)
 	struct ipoe_serv *serv;
 	struct ipoe_session *ses;
 
+	pthread_mutex_lock(&serv_lock);
 	list_for_each_entry(serv, &serv_list, entry) {
 		if (serv->ifindex != ifindex)
 			continue;
@@ -1846,6 +1847,7 @@ void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph)
 
 		break;
 	}
+	pthread_mutex_unlock(&serv_lock);
 }
 
 #ifdef RADIUS
@@ -2407,11 +2409,6 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 		close(sock);
 	}
 
-	if (opt_up)
-		ipoe_nl_add_interface(ifindex, opt_mode);
-	else
-		ipoe_nl_add_interface(ifindex, 0);
-
 	pthread_mutex_lock(&serv_lock);
 	list_for_each_entry(serv, &serv_list, entry) {
 		if (strcmp(ifname, serv->ifname))
@@ -2476,6 +2473,11 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 		return;
 	}
 	pthread_mutex_unlock(&serv_lock);
+
+	if (opt_up)
+		ipoe_nl_add_interface(ifindex, opt_mode);
+	else
+		ipoe_nl_add_interface(ifindex, 0);
 
 	opt = strchr(opt, ',');
 	if (opt)
