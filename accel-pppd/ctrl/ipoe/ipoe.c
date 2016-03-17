@@ -2217,10 +2217,10 @@ void ipoe_vlan_mon_notify(int ifindex, int vid)
 		return;
 	}
 
+	log_info2("ipoe: create vlan %s parent %s\n", ifname, ifr.ifr_name);
+
 	if (iplink_vlan_add(ifname, ifindex, vid))
 		return;
-
-	log_info2("ipoe: create vlan %s parent %s\n", ifname, ifr.ifr_name);
 
 	len = strlen(ifname);
 	memcpy(ifr.ifr_name, ifname, len + 1);
@@ -2233,7 +2233,6 @@ void ipoe_vlan_mon_notify(int ifindex, int vid)
 		log_error("ipoe: vlan-mon: %s: failed to get interface index\n", ifr.ifr_name);
 		return;
 	}
-
 
 	list_for_each_entry(opt, &sect->items, entry) {
 		if (strcmp(opt->name, "interface"))
@@ -2264,9 +2263,14 @@ void ipoe_vlan_mon_notify(int ifindex, int vid)
 				continue;
 
 			add_interface(ifname, ifr.ifr_ifindex, opt->val, ifindex, vid);
-		} else if (ptr - opt->val == len && memcmp(opt->val, ifname, len) == 0)
+			return;
+		} else if (ptr - opt->val == len && memcmp(opt->val, ifname, len) == 0) {
 			add_interface(ifname, ifr.ifr_ifindex, opt->val, ifindex, vid);
+			return;
+		}
 	}
+
+	log_warn("ipoe: vlan %s not started\n", ifname);
 }
 
 static void ipoe_serv_timeout(struct triton_timer_t *t)
