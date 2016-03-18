@@ -147,6 +147,6 @@ int ap_session_rename(struct ap_session *ses, const char *ifname, int len);
 
 int ap_session_read_stats(struct ap_session *ses, struct rtnl_link_stats *stats);
 
-void ap_shutdown_soft(void (*cb)(void));
+int ap_shutdown_soft(void (*cb)(void), int term);
 
 #endif

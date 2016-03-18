@@ -292,17 +292,35 @@ void __export ap_session_terminate(struct ap_session *ses, int cause, int hard)
 	}
 }
 
-void ap_shutdown_soft(void (*cb)(void))
+static void __terminate_soft_reboot(struct ap_session *ses)
 {
+	ap_session_terminate(ses, TERM_NAS_REBOOT, 0);
+}
+
+int ap_shutdown_soft(void (*cb)(void), int term)
+{
+	struct ap_session *ses;
+
 	ap_shutdown = 1;
 	shutdown_cb = cb;
 
+	pthread_rwlock_rdlock(&ses_lock);
+
 	if (!ap_session_stat.starting && !ap_session_stat.active && !ap_session_stat.finishing) {
+		pthread_rwlock_unlock(&ses_lock);
 		if (shutdown_cb)
 			shutdown_cb();
 		else
 			kill(getpid(), SIGTERM);
+		return 1;
+	} else if (term) {
+		list_for_each_entry(ses, &ses_list, entry)
+			triton_context_call(ses->ctrl->ctx, (triton_event_func)__terminate_soft_reboot, ses);
 	}
+
+	pthread_rwlock_unlock(&ses_lock);
+
+	return 0;
 }
 
 static void generate_sessionid(struct ap_session *ses)

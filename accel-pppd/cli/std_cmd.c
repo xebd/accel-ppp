@@ -292,7 +292,7 @@ static int shutdown_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 
 	if (f_cnt == 2) {
 		if (!strcmp(f[1], "soft")) {
-			ap_shutdown_soft(NULL);
+			ap_shutdown_soft(NULL, 0);
 			return CLI_CMD_OK;
 		} else if (!strcmp(f[1], "hard"))
 			hard = 1;
@@ -303,7 +303,7 @@ static int shutdown_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 			return CLI_CMD_SYNTAX;
 	}
 
-	ap_shutdown_soft(NULL);
+	ap_shutdown_soft(NULL, 0);
 
 	terminate_all_sessions(hard);
 
@@ -370,7 +370,7 @@ static int restart_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 	else
 		return CLI_CMD_SYNTAX;
 
-	ap_shutdown_soft(restart);
+	ap_shutdown_soft(restart, 0);
 	terminate_all_sessions(0);
 
 	return CLI_CMD_OK;

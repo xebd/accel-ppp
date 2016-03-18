@@ -21,10 +21,11 @@
 
 #include "triton/triton.h"
 
-#include "memdebug.h"
 #include "log.h"
 #include "events.h"
+#include "ap_session.h"
 #include "backup.h"
+#include "memdebug.h"
 
 #ifndef ARG_MAX
 #define ARG_MAX 128*1024
@@ -334,6 +335,9 @@ int main(int _argc, char **_argv)
 
 	sigwait(&set, &sig);
 	log_info1("terminate, sig = %i\n", sig);
+
+	if (ap_shutdown_soft(NULL, 1) == 0)
+		sigwait(&set, &sig);
 
 	triton_terminate();
 

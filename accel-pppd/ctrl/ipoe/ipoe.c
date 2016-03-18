@@ -1097,7 +1097,7 @@ static int ipoe_session_terminate(struct ap_session *s, int hard)
 {
 	struct ipoe_session *ses = container_of(s, typeof(*ses), ses);
 
-	if (hard || !conf_soft_terminate || ses->UP)
+	if (hard || !conf_soft_terminate || ses->UP || ap_shutdown)
 		ipoe_session_terminated(ses);
 	else
 		ses->terminate = 1;
@@ -2068,8 +2068,8 @@ static void ipoe_serv_close(struct triton_context_t *ctx)
 	struct ipoe_serv *serv = container_of(ctx, typeof(*serv), ctx);
 
 	pthread_mutex_lock(&serv->lock);
+	serv->need_close = 1;
 	if (!list_empty(&serv->sessions)) {
-		serv->need_close = 1;
 		pthread_mutex_unlock(&serv->lock);
 		return;
 	}
