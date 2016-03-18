@@ -341,47 +341,40 @@ static void reload_help(char * const *fields, int fields_cnt, void *client)
 
 //==========================
 
-static void __do_restart1(void)
-{
-	core_restart(1);
-}
-
-static void __do_restart0(void)
-{
-	core_restart(0);
-}
-
-
 static int restart_exec(const char *cmd, char * const *f, int f_cnt, void *cli)
 {
-	void (*restart)(void);
-
 	if (f_cnt == 2) {
+#ifdef USE_BACKUP
 		if (strcmp(f[1], "soft") == 0)
-			restart = __do_restart1;
-		else if (strcmp(f[1], "gracefully") == 0)
-			restart = __do_restart0;
-		else if (strcmp(f[1], "hard") == 0)
-			core_restart(0);
+			core_restart(1);
 		else
+#endif
+		if (strcmp(f[1], "hard") == 0) {
+			terminate_all_sessions(1);
+			core_restart(0);
+			return CLI_CMD_OK;
+		} else
 			return CLI_CMD_SYNTAX;
 	} else if (f_cnt == 1)
-		restart = __do_restart1;
+		core_restart(0);
 	else
 		return CLI_CMD_SYNTAX;
 
-	ap_shutdown_soft(restart, 0);
-	terminate_all_sessions(0);
+	core_restart(0);
 
 	return CLI_CMD_OK;
 }
 
 static void restart_help(char * const *fields, int fields_cnt, void *client)
 {
-	cli_send(client, "restart [soft|gracefully|hard] - restart daemon\r\n");
+#ifdef USE_BACKUP
+	cli_send(client, "restart [soft|hard] - restart daemon\r\n");
 	cli_send(client, "\t\tsoft - restart daemon softly, e.g. keep existing connections if session backup is enabled (default)\r\n");
-	cli_send(client, "\t\tgracefully - terminate all connections then restart\r\n");
+#else
+	cli_send(client, "restart [hard] - restart daemon\r\n");
+#endif
 	cli_send(client, "\t\thard - restart immediatly\r\n");
+	cli_send(client, "\t\tdefault action - terminate all connections then restart\r\n");
 }
 
 

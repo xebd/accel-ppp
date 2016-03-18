@@ -37,6 +37,10 @@ static char *conf_dump;
 static sigset_t orig_set;
 static char **argv;
 static int argc;
+static int restart = -1;
+static int term;
+static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
 #ifdef CRYPTO_OPENSSL
 #include <openssl/ssl.h>
@@ -131,7 +135,7 @@ static void close_all_fd(void)
 	closedir(dirp);
 }
 
-void core_restart(int soft)
+static void __core_restart(int soft)
 {
 	char exe[PATH_MAX];
 
@@ -151,6 +155,16 @@ void core_restart(int soft)
 		execv(exe, argv);
 		sleep(3);
 	}
+}
+
+void core_restart(int soft)
+{
+#ifdef USE_BACKUP
+	if (soft)
+		__core_restart(1);
+#endif
+	restart = soft;
+	kill(getpid(), SIGTERM);
 }
 
 static void sigsegv(int num)
@@ -191,7 +205,7 @@ out:
 	pid = fork();
 	if (pid) {
 		waitpid(pid, &status, 0);
-		core_restart(1);
+		__core_restart(1);
 	}
 
 	if (conf_dump) {
@@ -202,6 +216,14 @@ out:
 	}
 
 	abort();
+}
+
+static void shutdown_cb()
+{
+	pthread_mutex_lock(&lock);
+	term = 1;
+	pthread_cond_signal(&cond);
+	pthread_mutex_unlock(&lock);
 }
 
 int main(int _argc, char **_argv)
@@ -336,10 +358,17 @@ int main(int _argc, char **_argv)
 	sigwait(&set, &sig);
 	log_info1("terminate, sig = %i\n", sig);
 
-	if (ap_shutdown_soft(NULL, 1) == 0)
-		sigwait(&set, &sig);
+	ap_shutdown_soft(shutdown_cb, 1);
+
+	pthread_mutex_lock(&lock);
+	while (!term)
+		pthread_cond_wait(&cond, &lock);
+	pthread_mutex_unlock(&lock);
 
 	triton_terminate();
+
+	if (restart != -1)
+		__core_restart(restart);
 
 	if (pid_file)
 		unlink(pid_file);
