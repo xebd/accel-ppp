@@ -177,7 +177,7 @@ int rad_server_req_enter(struct rad_req_t *req)
 {
 	struct timespec ts;
 
-	if (req->serv->need_free || req->serv->starting)
+	if (req->serv->need_free)
 		return -1;
 
 	clock_gettime(CLOCK_MONOTONIC, &ts);

@@ -272,7 +272,7 @@ Specifies default value for per-interface
 .B mode
 parameter.
 .TP
-.BI "start=" dhcpv4|up
+.BI "start=" dhcpv4|up|auto
 Specifies default value for per-interface
 .B start
 parameter.
@@ -292,7 +292,7 @@ Specifies default value for per-interface
 .B proxy-arp
 parameter.
 .TP
-.BI "interface=" [re:]name[,mode=L2|L3][,shared=0|1][,start=dhcpv4|up]
+.BI "interface=" [re:]name[,mode=L2|L3][,shared=0|1][,start=dhcpv4|up|auto]
 .BI "" [,range=x.x.x.x/mask][,ifcfg=0|1]
 .BI "" [,relay=x.x.x.x]
 .BI "" [,giaddr=x.x.x.x]
@@ -327,6 +327,8 @@ parameter specifies where interface is shared by multiple users or it is vlan-pe
 The
 .B start
 parameter specifies which way session starts (up - unclassified packet).
+.br
+auto - means automatically start session with username = interface name. Use it with conjuction vlan_mon.
 .br
 The
 .B range

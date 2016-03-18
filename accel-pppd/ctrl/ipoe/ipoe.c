@@ -100,6 +100,7 @@ enum {SID_MAC, SID_IP};
 
 static int conf_dhcpv4 = 1;
 static int conf_up;
+static int conf_auto;
 static int conf_mode;
 static int conf_shared = 1;
 static int conf_ifcfg = 1;
@@ -197,6 +198,7 @@ static int get_offer_delay();
 static void __ipoe_session_start(struct ipoe_session *ses);
 static int ipoe_rad_send_auth_request(struct rad_plugin_t *rad, struct rad_packet_t *pack);
 static int ipoe_rad_send_acct_request(struct rad_plugin_t *rad, struct rad_packet_t *pack);
+static void ipoe_session_create_auto(struct ipoe_serv *serv);
 
 static void ipoe_ctx_switch(struct triton_context_t *ctx, void *arg)
 {
@@ -689,14 +691,20 @@ static void find_gw_addr(struct ipoe_session *ses)
 
 static void __ipoe_session_start(struct ipoe_session *ses)
 {
-	if (!ses->yiaddr) {
+	if (!ses->yiaddr && ses->serv->dhcpv4) {
 		dhcpv4_get_ip(ses->serv->dhcpv4, &ses->yiaddr, &ses->router, &ses->mask);
 		if (ses->yiaddr)
 			ses->dhcp_addr = 1;
 	}
 
-	if (!ses->yiaddr && !ses->serv->opt_nat)
+	if (!ses->yiaddr && (ses->UP || !ses->serv->opt_nat)) {
 		ses->ses.ipv4 = ipdb_get_ipv4(&ses->ses);
+
+		if (ses->UP && !ses->ses.ipv4) {
+			log_ppp_error("ipoe: no address specified\n");
+			ap_session_terminate(&ses->ses, TERM_NAS_REQUEST, 1);
+		}
+	}
 
 	if (ses->ses.ipv4) {
 		if (!ses->mask)
@@ -997,10 +1005,10 @@ static void ipoe_session_free(struct ipoe_session *ses)
 	if (ses->dhcpv4_relay_reply)
 		dhcpv4_packet_free(ses->dhcpv4_relay_reply);
 
-	if (ses->ctrl.called_station_id)
+	if (ses->ctrl.called_station_id && ses->ctrl.called_station_id != ses->ses.ifname)
 		_free(ses->ctrl.called_station_id);
 
-	if (ses->ctrl.calling_station_id)
+	if (ses->ctrl.calling_station_id && ses->ctrl.calling_station_id != ses->ses.ifname)
 		_free(ses->ctrl.calling_station_id);
 
 	if (ses->l4_redirect_ipset)
@@ -1782,8 +1790,6 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 
 	triton_context_register(&ses->ctx, &ses->ses);
 
-	triton_context_wakeup(&ses->ctx);
-
 	list_add_tail(&ses->entry, &serv->sessions);
 
 	if (serv->timer.tpd)
@@ -1791,7 +1797,43 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 
 	triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_start, ses);
 
+	triton_context_wakeup(&ses->ctx);
+
 	return ses;
+}
+
+static void ipoe_session_create_auto(struct ipoe_serv *serv)
+{
+	struct ipoe_session *ses;
+
+	if (ap_shutdown)
+		return;
+
+	ses = ipoe_session_alloc();
+	if (!ses)
+		return;
+
+	ses->serv = serv;
+	ses->UP = 1;
+
+	strncpy(ses->ses.ifname, serv->ifname, AP_IFNAME_LEN);
+	ses->ctrl.called_station_id = ses->ses.ifname;
+	ses->ctrl.calling_station_id = ses->ses.ifname;
+	ses->username = _strdup(serv->ifname);
+	ses->ses.chan_name = ses->ctrl.calling_station_id;
+
+	if (conf_ip_pool)
+		ses->ses.ipv4_pool_name = _strdup(conf_ip_pool);
+
+	ses->ctrl.dont_ifcfg = 1;
+
+	triton_context_register(&ses->ctx, &ses->ses);
+
+	list_add_tail(&ses->entry, &serv->sessions);
+
+	triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_start, ses);
+
+	triton_context_wakeup(&ses->ctx);
 }
 
 struct ipoe_session *ipoe_session_alloc(void)
@@ -2020,7 +2062,7 @@ static void ipoe_serv_release(struct ipoe_serv *serv)
 	}
 	pthread_mutex_unlock(&serv->lock);
 
-	if (serv->vid && !serv->need_close && !ap_shutdown) {
+	if (serv->vid && !serv->need_close && !ap_shutdown && !serv->opt_auto) {
 		if (serv->timer.tpd)
 			triton_timer_mod(&serv->timer, 0);
 		else
@@ -2064,7 +2106,8 @@ static void ipoe_serv_release(struct ipoe_serv *serv)
 	if (serv->timer.tpd)
 		triton_timer_del(&serv->timer);
 
-	ipoe_nl_del_interface(serv->ifindex);
+	if (!serv->opt_auto)
+		ipoe_nl_del_interface(serv->ifindex);
 
 	if (serv->vid) {
 		log_info2("ipoe: remove vlan %s\n", serv->ifname);
@@ -2350,6 +2393,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	int opt_nat = conf_nat;
 	int opt_username = conf_username;
 	int opt_ipv6 = conf_ipv6;
+	int opt_auto = conf_auto;
 #ifdef USE_LUA
 	char *opt_lua_username_func = NULL;
 #endif
@@ -2388,6 +2432,8 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 					opt_up = 1;
 				else if (!strcmp(ptr1, "dhcpv4"))
 					opt_dhcpv4 = 1;
+				else if (!strcmp(ptr1, "auto"))
+					opt_auto = 1;
 				else
 					goto parse_err;
 			} else if (strcmp(str, "shared") == 0) {
@@ -2499,7 +2545,10 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 		} else if (!serv->arp && conf_arp)
 			serv->arp = arpd_start(serv);
 
+		opt_auto &= !opt_shared;
+
 		serv->opt_up = opt_up;
+		serv->opt_auto = opt_auto;
 		serv->opt_mode = opt_mode;
 		serv->opt_ifcfg = opt_ifcfg;
 		serv->opt_nat = opt_nat;
@@ -2527,10 +2576,12 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	}
 	pthread_mutex_unlock(&serv_lock);
 
-	if (opt_up)
-		ipoe_nl_add_interface(ifindex, opt_mode);
-	else
-		ipoe_nl_add_interface(ifindex, 0);
+	if (!opt_auto) {
+		if (opt_up)
+			ipoe_nl_add_interface(ifindex, opt_mode);
+		else
+			ipoe_nl_add_interface(ifindex, 0);
+	}
 
 	opt = strchr(opt, ',');
 	if (opt)
@@ -2570,6 +2621,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	serv->opt_shared = opt_shared;
 	serv->opt_dhcpv4 = opt_dhcpv4;
 	serv->opt_up = opt_up;
+	serv->opt_auto = opt_auto;
 	serv->opt_mode = opt_mode;
 	serv->opt_ifcfg = opt_ifcfg;
 	serv->opt_nat = opt_nat;
@@ -2609,11 +2661,14 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 		triton_timer_add(&serv->ctx, &serv->timer, 0);
 	}
 
-	triton_context_wakeup(&serv->ctx);
+	if (serv->opt_auto && !serv->opt_shared)
+		triton_context_call(&serv->ctx, (triton_event_func)ipoe_session_create_auto, serv);
 
 	pthread_mutex_lock(&serv_lock);
 	list_add_tail(&serv->entry, &serv_list);
 	pthread_mutex_unlock(&serv_lock);
+
+	triton_context_wakeup(&serv->ctx);
 
 	if (str0)
 		_free(str0);
@@ -2730,7 +2785,8 @@ static void load_interfaces(struct conf_sect_t *sect)
 
 	list_for_each_entry(serv, &serv_list, entry) {
 		if (!serv->active) {
-			ipoe_nl_del_interface(serv->ifindex);
+			if (!serv->opt_auto)
+				ipoe_nl_del_interface(serv->ifindex);
 			ipoe_drop_sessions(serv, NULL);
 			serv->need_close = 1;
 			triton_context_call(&serv->ctx, (triton_event_func)ipoe_serv_release, serv);
@@ -3287,6 +3343,8 @@ static void load_config(void)
 			conf_dhcpv4 = 1;
 		else if (!strcmp(opt1->val, "up"))
 			conf_up = 1;
+		else if (!strcmp(opt1->val, "auto"))
+			conf_auto = 1;
 	}
 
 	if (!conf_dhcpv4 && !conf_up)
