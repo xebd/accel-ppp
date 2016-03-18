@@ -1359,7 +1359,7 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli,
 		goto out_err;
 	}
 
-	if (!ifr.ifr_flags & IFF_UP) {
+	if (!(ifr.ifr_flags & IFF_UP)) {
 		ifr.ifr_flags |= IFF_UP;
 		net->sock_ioctl(SIOCSIFFLAGS, &ifr);
 	}
@@ -1564,7 +1564,13 @@ void pppoe_vlan_mon_notify(int ifindex, int vid, int vlan_ifindex)
 
 	svid = iplink_vlan_get_vid(ifindex);
 
-	if (make_vlan_name(conf_vlan_name, ifr.ifr_name, svid, vid, ifname)) {
+#ifdef USE_LUA
+	if (!memcmp(conf_vlan_name, "lua:", 4))
+		r = ipoe_lua_make_vlan_name(conf_vlan_name + 4, ifr.ifr_name, svid, vid, ifname);
+	else
+#endif
+	r = make_vlan_name(conf_vlan_name, ifr.ifr_name, svid, vid, ifname);
+	if (r) {
 		log_error("pppoe: vlan-mon: %s.%i: interface name is too long\n", ifr.ifr_name, vid);
 		return;
 	}
@@ -1610,12 +1616,12 @@ void pppoe_vlan_mon_notify(int ifindex, int vid, int vlan_ifindex)
 	} else {
 		log_info2("pppoe: create vlan %s parent %s\n", ifname, ifr.ifr_name);
 
-		if (iplink_vlan_add(ifr.ifr_name, ifindex, vid))
+		if (iplink_vlan_add(ifname, ifindex, vid))
 			return;
 	}
 
-	strcpy(ifr.ifr_name, ifname);
 	len = strlen(ifname);
+	memcpy(ifr.ifr_name, ifname, len + 1);
 
 	if (ioctl(sock_fd, SIOCGIFINDEX, &ifr, sizeof(ifr))) {
 		log_error("pppoe: vlan-mon: %s: failed to get interface index\n", ifr.ifr_name);
