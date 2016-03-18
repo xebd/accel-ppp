@@ -1073,6 +1073,8 @@ static void ipoe_session_finished(struct ap_session *s)
 	if (s->ifindex == ses->serv->ifindex && strcmp(s->ifname, ses->serv->ifname)) {
 		struct ifreq ifr;
 
+		log_info2("ipoe: rename %s to %s\n", s->ifname, ses->serv->ifname);
+
 		strcpy(ifr.ifr_name, s->ifname);
 
 		ioctl(sock_fd, SIOCGIFFLAGS, &ifr);
