@@ -341,6 +341,9 @@ int main(int _argc, char **_argv)
 
 	triton_terminate();
 
+	if (pid_file)
+		unlink(pid_file);
+
 	return EXIT_SUCCESS;
 
 usage:
