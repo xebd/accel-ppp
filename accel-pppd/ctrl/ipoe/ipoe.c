@@ -600,8 +600,9 @@ cont:
 		if (ipoe_create_interface(ses))
 			return;
 
-		ap_session_set_ifindex(&ses->ses);
 	}
+
+	ap_session_set_ifindex(&ses->ses);
 
 	if (ses->dhcpv4_request && ses->serv->dhcpv4_relay) {
 		dhcpv4_relay_send(ses->serv->dhcpv4_relay, ses->dhcpv4_request, ses->relay_server_id, ses->serv->ifname, conf_agent_remote_id);
