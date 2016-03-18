@@ -217,6 +217,15 @@ static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct d
 	if (opt82_ses)
 		*opt82_ses = NULL;
 
+	if (list_empty(&serv->sessions))
+		return NULL;
+
+	if (!serv->opt_shared) {
+		ses = list_entry(serv->sessions.next, typeof(*ses), entry);
+		ses->UP = 0;
+		return ses;
+	}
+
 	if (!conf_check_mac_change || (pack->relay_agent && dhcpv4_parse_opt82(pack->relay_agent, &agent_circuit_id, &agent_remote_id))) {
 		agent_circuit_id = NULL;
 		agent_remote_id = NULL;
@@ -1152,8 +1161,6 @@ static struct ipoe_session *ipoe_session_create_dhcpv4(struct ipoe_serv *serv, s
 	ses->xid = pack->hdr->xid;
 	memcpy(ses->hwaddr, pack->hdr->chaddr, 6);
 	ses->giaddr = pack->hdr->giaddr;
-	ses->lease_time = conf_lease_time;
-	ses->renew_time = conf_renew_time;
 
 	if (pack->client_id)
 		dlen += sizeof(struct dhcpv4_option) + pack->client_id->len;
@@ -1866,6 +1873,9 @@ struct ipoe_session *ipoe_session_alloc(void)
 
 	ses->ses.idle_timeout = conf_idle_timeout;
 	ses->ses.session_timeout = conf_session_timeout;
+
+	ses->lease_time = conf_lease_time;
+	ses->renew_time = conf_renew_time;
 
 	return ses;
 }
