@@ -1784,9 +1784,7 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 
 	triton_context_wakeup(&ses->ctx);
 
-	//pthread_mutex_lock(&serv->lock);
 	list_add_tail(&ses->entry, &serv->sessions);
-	//pthread_mutex_unlock(&serv->lock);
 
 	if (serv->timer.tpd)
 		triton_timer_del(&serv->timer);
@@ -1846,6 +1844,12 @@ void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph)
 		}
 
 		pthread_mutex_lock(&serv->lock);
+
+		if (!serv->opt_shared && !list_empty(&serv->sessions)) {
+			pthread_mutex_unlock(&serv->lock);
+			break;
+		}
+
 		list_for_each_entry(ses, &serv->sessions, entry) {
 			if (ses->yiaddr == iph->saddr) {
 				pthread_mutex_unlock(&serv->lock);
@@ -1853,9 +1857,10 @@ void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph)
 				return;
 			}
 		}
-		pthread_mutex_unlock(&serv->lock);
 
 		ipoe_session_create_up(serv, eth, iph);
+
+		pthread_mutex_unlock(&serv->lock);
 
 		break;
 	}
