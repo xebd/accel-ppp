@@ -108,6 +108,7 @@ static LIST_HEAD(ipoe_list2);
 static LIST_HEAD(ipoe_list2_u);
 static DEFINE_SEMAPHORE(ipoe_wlock);
 static LIST_HEAD(ipoe_interfaces);
+static LIST_HEAD(ipoe_networks);
 static struct work_struct ipoe_queue_work;
 static struct sk_buff_head ipoe_queue;
 
@@ -157,6 +158,29 @@ static void ipoe_update_stats(struct sk_buff *skb, struct ipoe_stats *st, int co
 	st->packets++;
 	st->bytes += skb->len - corr;
 	u64_stats_update_end(&st->sync);
+}
+
+static int ipoe_check_network(__be32 addr)
+{
+	struct ipoe_network *n;
+	int r;
+
+	if (list_empty(&ipoe_networks))
+		return 1;
+
+	r = 0;
+	addr = ntohl(addr);
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(n, &ipoe_networks, entry) {
+		if ((addr & n->mask) == n->addr) {
+			r = 1;
+			break;
+		}
+	}
+	rcu_read_unlock();
+
+	return r;
 }
 
 static int ipoe_check_exclude(__be32 addr)
@@ -689,8 +713,11 @@ static rx_handler_result_t ipoe_recv(struct sk_buff **pskb)
 		if (ipoe_check_exclude(iph->saddr))
 			return RX_HANDLER_PASS;
 
-		if (ipoe_queue_u(skb, iph->saddr))
-			kfree_skb(skb);
+		if (ipoe_check_network(iph->saddr)) {
+			if (ipoe_queue_u(skb, iph->saddr))
+				kfree_skb(skb);
+		} else
+			return RX_HANDLER_PASS;
 
 		return RX_HANDLER_CONSUMED;
 	}
@@ -1369,12 +1396,11 @@ static int ipoe_nl_cmd_del_exclude(struct sk_buff *skb, struct genl_info *info)
 		if (n->addr == addr) {
 			list_del_rcu(&n->entry);
 			kfree_rcu(n, rcu_head);
+			break;
 		}
 	}
 	rcu_read_unlock();
 	up(&ipoe_wlock);
-
-	synchronize_rcu();
 
 	return 0;
 }
@@ -1444,7 +1470,7 @@ static int ipoe_nl_cmd_del_interface(struct sk_buff *skb, struct genl_info *info
 		if (ifindex == -1 || ifindex == i->ifindex) {
 			dev = __dev_get_by_index(&init_net, i->ifindex);
 
-			if (dev)
+			if (dev && rcu_dereference(dev->rx_handler) == ipoe_recv)
 				netdev_rx_handler_unregister(dev);
 
 			list_del(&i->entry);
@@ -1456,6 +1482,54 @@ static int ipoe_nl_cmd_del_interface(struct sk_buff *skb, struct genl_info *info
 		}
 	}
 	rtnl_unlock();
+
+	return 0;
+}
+
+static int ipoe_nl_cmd_add_net(struct sk_buff *skb, struct genl_info *info)
+{
+	struct ipoe_network *n;
+
+	if (!info->attrs[IPOE_ATTR_ADDR] || !info->attrs[IPOE_ATTR_MASK])
+		return -EINVAL;
+
+	n = kmalloc(sizeof(*n), GFP_KERNEL);
+	if (!n)
+		return -ENOMEM;
+
+	n->addr = nla_get_u32(info->attrs[IPOE_ATTR_ADDR]);
+	n->mask = nla_get_u32(info->attrs[IPOE_ATTR_MASK]);
+	n->addr = ntohl(n->addr) & n->mask;
+
+	down(&ipoe_wlock);
+	list_add_tail_rcu(&n->entry, &ipoe_networks);
+	up(&ipoe_wlock);
+
+	return 0;
+}
+
+static int ipoe_nl_cmd_del_net(struct sk_buff *skb, struct genl_info *info)
+{
+	struct ipoe_network *n;
+	__be32 addr;
+
+	if (!info->attrs[IPOE_ATTR_ADDR])
+		return -EINVAL;
+
+	addr = ntohl(nla_get_u32(info->attrs[IPOE_ATTR_ADDR]));
+
+	down(&ipoe_wlock);
+	rcu_read_lock();
+	list_for_each_entry_rcu(n, &ipoe_networks, entry) {
+		if (!addr || (addr & n->mask) == n->addr) {
+			list_del_rcu(&n->entry);
+			kfree_rcu(n, rcu_head);
+			if (addr)
+				break;
+		}
+	}
+	rcu_read_unlock();
+	up(&ipoe_wlock);
 
 	return 0;
 }
@@ -1523,6 +1597,18 @@ static struct genl_ops ipoe_nl_ops[] = {
 	{
 		.cmd = IPOE_CMD_DEL_EXCLUDE,
 		.doit = ipoe_nl_cmd_del_exclude,
+		.policy = ipoe_nl_policy,
+		.flags = GENL_ADMIN_PERM,
+	},
+	{
+		.cmd = IPOE_CMD_ADD_NET,
+		.doit = ipoe_nl_cmd_add_net,
+		.policy = ipoe_nl_policy,
+		.flags = GENL_ADMIN_PERM,
+	},
+	{
+		.cmd = IPOE_CMD_DEL_NET,
+		.doit = ipoe_nl_cmd_del_net,
 		.policy = ipoe_nl_policy,
 		.flags = GENL_ADMIN_PERM,
 	},

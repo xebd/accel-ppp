@@ -128,6 +128,8 @@ int ipoe_nl_modify(int ifindex, uint32_t peer_addr, uint32_t addr, uint32_t gw, 
 void ipoe_nl_get_sessions(struct list_head *list);
 int ipoe_nl_add_exclude(uint32_t addr, int mask);
 void ipoe_nl_del_exclude(uint32_t addr);
+int ipoe_nl_add_net(uint32_t addr, int mask);
+void ipoe_nl_del_net(uint32_t addr);
 
 void *arpd_start(struct ipoe_serv *ipoe);
 void arpd_stop(void *arp);

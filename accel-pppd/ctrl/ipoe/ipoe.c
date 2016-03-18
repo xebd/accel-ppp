@@ -89,6 +89,13 @@ struct request_item {
 	int cnt;
 };
 
+struct local_net {
+	struct list_head entry;
+	in_addr_t addr;
+	int mask;
+	int active;
+};
+
 enum {SID_MAC, SID_IP};
 
 static int conf_dhcpv4 = 1;
@@ -170,6 +177,8 @@ static pthread_mutex_t uc_lock = PTHREAD_MUTEX_INITIALIZER;
 static LIST_HEAD(uc_list);
 static int uc_size;
 static mempool_t uc_pool;
+
+static LIST_HEAD(local_nets);
 
 static pthread_rwlock_t l4_list_lock = PTHREAD_RWLOCK_INITIALIZER;
 static LIST_HEAD(l4_redirect_list);
@@ -3019,6 +3028,79 @@ static void load_vlan_mon(struct conf_sect_t *sect)
 	}
 }
 
+static void parse_local_net(const char *opt)
+{
+	const char *ptr;
+	char str[17];
+	in_addr_t addr;
+	int mask;
+	char *endptr;
+	struct local_net *n;
+
+	ptr = strchr(opt, '/');
+	if (ptr) {
+		memcpy(str, opt, ptr - opt);
+		str[ptr - opt] = 0;
+		addr = inet_addr(str);
+		if (addr == INADDR_NONE)
+			goto out_err;
+		mask = strtoul(ptr + 1, &endptr, 10);
+		if (mask > 32)
+			goto out_err;
+	} else {
+		addr = inet_addr(opt);
+		if (addr == INADDR_NONE)
+			goto out_err;
+		mask = 24;
+	}
+
+	list_for_each_entry(n, &local_nets, entry) {
+		if (n->addr == addr && n->mask == mask) {
+			n->active = 1;
+			return;
+		}
+	}
+
+	n = _malloc(sizeof(*n));
+	n->addr = addr;
+	n->mask = mask;
+	n->active = 1;
+	list_add_tail(&n->entry, &local_nets);
+
+	ipoe_nl_add_net(addr, mask);
+
+	return;
+
+out_err:
+	log_error("ipoe: failed to parse 'local-net=%s'\n", opt);
+}
+
+static void load_local_nets(struct conf_sect_t *sect)
+{
+	struct conf_option_t *opt;
+	struct local_net *n;
+	struct list_head *pos, *t;
+
+	list_for_each_entry(n, &local_nets, entry)
+		n->active = 0;
+
+	list_for_each_entry(opt, &sect->items, entry) {
+		if (strcmp(opt->name, "local-net"))
+			continue;
+		if (!opt->val)
+			continue;
+		parse_local_net(opt->val);
+	}
+
+	list_for_each_safe(pos, t, &local_nets) {
+		n = list_entry(pos, typeof(*n), entry);
+		if (!n->active) {
+			ipoe_nl_del_net(n->addr);
+			list_del(&n->entry);
+			_free(n);
+		}
+	}
+}
 
 static void load_config(void)
 {
@@ -3280,6 +3362,7 @@ static void load_config(void)
 	load_interfaces(s);
 	load_vlan_mon(s);
 	load_gw_addr(s);
+	load_local_nets(s);
 }
 
 static struct triton_context_t l4_redirect_ctx = {
