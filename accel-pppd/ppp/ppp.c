@@ -230,16 +230,11 @@ static void destroy_ppp_channel(struct ppp_t *ppp)
 	_free_layers(ppp);
 
 	mempool_free(ppp->buf);
-
-	ap_session_finished(&ppp->ses);
 }
 
 static void destablish_ppp(struct ppp_t *ppp)
 {
 	struct pppunit_cache *uc = NULL;
-
-	if (ppp->unit_fd < 0)
-		goto destroy_channel;
 
 	if (conf_unit_cache) {
 		struct ifreq ifr;
@@ -249,10 +244,18 @@ static void destablish_ppp(struct ppp_t *ppp)
 			strncpy(ifr.ifr_name, ppp->ses.ifname, IFNAMSIZ);
 			if (net->sock_ioctl(SIOCSIFNAME, &ifr)) {
 				triton_md_unregister_handler(&ppp->unit_hnd, 1);
+				ap_session_finished(&ppp->ses);
 				goto skip;
 			}
 		}
+	}
 
+	ap_session_finished(&ppp->ses);
+
+	if (ppp->unit_fd < 0)
+		goto destroy_channel;
+
+	if (conf_unit_cache) {
 		triton_md_unregister_handler(&ppp->unit_hnd, 0);
 
 		uc = mempool_alloc(uc_pool);
