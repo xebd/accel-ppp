@@ -47,6 +47,7 @@ struct vlan_dev {
 
 	spinlock_t lock;
 	unsigned long vid[2][4096/8/sizeof(long)];
+	unsigned long busy[4096/8/sizeof(long)];
 	int proto;
 };
 
@@ -115,13 +116,15 @@ static int vlan_pt_recv(struct sk_buff *skb, struct net_device *dev, struct pack
 	vid = skb->vlan_tci & VLAN_VID_MASK;
 	//pr_info("vid %i\n", vid);
 
-	if (d->vid[proto][vid / (8*sizeof(long))] & (1lu << (vid % (8*sizeof(long)))))
+	if (likely(d->busy[vid / (8*sizeof(long))] & (1lu << (vid % (8*sizeof(long))))))
 		vid = -1;
-	else {
+	else if (likely(!(d->vid[proto][vid / (8*sizeof(long))] & (1lu << (vid % (8*sizeof(long))))))) {
 		spin_lock(&d->lock);
+		d->busy[vid / (8*sizeof(long))] |= 1lu << (vid % (8*sizeof(long)));
 		d->vid[proto][vid / (8*sizeof(long))] |= 1lu << (vid % (8*sizeof(long)));
 		spin_unlock(&d->lock);
-	}
+	} else
+		vid = -1;
 
 	if (vid > 0) {
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
@@ -397,6 +400,7 @@ static int vlan_mon_nl_cmd_add_vlan_mon_vid(struct sk_buff *skb, struct genl_inf
 
 	spin_lock_bh(&d->lock);
 	d->vid[proto][vid / (8*sizeof(long))] &= ~(1lu << (vid % (8*sizeof(long))));
+	d->busy[vid / (8*sizeof(long))] &= ~(1lu << (vid % (8*sizeof(long))));
 	spin_unlock_bh(&d->lock);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
 	if (dev->features & NETIF_F_HW_VLAN_FILTER) {
