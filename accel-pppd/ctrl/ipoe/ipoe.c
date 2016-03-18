@@ -2729,9 +2729,10 @@ static void load_interfaces(struct conf_sect_t *sect)
 	}
 
 	list_for_each_entry(serv, &serv_list, entry) {
-		if (!serv->active && !serv->vid) {
+		if (!serv->active) {
 			ipoe_nl_del_interface(serv->ifindex);
 			ipoe_drop_sessions(serv, NULL);
+			serv->need_close = 1;
 			triton_context_call(&serv->ctx, (triton_event_func)ipoe_serv_release, serv);
 		}
 	}
