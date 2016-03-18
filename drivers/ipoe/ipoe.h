@@ -33,6 +33,7 @@ enum {
 	IPOE_ATTR_ETH_HDR,	   /* u32 */
 	IPOE_ATTR_IP_HDR,	   /* u32 */
 	IPOE_ATTR_MODE,	   /* u8 */
+	IPOE_ATTR_ARP_HDR,	   /* u8 */
 	__IPOE_ATTR_MAX,
 };
 

@@ -106,6 +106,18 @@ struct ipoe_session_info {
 	uint32_t peer_addr;
 };
 
+struct _arphdr {
+	__be16 ar_hrd;
+	__be16 ar_pro;
+	__u8   ar_hln;
+	__u8   ar_pln;
+	__be16 ar_op;
+	__u8   ar_sha[ETH_ALEN];
+	__be32 ar_spa;
+	__u8   ar_tha[ETH_ALEN];
+	__be32 ar_tpa;
+} __packed;
+
 #ifdef USE_LUA
 char *ipoe_lua_get_username(struct ipoe_session *, const char *func);
 int ipoe_lua_make_vlan_name(const char *func, const char *parent, int svid, int cvid, char *name);
@@ -114,7 +126,7 @@ int ipoe_lua_make_vlan_name(const char *func, const char *parent, int svid, int 
 struct iphdr;
 struct ethhdr;
 
-void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph);
+void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph, struct _arphdr *arph);
 
 struct ipoe_session *ipoe_session_alloc(void);
 

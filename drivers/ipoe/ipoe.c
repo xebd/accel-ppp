@@ -101,6 +101,24 @@ struct ipoe_entry_u {
 	unsigned long tstamp;
 };
 
+
+struct _arphdr {
+	__be16		ar_hrd;		/* format of hardware address	*/
+	__be16		ar_pro;		/* format of protocol address	*/
+	unsigned char	ar_hln;		/* length of hardware address	*/
+	unsigned char	ar_pln;		/* length of protocol address	*/
+	__be16		ar_op;		/* ARP opcode (command)		*/
+
+	 /*
+	  *	 Ethernet looks like this : This bit is variable sized however...
+	  */
+	unsigned char		ar_sha[ETH_ALEN];	/* sender hardware address	*/
+	__be32		ar_sip;		/* sender IP address		*/
+	unsigned char		ar_tha[ETH_ALEN];	/* target hardware address	*/
+	__be32		ar_tip;		/* target IP address		*/
+} __packed;
+
+
 static struct list_head ipoe_list[HASH_BITS + 1];
 static struct list_head ipoe_list1_u[HASH_BITS + 1];
 static struct list_head ipoe_excl_list[HASH_BITS + 1];
@@ -504,25 +522,32 @@ static void ipoe_process_queue(struct work_struct *w)
 	struct sk_buff *skb;
 	struct ipoe_entry_u *e;
 	struct ethhdr *eth;
-	struct iphdr *iph;
+	struct iphdr *iph = NULL;
+	struct _arphdr *arph = NULL;
 	struct sk_buff *report_skb = NULL;
 	void *header = NULL;
 	struct nlattr *ns;
 	int id = 1;
+	__be32 saddr;
 
 	do {
 		while ((skb = skb_dequeue(&ipoe_queue))) {
-			eth = eth_hdr(skb);
-			iph = ip_hdr(skb);
+			if (likely(skb->protocol == htons(ETH_P_IP))) {
+				iph = ip_hdr(skb);
+				saddr = iph->saddr;
+			} else {
+				arph = (struct _arphdr *)skb_network_header(skb);
+				saddr = arph->ar_sip;
+			}
 
-			e = ipoe_lookup2_u(iph->saddr);
+			e = ipoe_lookup2_u(saddr);
 
 			if (!e) {
 				e = kmalloc(sizeof(*e), GFP_KERNEL);
-				e->addr = iph->saddr;
+				e->addr = saddr;
 				e->tstamp = jiffies;
 
-				list_add_tail_rcu(&e->entry1, &ipoe_list1_u[hash_addr(iph->saddr)]);
+				list_add_tail_rcu(&e->entry1, &ipoe_list1_u[hash_addr(saddr)]);
 				list_add_tail(&e->entry2, &ipoe_list2_u);
 
 				//pr_info("create %08x\n", e->addr);
@@ -554,11 +579,17 @@ static void ipoe_process_queue(struct work_struct *w)
 				if (nla_put_u32(report_skb, IPOE_ATTR_IFINDEX, skb->dev ? skb->dev->ifindex : skb->skb_iif))
 					goto nl_err;
 
-				if (nla_put(report_skb, IPOE_ATTR_ETH_HDR, sizeof(*eth), eth))
-					goto nl_err;
+				if (likely(skb->protocol == htons(ETH_P_IP))) {
+					eth = eth_hdr(skb);
+					if (nla_put(report_skb, IPOE_ATTR_ETH_HDR, sizeof(*eth), eth))
+						goto nl_err;
 
-				if (nla_put(report_skb, IPOE_ATTR_IP_HDR, sizeof(*iph), iph))
-					goto nl_err;
+					if (nla_put(report_skb, IPOE_ATTR_IP_HDR, sizeof(*iph), iph))
+						goto nl_err;
+				} else {
+					if (nla_put(report_skb, IPOE_ATTR_ARP_HDR, sizeof(*arph), arph))
+						goto nl_err;
+				}
 
 				if (nla_nest_end(report_skb, ns) >= IPOE_NLMSG_SIZE) {
 					genlmsg_end(report_skb, header);
@@ -671,10 +702,12 @@ static rx_handler_result_t ipoe_recv(struct sk_buff **pskb)
 	struct ipoe_iface *i = rcu_dereference(dev->rx_handler_data);
 	struct net_device *out = NULL;
 	struct ipoe_session *ses = NULL;
-	struct iphdr *iph;
+	struct iphdr *iph = NULL;
+	struct _arphdr *arph = NULL;
 	struct ethhdr *eth;
 	int noff;
 	struct net_device_stats *stats;
+	__be32 saddr;
 
 	if (!i)
 		return RX_HANDLER_PASS;
@@ -682,21 +715,36 @@ static rx_handler_result_t ipoe_recv(struct sk_buff **pskb)
 	if (unlikely(skb->pkt_type == PACKET_LOOPBACK))
 		return RX_HANDLER_PASS;
 
-	if (skb->protocol != htons(ETH_P_IP))
-		return RX_HANDLER_PASS;
+	if (likely(skb->protocol == htons(ETH_P_IP))) {
+		noff = skb_network_offset(skb);
 
-	noff = skb_network_offset(skb);
+		if (!pskb_may_pull(skb, sizeof(*iph) + noff))
+			return RX_HANDLER_PASS;
 
-	if (!pskb_may_pull(skb, sizeof(*iph) + noff))
-		return RX_HANDLER_PASS;
+		iph = ip_hdr(skb);
+		saddr = iph->saddr;
 
-	iph = ip_hdr(skb);
+		if (!saddr || saddr == 0xffffffff)
+			return RX_HANDLER_PASS;
+	} else if (likely(skb->protocol == htons(ETH_P_ARP))) {
+		noff = skb_network_offset(skb);
 
-	if (!iph->saddr)
+		if (skb->len != sizeof(*arph))
+			return RX_HANDLER_PASS;
+
+		if (!pskb_may_pull(skb, sizeof(*arph) + noff))
+			return RX_HANDLER_PASS;
+
+		arph = (struct _arphdr *)skb_network_header(skb);
+		if (arph->ar_op != htons(ARPOP_REQUEST))
+			return RX_HANDLER_PASS;
+
+		saddr = arph->ar_sip;
+	} else
 		return RX_HANDLER_PASS;
 
 	//pr_info("ipoe: recv %08x %08x\n", iph->saddr, iph->daddr);
-	ses = ipoe_lookup_rt(skb, iph->saddr, &out);
+	ses = ipoe_lookup_rt(skb, saddr, &out);
 
 	if (!ses) {
 		if (i->mode == 0)
@@ -710,11 +758,11 @@ static rx_handler_result_t ipoe_recv(struct sk_buff **pskb)
 			return RX_HANDLER_CONSUMED;
 		}
 
-		if (ipoe_check_exclude(iph->saddr))
+		if (ipoe_check_exclude(saddr))
 			return RX_HANDLER_PASS;
 
-		if (ipoe_check_network(iph->saddr)) {
-			if (ipoe_queue_u(skb, iph->saddr))
+		if (ipoe_check_network(saddr)) {
+			if (ipoe_queue_u(skb, saddr))
 				kfree_skb(skb);
 		} else
 			return RX_HANDLER_PASS;

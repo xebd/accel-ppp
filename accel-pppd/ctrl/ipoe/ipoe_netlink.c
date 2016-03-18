@@ -467,6 +467,7 @@ static void ipoe_up_handler(const struct sockaddr_nl *addr, struct nlmsghdr *h)
 	int ifindex;
 	struct iphdr *iph;
 	struct ethhdr *eth;
+	struct _arphdr *arph;
 
 	len -= NLMSG_LENGTH(GENL_HDRLEN);
 
@@ -484,14 +485,23 @@ static void ipoe_up_handler(const struct sockaddr_nl *addr, struct nlmsghdr *h)
 
 		parse_rtattr_nested(tb2, IPOE_ATTR_MAX, tb[i]);
 
-		if (!tb2[IPOE_ATTR_ETH_HDR] || !tb2[IPOE_ATTR_IP_HDR] || !tb2[IPOE_ATTR_IFINDEX])
+		if (!tb2[IPOE_ATTR_IFINDEX])
 			continue;
 
 		ifindex = *(uint32_t *)(RTA_DATA(tb2[IPOE_ATTR_IFINDEX]));
-		iph = (struct iphdr *)(RTA_DATA(tb2[IPOE_ATTR_IP_HDR]));
-		eth = (struct ethhdr *)(RTA_DATA(tb2[IPOE_ATTR_ETH_HDR]));
 
-		ipoe_recv_up(ifindex, eth, iph);
+		if (tb2[IPOE_ATTR_ARP_HDR]) {
+			arph = (struct _arphdr *)(RTA_DATA(tb2[IPOE_ATTR_ARP_HDR]));
+			iph = NULL;
+			eth = NULL;
+		} else if (tb2[IPOE_ATTR_ETH_HDR] && !tb2[IPOE_ATTR_IP_HDR]) {
+			iph = (struct iphdr *)(RTA_DATA(tb2[IPOE_ATTR_IP_HDR]));
+			eth = (struct ethhdr *)(RTA_DATA(tb2[IPOE_ATTR_ETH_HDR]));
+			arph = NULL;
+		} else
+			continue;
+
+		ipoe_recv_up(ifindex, eth, iph, arph);
 	}
 }
 

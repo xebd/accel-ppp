@@ -1748,15 +1748,16 @@ static void ipoe_recv_dhcpv4_relay(struct dhcpv4_packet *pack)
 }
 
 
-static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struct ethhdr *eth, struct iphdr *iph)
+static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struct ethhdr *eth, struct iphdr *iph, struct _arphdr *arph)
 {
 	struct ipoe_session *ses;
-	uint8_t *hwaddr = eth->h_source;
+	uint8_t *hwaddr = arph ? arph->ar_sha : eth->h_source;
+	in_addr_t saddr = arph ? arph->ar_spa : iph->saddr;
 
 	if (ap_shutdown)
 		return NULL;
 
-	if (l4_redirect_list_check(iph->saddr))
+	if (l4_redirect_list_check(saddr))
 		return NULL;
 
 	ses = ipoe_session_alloc();
@@ -1764,8 +1765,8 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 		return NULL;
 
 	ses->serv = serv;
-	memcpy(ses->hwaddr, eth->h_source, 6);
-	ses->yiaddr = iph->saddr;
+	memcpy(ses->hwaddr, hwaddr, ETH_ALEN);
+	ses->yiaddr = saddr;
 	ses->UP = 1;
 
 	if (!serv->opt_shared)
@@ -1779,7 +1780,7 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 				hwaddr[0], hwaddr[1], hwaddr[2], hwaddr[3], hwaddr[4], hwaddr[5]);
 	} else {
 		ses->ctrl.calling_station_id = _malloc(17);
-		u_inet_ntoa(iph->saddr, ses->ctrl.calling_station_id);
+		u_inet_ntoa(saddr, ses->ctrl.calling_station_id);
 	}
 
 	if (ses->serv->opt_username == USERNAME_IFNAME)
@@ -1881,10 +1882,11 @@ struct ipoe_session *ipoe_session_alloc(void)
 	return ses;
 }
 
-void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph)
+void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph, struct _arphdr *arph)
 {
 	struct ipoe_serv *serv;
 	struct ipoe_session *ses;
+	in_addr_t saddr = arph ? arph->ar_spa : iph->saddr;
 
 	pthread_mutex_lock(&serv_lock);
 	list_for_each_entry(serv, &serv_list, entry) {
@@ -1904,14 +1906,14 @@ void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph)
 		}
 
 		list_for_each_entry(ses, &serv->sessions, entry) {
-			if (ses->yiaddr == iph->saddr) {
+			if (ses->yiaddr == saddr) {
 				pthread_mutex_unlock(&serv->lock);
 				pthread_mutex_unlock(&serv_lock);
 				return;
 			}
 		}
 
-		ipoe_session_create_up(serv, eth, iph);
+		ipoe_session_create_up(serv, eth, iph, arph);
 
 		pthread_mutex_unlock(&serv->lock);
 
