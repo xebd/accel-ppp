@@ -18,6 +18,18 @@
 #define ETH_ALEN 6
 #endif
 
+struct _arphdr {
+	__be16 ar_hrd;
+	__be16 ar_pro;
+	__u8   ar_hln;
+	__u8   ar_pln;
+	__be16 ar_op;
+	__u8   ar_sha[ETH_ALEN];
+	__be32 ar_spa;
+	__u8   ar_tha[ETH_ALEN];
+	__be32 ar_tpa;
+} __packed;
+
 struct ipoe_serv {
 	struct list_head entry;
 	struct triton_context_t ctx;
@@ -82,6 +94,7 @@ struct ipoe_session {
 	uint8_t *data;
 	struct dhcpv4_packet *dhcpv4_request;
 	struct dhcpv4_packet *dhcpv4_relay_reply;
+	struct _arphdr *arph;
 	int relay_retransmit;
 	int ifindex;
 	char *username;
@@ -105,18 +118,6 @@ struct ipoe_session_info {
 	uint32_t addr;
 	uint32_t peer_addr;
 };
-
-struct _arphdr {
-	__be16 ar_hrd;
-	__be16 ar_pro;
-	__u8   ar_hln;
-	__u8   ar_pln;
-	__be16 ar_op;
-	__u8   ar_sha[ETH_ALEN];
-	__be32 ar_spa;
-	__u8   ar_tha[ETH_ALEN];
-	__be32 ar_tpa;
-} __packed;
 
 #ifdef USE_LUA
 char *ipoe_lua_get_username(struct ipoe_session *, const char *func);
@@ -146,6 +147,7 @@ void ipoe_nl_del_net(uint32_t addr);
 
 void *arpd_start(struct ipoe_serv *ipoe);
 void arpd_stop(void *arp);
+void arp_send(int ifindex, struct _arphdr *arph);
 
 #endif
 

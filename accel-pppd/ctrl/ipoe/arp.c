@@ -112,6 +112,20 @@ out:
 	mempool_free(ah);
 }
 
+void arp_send(int ifindex, struct _arphdr *arph)
+{
+	struct sockaddr_ll dst;
+
+	memset(&dst, 0, sizeof(dst));
+	dst.sll_family = AF_PACKET;
+	dst.sll_ifindex = ifindex;
+	dst.sll_protocol = htons(ETH_P_ARP);
+
+	arph->ar_op = htons(ARPOP_REPLY);
+
+	sendto(arp_hnd.fd, arph, sizeof(*arph), MSG_DONTWAIT, (struct sockaddr *)&dst, sizeof(dst));
+}
+
 static int arp_read(struct triton_md_handler_t *h)
 {
 	int r, i;

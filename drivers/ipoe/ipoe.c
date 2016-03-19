@@ -736,7 +736,14 @@ static rx_handler_result_t ipoe_recv(struct sk_buff **pskb)
 			return RX_HANDLER_PASS;
 
 		arph = (struct _arphdr *)skb_network_header(skb);
+
 		if (arph->ar_op != htons(ARPOP_REQUEST))
+			return RX_HANDLER_PASS;
+
+		if (arph->ar_hrd != htons(ARPHRD_ETHER))
+			return RX_HANDLER_PASS;
+
+		if (arph->ar_pro != htons(ETH_P_IP))
 			return RX_HANDLER_PASS;
 
 		saddr = arph->ar_sip;

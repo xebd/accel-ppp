@@ -800,23 +800,25 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 		ses->timer.expire_tv.tv_sec = conf_offer_timeout;
 		triton_timer_add(&ses->ctx, &ses->timer, 0);
 	} else {
-		if (!ses->siaddr)
+		if (!ses->router)
 			find_gw_addr(ses);
 
-		if (!ses->siaddr)
-			ses->siaddr = ses->serv->opt_src;
+		if (!ses->router)
+			ses->router = ses->serv->opt_src;
 
-		if (!ses->siaddr)
+		if (!ses->router)
 			ses->siaddr = iproute_get(ses->yiaddr, NULL);
 
-		if (!ses->siaddr) {
-			log_ppp_error("can't determine local address\n");
+		if (!ses->router) {
+			log_ppp_error("can't determine router address\n");
 			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 1);
 			return;
 		}
 
 		if (ses->ses.ipv4 && !ses->ses.ipv4->addr)
-			ses->ses.ipv4->addr = ses->siaddr;
+			ses->ses.ipv4->addr = ses->router;
+
+		ses->siaddr = ses->router;
 
 		__ipoe_session_activate(ses);
 	}
@@ -903,6 +905,14 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 
 		dhcpv4_packet_free(ses->dhcpv4_request);
 		ses->dhcpv4_request = NULL;
+	} else if (ses->arph) {
+		if (ses->arph->ar_tpa == ses->router) {
+			memcpy(ses->arph->ar_tha, ses->serv->hwaddr, ETH_ALEN);
+			arp_send(ses->serv->ifindex, ses->arph);
+		}
+
+		_free(ses->arph);
+		ses->arph = NULL;
 	}
 
 	ses->timer.expire = ipoe_session_timeout;
@@ -1014,6 +1024,9 @@ static void ipoe_session_free(struct ipoe_session *ses)
 
 	if (ses->dhcpv4_relay_reply)
 		dhcpv4_packet_free(ses->dhcpv4_relay_reply);
+
+	if (ses->arph)
+		_free(ses->arph);
 
 	if (ses->ctrl.called_station_id && ses->ctrl.called_station_id != ses->ses.ifname)
 		_free(ses->ctrl.called_station_id);
@@ -1805,6 +1818,11 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 
 	if (serv->timer.tpd)
 		triton_timer_del(&serv->timer);
+
+	if (arph) {
+		ses->arph = _malloc(sizeof(*arph));
+		memcpy(ses->arph, arph, sizeof(*arph));
+	}
 
 	triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_start, ses);
 
