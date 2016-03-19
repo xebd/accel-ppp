@@ -236,8 +236,9 @@ static void destablish_ppp(struct ppp_t *ppp)
 {
 	struct pppunit_cache *uc = NULL;
 
+	ap_session_finished(&ppp->ses);
+
 	if (ppp->unit_fd < 0) {
-		ap_session_finished(&ppp->ses);
 		destroy_ppp_channel(ppp);
 		return;
 	}
@@ -250,15 +251,10 @@ static void destablish_ppp(struct ppp_t *ppp)
 			strncpy(ifr.ifr_name, ppp->ses.ifname, IFNAMSIZ);
 			if (net->sock_ioctl(SIOCSIFNAME, &ifr)) {
 				triton_md_unregister_handler(&ppp->unit_hnd, 1);
-				ap_session_finished(&ppp->ses);
 				goto skip;
 			}
 		}
-	}
 
-	ap_session_finished(&ppp->ses);
-
-	if (conf_unit_cache) {
 		triton_md_unregister_handler(&ppp->unit_hnd, 0);
 
 		uc = mempool_alloc(uc_pool);
