@@ -1789,7 +1789,7 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 		ses->username = _strdup(serv->ifname);
 	else {
 		ses->username = _malloc(17);
-		u_inet_ntoa(iph->saddr, ses->username);
+		u_inet_ntoa(saddr, ses->username);
 	}
 
 	ses->ses.chan_name = ses->ctrl.calling_station_id;

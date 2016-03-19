@@ -729,7 +729,7 @@ static rx_handler_result_t ipoe_recv(struct sk_buff **pskb)
 	} else if (likely(skb->protocol == htons(ETH_P_ARP))) {
 		noff = skb_network_offset(skb);
 
-		if (skb->len != sizeof(*arph))
+		if (skb->len < sizeof(*arph))
 			return RX_HANDLER_PASS;
 
 		if (!pskb_may_pull(skb, sizeof(*arph) + noff))
