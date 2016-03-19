@@ -33,9 +33,9 @@
 #define ENV_MAX 16
 
 static char *conf_ip_up = "/etc/ppp/ip-up";
-static char *conf_ip_pre_up;
+static char *conf_ip_pre_up = "/etc/ppp/ip-pre-up";
 static char *conf_ip_down = "/etc/ppp/ip-down";
-static char *conf_ip_change;
+static char *conf_ip_change = "/etc/ppp/ip-change";
 static char *conf_radattr_prefix = "/var/run/radattr";
 static int conf_verbose = 0;
 
@@ -173,7 +173,7 @@ static void ev_ses_pre_up(struct ap_session *ses)
 
 	fill_env(env, env_mem, pd);
 
-	if (conf_ip_pre_up) {
+	if (conf_ip_pre_up && !access(conf_ip_pre_up, R_OK | X_OK)) {
 		sigchld_lock();
 		pid = fork();
 		if (pid > 0) {
@@ -221,7 +221,7 @@ static void ev_ses_started(struct ap_session *ses)
 
 	fill_env(env, env_mem, pd);
 
-	if (conf_ip_up) {
+	if (conf_ip_up && !access(conf_ip_up, R_OK | X_OK)) {
 		sigchld_lock();
 		pid = fork();
 		if (pid > 0) {
@@ -274,7 +274,7 @@ static void ev_ses_finished(struct ap_session *ses)
 
 	fill_env(env, env_mem, pd);
 
-	if (conf_ip_down) {
+	if (conf_ip_down && !access(conf_ip_down, R_OK | X_OK)) {
 		sigchld_lock();
 		pid = fork();
 		if (pid > 0) {
@@ -351,10 +351,10 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 	fill_argv(argv, pd, conf_ip_change);
 
 	fill_env(env, env_mem, pd);
-
-	sigchld_lock();
-	pid = fork();
-	if (pid > 0) {
+	if (!access(conf_ip_change, R_OK | X_OK)) {
+	    sigchld_lock();
+	    pid = fork();
+	    if (pid > 0) {
 		pd->ip_change_hnd.pid = pid;
 		sigchld_register_handler(&pd->ip_change_hnd);
 		sigchld_unlock();
@@ -363,12 +363,13 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 		triton_context_schedule();
 		if (!ev->res)
 			ev->res = pd->res;
-	} else if (pid == 0) {
+	    } else if (pid == 0) {
 		execve(conf_ip_change, argv, env);
 		log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_change, strerror(errno));
 		_exit(EXIT_FAILURE);
-	} else
+	    } else
 		log_error("pppd_compat: fork: %s\n", strerror(errno));
+	}
 }
 
 static void remove_radattr(struct pppd_compat_pd *pd)
