@@ -236,6 +236,12 @@ static void destablish_ppp(struct ppp_t *ppp)
 {
 	struct pppunit_cache *uc = NULL;
 
+	if (ppp->unit_fd < 0) {
+		ap_session_finished(&ppp->ses);
+		destroy_ppp_channel(ppp);
+		return;
+	}
+
 	if (conf_unit_cache) {
 		struct ifreq ifr;
 
@@ -250,11 +256,6 @@ static void destablish_ppp(struct ppp_t *ppp)
 		}
 	}
 
-	ap_session_finished(&ppp->ses);
-
-	if (ppp->unit_fd < 0)
-		goto destroy_channel;
-
 	if (conf_unit_cache) {
 		triton_md_unregister_handler(&ppp->unit_hnd, 0);
 
@@ -267,10 +268,9 @@ static void destablish_ppp(struct ppp_t *ppp)
 skip:
 	ppp->unit_fd = -1;
 
-	log_ppp_debug("ppp destablished\n");
-
-destroy_channel:
 	destroy_ppp_channel(ppp);
+
+	log_ppp_debug("ppp destablished\n");
 
 	if (uc) {
 		pthread_mutex_lock(&uc_lock);
