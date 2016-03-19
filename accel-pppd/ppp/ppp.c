@@ -256,6 +256,8 @@ static void destablish_ppp(struct ppp_t *ppp)
 		}
 	}
 
+	ap_session_finished(&ppp->ses);
+
 	if (conf_unit_cache) {
 		triton_md_unregister_handler(&ppp->unit_hnd, 0);
 
