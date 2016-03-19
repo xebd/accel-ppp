@@ -494,7 +494,7 @@ static void ipoe_up_handler(const struct sockaddr_nl *addr, struct nlmsghdr *h)
 			arph = (struct _arphdr *)(RTA_DATA(tb2[IPOE_ATTR_ARP_HDR]));
 			iph = NULL;
 			eth = NULL;
-		} else if (tb2[IPOE_ATTR_ETH_HDR] && !tb2[IPOE_ATTR_IP_HDR]) {
+		} else if (tb2[IPOE_ATTR_ETH_HDR] && tb2[IPOE_ATTR_IP_HDR]) {
 			iph = (struct iphdr *)(RTA_DATA(tb2[IPOE_ATTR_IP_HDR]));
 			eth = (struct ethhdr *)(RTA_DATA(tb2[IPOE_ATTR_ETH_HDR]));
 			arph = NULL;
