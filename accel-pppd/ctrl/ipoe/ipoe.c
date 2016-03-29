@@ -199,6 +199,7 @@ static void __ipoe_session_start(struct ipoe_session *ses);
 static int ipoe_rad_send_auth_request(struct rad_plugin_t *rad, struct rad_packet_t *pack);
 static int ipoe_rad_send_acct_request(struct rad_plugin_t *rad, struct rad_packet_t *pack);
 static void ipoe_session_create_auto(struct ipoe_serv *serv);
+static void ipoe_serv_timeout(struct triton_timer_t *t);
 
 static void ipoe_ctx_switch(struct triton_context_t *ctx, void *arg)
 {
@@ -2280,6 +2281,17 @@ static int get_offer_delay()
 	return 0;
 }
 
+static void set_vlan_timeout(struct ipoe_serv *serv)
+{
+	serv->timer.expire = ipoe_serv_timeout;
+	serv->timer.expire_tv.tv_sec = conf_vlan_timeout;
+
+	pthread_mutex_lock(&serv->lock);
+	if (list_empty(&serv->sessions))
+		triton_timer_add(&serv->ctx, &serv->timer, 0);
+	pthread_mutex_unlock(&serv->lock);
+}
+
 void ipoe_vlan_mon_notify(int ifindex, int vid, int vlan_ifindex)
 {
 	struct conf_sect_t *sect = conf_get_section("ipoe");
@@ -2322,6 +2334,13 @@ void ipoe_vlan_mon_notify(int ifindex, int vid, int vlan_ifindex)
 		pthread_mutex_lock(&serv_lock);
 		list_for_each_entry(serv, &serv_list, entry) {
 			if (serv->ifindex == vlan_ifindex) {
+				if (!serv->vid) {
+					serv->vid = vid;
+					serv->parent_ifindex = ifindex;
+
+					if (conf_vlan_timeout)
+						triton_context_call(&serv->ctx, (triton_event_func)set_vlan_timeout, serv);
+				}
 				pthread_mutex_unlock(&serv_lock);
 				return;
 			}
