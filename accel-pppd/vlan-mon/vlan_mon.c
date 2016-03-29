@@ -49,15 +49,22 @@ void __export vlan_mon_register_proto(int proto, vlan_mon_notify func)
 
 int __export vlan_mon_add(int ifindex, int proto, long *mask, int len)
 {
+	struct rtnl_handle rth;
 	struct nlmsghdr *nlh;
 	struct genlmsghdr *ghdr;
 	struct {
 		struct nlmsghdr n;
 		char buf[1024];
 	} req;
+	int r = 0;
 
-	if (rth.fd == -1)
+	if (vlan_mon_genl_id < 0)
 		return -1;
+
+	if (rtnl_open_byproto(&rth, 0, NETLINK_GENERIC)) {
+		log_error("ipoe: cannot open generic netlink socket\n");
+		return -1;
+	}
 
 	nlh = &req.n;
 	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
@@ -73,14 +80,17 @@ int __export vlan_mon_add(int ifindex, int proto, long *mask, int len)
 
 	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 ) {
 		log_error("vlan_mon: nl_add_vlan_mon: error talking to kernel\n");
-		return -1;
+		r = -1;
 	}
 
-	return 0;
+	rtnl_close(&rth);
+
+	return r;
 }
 
 int __export vlan_mon_add_vid(int ifindex, int proto, int vid)
 {
+	struct rtnl_handle rth;
 	struct nlmsghdr *nlh;
 	struct genlmsghdr *ghdr;
 	struct {
@@ -89,8 +99,13 @@ int __export vlan_mon_add_vid(int ifindex, int proto, int vid)
 	} req;
 	int r = 0;
 
-	if (rth.fd == -1)
+	if (vlan_mon_genl_id < 0)
 		return -1;
+
+	if (rtnl_open_byproto(&rth, 0, NETLINK_GENERIC)) {
+		log_error("ipoe: cannot open generic netlink socket\n");
+		return -1;
+	}
 
 	nlh = &req.n;
 	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
@@ -109,20 +124,29 @@ int __export vlan_mon_add_vid(int ifindex, int proto, int vid)
 		r = -1;
 	}
 
+	rtnl_close(&rth);
+
 	return r;
 }
 
 int __export vlan_mon_del(int ifindex, int proto)
 {
+	struct rtnl_handle rth;
 	struct nlmsghdr *nlh;
 	struct genlmsghdr *ghdr;
 	struct {
 		struct nlmsghdr n;
 		char buf[1024];
 	} req;
+	int r = 0;
 
-	if (rth.fd == -1)
+	if (vlan_mon_genl_id < 0)
 		return -1;
+
+	if (rtnl_open_byproto(&rth, 0, NETLINK_GENERIC)) {
+		log_error("ipoe: cannot open generic netlink socket\n");
+		return -1;
+	}
 
 	nlh = &req.n;
 	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
@@ -137,10 +161,12 @@ int __export vlan_mon_del(int ifindex, int proto)
 
 	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 ) {
 		log_error("vlan_mon: nl_del_vlan_mon: error talking to kernel\n");
-		return -1;
+		r = -1;
 	}
 
-	return 0;
+	rtnl_close(&rth);
+
+	return r;
 }
 
 static void vlan_mon_handler(const struct sockaddr_nl *addr, struct nlmsghdr *h)
@@ -383,14 +409,13 @@ static void init(void)
 	int mcg_id = genl_resolve_mcg(VLAN_MON_GENL_NAME, VLAN_MON_GENL_MCG, &vlan_mon_genl_id);
 	if (mcg_id == -1) {
 		log_warn("vlan_mon: kernel module is not loaded\n");
-		rth.fd = -1;
 		vlan_mon_genl_id = -1;
 		return;
 	}
 
 	if (rtnl_open_byproto(&rth, 1 << (mcg_id - 1), NETLINK_GENERIC)) {
 		log_error("vlan_mon: cannot open generic netlink socket\n");
-		rth.fd = -1;
+		vlan_mon_genl_id = -1;
 		return;
 	}
 
