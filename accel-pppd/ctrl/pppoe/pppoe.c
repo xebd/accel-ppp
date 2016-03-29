@@ -1225,8 +1225,10 @@ static void pppoe_serv_timeout(struct triton_timer_t *t)
 		pthread_mutex_unlock(&serv->lock);
 		return;
 	}
-
 	pthread_mutex_unlock(&serv->lock);
+
+	pppoe_disc_stop(serv);
+
 	pppoe_server_free(serv);
 }
 
