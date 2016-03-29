@@ -775,6 +775,9 @@ static rx_handler_result_t ipoe_recv(struct sk_buff **pskb)
 			return RX_HANDLER_PASS;
 
 		return RX_HANDLER_CONSUMED;
+	} else if (unlikely(skb->protocol == htons(ETH_P_ARP))) {
+		atomic_dec(&ses->refs);
+		return RX_HANDLER_PASS;
 	}
 
 	stats = &ses->dev->stats;
