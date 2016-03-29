@@ -1085,20 +1085,24 @@ static void ipoe_session_finished(struct ap_session *s)
 
 	if (s->ifindex == ses->serv->ifindex && strcmp(s->ifname, ses->serv->ifname)) {
 		struct ifreq ifr;
+		int flags;
 
 		log_info2("ipoe: rename %s to %s\n", s->ifname, ses->serv->ifname);
 
 		strcpy(ifr.ifr_name, s->ifname);
 
 		ioctl(sock_fd, SIOCGIFFLAGS, &ifr);
-		ifr.ifr_flags &= ~IFF_UP;
-		ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
+		flags = ifr.ifr_flags;
+		if (flags & IFF_UP) {
+			ifr.ifr_flags &= ~IFF_UP;
+			ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
+		}
 
 		strcpy(ifr.ifr_newname, ses->serv->ifname);
 		ioctl(sock_fd, SIOCSIFNAME, &ifr);
 
 		strcpy(ifr.ifr_name, ses->serv->ifname);
-		ifr.ifr_flags |= IFF_UP;
+		ifr.ifr_flags = flags | IFF_UP;
 		ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
 	}
 
@@ -2625,10 +2629,6 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	memset(&ifr, 0, sizeof(ifr));
 	strcpy(ifr.ifr_name, ifname);
 
-	((struct sockaddr_in *)&ifr.ifr_addr)->sin_family = AF_INET;
-
-	ioctl(sock_fd, SIOCSIFADDR, &ifr, sizeof(ifr));
-
 	if (ioctl(sock_fd, SIOCGIFHWADDR, &ifr)) {
 		log_error("ipoe: '%s': ioctl(SIOCGIFHWADDR): %s\n", ifname, strerror(errno));
 		return;
@@ -2636,9 +2636,19 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 
 	ioctl(sock_fd, SIOCGIFFLAGS, &ifr);
 
-	if (ifr.ifr_flags & IFF_UP) {
+	if ((ifr.ifr_flags & IFF_UP) && opt_shared == 0) {
+		int flags = ifr.ifr_flags;
+
 		ifr.ifr_flags &= ~IFF_UP;
 		ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
+
+		flags = ifr.ifr_flags;
+
+		((struct sockaddr_in *)&ifr.ifr_addr)->sin_family = AF_INET;
+		((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr.s_addr = 0;
+		ioctl(sock_fd, SIOCSIFADDR, &ifr, sizeof(ifr));
+
+		ifr.ifr_flags = flags;
 	}
 
 	ifr.ifr_flags |= IFF_UP;
