@@ -45,8 +45,8 @@ extern int conf_lq_arg4;
 extern int conf_lq_arg5;
 extern int conf_lq_arg6;
 
-int install_limiter(struct ap_session *ses, int down_speed, int down_burst, int up_speed, int up_burst);
-int remove_limiter(struct ap_session *ses);
+int install_limiter(struct ap_session *ses, int down_speed, int down_burst, int up_speed, int up_burst, int idx);
+int remove_limiter(struct ap_session *ses, int idx);
 int install_leaf_qdisc(struct rtnl_handle *rth, int ifindex, int parent, int handle);
 int init_ifb(const char *);
 

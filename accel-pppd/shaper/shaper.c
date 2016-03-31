@@ -6,6 +6,7 @@
 #include <linux/if.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <sys/mman.h>
 #include <pthread.h>
 
 #include "triton.h"
@@ -22,6 +23,10 @@
 
 #include "shaper.h"
 #include "tc_core.h"
+
+#ifndef __BITS_PER_LONG
+#define __BITS_PER_LONG (sizeof(long) * 8)
+#endif
 
 #define ATTR_UP 1
 #define ATTR_DOWN 2
@@ -74,6 +79,7 @@ struct shaper_pd_t {
 	struct list_head tr_list;
 	struct time_range_pd_t *cur_tr;
 	int refs;
+	int idx;
 };
 
 struct time_range_pd_t {
@@ -97,11 +103,56 @@ static void *pd_key;
 static LIST_HEAD(time_range_list);
 static int time_range_id = 0;
 
+#define MAX_IDX 65536
+static long *idx_map;
+
 static void shaper_ctx_close(struct triton_context_t *);
 static struct triton_context_t shaper_ctx = {
 	.close = shaper_ctx_close,
 	.before_switch = log_switch,
 };
+
+static int alloc_idx(int init)
+{
+	int i, p = 0;
+
+	init %= MAX_IDX;
+
+	pthread_rwlock_wrlock(&shaper_lock);
+	if (idx_map[init / __BITS_PER_LONG] & (1 << (init % __BITS_PER_LONG))) {
+		i = init / __BITS_PER_LONG;
+		p = init % __BITS_PER_LONG;
+	} else {
+		for (i = init / __BITS_PER_LONG; i < MAX_IDX / __BITS_PER_LONG; i++) {
+			p = ffs(idx_map[i]);
+			if (p)
+				break;
+		}
+
+		if (!p) {
+			for (i = 0; i < init / __BITS_PER_LONG; i++) {
+				p = ffs(idx_map[i]);
+				if (p)
+					break;
+			}
+		}
+	}
+
+	if (p)
+		idx_map[i] &= ~(1 << (p - 1));
+
+	pthread_rwlock_unlock(&shaper_lock);
+
+	if (!p)
+		return 0;
+
+	return i * __BITS_PER_LONG + p - 1;
+}
+
+static void free_idx(int idx)
+{
+	idx_map[idx / __BITS_PER_LONG] |= 1 << (idx % __BITS_PER_LONG);
+}
 
 static struct shaper_pd_t *find_pd(struct ap_session *ses, int create)
 {
@@ -320,7 +371,7 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 			pd->up_speed = 0;
 			if (conf_verbose)
 				log_ppp_info2("shaper: removed shaper\n");
-			remove_limiter(ev->ses);
+			remove_limiter(ev->ses, pd->idx);
 		}
 		return;
 	}
@@ -329,13 +380,16 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 		pd->down_speed = pd->cur_tr->down_speed;
 		pd->up_speed = pd->cur_tr->up_speed;
 
-		if (remove_limiter(ev->ses)) {
+		if (pd->idx && remove_limiter(ev->ses, pd->idx)) {
 			ev->res = -1;
 			return;
 		}
 
 		if (pd->down_speed > 0 || pd->up_speed > 0) {
-			if (install_limiter(ev->ses, pd->cur_tr->down_speed, pd->cur_tr->down_burst, pd->cur_tr->up_speed, pd->cur_tr->up_burst)) {
+			if (!pd->idx)
+				pd->idx = alloc_idx(pd->ses->ifindex);
+
+			if (install_limiter(ev->ses, pd->cur_tr->down_speed, pd->cur_tr->down_burst, pd->cur_tr->up_speed, pd->cur_tr->up_burst, pd->idx)) {
 				ev->res= -1;
 				return;
 			} else {
@@ -386,8 +440,11 @@ static void ev_shaper(struct ev_shaper_t *ev)
 		pd->up_speed = up_speed;
 	}
 
+	if (!pd->idx)
+		pd->idx = alloc_idx(pd->ses->ifindex);
+
 	if (pd->down_speed > 0 && pd->up_speed > 0) {
-		if (!install_limiter(ev->ses, down_speed, down_burst, up_speed, up_burst)) {
+		if (!install_limiter(ev->ses, down_speed, down_burst, up_speed, up_burst, pd->idx)) {
 			if (conf_verbose)
 				log_ppp_info2("shaper: installed shaper %i/%i (Kbit)\n", down_speed, up_speed);
 		}
@@ -423,8 +480,11 @@ static void ev_ppp_pre_up(struct ap_session *ses)
 		up_burst = pd->cur_tr->up_burst;
 	}
 
+	if (!pd->idx)
+		pd->idx = alloc_idx(ses->ifindex);
+
 	if (down_speed > 0 && up_speed > 0) {
-		if (!install_limiter(ses, down_speed, down_burst, up_speed, up_burst)) {
+		if (!install_limiter(ses, down_speed, down_burst, up_speed, up_burst, pd->idx)) {
 			if (conf_verbose)
 				log_ppp_info2("shaper: installed shaper %i/%i (Kbit)\n", down_speed, up_speed);
 		}
@@ -437,13 +497,15 @@ static void ev_ppp_finishing(struct ap_session *ses)
 
 	if (pd) {
 		pthread_rwlock_wrlock(&shaper_lock);
+		if (pd->idx)
+			free_idx(pd->idx);
 		list_del(&pd->entry);
 		pthread_rwlock_unlock(&shaper_lock);
 
 		list_del(&pd->pd.entry);
 
 		if (pd->down_speed || pd->up_speed)
-			remove_limiter(ses);
+			remove_limiter(ses, pd->idx);
 
 		if (__sync_sub_and_fetch(&pd->refs, 1) == 0) {
 			clear_tr_pd(pd);
@@ -465,16 +527,18 @@ static void shaper_change(struct shaper_pd_t *pd)
 		goto out;
 
 	if (pd->down_speed || pd->up_speed)
-		remove_limiter(pd->ses);
+		remove_limiter(pd->ses, pd->idx);
+	else if (!pd->idx)
+		pd->idx = alloc_idx(pd->ses->ifindex);
 
 	if (pd->temp_down_speed || pd->temp_up_speed) {
 		pd->down_speed = pd->temp_down_speed;
 		pd->up_speed = pd->temp_up_speed;
-		install_limiter(pd->ses, pd->temp_down_speed, 0, pd->temp_up_speed, 0);
+		install_limiter(pd->ses, pd->temp_down_speed, 0, pd->temp_up_speed, 0, pd->idx);
 	} else if (pd->cur_tr->down_speed || pd->cur_tr->up_speed) {
 		pd->down_speed = pd->cur_tr->down_speed;
 		pd->up_speed = pd->cur_tr->up_speed;
-		install_limiter(pd->ses, pd->cur_tr->down_speed, pd->cur_tr->down_burst, pd->cur_tr->up_speed, pd->cur_tr->up_burst);
+		install_limiter(pd->ses, pd->cur_tr->down_speed, pd->cur_tr->down_burst, pd->cur_tr->up_speed, pd->cur_tr->up_burst, pd->idx);
 	} else {
 		pd->down_speed = 0;
 		pd->up_speed = 0;
@@ -561,12 +625,12 @@ static void shaper_restore(struct shaper_pd_t *pd)
 	if (!pd->ses || pd->ses->terminating)
 		goto out;
 
-	remove_limiter(pd->ses);
+	remove_limiter(pd->ses, pd->idx);
 
 	if (pd->cur_tr) {
 		pd->down_speed = pd->cur_tr->down_speed;
 		pd->up_speed = pd->cur_tr->up_speed;
-		install_limiter(pd->ses, pd->cur_tr->down_speed, pd->cur_tr->down_burst, pd->cur_tr->up_speed, pd->cur_tr->up_burst);
+		install_limiter(pd->ses, pd->cur_tr->down_speed, pd->cur_tr->down_burst, pd->cur_tr->up_speed, pd->cur_tr->up_burst, pd->idx);
 	} else {
 		pd->down_speed = 0;
 		pd->up_speed = 0;
@@ -666,13 +730,16 @@ static void update_shaper_tr(struct shaper_pd_t *pd)
 	if (pd->down_speed || pd->up_speed) {
 		if (pd->cur_tr && pd->down_speed == pd->cur_tr->down_speed && pd->up_speed == pd->cur_tr->up_speed)
 			goto out;
-		remove_limiter(pd->ses);
+		remove_limiter(pd->ses, pd->idx);
 	}
 
 	if (pd->cur_tr && (pd->cur_tr->down_speed || pd->cur_tr->up_speed)) {
+		if (!pd->idx)
+			pd->idx = alloc_idx(pd->ses->ifindex);
+
 		pd->down_speed = pd->cur_tr->down_speed;
 		pd->up_speed = pd->cur_tr->up_speed;
-		if (!install_limiter(pd->ses, pd->cur_tr->down_speed, pd->cur_tr->down_burst, pd->cur_tr->up_speed, pd->cur_tr->up_burst)) {
+		if (!install_limiter(pd->ses, pd->cur_tr->down_speed, pd->cur_tr->down_burst, pd->cur_tr->up_speed, pd->cur_tr->up_burst, pd->idx)) {
 			if (conf_verbose)
 				log_ppp_info2("shaper: changed shaper %i/%i (Kbit)\n", pd->cur_tr->down_speed, pd->cur_tr->up_speed);
 		}
@@ -996,6 +1063,10 @@ static void init(void)
 	const char *opt;
 
 	tc_core_init();
+
+	idx_map = mmap(NULL, MAX_IDX/8, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
+	memset(idx_map, 0xff, MAX_IDX/8);
+	idx_map[0] &= ~3;
 
 	opt = conf_get_opt("shaper", "ifb");
 	if (opt && init_ifb(opt))
