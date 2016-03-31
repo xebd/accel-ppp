@@ -297,7 +297,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 					ia_addr->pref_lifetime = htonl(conf_pref_lifetime);
 					ia_addr->valid_lifetime = htonl(conf_valid_lifetime);
 
-					if (a->installed) {
+					if (!a->installed) {
 						if (a->prefix_len > 64)
 							ip6route_add(ses->ifindex, &a->addr, a->prefix_len, 0);
 						else {
