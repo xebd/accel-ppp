@@ -1495,7 +1495,7 @@ void pppoe_server_free(struct pppoe_serv_t *serv)
 		triton_timer_del(&serv->timer);
 
 	if (serv->vid) {
-		log_info2("ipoe: remove vlan %s\n", serv->ifname);
+		log_info2("pppoe: remove vlan %s\n", serv->ifname);
 		iplink_vlan_del(serv->ifindex);
 		vlan_mon_add_vid(serv->parent_ifindex, ETH_P_PPP_DISC, serv->vid);
 	}
@@ -1762,7 +1762,7 @@ static void load_vlan_mon_re(const char *opt, long *mask, int len)
 	re = pcre_compile2(pattern, 0, NULL, &pcre_err, &pcre_offset, NULL);
 
 	if (!re) {
-		log_error("ipoe: '%s': %s at %i\r\n", pattern, pcre_err, pcre_offset);
+		log_error("pppoe: '%s': %s at %i\r\n", pattern, pcre_err, pcre_offset);
 		return;
 	}
 
