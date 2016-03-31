@@ -169,6 +169,34 @@ int __export vlan_mon_del(int ifindex, int proto)
 	return r;
 }
 
+void vlan_mon_clean()
+{
+	struct rtnl_handle rth;
+	struct nlmsghdr *nlh;
+	struct genlmsghdr *ghdr;
+	struct {
+		struct nlmsghdr n;
+		char buf[1024];
+	} req;
+
+	if (rtnl_open_byproto(&rth, 0, NETLINK_GENERIC))
+		return;
+
+	nlh = &req.n;
+	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
+	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+	nlh->nlmsg_type = vlan_mon_genl_id;
+
+	ghdr = NLMSG_DATA(&req.n);
+	ghdr->cmd = VLAN_MON_CMD_DEL;
+
+	addattr32(nlh, 1024, VLAN_MON_ATTR_IFINDEX, -1);
+
+	rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0);
+
+	rtnl_close(&rth);
+}
+
 static void vlan_mon_handler(const struct sockaddr_nl *addr, struct nlmsghdr *h)
 {
 	struct rtattr *tb[PKT_ATTR_MAX + 1];
@@ -418,6 +446,8 @@ static void init(void)
 		vlan_mon_genl_id = -1;
 		return;
 	}
+
+	vlan_mon_clean();
 
 	fcntl(rth.fd, F_SETFL, O_NONBLOCK);
 	fcntl(rth.fd, F_SETFD, fcntl(rth.fd, F_GETFD) | FD_CLOEXEC);
