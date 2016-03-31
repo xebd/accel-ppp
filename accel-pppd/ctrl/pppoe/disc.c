@@ -85,6 +85,7 @@ static struct disc_net *init_net(const struct ap_net *net)
 	}
 
 	n->ctx.close = disc_close;
+	n->ctx.before_switch = log_switch;
 	n->hnd.fd = sock;
 	n->hnd.read = disc_read;
 	n->net = net;
