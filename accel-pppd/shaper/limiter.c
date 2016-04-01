@@ -361,6 +361,7 @@ static int install_htb_ifb(struct rtnl_handle *rth, int ifindex, __u32 priority,
 	tail3 = NLMSG_TAIL(&req.n);
 	addattr_l(&req.n, MAX_MSG, TCA_ACT_OPTIONS, NULL, 0);
 	addattr_l(&req.n, MAX_MSG, TCA_SKBEDIT_PARMS, &p1, sizeof(p1));
+	priority--;
 	addattr_l(&req.n, MAX_MSG, TCA_SKBEDIT_PRIORITY, &priority, sizeof(priority));
 	tail3->rta_len = (void *)NLMSG_TAIL(&req.n) - (void *)tail3;
 
