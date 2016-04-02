@@ -1,8 +1,11 @@
 #include <stdlib.h>
+#include <sys/socket.h>
 
 #include "triton.h"
 
 #include "pwdb.h"
+#include "ap_session.h"
+#include "log.h"
 
 #include "memdebug.h"
 
@@ -13,6 +16,11 @@ int __export pwdb_check(struct ap_session *ses, pwdb_callback cb, void *cb_arg, 
 	struct pwdb_t *pwdb;
 	int r, res = PWDB_NO_IMPL;
 	va_list args;
+
+	if (ap_check_username(username)) {
+		log_ppp_info1("%s: second session denied\n", username);
+		return PWDB_DENIED;
+	}
 
 	va_start(args, type);
 
@@ -31,6 +39,7 @@ int __export pwdb_check(struct ap_session *ses, pwdb_callback cb, void *cb_arg, 
 
 	return res;
 }
+
 __export char *pwdb_get_passwd(struct ap_session *ses, const char *username)
 {
 	struct pwdb_t *pwdb;
@@ -51,6 +60,7 @@ void __export pwdb_register(struct pwdb_t *pwdb)
 {
 	list_add_tail(&pwdb->entry, &pwdb_handlers);
 }
+
 void __export pwdb_unregister(struct pwdb_t *pwdb)
 {
 	list_del(&pwdb->entry);

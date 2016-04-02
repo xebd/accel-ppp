@@ -140,6 +140,7 @@ void ap_session_terminate(struct ap_session *ses, int cause, int hard);
 void ap_session_activate(struct ap_session *ses);
 void ap_session_accounting_started(struct ap_session *ses);
 int ap_session_set_username(struct ap_session *ses, char *username);
+int ap_check_username(const char *username);
 
 void ap_session_ifup(struct ap_session *ses);
 void ap_session_ifdown(struct ap_session *ses);

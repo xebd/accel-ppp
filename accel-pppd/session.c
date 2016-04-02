@@ -428,6 +428,26 @@ int __export ap_session_set_username(struct ap_session *s, char *username)
 	return 0;
 }
 
+int __export ap_check_username(const char *username)
+{
+	struct ap_session *ses;
+	int r = 0;
+
+	if (conf_single_session)
+		return 0;
+
+	pthread_rwlock_rdlock(&ses_lock);
+	list_for_each_entry(ses, &ses_list, entry) {
+		if (ses->username && !strcmp(ses->username, username)) {
+			r = 1;
+			break;
+		}
+	}
+	pthread_rwlock_unlock(&ses_lock);
+
+	return r;
+}
+
 static void save_seq(void)
 {
 	FILE *f;
