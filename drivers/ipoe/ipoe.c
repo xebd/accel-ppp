@@ -724,8 +724,6 @@ static rx_handler_result_t ipoe_recv(struct sk_buff **pskb)
 		iph = ip_hdr(skb);
 		saddr = iph->saddr;
 
-		if (!saddr || saddr == 0xffffffff)
-			return RX_HANDLER_PASS;
 	} else if (likely(skb->protocol == htons(ETH_P_ARP))) {
 		noff = skb_network_offset(skb);
 
@@ -748,6 +746,9 @@ static rx_handler_result_t ipoe_recv(struct sk_buff **pskb)
 
 		saddr = arph->ar_sip;
 	} else
+		return RX_HANDLER_PASS;
+
+	if (!saddr || saddr == 0xffffffff)
 		return RX_HANDLER_PASS;
 
 	//pr_info("ipoe: recv %08x %08x\n", iph->saddr, iph->daddr);
