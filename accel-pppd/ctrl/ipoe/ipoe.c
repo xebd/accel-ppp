@@ -2536,10 +2536,13 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 		}
 	}
 
-	if (!opt_up && !opt_dhcpv4) {
+	if (!opt_up && !opt_dhcpv4 && !opt_auto) {
 		opt_up = conf_up;
 		opt_dhcpv4 = conf_dhcpv4;
+		opt_auto = conf_auto;
 	}
+
+	opt_auto &= !opt_shared;
 
 	if (opt_relay && !opt_giaddr && opt_dhcpv4) {
 		struct sockaddr_in addr;
@@ -2600,8 +2603,6 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 			serv->arp = NULL;
 		} else if (!serv->arp && conf_arp)
 			serv->arp = arpd_start(serv);
-
-		opt_auto &= !opt_shared;
 
 		serv->opt_up = opt_up;
 		serv->opt_auto = opt_auto;
@@ -3234,6 +3235,8 @@ static void load_config(void)
 
 	if (!s)
 		return;
+
+	net = &def_net;
 
 	opt = conf_get_opt("ipoe", "username");
 	if (opt) {
