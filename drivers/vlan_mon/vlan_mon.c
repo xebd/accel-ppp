@@ -562,7 +562,8 @@ static int vlan_mon_nl_cmd_del_vlan_mon(struct sk_buff *skb, struct genl_info *i
 
 	if (!list_empty(&list_kill)) {
 		unregister_netdevice_many(&list_kill);
-		list_del(&list_kill);
+		if (list_kill.next != LIST_POISON1)
+			list_del(&list_kill);
 	}
 
 	rtnl_unlock();
@@ -762,7 +763,8 @@ static void __exit vlan_mon_fini(void)
 
 	if (!list_empty(&list_kill)) {
 		unregister_netdevice_many(&list_kill);
-		list_del(&list_kill);
+		if (list_kill.next != LIST_POISON1)
+			list_del(&list_kill);
 	}
 
 	rtnl_unlock();
