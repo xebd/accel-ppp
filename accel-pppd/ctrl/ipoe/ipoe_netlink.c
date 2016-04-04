@@ -456,6 +456,21 @@ void ipoe_nl_delete(int ifindex)
 	rtnl_close(&rth);
 }
 
+static void delete_sessions()
+{
+	struct ipoe_session_info *info;
+
+	LIST_HEAD(ds_list);
+	ipoe_nl_get_sessions(&ds_list);
+
+	while (!list_empty(&ds_list)) {
+		info = list_entry(ds_list.next, typeof(*info), entry);
+		ipoe_nl_delete(info->ifindex);
+		list_del(&info->entry);
+		_free(info);
+	}
+}
+
 static void ipoe_up_handler(const struct sockaddr_nl *addr, struct nlmsghdr *h)
 {
 	struct rtattr *tb[PKT_ATTR_MAX + 1];
@@ -614,6 +629,11 @@ static void init(void)
 		return;
 	}
 
+	delete_sessions();
+	ipoe_nl_del_exclude(0);
+	ipoe_nl_del_net(0);
+	ipoe_nl_delete_interfaces();
+
 	fcntl(rth.fd, F_SETFL, O_NONBLOCK);
 	fcntl(rth.fd, F_SETFD, fcntl(rth.fd, F_GETFD) | FD_CLOEXEC);
 
@@ -622,10 +642,6 @@ static void init(void)
 	triton_md_register_handler(&mc_ctx, &mc_hnd);
 	triton_md_enable_handler(&mc_hnd, MD_MODE_READ);
 	triton_context_wakeup(&mc_ctx);
-
-	ipoe_nl_del_exclude(0);
-	ipoe_nl_del_net(0);
-	ipoe_nl_delete_interfaces();
 }
 
 DEFINE_INIT(19, init);
