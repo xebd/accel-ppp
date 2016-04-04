@@ -547,14 +547,14 @@ static int vlan_mon_nl_cmd_del_vlan_mon(struct sk_buff *skb, struct genl_info *i
 					if (!d->proto)
 						rcu_assign_pointer(dev->ml_priv, NULL);
 				}
+
+				if (!d->proto && autoclean)
+					vlan_dev_clean(d, dev, &list_kill);
 			}
 
 			if (!d->proto) {
 				list_del(&d->entry);
 				kfree_rcu(d, rcu_head);
-
-				if (ifindex == -1 && autoclean)
-					vlan_dev_clean(d, dev, &list_kill);
 			}
 		}
 	}
