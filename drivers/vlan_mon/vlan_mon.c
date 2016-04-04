@@ -59,6 +59,8 @@ struct vlan_notify {
 	int proto;
 };
 
+static int autoclean = 0;
+
 static LIST_HEAD(vlan_devices);
 static LIST_HEAD(vlan_notifies);
 static DEFINE_SPINLOCK(vlan_lock);
@@ -423,6 +425,32 @@ static int vlan_mon_nl_cmd_add_vlan_mon_vid(struct sk_buff *skb, struct genl_inf
 	return 0;
 }
 
+static void vlan_dev_clean(struct vlan_dev *d, struct net_device *dev, struct list_head *list)
+{
+	int i;
+	struct net_device *vd;
+
+	for (i = 1; i < 4096; i++) {
+		if (d->vid[0][i / (8*sizeof(long))] & (1lu << (i % (8*sizeof(long)))) &&
+		    d->vid[1][i / (8*sizeof(long))] & (1lu << (i % (8*sizeof(long)))))
+			continue;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
+		vd = __vlan_find_dev_deep(dev, i);
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0)
+		vd = __vlan_find_dev_deep(dev, htons(ETH_P_8021Q), i);
+		if (!vd)
+			vd = __vlan_find_dev_deep(dev, htons(ETH_P_8021AD), i);
+#else
+		vd = __vlan_find_dev_deep_rcu(dev, htons(ETH_P_8021Q), i);
+		if (!vd)
+			vd = __vlan_find_dev_deep_rcu(dev, htons(ETH_P_8021AD), i);
+#endif
+
+		if (vd)
+			vd->rtnl_link_ops->dellink(vd, list);
+	}
+}
+
 static int vlan_mon_nl_cmd_del_vlan_mon(struct sk_buff *skb, struct genl_info *info)
 {
 	struct vlan_dev *d;
@@ -431,6 +459,7 @@ static int vlan_mon_nl_cmd_del_vlan_mon(struct sk_buff *skb, struct genl_info *i
 	unsigned long flags;
 	struct list_head *pos, *n;
 	struct net_device *dev;
+	LIST_HEAD(list_kill);
 
 	if (info->attrs[VLAN_MON_ATTR_PROTO]) {
 		proto = nla_get_u16(info->attrs[VLAN_MON_ATTR_PROTO]);
@@ -450,10 +479,10 @@ static int vlan_mon_nl_cmd_del_vlan_mon(struct sk_buff *skb, struct genl_info *i
 	down(&vlan_mon_lock);
 
 	rtnl_lock();
+	rcu_read_lock();
 	list_for_each_safe(pos, n, &vlan_devices) {
 		d = list_entry(pos, typeof(*d), entry);
 		if ((ifindex == -1 || d->ifindex == ifindex) && (d->proto & proto)) {
-			//pr_info("del net %08x/%08x\n", n->addr, n->mask);
 			d->proto &= ~proto;
 
 			dev = __dev_get_by_index(&init_net, d->ifindex);
@@ -465,12 +494,21 @@ static int vlan_mon_nl_cmd_del_vlan_mon(struct sk_buff *skb, struct genl_info *i
 			}
 
 			if (!d->proto) {
-				//pr_info("vlan_mon del %i\n", ifindex);
 				list_del(&d->entry);
 				kfree_rcu(d, rcu_head);
+
+				if (ifindex == -1 && autoclean)
+					vlan_dev_clean(d, dev, &list_kill);
 			}
 		}
 	}
+	rcu_read_unlock();
+
+	if (!list_empty(&list_kill)) {
+		unregister_netdevice_many(&list_kill);
+		list_del(&list_kill);
+	}
+
 	rtnl_unlock();
 
 	up(&vlan_mon_lock);
@@ -630,6 +668,7 @@ static void __exit vlan_mon_fini(void)
 	struct vlan_dev *d;
 	struct vlan_notify *vn;
 	struct net_device *dev;
+	LIST_HEAD(list_kill);
 
 	dev_remove_pack(&vlan_pt);
 
@@ -642,14 +681,28 @@ static void __exit vlan_mon_fini(void)
 	up(&vlan_mon_lock);
 
 	rtnl_lock();
+	rcu_read_lock();
 	while (!list_empty(&vlan_devices)) {
 		d = list_first_entry(&vlan_devices, typeof(*d), entry);
 		dev = __dev_get_by_index(&init_net, d->ifindex);
-		if (dev)
+
+		if (dev) {
 			rcu_assign_pointer(dev->ml_priv, NULL);
+
+			if (autoclean)
+				vlan_dev_clean(d, dev, &list_kill);
+		}
+
 		list_del(&d->entry);
 		kfree_rcu(d, rcu_head);
 	}
+	rcu_read_unlock();
+
+	if (!list_empty(&list_kill)) {
+		unregister_netdevice_many(&list_kill);
+		list_del(&list_kill);
+	}
+
 	rtnl_unlock();
 
 	synchronize_net();
@@ -666,4 +719,6 @@ static void __exit vlan_mon_fini(void)
 module_init(vlan_mon_init);
 module_exit(vlan_mon_fini);
 MODULE_LICENSE("GPL");
+module_param(autoclean, int, 0);
+//MODULE_PARAM_DESC(autoclean, "automaticaly remove created vlan interfaces on restart");
 

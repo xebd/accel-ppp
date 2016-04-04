@@ -190,8 +190,6 @@ void vlan_mon_clean()
 	ghdr = NLMSG_DATA(&req.n);
 	ghdr->cmd = VLAN_MON_CMD_DEL;
 
-	addattr32(nlh, 1024, VLAN_MON_ATTR_IFINDEX, -1);
-
 	rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0);
 
 	rtnl_close(&rth);
