@@ -148,16 +148,22 @@ static void pppoe_serv_start_timer(struct pppoe_serv_t *serv)
 	if (conf_vlan_timeout) {
 		serv->timer.expire = pppoe_serv_timeout;
 		serv->timer.expire_tv.tv_sec = conf_vlan_timeout;
-		triton_timer_add(&serv->ctx, &serv->timer, 0);
+		if (serv->timer.tpd)
+			triton_timer_mod(&serv->timer, 0);
+		else
+			triton_timer_add(&serv->ctx, &serv->timer, 0);
 		pthread_mutex_unlock(&serv->lock);
 	} else {
 		pthread_mutex_unlock(&serv->lock);
+		pppoe_disc_stop(serv);
 		pppoe_server_free(serv);
 	}
 }
 
 static void disconnect(struct pppoe_conn_t *conn)
 {
+	struct pppoe_serv_t *serv = conn->serv;
+
 	if (conn->ppp_started) {
 		dpado_check_prev(__sync_fetch_and_sub(&stat_active, 1));
 		conn->ppp_started = 0;
@@ -170,20 +176,20 @@ static void disconnect(struct pppoe_conn_t *conn)
 
 	log_ppp_info1("disconnected\n");
 
-	pthread_mutex_lock(&conn->serv->lock);
+	pthread_mutex_lock(&serv->lock);
 	list_del(&conn->entry);
-	conn->serv->conn_cnt--;
-	if (conn->serv->conn_cnt == 0) {
-		if (conn->serv->stopping) {
-			pthread_mutex_unlock(&conn->serv->lock);
-			pppoe_server_free(conn->serv);
-		} else if (conn->serv->vlan_mon) {
-			triton_context_call(&conn->serv->ctx, (triton_event_func)pppoe_serv_start_timer, conn->serv);
+	serv->conn_cnt--;
+	if (serv->conn_cnt == 0) {
+		if (serv->stopping) {
+			triton_context_call(&serv->ctx, (triton_event_func)pppoe_server_free, serv);
+			pthread_mutex_unlock(&serv->lock);
+		} else if (serv->vlan_mon) {
+			triton_context_call(&serv->ctx, (triton_event_func)pppoe_serv_start_timer, serv);
 			pthread_mutex_unlock(&conn->serv->lock);
 		} else
-			pthread_mutex_unlock(&conn->serv->lock);
+			pthread_mutex_unlock(&serv->lock);
 	} else
-		pthread_mutex_unlock(&conn->serv->lock);
+		pthread_mutex_unlock(&serv->lock);
 
 	pthread_mutex_lock(&sid_lock);
 	sid_map[conn->sid/(8*sizeof(long))] |= 1 << (conn->sid % (8*sizeof(long)));
@@ -403,6 +409,8 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 
 	pthread_mutex_lock(&serv->lock);
 	list_add_tail(&conn->entry, &serv->conn_list);
+	if (serv->timer.tpd)
+		triton_timer_del(&serv->timer);
 	serv->conn_cnt++;
 	pthread_mutex_unlock(&serv->lock);
 
@@ -1261,7 +1269,6 @@ static void pppoe_serv_timeout(struct triton_timer_t *t)
 
 	pthread_mutex_lock(&serv->lock);
 	if (serv->conn_cnt) {
-		triton_timer_del(&serv->timer);
 		pthread_mutex_unlock(&serv->lock);
 		return;
 	}
