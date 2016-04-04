@@ -116,7 +116,6 @@ static int vlan_pt_recv(struct sk_buff *skb, struct net_device *dev, struct pack
 	}
 
 	vid = skb->vlan_tci & VLAN_VID_MASK;
-	//pr_info("vid %i\n", vid);
 
 	if (likely(d->busy[vid / (8*sizeof(long))] & (1lu << (vid % (8*sizeof(long))))))
 		vid = -1;
@@ -428,6 +427,61 @@ static int vlan_mon_nl_cmd_add_vlan_mon_vid(struct sk_buff *skb, struct genl_inf
 	return 0;
 }
 
+static int vlan_mon_nl_cmd_del_vlan_mon_vid(struct sk_buff *skb, struct genl_info *info)
+{
+	struct vlan_dev *d;
+	int ifindex, vid, proto;
+	struct net_device *dev;
+
+	if (!info->attrs[VLAN_MON_ATTR_IFINDEX] || !info->attrs[VLAN_MON_ATTR_VID] || !info->attrs[VLAN_MON_ATTR_PROTO])
+		return -EINVAL;
+
+	ifindex = nla_get_u32(info->attrs[VLAN_MON_ATTR_IFINDEX]);
+	vid = nla_get_u16(info->attrs[VLAN_MON_ATTR_VID]);
+	proto = nla_get_u16(info->attrs[VLAN_MON_ATTR_PROTO]);
+
+	proto = vlan_mon_proto(proto);
+	if (proto < 0)
+		return proto;
+
+	down(&vlan_mon_lock);
+
+	rtnl_lock();
+	dev = __dev_get_by_index(&init_net, ifindex);
+	if (!dev) {
+		rtnl_unlock();
+		up(&vlan_mon_lock);
+		return -ENODEV;
+	}
+
+	if (!dev->ml_priv) {
+		rtnl_unlock();
+		up(&vlan_mon_lock);
+		return -EINVAL;
+	}
+
+	d = dev->ml_priv;
+
+	spin_lock_bh(&d->lock);
+	d->vid[proto][vid / (8*sizeof(long))] |= 1lu << (vid % (8*sizeof(long)));
+	d->busy[vid / (8*sizeof(long))] &= ~(1lu << (vid % (8*sizeof(long))));
+	spin_unlock_bh(&d->lock);
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
+	if (dev->features & NETIF_F_HW_VLAN_FILTER)
+		dev->netdev_ops->ndo_vlan_rx_add_vid(dev, vid);
+#else
+	if (dev->features & NETIF_F_HW_VLAN_CTAG_FILTER)
+		dev->netdev_ops->ndo_vlan_rx_add_vid(dev, htons(ETH_P_8021Q), vid);
+#endif
+
+	rtnl_unlock();
+
+	up(&vlan_mon_lock);
+
+	return 0;
+}
+
 static void vlan_dev_clean(struct vlan_dev *d, struct net_device *dev, struct list_head *list)
 {
 	int i;
@@ -596,6 +650,12 @@ static struct genl_ops vlan_mon_nl_ops[] = {
 	{
 		.cmd = VLAN_MON_CMD_CHECK_BUSY,
 		.doit = vlan_mon_nl_cmd_check_busy,
+		.policy = vlan_mon_nl_policy,
+		.flags = GENL_ADMIN_PERM,
+	},
+	{
+		.cmd = VLAN_MON_CMD_DEL_VID,
+		.doit = vlan_mon_nl_cmd_del_vlan_mon_vid,
 		.policy = vlan_mon_nl_policy,
 		.flags = GENL_ADMIN_PERM,
 	},

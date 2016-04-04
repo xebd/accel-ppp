@@ -7,6 +7,7 @@ void vlan_mon_register_proto(uint16_t proto, vlan_mon_notify cb);
 
 int vlan_mon_add(int ifindex, uint16_t proto, long *mask, int len);
 int vlan_mon_add_vid(int ifindex, uint16_t proto, uint16_t vid);
+int vlan_mon_del_vid(int ifindex, uint16_t proto, uint16_t vid);
 int vlan_mon_del(int ifindex, uint16_t proto);
 int vlan_mon_check_busy(int ifindex, uint16_t vid);
 

@@ -1721,6 +1721,7 @@ void pppoe_vlan_mon_notify(int ifindex, int vid, int vlan_ifindex)
 
 	log_warn("pppoe: vlan %s not started\n", ifname);
 	iplink_vlan_del(ifr.ifr_ifindex);
+	vlan_mon_del_vid(ifindex, ETH_P_PPP_DISC, vid);
 }
 
 static void add_vlan_mon(const char *opt, long *mask)

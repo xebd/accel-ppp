@@ -1913,8 +1913,6 @@ void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph, struct _ar
 	struct ipoe_session *ses;
 	in_addr_t saddr = arph ? arph->ar_spa : iph->saddr;
 
-	log_debug("ipoe: recv up %08x\n", saddr);
-
 	pthread_mutex_lock(&serv_lock);
 	list_for_each_entry(serv, &serv_list, entry) {
 		if (serv->ifindex != ifindex)
@@ -2423,6 +2421,7 @@ void ipoe_vlan_mon_notify(int ifindex, int vid, int vlan_ifindex)
 
 	log_warn("ipoe: vlan %s not started\n", ifname);
 	iplink_vlan_del(ifr.ifr_ifindex);
+	vlan_mon_del_vid(ifindex, ETH_P_IP, vid);
 }
 
 static void ipoe_serv_timeout(struct triton_timer_t *t)

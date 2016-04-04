@@ -129,6 +129,47 @@ int __export vlan_mon_add_vid(int ifindex, uint16_t proto, uint16_t vid)
 	return r;
 }
 
+int __export vlan_mon_del_vid(int ifindex, uint16_t proto, uint16_t vid)
+{
+	struct rtnl_handle rth;
+	struct nlmsghdr *nlh;
+	struct genlmsghdr *ghdr;
+	struct {
+		struct nlmsghdr n;
+		char buf[1024];
+	} req;
+	int r = 0;
+
+	if (vlan_mon_genl_id < 0)
+		return -1;
+
+	if (rtnl_open_byproto(&rth, 0, NETLINK_GENERIC)) {
+		log_error("vlan_mon: cannot open generic netlink socket\n");
+		return -1;
+	}
+
+	nlh = &req.n;
+	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
+	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+	nlh->nlmsg_type = vlan_mon_genl_id;
+
+	ghdr = NLMSG_DATA(&req.n);
+	ghdr->cmd = VLAN_MON_CMD_DEL_VID;
+
+	addattr32(nlh, 1024, VLAN_MON_ATTR_IFINDEX, ifindex);
+	addattr_l(nlh, 1024, VLAN_MON_ATTR_VID, &vid, 2);
+	addattr_l(nlh, 1024, VLAN_MON_ATTR_PROTO, &proto, 2);
+
+	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 ) {
+		log_error("vlan_mon: nl_add_vlan_mon_vid: error talking to kernel\n");
+		r = -1;
+	}
+
+	rtnl_close(&rth);
+
+	return r;
+}
+
 int __export vlan_mon_del(int ifindex, uint16_t proto)
 {
 	struct rtnl_handle rth;
