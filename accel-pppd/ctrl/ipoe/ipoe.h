@@ -64,6 +64,7 @@ struct ipoe_serv {
 	int opt_ipv6:1;
 	int need_close:1;
 	int active:1;
+	int vlan_mon:1;
 };
 
 struct ipoe_session {

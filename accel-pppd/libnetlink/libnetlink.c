@@ -382,7 +382,8 @@ int __export rtnl_talk(struct rtnl_handle *rtnl, struct nlmsghdr *n, pid_t peer,
 							memcpy(answer, h, h->nlmsg_len);
 						return 0;
 					}
-					log_debug("libnetlink: ""RTNETLINK answers: %s\n", strerror(errno));
+					if (!ignore_einval)
+						log_debug("libnetlink: ""RTNETLINK answers: %s\n", strerror(errno));
 				}
 				return -1;
 			}

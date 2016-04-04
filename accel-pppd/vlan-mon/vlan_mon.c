@@ -34,7 +34,7 @@ static vlan_mon_notify cb[2];
 
 static void init(void);
 
-void __export vlan_mon_register_proto(int proto, vlan_mon_notify func)
+void __export vlan_mon_register_proto(uint16_t proto, vlan_mon_notify func)
 {
 	if (proto == ETH_P_PPP_DISC)
 		proto = 1;
@@ -47,7 +47,7 @@ void __export vlan_mon_register_proto(int proto, vlan_mon_notify func)
 		init();
 }
 
-int __export vlan_mon_add(int ifindex, int proto, long *mask, int len)
+int __export vlan_mon_add(int ifindex, uint16_t proto, long *mask, int len)
 {
 	struct rtnl_handle rth;
 	struct nlmsghdr *nlh;
@@ -62,7 +62,7 @@ int __export vlan_mon_add(int ifindex, int proto, long *mask, int len)
 		return -1;
 
 	if (rtnl_open_byproto(&rth, 0, NETLINK_GENERIC)) {
-		log_error("ipoe: cannot open generic netlink socket\n");
+		log_error("vlan_mon: cannot open generic netlink socket\n");
 		return -1;
 	}
 
@@ -76,7 +76,7 @@ int __export vlan_mon_add(int ifindex, int proto, long *mask, int len)
 
 	addattr32(nlh, 1024, VLAN_MON_ATTR_IFINDEX, ifindex);
 	addattr_l(nlh, 1024, VLAN_MON_ATTR_VLAN_MASK, mask, len);
-	addattr32(nlh, 1024, VLAN_MON_ATTR_PROTO, proto);
+	addattr_l(nlh, 1024, VLAN_MON_ATTR_PROTO, &proto, 2);
 
 	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 ) {
 		log_error("vlan_mon: nl_add_vlan_mon: error talking to kernel\n");
@@ -88,7 +88,7 @@ int __export vlan_mon_add(int ifindex, int proto, long *mask, int len)
 	return r;
 }
 
-int __export vlan_mon_add_vid(int ifindex, int proto, int vid)
+int __export vlan_mon_add_vid(int ifindex, uint16_t proto, uint16_t vid)
 {
 	struct rtnl_handle rth;
 	struct nlmsghdr *nlh;
@@ -103,7 +103,7 @@ int __export vlan_mon_add_vid(int ifindex, int proto, int vid)
 		return -1;
 
 	if (rtnl_open_byproto(&rth, 0, NETLINK_GENERIC)) {
-		log_error("ipoe: cannot open generic netlink socket\n");
+		log_error("vlan_mon: cannot open generic netlink socket\n");
 		return -1;
 	}
 
@@ -116,8 +116,8 @@ int __export vlan_mon_add_vid(int ifindex, int proto, int vid)
 	ghdr->cmd = VLAN_MON_CMD_ADD_VID;
 
 	addattr32(nlh, 1024, VLAN_MON_ATTR_IFINDEX, ifindex);
-	addattr32(nlh, 1024, VLAN_MON_ATTR_VID, vid);
-	addattr32(nlh, 1024, VLAN_MON_ATTR_PROTO, proto);
+	addattr_l(nlh, 1024, VLAN_MON_ATTR_VID, &vid, 2);
+	addattr_l(nlh, 1024, VLAN_MON_ATTR_PROTO, &proto, 2);
 
 	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 ) {
 		log_error("vlan_mon: nl_add_vlan_mon_vid: error talking to kernel\n");
@@ -129,7 +129,7 @@ int __export vlan_mon_add_vid(int ifindex, int proto, int vid)
 	return r;
 }
 
-int __export vlan_mon_del(int ifindex, int proto)
+int __export vlan_mon_del(int ifindex, uint16_t proto)
 {
 	struct rtnl_handle rth;
 	struct nlmsghdr *nlh;
@@ -144,7 +144,7 @@ int __export vlan_mon_del(int ifindex, int proto)
 		return -1;
 
 	if (rtnl_open_byproto(&rth, 0, NETLINK_GENERIC)) {
-		log_error("ipoe: cannot open generic netlink socket\n");
+		log_error("vlan_mon: cannot open generic netlink socket\n");
 		return -1;
 	}
 
@@ -157,7 +157,7 @@ int __export vlan_mon_del(int ifindex, int proto)
 	ghdr->cmd = VLAN_MON_CMD_DEL;
 
 	addattr32(nlh, 1024, VLAN_MON_ATTR_IFINDEX, ifindex);
-	addattr32(nlh, 1024, VLAN_MON_ATTR_PROTO, proto);
+	addattr_l(nlh, 1024, VLAN_MON_ATTR_PROTO, &proto, 2);
 
 	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 ) {
 		log_error("vlan_mon: nl_del_vlan_mon: error talking to kernel\n");
@@ -197,6 +197,46 @@ void vlan_mon_clean()
 	rtnl_close(&rth);
 }
 
+int __export vlan_mon_check_busy(int ifindex, uint16_t vid)
+{
+	struct rtnl_handle rth;
+	struct nlmsghdr *nlh;
+	struct genlmsghdr *ghdr;
+	struct {
+		struct nlmsghdr n;
+		char buf[1024];
+	} req;
+	int r = 0;
+
+	if (vlan_mon_genl_id < 0)
+		return 0;
+
+	if (rtnl_open_byproto(&rth, 0, NETLINK_GENERIC)) {
+		log_error("vlan_mon: cannot open generic netlink socket\n");
+		return 0;
+	}
+
+	nlh = &req.n;
+	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
+	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+	nlh->nlmsg_type = vlan_mon_genl_id;
+
+	ghdr = NLMSG_DATA(&req.n);
+	ghdr->cmd = VLAN_MON_CMD_CHECK_BUSY;
+
+	addattr32(nlh, 1024, VLAN_MON_ATTR_IFINDEX, ifindex);
+	addattr_l(nlh, 1024, VLAN_MON_ATTR_VID, &vid, 2);
+
+	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 1) < 0 ) {
+		if (errno == EBUSY)
+			r = -1;
+	}
+
+	rtnl_close(&rth);
+
+	return r;
+}
+
 static void vlan_mon_handler(const struct sockaddr_nl *addr, struct nlmsghdr *h)
 {
 	struct rtattr *tb[PKT_ATTR_MAX + 1];
@@ -227,8 +267,8 @@ static void vlan_mon_handler(const struct sockaddr_nl *addr, struct nlmsghdr *h)
 		//	continue;
 
 		ifindex = *(uint32_t *)(RTA_DATA(tb2[VLAN_MON_ATTR_IFINDEX]));
-		vid = *(uint32_t *)(RTA_DATA(tb2[VLAN_MON_ATTR_VID]));
-		proto = *(uint32_t *)(RTA_DATA(tb2[VLAN_MON_ATTR_PROTO]));
+		vid = *(uint16_t *)(RTA_DATA(tb2[VLAN_MON_ATTR_VID]));
+		proto = *(uint16_t *)(RTA_DATA(tb2[VLAN_MON_ATTR_PROTO]));
 
 		if (tb2[VLAN_MON_ATTR_VLAN_IFINDEX])
 			vlan_ifindex = *(uint32_t *)(RTA_DATA(tb2[VLAN_MON_ATTR_VLAN_IFINDEX]));

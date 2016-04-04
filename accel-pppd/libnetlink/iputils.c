@@ -72,7 +72,9 @@ static int store_nlmsg(const struct sockaddr_nl *who, struct nlmsghdr *n, void *
 {
 	struct ifinfomsg *ifi = NLMSG_DATA(n);
 	struct rtattr *tb[IFLA_MAX + 1];
+	struct rtattr *tb2[IFLA_MAX + 1];
 	struct arg *a = arg;
+	int vid = 0, iflink = 0;
 
 	if (n->nlmsg_type != RTM_NEWLINK)
 		return 0;
@@ -86,9 +88,19 @@ static int store_nlmsg(const struct sockaddr_nl *who, struct nlmsghdr *n, void *
 	if (tb[IFLA_IFNAME] == NULL)
 		return 0;
 
+	if (tb[IFLA_LINKINFO]) {
+		parse_rtattr_nested(tb2, IFLA_MAX, tb[IFLA_LINKINFO]);
+		if (!strcmp(RTA_DATA(tb2[IFLA_INFO_KIND]), "vlan")) {
+			parse_rtattr_nested(tb2, IFLA_MAX, tb2[IFLA_INFO_DATA]);
+			vid = *(uint16_t *)RTA_DATA(tb2[IFLA_VLAN_ID]);
+		}
+	}
+
+	if (tb[IFLA_LINK])
+		iflink = *(int *)RTA_DATA(tb[IFLA_LINK]);
 	//printf("%i %s\n", ifi->ifi_index, RTA_DATA(tb[IFLA_IFNAME]));
 
-	return a->func(ifi->ifi_index, ifi->ifi_flags, RTA_DATA(tb[IFLA_IFNAME]), a->arg);
+	return a->func(ifi->ifi_index, ifi->ifi_flags, RTA_DATA(tb[IFLA_IFNAME]), iflink, vid, a->arg);
 }
 
 int __export iplink_list(iplink_list_func func, void *arg)
@@ -250,7 +262,7 @@ int __export iplink_vlan_del(int ifindex)
 	return 0;
 }
 
-int __export iplink_vlan_get_vid(int ifindex)
+int __export iplink_vlan_get_vid(int ifindex, int *iflink)
 {
 	struct iplink_req {
 		struct nlmsghdr n;
@@ -293,6 +305,9 @@ int __export iplink_vlan_get_vid(int ifindex)
 
 	if (!tb[IFLA_LINKINFO])
 		return 0;
+
+	if (iflink && tb[IFLA_LINK])
+		*iflink = *(int *)RTA_DATA(tb[IFLA_LINK]);
 
 	parse_rtattr_nested(tb, IFLA_MAX, tb[IFLA_LINKINFO]);
 

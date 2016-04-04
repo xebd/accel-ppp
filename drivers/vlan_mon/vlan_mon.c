@@ -490,6 +490,36 @@ static int vlan_mon_nl_cmd_del_vlan_mon(struct sk_buff *skb, struct genl_info *i
 	return 0;
 }
 
+static int vlan_mon_nl_cmd_check_busy(struct sk_buff *skb, struct genl_info *info)
+{
+	int ifindex, vid;
+	struct net_device *dev;
+	int ret = 0;
+
+	if (!info->attrs[VLAN_MON_ATTR_IFINDEX] || !info->attrs[VLAN_MON_ATTR_VID])
+		return -EINVAL;
+
+	ifindex = nla_get_u32(info->attrs[VLAN_MON_ATTR_IFINDEX]);
+	vid = nla_get_u16(info->attrs[VLAN_MON_ATTR_VID]);
+
+	down(&vlan_mon_lock);
+
+	rtnl_lock();
+	dev = __dev_get_by_index(&init_net, ifindex);
+	if (dev) {
+		struct vlan_dev *d = dev->ml_priv;
+		if (d) {
+			if (d->busy[vid / (8*sizeof(long))] & (1lu << (vid % (8*sizeof(long)))))
+				ret = -EBUSY;
+		}
+	}
+	rtnl_unlock();
+
+	up(&vlan_mon_lock);
+
+	return ret;
+}
+
 static struct nla_policy vlan_mon_nl_policy[VLAN_MON_ATTR_MAX + 1] = {
 	[VLAN_MON_ATTR_NONE]		    = { .type = NLA_UNSPEC,                     },
 	[VLAN_MON_ATTR_VLAN_MASK]	  = { .type = NLA_BINARY, .len = 4096/8       },
@@ -520,6 +550,12 @@ static struct genl_ops vlan_mon_nl_ops[] = {
 	{
 		.cmd = VLAN_MON_CMD_DEL,
 		.doit = vlan_mon_nl_cmd_del_vlan_mon,
+		.policy = vlan_mon_nl_policy,
+		.flags = GENL_ADMIN_PERM,
+	},
+	{
+		.cmd = VLAN_MON_CMD_CHECK_BUSY,
+		.doit = vlan_mon_nl_cmd_check_busy,
 		.policy = vlan_mon_nl_policy,
 		.flags = GENL_ADMIN_PERM,
 	},

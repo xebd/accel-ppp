@@ -86,7 +86,6 @@ struct pppoe_serv_t
 	DES_key_schedule des_ks;
 
 	pthread_mutex_t lock;
-	int stopping:1;
 
 	unsigned int conn_cnt;
 	struct list_head conn_list;
@@ -97,6 +96,9 @@ struct pppoe_serv_t
 	int padi_cnt;
 	int padi_limit;
 	time_t last_padi_limit_warn;
+
+	int stopping:1;
+	int vlan_mon:1;
 };
 
 extern int conf_verbose;
