@@ -25,6 +25,7 @@
 #define TAG_AC_COOKIE          0x0104
 #define TAG_VENDOR_SPECIFIC    0x0105
 #define TAG_RELAY_SESSION_ID   0x0110
+#define TAG_PPP_MAX_PAYLOAD    0x0120
 #define TAG_SERVICE_NAME_ERROR 0x0201
 #define TAG_AC_SYSTEM_ERROR    0x0202
 #define TAG_GENERIC_ERROR      0x0203
@@ -75,6 +76,7 @@ struct pppoe_serv_t
 	uint8_t hwaddr[ETH_ALEN];
 	char *ifname;
 	int ifindex;
+	int mtu;
 
 	int parent_ifindex;
 	int vid;
