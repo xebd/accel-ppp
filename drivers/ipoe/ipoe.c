@@ -704,7 +704,7 @@ static rx_handler_result_t ipoe_recv(struct sk_buff **pskb)
 	struct ipoe_session *ses = NULL;
 	struct iphdr *iph = NULL;
 	struct _arphdr *arph = NULL;
-	struct ethhdr *eth;
+	struct ethhdr *eth = eth_hdr(skb);
 	int noff;
 	struct net_device_stats *stats;
 	__be32 saddr;
@@ -783,16 +783,15 @@ static rx_handler_result_t ipoe_recv(struct sk_buff **pskb)
 
 	stats = &ses->dev->stats;
 
-	/*if (ses->link_dev) {
-		eth = eth_hdr(skb);
+	if (ses->gw)
+		memcpy(ses->hwaddr, eth->h_source, ETH_ALEN);
+	else {
 		if (memcmp(eth->h_source, ses->hwaddr, ETH_ALEN)) {
 			stats->rx_dropped++;
 			kfree_skb(skb);
 			return RX_HANDLER_CONSUMED;
 		}
-	}*/
-	eth = eth_hdr(skb);
-	memcpy(ses->hwaddr, eth->h_source, ETH_ALEN);
+	}
 
 	if (ses->addr > 1 && ipoe_do_nat(skb, ses->addr, 0))
 		goto drop;
