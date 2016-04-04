@@ -431,23 +431,22 @@ static void vlan_dev_clean(struct vlan_dev *d, struct net_device *dev, struct li
 	struct net_device *vd;
 
 	for (i = 1; i < 4096; i++) {
-		if (d->vid[0][i / (8*sizeof(long))] & (1lu << (i % (8*sizeof(long)))) &&
-		    d->vid[1][i / (8*sizeof(long))] & (1lu << (i % (8*sizeof(long)))))
-			continue;
+		if (d->busy[i / (8*sizeof(long))] & (1lu << (i % (8*sizeof(long))))) {
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0)
-		vd = __vlan_find_dev_deep(dev, i);
+			vd = __vlan_find_dev_deep(dev, i);
 #elif LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0)
-		vd = __vlan_find_dev_deep(dev, htons(ETH_P_8021Q), i);
-		if (!vd)
-			vd = __vlan_find_dev_deep(dev, htons(ETH_P_8021AD), i);
+			vd = __vlan_find_dev_deep(dev, htons(ETH_P_8021Q), i);
+			if (!vd)
+				vd = __vlan_find_dev_deep(dev, htons(ETH_P_8021AD), i);
 #else
-		vd = __vlan_find_dev_deep_rcu(dev, htons(ETH_P_8021Q), i);
-		if (!vd)
-			vd = __vlan_find_dev_deep_rcu(dev, htons(ETH_P_8021AD), i);
+			vd = __vlan_find_dev_deep_rcu(dev, htons(ETH_P_8021Q), i);
+			if (!vd)
+				vd = __vlan_find_dev_deep_rcu(dev, htons(ETH_P_8021AD), i);
 #endif
 
-		if (vd)
-			vd->rtnl_link_ops->dellink(vd, list);
+			if (vd)
+				vd->rtnl_link_ops->dellink(vd, list);
+		}
 	}
 }
 
