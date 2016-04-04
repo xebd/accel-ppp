@@ -359,6 +359,9 @@ static int vlan_mon_nl_cmd_add_vlan_mon(struct sk_buff *skb, struct genl_info *i
 			rtnl_unlock();
 		}
 #endif
+
+		for (i = 0; i < 4096/sizeof(long)/8; i++)
+			d->busy[i] = d->vid[0][i] | d->vid[1][i];
 	}
 
 	up(&vlan_mon_lock);
