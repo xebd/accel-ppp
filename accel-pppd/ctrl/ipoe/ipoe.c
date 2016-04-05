@@ -1267,9 +1267,6 @@ static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packe
 	uint8_t *agent_circuit_id = NULL;
 	uint8_t *agent_remote_id = NULL;
 
-	if (ap_shutdown)
-		return;
-
 	if (conf_verbose) {
 		log_ppp_info2("recv ");
 		dhcpv4_print_packet(pack, 0, log_ppp_info2);
@@ -1557,9 +1554,6 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 	if (serv->timer.tpd)
 		triton_timer_mod(&serv->timer, 0);
 
-	if (ap_shutdown)
-		return;
-
 	if (connlimit_loaded && pack->msg_type == DHCPDISCOVER && connlimit_check(serv->opt_shared ? cl_key_from_mac(pack->hdr->chaddr) : serv->ifindex))
 		return;
 
@@ -1573,6 +1567,9 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 				dhcpv4_packet_ref(pack);
 				triton_context_call(&opt82_ses->ctx, (triton_event_func)mac_change_detected, pack);
 			}
+
+			if (ap_shutdown)
+				return;
 
 			offer_delay = get_offer_delay();
 			if (offer_delay == -1)
@@ -1742,11 +1739,6 @@ static void ipoe_recv_dhcpv4_relay(struct dhcpv4_packet *pack)
 	struct ipoe_session *ses;
 	int found = 0;
 	//struct dhcpv4_packet *reply;
-
-	if (ap_shutdown) {
-		dhcpv4_packet_free(pack);
-		return;
-	}
 
 	pthread_mutex_lock(&serv->lock);
 	list_for_each_entry(ses, &serv->sessions, entry) {
