@@ -504,14 +504,14 @@ static void print_tag_u16(struct pppoe_tag *tag)
 	log_info2("%i", (uint16_t)ntohs(*(uint16_t *)tag->tag_data));
 }
 
-static void print_packet(uint8_t *pack)
+static void print_packet(const char *ifname, const char *op, uint8_t *pack)
 {
 	struct ethhdr *ethhdr = (struct ethhdr *)pack;
 	struct pppoe_hdr *hdr = (struct pppoe_hdr *)(pack + ETH_HLEN);
 	struct pppoe_tag *tag;
 	int n;
 
-	log_info2("[PPPoE ");
+	log_info2("%s: %s [PPPoE ", ifname, op);
 
 	switch (hdr->code) {
 		case CODE_PADI:
@@ -778,10 +778,8 @@ static void pppoe_send_PADO(struct pppoe_serv_t *serv, const uint8_t *addr, cons
 		add_tag(pack, TAG_PPP_MAX_PAYLOAD, &ppp_max_payload, 2);
 	}
 
-	if (conf_verbose) {
-		log_info2("send ");
-		print_packet(pack);
-	}
+	if (conf_verbose)
+		print_packet(serv->ifname, "send", pack);
 
 	__sync_add_and_fetch(&stat_PADO_sent, 1);
 	pppoe_send(serv, pack);
@@ -802,10 +800,8 @@ static void pppoe_send_err(struct pppoe_serv_t *serv, const uint8_t *addr, const
 	if (relay_sid)
 		add_tag2(pack, relay_sid);
 
-	if (conf_verbose) {
-		log_info2("send ");
-		print_packet(pack);
-	}
+	if (conf_verbose)
+		print_packet(serv->ifname, "send", pack);
 
 	pppoe_send(serv, pack);
 }
@@ -831,10 +827,8 @@ static void pppoe_send_PADS(struct pppoe_conn_t *conn)
 		add_tag(pack, TAG_PPP_MAX_PAYLOAD, &ppp_max_payload, 2);
 	}
 
-	if (conf_verbose) {
-		log_info2("send ");
-		print_packet(pack);
-	}
+	if (conf_verbose)
+		print_packet(conn->serv->ifname, "send", pack);
 
 	__sync_add_and_fetch(&stat_PADS_sent, 1);
 	pppoe_send(conn->serv, pack);
@@ -853,10 +847,8 @@ static void pppoe_send_PADT(struct pppoe_conn_t *conn)
 	if (conn->relay_sid)
 		add_tag2(pack, conn->relay_sid);
 
-	if (conf_verbose) {
-		log_info2("send ");
-		print_packet(pack);
-	}
+	if (conf_verbose)
+		print_packet(conn->serv->ifname, "send", pack);
 
 	pppoe_send(conn->serv, pack);
 }
@@ -1002,10 +994,8 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 		}
 	}
 
-	if (conf_verbose) {
-		log_info2("recv ");
-		print_packet(pack);
-	}
+	if (conf_verbose)
+		print_packet(serv->ifname, "recv", pack);
 
 	if (!service_match) {
 		if (conf_verbose)
@@ -1089,10 +1079,8 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 		return;
 	}
 
-	if (conf_verbose) {
-		log_info2("recv ");
-		print_packet(pack);
-	}
+	if (conf_verbose)
+		print_packet(serv->ifname, "recv", pack);
 
 	for (n = 0; n < ntohs(hdr->length); n += sizeof(*tag) + ntohs(tag->tag_len)) {
 		tag = (struct pppoe_tag *)(pack + ETH_HLEN + sizeof(*hdr) + n);
@@ -1206,10 +1194,8 @@ static void pppoe_recv_PADT(struct pppoe_serv_t *serv, uint8_t *pack)
 		return;
 	}
 
-	if (conf_verbose) {
-		log_info2("recv ");
-		print_packet(pack);
-	}
+	if (conf_verbose)
+		print_packet(serv->ifname, "recv", pack);
 
 	pthread_mutex_lock(&serv->lock);
 	list_for_each_entry(conn, &serv->conn_list, entry) {
