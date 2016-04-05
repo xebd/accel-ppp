@@ -785,13 +785,8 @@ static rx_handler_result_t ipoe_recv(struct sk_buff **pskb)
 
 	if (ses->gw)
 		memcpy(ses->hwaddr, eth->h_source, ETH_ALEN);
-	else {
-		if (memcmp(eth->h_source, ses->hwaddr, ETH_ALEN)) {
-			stats->rx_dropped++;
-			kfree_skb(skb);
-			return RX_HANDLER_CONSUMED;
-		}
-	}
+	else if (memcmp(eth->h_source, ses->hwaddr, ETH_ALEN))
+		goto drop;
 
 	if (ses->addr > 1 && ipoe_do_nat(skb, ses->addr, 0))
 		goto drop;
