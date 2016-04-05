@@ -90,7 +90,7 @@ static int store_nlmsg(const struct sockaddr_nl *who, struct nlmsghdr *n, void *
 
 	if (tb[IFLA_LINKINFO]) {
 		parse_rtattr_nested(tb2, IFLA_MAX, tb[IFLA_LINKINFO]);
-		if (!strcmp(RTA_DATA(tb2[IFLA_INFO_KIND]), "vlan")) {
+		if (tb2[IFLA_INFO_KIND] && !strcmp(RTA_DATA(tb2[IFLA_INFO_KIND]), "vlan")) {
 			parse_rtattr_nested(tb2, IFLA_MAX, tb2[IFLA_INFO_DATA]);
 			vid = *(uint16_t *)RTA_DATA(tb2[IFLA_VLAN_ID]);
 		}
