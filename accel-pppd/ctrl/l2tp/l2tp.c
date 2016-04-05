@@ -1754,6 +1754,7 @@ static int l2tp_session_start_data_channel(struct l2tp_sess_t *sess)
 	sess->ctrl.type = CTRL_TYPE_L2TP;
 	sess->ctrl.ppp = 1;
 	sess->ctrl.name = "l2tp";
+	sess->ctrl.ifname = "";
 	sess->ctrl.started = apses_started;
 	sess->ctrl.finished = apses_finished;
 	sess->ctrl.terminate = ppp_terminate;

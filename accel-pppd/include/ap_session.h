@@ -43,6 +43,7 @@ struct ap_ctrl {
 	struct triton_context_t *ctx;
 	int type;
 	const char *name;
+	const char *ifname;
 	int max_mtu;
 	int mppe;
 	char *calling_station_id;

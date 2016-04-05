@@ -1169,7 +1169,7 @@ static struct ipoe_session *ipoe_session_create_dhcpv4(struct ipoe_serv *serv, s
 	int dlen = 0;
 	uint8_t *ptr = NULL;
 
-	ses = ipoe_session_alloc();
+	ses = ipoe_session_alloc(serv->ifname);
 	if (!ses)
 		return NULL;
 
@@ -1780,7 +1780,7 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 	if (l4_redirect_list_check(saddr))
 		return NULL;
 
-	ses = ipoe_session_alloc();
+	ses = ipoe_session_alloc(serv->ifname);
 	if (!ses)
 		return NULL;
 
@@ -1843,7 +1843,7 @@ static void ipoe_session_create_auto(struct ipoe_serv *serv)
 	if (ap_shutdown)
 		return;
 
-	ses = ipoe_session_alloc();
+	ses = ipoe_session_alloc(serv->ifname);
 	if (!ses)
 		return;
 
@@ -1870,7 +1870,7 @@ static void ipoe_session_create_auto(struct ipoe_serv *serv)
 	triton_context_wakeup(&ses->ctx);
 }
 
-struct ipoe_session *ipoe_session_alloc(void)
+struct ipoe_session *ipoe_session_alloc(const char *ifname)
 {
 	struct ipoe_session *ses;
 
@@ -1894,6 +1894,7 @@ struct ipoe_session *ipoe_session_alloc(void)
 	ses->ctrl.terminate = ipoe_session_terminate;
 	ses->ctrl.type = CTRL_TYPE_IPOE;
 	ses->ctrl.name = "ipoe";
+	ses->ctrl.ifname = ifname;
 	ses->l4_redirect_table = conf_l4_redirect_table;
 
 	ses->ses.ctrl = &ses->ctrl;

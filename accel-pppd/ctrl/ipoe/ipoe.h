@@ -130,7 +130,7 @@ struct ethhdr;
 
 void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph, struct _arphdr *arph);
 
-struct ipoe_session *ipoe_session_alloc(void);
+struct ipoe_session *ipoe_session_alloc(const char *ifname);
 
 struct ipoe_serv *ipoe_find_serv(const char *ifname);
 

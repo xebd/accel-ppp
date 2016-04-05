@@ -357,7 +357,7 @@ static void write_msg(FILE *f, struct _log_msg_t *msg, struct ap_session *ses)
 	fprintf(f, "[%04i-%02i-%02i %02i:%02i:%02i.%03i] ", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, (int)tv.tv_usec/1000);
 
 	if (ses)
-		fprintf(f, "%s: %s: ", ses->ifname, ses->sessionid);
+		fprintf(f, "%s: %s: ", ses->ifname[0] ? ses->ifname : ses->ctrl->ifname, ses->sessionid);
 
 	list_for_each_entry(chunk, &msg->chunks, entry)
 		fwrite(chunk->msg, chunk->len, 1, f);

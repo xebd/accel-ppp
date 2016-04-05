@@ -683,6 +683,7 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		conn->ctrl.type = CTRL_TYPE_PPTP;
 		conn->ctrl.ppp = 1;
 		conn->ctrl.name = "pptp";
+		conn->ctrl.ifname = "";
 		conn->ctrl.mppe = conf_mppe;
 
 		conn->ctrl.calling_station_id = _malloc(17);

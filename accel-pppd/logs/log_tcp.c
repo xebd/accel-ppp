@@ -137,7 +137,7 @@ static void set_hdr(struct log_msg_t *msg, struct ap_session *ses)
 	localtime_r(&msg->timestamp.tv_sec, &tm);
 
 	strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &tm);
-	sprintf(msg->hdr->msg, "[%s]: %s: %s: ", timestamp, level_name[msg->level],	ses ? ses->ifname : "");
+	sprintf(msg->hdr->msg, "[%s]: %s: %s: ", timestamp, level_name[msg->level],	ses ? (ses->ifname[0] ? ses->ifname : ses->ctrl->ifname) : "");
 	msg->hdr->len = strlen(msg->hdr->msg);
 }
 

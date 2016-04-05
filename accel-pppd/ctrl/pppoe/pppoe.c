@@ -344,6 +344,7 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 	conn->ctrl.type = CTRL_TYPE_PPPOE;
 	conn->ctrl.ppp = 1;
 	conn->ctrl.name = "pppoe";
+	conn->ctrl.ifname = serv->ifname;
 	conn->ctrl.mppe = conf_mppe;
 
 	if (ppp_max_payload > ETH_DATA_LEN - 8)

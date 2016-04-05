@@ -245,7 +245,7 @@ static void set_hdr(struct log_msg_t *msg, struct ap_session *ses)
 	strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", &tm);
 	sprintf(msg->hdr->msg, "%s[%s]: %s: %s%s%s", conf_color ? level_color[msg->level] : "",
 		timestamp, level_name[msg->level],
-		ses ? ses->ifname : "",
+		ses ? (ses->ifname[0] ? ses->ifname : ses->ctrl->ifname) : "",
 		ses ? ": " : "",
 		conf_color ? NORMAL_COLOR : "");
 	msg->hdr->len = strlen(msg->hdr->msg);

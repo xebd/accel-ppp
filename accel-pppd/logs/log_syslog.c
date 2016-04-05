@@ -53,7 +53,7 @@ static void unpack_msg(struct log_msg_t *msg)
 static void set_hdr(struct log_msg_t *msg, struct ap_session *ses)
 {
 	if (ses) {
-		if (snprintf(msg->hdr->msg, LOG_CHUNK_SIZE, "%s:%s: ", ses->ifname, ses->username ? ses->username : ""))
+		if (snprintf(msg->hdr->msg, LOG_CHUNK_SIZE, "%s:%s: ", ses->ifname[0] ? ses->ifname : ses->ctrl->ifname, ses->username ? ses->username : ""))
 			strcpy(msg->hdr->msg + LOG_CHUNK_SIZE - 3, ": ");
 	} else
 		msg->hdr->msg[0] = 0;
