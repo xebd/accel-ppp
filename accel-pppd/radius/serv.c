@@ -176,6 +176,7 @@ int rad_server_req_cancel(struct rad_req_t *req, int full)
 int rad_server_req_enter(struct rad_req_t *req)
 {
 	struct timespec ts;
+	int r = 0;
 
 	if (req->serv->need_free)
 		return -1;
@@ -224,10 +225,13 @@ int rad_server_req_enter(struct rad_req_t *req)
 
 	req->active = 1;
 
-	if (req->send)
-		return req->send(req, 0);
+	if (req->send) {
+		r = req->send(req, 0);
+		if (r)
+			req->active = 0;
+	}
 
-	return 0;
+	return r;
 }
 
 void rad_server_req_exit(struct rad_req_t *req)
