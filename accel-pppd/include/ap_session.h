@@ -50,6 +50,7 @@ struct ap_ctrl {
 	char *called_station_id;
 	int dont_ifcfg:1;
 	int ppp:1;
+	int no_lcp_mru:1;
 	void (*started)(struct ap_session*);
 	void (*finished)(struct ap_session *);
 	int (*terminate)(struct ap_session *, int hard);

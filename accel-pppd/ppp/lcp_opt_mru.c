@@ -54,12 +54,21 @@ static struct lcp_option_t *mru_init(struct ppp_lcp_t *lcp)
 	struct mru_option_t *mru_opt = _malloc(sizeof(*mru_opt));
 
 	memset(mru_opt, 0, sizeof(*mru_opt));
-	mru_opt->mru = (conf_mru && conf_mru <= lcp->ppp->ses.ctrl->max_mtu) ? conf_mru : lcp->ppp->ses.ctrl->max_mtu;
-	if (mru_opt->mru > conf_max_mtu)
-		mru_opt->mru = conf_max_mtu;
-	mru_opt->mtu = (conf_mtu && conf_mtu <= lcp->ppp->ses.ctrl->max_mtu) ? conf_mtu : lcp->ppp->ses.ctrl->max_mtu;
-	if (mru_opt->mtu > conf_max_mtu)
-		mru_opt->mtu = conf_max_mtu;
+	if (lcp->ppp->ses.ctrl->no_lcp_mru) {
+		mru_opt->mru = lcp->ppp->ses.ctrl->max_mtu;
+		mru_opt->mtu = lcp->ppp->ses.ctrl->max_mtu;
+		lcp->ppp->mru = mru_opt->mru;
+		lcp->ppp->mtu = mru_opt->mtu;
+		mru_opt->naked = 1;
+	} else {
+		mru_opt->mru = (conf_mru && conf_mru <= lcp->ppp->ses.ctrl->max_mtu) ? conf_mru : lcp->ppp->ses.ctrl->max_mtu;
+		if (mru_opt->mru > conf_max_mtu)
+			mru_opt->mru = conf_max_mtu;
+		mru_opt->mtu = (conf_mtu && conf_mtu <= lcp->ppp->ses.ctrl->max_mtu) ? conf_mtu : lcp->ppp->ses.ctrl->max_mtu;
+		if (mru_opt->mtu > conf_max_mtu)
+			mru_opt->mtu = conf_max_mtu;
+	}
+
 	mru_opt->opt.id = CI_MRU;
 	mru_opt->opt.len = 4;
 
