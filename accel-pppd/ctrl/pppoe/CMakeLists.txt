@@ -13,5 +13,6 @@ SET(sources ${sources} tr101.c)
 ENDIF(RADIUS)
 
 ADD_LIBRARY(pppoe SHARED ${sources})
+TARGET_LINK_LIBRARIES(pppoe vlan-mon)
 
 INSTALL(TARGETS pppoe LIBRARY DESTINATION lib${LIB_SUFFIX}/accel-ppp)
