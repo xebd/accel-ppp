@@ -20,7 +20,9 @@ int iproute_del(int ifindex, in_addr_t dst, int proto, int mask);
 in_addr_t iproute_get(in_addr_t dst, in_addr_t *gw);
 
 int ip6route_add(int ifindex, struct in6_addr *dst, int prefix_len, int proto);
+int ip6route_del(int ifindex, struct in6_addr *dst, int prefix_len);
 int ip6addr_add(int ifindex, struct in6_addr *addr, int prefix_len);
+int ip6addr_del(int ifindex, struct in6_addr *addr, int prefix_len);
 
 int iprule_add(uint32_t addr, int table);
 int iprule_del(uint32_t addr, int table);

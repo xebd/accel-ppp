@@ -491,7 +491,39 @@ int __export ip6route_add(int ifindex, struct in6_addr *dst, int pref_len, int p
 		return -1;
 
 	return 0;
+}
 
+int __export ip6route_del(int ifindex, struct in6_addr *dst, int pref_len)
+{
+	struct ipaddr_req {
+		struct nlmsghdr n;
+		struct rtmsg i;
+		char buf[4096];
+	} req;
+
+	if (!rth)
+		open_rth();
+
+	if (!rth)
+		return -1;
+
+	memset(&req, 0, sizeof(req) - 4096);
+
+	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
+	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE;
+	req.n.nlmsg_type = RTM_DELROUTE;
+	req.i.rtm_family = AF_INET6;
+	req.i.rtm_table = RT_TABLE_MAIN;
+	req.i.rtm_scope = RT_SCOPE_LINK;
+	req.i.rtm_type = RTN_UNICAST;
+	req.i.rtm_dst_len = pref_len;
+
+	addattr_l(&req.n, sizeof(req), RTA_DST, dst, sizeof(*dst));
+
+	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
+		return -1;
+
+	return 0;
 }
 
 int __export ip6addr_add(int ifindex, struct in6_addr *addr, int prefix_len)
@@ -517,6 +549,37 @@ int __export ip6addr_add(int ifindex, struct in6_addr *addr, int prefix_len)
 	req.i.ifa_index = ifindex;
 	req.i.ifa_prefixlen = prefix_len;
 	req.i.ifa_flags = IFA_F_NODAD;
+
+	addattr_l(&req.n, sizeof(req), IFA_ADDRESS, addr, 16);
+
+	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
+		return -1;
+
+	return 0;
+}
+
+int __export ip6addr_del(int ifindex, struct in6_addr *addr, int prefix_len)
+{
+	struct ipaddr_req {
+		struct nlmsghdr n;
+		struct ifaddrmsg i;
+		char buf[4096];
+	} req;
+
+	if (!rth)
+		open_rth();
+
+	if (!rth)
+		return -1;
+
+	memset(&req, 0, sizeof(req) - 4096);
+
+	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
+	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE;
+	req.n.nlmsg_type = RTM_DELADDR;
+	req.i.ifa_family = AF_INET6;
+	req.i.ifa_index = ifindex;
+	req.i.ifa_prefixlen = prefix_len;
 
 	addattr_l(&req.n, sizeof(req), IFA_ADDRESS, addr, 16);
 

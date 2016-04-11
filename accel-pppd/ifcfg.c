@@ -45,7 +45,7 @@ static void devconf(struct ap_session *ses, const char *attr, const char *val)
 	close(fd);
 }
 
-static void build_addr(struct ipv6db_addr_t *a, uint64_t intf_id, struct in6_addr *addr)
+/*static void build_addr(struct ipv6db_addr_t *a, uint64_t intf_id, struct in6_addr *addr)
 {
 	memcpy(addr, &a->addr, sizeof(*addr));
 
@@ -53,7 +53,7 @@ static void build_addr(struct ipv6db_addr_t *a, uint64_t intf_id, struct in6_add
 		*(uint64_t *)(addr->s6_addr + 8) = intf_id;
 	else
 		*(uint64_t *)(addr->s6_addr + 8) |= intf_id & ((1 << (128 - a->prefix_len)) - 1);
-}
+}*/
 
 void ap_session_ifup(struct ap_session *ses)
 {
@@ -222,13 +222,14 @@ void __export ap_session_ifdown(struct ap_session *ses)
 	struct in6_ifreq ifr6;
 	struct ipv6db_addr_t *a;
 
-	if (ses->ctrl->dont_ifcfg || ses->ifindex == -1)
+	if (ses->ifindex == -1)
 		return;
 
-	memset(&ifr, 0, sizeof(ifr));
-	strcpy(ifr.ifr_name, ses->ifname);
-
-	net->sock_ioctl(SIOCSIFFLAGS, &ifr);
+	if (!ses->ctrl->dont_ifcfg) {
+		strcpy(ifr.ifr_name, ses->ifname);
+		ifr.ifr_flags = 0;
+		net->sock_ioctl(SIOCSIFFLAGS, &ifr);
+	}
 
 	if (ses->ipv4) {
 		memset(&addr, 0, sizeof(addr));
@@ -239,21 +240,26 @@ void __export ap_session_ifdown(struct ap_session *ses)
 
 	if (ses->ipv6) {
 		memset(&ifr6, 0, sizeof(ifr6));
-		ifr6.ifr6_addr.s6_addr32[0] = htonl(0xfe800000);
-		*(uint64_t *)(ifr6.ifr6_addr.s6_addr + 8) = ses->ipv6->intf_id;
-		ifr6.ifr6_prefixlen = 64;
 		ifr6.ifr6_ifindex = ses->ifindex;
 
-		ioctl(sock6_fd, SIOCDIFADDR, &ifr6);
+		if (ses->ctrl->ppp) {
+			ifr6.ifr6_addr.s6_addr32[0] = htonl(0xfe800000);
+			*(uint64_t *)(ifr6.ifr6_addr.s6_addr + 8) = ses->ipv6->intf_id;
+			ifr6.ifr6_prefixlen = 64;
+			ioctl(sock6_fd, SIOCDIFADDR, &ifr6);
+		}
 
 		list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
-			if (a->prefix_len == 128)
+			if (!a->installed)
 				continue;
-
-			build_addr(a, ses->ipv6->intf_id, &ifr6.ifr6_addr);
-			ifr6.ifr6_prefixlen = a->prefix_len;
-
-			ioctl(sock6_fd, SIOCDIFADDR, &ifr6);
+			if (a->prefix_len > 64)
+				ip6route_del(ses->ifindex, &a->addr, a->prefix_len);
+			else {
+				struct in6_addr addr;
+				memcpy(addr.s6_addr, &a->addr, 8);
+				memcpy(addr.s6_addr + 8, &ses->ipv6->intf_id, 8);
+				ip6addr_del(ses->ifindex, &addr, a->prefix_len);
+			}
 		}
 	}
 }

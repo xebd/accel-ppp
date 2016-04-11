@@ -142,8 +142,15 @@ static void ev_ses_finished(struct ap_session *ses)
 	if (pd->clientid)
 		_free(pd->clientid);
 
-	if (ses->ipv6_dp)
+	if (ses->ipv6_dp) {
+		if (pd->dp_active) {
+			struct ipv6db_addr_t *p;
+			list_for_each_entry(p, &ses->ipv6_dp->prefix_list, entry)
+				ip6route_del(0, &p->addr, p->prefix_len);
+		}
+
 		ipdb_put_ipv6_prefix(ses, ses->ipv6_dp);
+	}
 
 	triton_md_unregister_handler(&pd->hnd, 1);
 
