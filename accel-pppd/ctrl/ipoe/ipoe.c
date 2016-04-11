@@ -825,6 +825,17 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 	}
 }
 
+static void make_ipv6_intfid(uint64_t *intfid, const uint8_t *hwaddr)
+{
+	uint8_t *a = (uint8_t *)intfid;
+
+	memcpy(a, hwaddr, 3);
+	a[3] = 0xff;
+	a[4] = 0xfe;
+	memcpy(a + 5, hwaddr + 3, 3);
+	a[0] ^= 0x02;
+}
+
 static void __ipoe_session_activate(struct ipoe_session *ses)
 {
 	uint32_t addr, gw = 0;
@@ -885,8 +896,10 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 		ses->ses.ipv6 = ipdb_get_ipv6(&ses->ses);
 		if (!ses->ses.ipv6)
 			log_ppp_warn("ipoe: no free IPv6 address\n");
-		else if (!ses->ses.ipv6->peer_intf_id)
-			ses->ses.ipv6->peer_intf_id = htobe64(1);
+		else {
+			make_ipv6_intfid(&ses->ses.ipv6->peer_intf_id, ses->hwaddr);
+			make_ipv6_intfid(&ses->ses.ipv6->intf_id, ses->serv->hwaddr);
+		}
 	}
 
 	__sync_sub_and_fetch(&stat_starting, 1);
