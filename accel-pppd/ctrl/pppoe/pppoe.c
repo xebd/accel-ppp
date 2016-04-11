@@ -341,7 +341,6 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 	conn->ctrl.finished = ppp_finished;
 	conn->ctrl.terminate = ppp_terminate;
 	conn->ctrl.max_mtu = min(ETH_DATA_LEN, serv->mtu) - 8;
-	conn->ctrl.no_lcp_mru = conn->ctrl.max_mtu > (ETH_DATA_LEN - 8);
 	conn->ctrl.type = CTRL_TYPE_PPPOE;
 	conn->ctrl.ppp = 1;
 	conn->ctrl.name = "pppoe";
