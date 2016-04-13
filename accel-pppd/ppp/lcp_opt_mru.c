@@ -173,19 +173,9 @@ static void load_config(void)
 	if (opt && atoi(opt) > 0)
 		conf_max_mtu = atoi(opt);
 
-	if (conf_min_mtu > conf_mru) {
+	if (conf_mru && conf_min_mtu > conf_mru) {
 		log_emerg("min-mtu cann't be greater then mtu/mru\n");
 		conf_min_mtu = conf_mru;
-	}
-
-	if (conf_min_mtu > 1500) {
-		log_emerg("min-mtu cann't be greater then 1500\n");
-		conf_min_mtu = 1500;
-	}
-
-	if (conf_mru > 1500 || conf_mtu > 1500) {
-		log_emerg("mtu/mru cann't be greater then 1500\n");
-		conf_mru = 1500;
 	}
 }
 
