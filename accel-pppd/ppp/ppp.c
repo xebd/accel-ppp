@@ -30,6 +30,7 @@
 int __export conf_ppp_verbose;
 int conf_unit_cache = 0;
 
+#define PPP_BUF_SIZE 8192
 static mempool_t buf_pool;
 
 static LIST_HEAD(layers);
@@ -109,15 +110,13 @@ int __export establish_ppp(struct ppp_t *ppp)
 		goto exit_close_chan;
 	}
 
-	ppp->buf = mempool_alloc(buf_pool);
-
 	ppp->chan_hnd.fd = ppp->chan_fd;
 	ppp->chan_hnd.read = ppp_chan_read;
 
 	log_ppp_debug("ppp establishing\n");
 
 	if (ap_session_starting(&ppp->ses))
-		goto exit_free_buf;
+		goto exit_close_chan;
 
 	triton_md_register_handler(ppp->ses.ctrl->ctx, &ppp->chan_hnd);
 	triton_md_enable_handler(&ppp->chan_hnd, MD_MODE_READ);
@@ -126,9 +125,6 @@ int __export establish_ppp(struct ppp_t *ppp)
 
 	return 0;
 
-exit_free_buf:
-	mempool_free(ppp->buf);
-	ppp->buf = NULL;
 exit_close_chan:
 	close(ppp->chan_fd);
 
@@ -229,7 +225,8 @@ static void destroy_ppp_channel(struct ppp_t *ppp)
 
 	_free_layers(ppp);
 
-	mempool_free(ppp->buf);
+	if (ppp->buf)
+		mempool_free(ppp->buf);
 }
 
 static void destablish_ppp(struct ppp_t *ppp)
@@ -353,14 +350,16 @@ static int ppp_chan_read(struct triton_md_handler_t *h)
 	struct ppp_handler_t *ppp_h;
 	uint16_t proto;
 
+	if (!ppp->buf)
+		ppp->buf = mempool_alloc(buf_pool);
+
 	while(1) {
 cont:
-		ppp->buf_size = net->read(h->fd, ppp->buf, PPP_MRU);
+		ppp->buf_size = net->read(h->fd, ppp->buf, PPP_BUF_SIZE);
 		if (ppp->buf_size < 0) {
-			if (errno == EAGAIN)
-				return 0;
-			log_ppp_error("ppp_chan_read: %s\n", strerror(errno));
-			return 0;
+			if (errno != EAGAIN)
+				log_ppp_error("ppp_chan_read: %s\n", strerror(errno));
+			break;
 		}
 
 		//printf("ppp_chan_read: ");
@@ -390,6 +389,11 @@ cont:
 		lcp_send_proto_rej(ppp, proto);
 		//log_ppp_warn("ppp_chan_read: discarding unknown packet %x\n", proto);
 	}
+
+	mempool_free(ppp->buf);
+	ppp->buf = NULL;
+
+	return 0;
 }
 
 static int ppp_unit_read(struct triton_md_handler_t *h)
@@ -398,14 +402,16 @@ static int ppp_unit_read(struct triton_md_handler_t *h)
 	struct ppp_handler_t *ppp_h;
 	uint16_t proto;
 
+	if (!ppp->buf)
+		ppp->buf = mempool_alloc(buf_pool);
+
 	while (1) {
 cont:
-		ppp->buf_size = net->read(h->fd, ppp->buf, PPP_MRU);
+		ppp->buf_size = net->read(h->fd, ppp->buf, PPP_BUF_SIZE);
 		if (ppp->buf_size < 0) {
-			if (errno == EAGAIN)
-				return 0;
-			log_ppp_error("ppp_unit_read: %s\n",strerror(errno));
-			return 0;
+			if (errno != EAGAIN)
+				log_ppp_error("ppp_unit_read: %s\n",strerror(errno));
+			break;
 		}
 
 		//printf("ppp_unit_read: %i\n", ppp->buf_size);
@@ -437,6 +443,11 @@ cont:
 		lcp_send_proto_rej(ppp, proto);
 		//log_ppp_warn("ppp_unit_read: discarding unknown packet %x\n", proto);
 	}
+
+	mempool_free(ppp->buf);
+	ppp->buf = NULL;
+
+	return 0;
 }
 
 void ppp_recv_proto_rej(struct ppp_t *ppp, uint16_t proto)
@@ -700,7 +711,7 @@ static void load_config(void)
 
 static void init(void)
 {
-	buf_pool = mempool_create(PPP_MRU);
+	buf_pool = mempool_create(PPP_BUF_SIZE);
 	uc_pool = mempool_create(sizeof(struct pppunit_cache));
 
 	load_config();
