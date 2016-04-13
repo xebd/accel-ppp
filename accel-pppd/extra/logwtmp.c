@@ -16,7 +16,7 @@
 
 static void ev_ses_started(struct ap_session *ses)
 {
-	logwtmp(ses->ifname, ses->username, ses->ctrl->calling_station_id);
+	logwtmp(ses->ifname, ses->username ?: "", ses->ctrl->calling_station_id);
 }
 
 static void ev_ses_finished(struct ap_session *ses)
