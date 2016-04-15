@@ -747,7 +747,7 @@ static void pppoe_send(struct pppoe_serv_t *serv, const uint8_t *pack)
 
 	struct pppoe_hdr *hdr = (struct pppoe_hdr *)(pack + ETH_HLEN);
 	int len = ETH_HLEN + sizeof(*hdr) + ntohs(hdr->length);
-	sendto(serv->disc_sock, pack, len, MSG_DONTWAIT, (struct sockaddr *)&addr, sizeof(addr));
+	net->sendto(serv->disc_sock, pack, len, MSG_DONTWAIT, (struct sockaddr *)&addr, sizeof(addr));
 }
 
 static void pppoe_send_PADO(struct pppoe_serv_t *serv, const uint8_t *addr, const struct pppoe_tag *host_uniq, const struct pppoe_tag *relay_sid, const struct pppoe_tag *service_name, uint16_t ppp_max_payload)
@@ -1266,14 +1266,32 @@ static void pppoe_serv_timeout(struct triton_timer_t *t)
 	pppoe_server_free(serv);
 }
 
-static int parse_server(const char *opt, int *padi_limit)
+static int parse_server(const char *opt, int *padi_limit, const struct ap_net **net)
 {
 	char *ptr, *endptr;
+	char name[64];
 
-	ptr = strstr(opt, ",padi-limit=");
-	if (ptr) {
-		*padi_limit = strtol(ptr + 12, &endptr, 10);
-		if (*endptr != 0 && *endptr != ',')
+	while (*opt == ',') {
+		opt++;
+		ptr = strchr(opt, '=');
+		if (!ptr)
+			goto out_err;
+		if (!strncmp(opt, "padi-limit=", sizeof("padi-limit=") - 1)) {
+			*padi_limit = strtol(ptr + 1, &endptr, 10);
+			if (*endptr != 0 && *endptr != ',')
+				goto out_err;
+			opt = endptr;
+		} else if (!strncmp(opt, "net=", sizeof("net=") - 1)) {
+			ptr++;
+			for (endptr = ptr + 1; *endptr && *endptr != ','; endptr++);
+			if (endptr - ptr >= sizeof(name))
+				goto out_err;
+			memcpy(name, ptr, endptr - ptr);
+			name[endptr - ptr] = 0;
+			*net = ap_net_find(name);
+			if (!*net)
+				goto out_err;
+		} else
 			goto out_err;
 	}
 
@@ -1358,16 +1376,18 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli,
 	int padi_limit = conf_padi_limit;
 	const struct ap_net *net = &def_net;
 
-	if (parse_server(opt, &padi_limit)) {
+	if (parse_server(opt, &padi_limit, &net)) {
 		if (cli)
 			cli_sendv(cli, "failed to parse '%s'\r\n", opt);
 		else
 			log_error("pppoe: failed to parse '%s'\r\n", opt);
+
+		return;
 	}
 
 	pthread_rwlock_rdlock(&serv_lock);
 	list_for_each_entry(serv, &serv_list, entry) {
-		if (!strcmp(serv->ifname, ifname)) {
+		if (serv->net == net && !strcmp(serv->ifname, ifname)) {
 			if (cli)
 				cli_send(cli, "error: already exists\r\n");
 			pthread_rwlock_unlock(&serv_lock);
@@ -1442,7 +1462,7 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli,
 		goto out_err;
 	}
 
-	if (parent_ifindex == -1)
+	if (parent_ifindex == -1 && net == &def_net)
 		vid = iplink_vlan_get_vid(ifr.ifr_ifindex, &parent_ifindex);
 
 	serv->ctx.close = pppoe_serv_close;

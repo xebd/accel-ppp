@@ -1,11 +1,17 @@
 #include <unistd.h>
 #include <fcntl.h>
+#include <string.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 
 #include "triton.h"
 
 #include "ap_net.h"
+
+#define MAX_NET 2
+
+static const struct ap_net *nets[MAX_NET];
+static int net_cnt;
 
 extern int sock_fd;
 
@@ -77,6 +83,7 @@ static int def_sock_ioctl(unsigned long request, void *arg)
 }
 
 __export const struct ap_net def_net = {
+	.name = "kernel",
 	.socket = def_socket,
 	.connect = def_connect,
 	.bind = def_bind,
@@ -91,3 +98,38 @@ __export const struct ap_net def_net = {
 	.ppp_ioctl = def_ppp_ioctl,
 	.sock_ioctl = def_sock_ioctl,
 };
+
+static void __init init()
+{
+	nets[0] = &def_net;
+	net_cnt = 1;
+}
+
+int __export ap_net_register(const struct ap_net *net)
+{
+	int i;
+
+	if (net_cnt == MAX_NET)
+		return -1;
+
+	for (i = 0; i < net_cnt; i++) {
+		if (!strcmp(net->name, nets[i]->name))
+			return -1;
+	}
+
+	nets[net_cnt++] = net;
+
+	return 0;
+}
+
+__export const struct ap_net *ap_net_find(const char *name)
+{
+	int i;
+
+	for (i = 0; i < net_cnt; i++) {
+		if (!strcmp(name, nets[i]->name))
+			return nets[i];
+	}
+
+	return NULL;
+}

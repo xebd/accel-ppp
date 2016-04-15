@@ -2,6 +2,7 @@
 #define __AP_NET_H
 
 struct ap_net {
+	const char *name;
 	int (*socket)(int domain, int type, int proto);
 	int (*connect)(int sock, const struct sockaddr *, socklen_t len);
 	int (*bind)(int sock, const struct sockaddr *, socklen_t len);
@@ -16,5 +17,8 @@ struct ap_net {
 	int (*ppp_open)();
 	int (*ppp_ioctl)(int fd, unsigned long request, void *arg);
 };
+
+int ap_net_register(const struct ap_net *net);
+const struct ap_net *ap_net_find(const char *name);
 
 #endif

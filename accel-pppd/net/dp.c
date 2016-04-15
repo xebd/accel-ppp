@@ -26,11 +26,14 @@ static int dp_socket(int domain, int type, int proto)
 	};
 	struct msg_result res;
 
-	int sock = socket(AF_UNIX, SOCK_DGRAM, 0);
-	if (sock < 0)
+	int sock = socket(AF_UNIX, SOCK_SEQPACKET, 0);
+	if (sock < 0) {
+		log_error("dp: socket: %s\n", strerror(errno));
 		return -1;
+	}
 
 	if (connect(sock, (struct sockaddr *)&dp_addr, sizeof(dp_addr))) {
+		log_error("dp: connect: %s\n", strerror(errno));
 		close(sock);
 		return -1;
 	}
@@ -149,12 +152,12 @@ static int dp_listen(int sock, int backlog)
 
 static ssize_t dp_read(int sock, void *buf, size_t len)
 {
-	struct msg_recv msg = {
+	/*struct msg_recv msg = {
 		.id = MSG_RECV,
 		.len = len,
 		.flags = 0,
 		.addrlen = 0,
-	};
+	};*/
 	struct msg_result res;
 	struct iovec iov[2] = {
 		{
@@ -166,12 +169,21 @@ static ssize_t dp_read(int sock, void *buf, size_t len)
 			.iov_len = len,
 		}
 	};
+	struct msghdr msg = {
+		.msg_iov = iov,
+		.msg_iovlen = 2,
+	};
+	int n;
 
-	if (write(sock, &msg, sizeof(msg)))
-		return -1;
+	/*if (write(sock, &msg, sizeof(msg)))
+		return -1;*/
 
 again:
-	if (readv(sock, iov, 2) < sizeof(res)) {
+	n = recvmsg(sock, &msg, MSG_DONTWAIT);
+	if (n < 0)
+		return -1;
+
+	if (n < sizeof(res)) {
 		errno = EBADE;
 		return -1;
 	}
@@ -189,12 +201,12 @@ again:
 
 static ssize_t dp_recvfrom(int sock, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen)
 {
-	struct msg_recv msg = {
+	/*struct msg_recv msg = {
 		.id = MSG_RECV,
 		.len = len,
 		.flags = flags,
 		.addrlen = 0,
-	};
+	};*/
 	struct msg_result res;
 	struct iovec iov[2] = {
 		{
@@ -206,12 +218,21 @@ static ssize_t dp_recvfrom(int sock, void *buf, size_t len, int flags, struct so
 			.iov_len = len,
 		}
 	};
+	int n;
+	struct msghdr msg = {
+		.msg_iov = iov,
+		.msg_iovlen = 2,
+	};
 
-	if (write(sock, &msg, sizeof(msg)))
-		return -1;
+	/*if (write(sock, &msg, sizeof(msg)))
+		return -1;*/
 
 again:
-	if (readv(sock, iov, 2) < sizeof(res)) {
+	n = recvmsg(sock, &msg, MSG_DONTWAIT);
+	if (n < 0)
+		return -1;
+
+	if (n < sizeof(res)) {
 		errno = EBADE;
 		return -1;
 	}
@@ -444,10 +465,11 @@ static int dp_sock_ioctl(unsigned long request, void *arg)
 		return -1;
 	}
 
-	return res.len;
+	return 0;
 }
 
 static const struct ap_net dp_net = {
+	.name = "accel-dp",
 	.socket = dp_socket,
 	.connect = dp_connect,
 	.bind = dp_bind,
@@ -465,7 +487,7 @@ static const struct ap_net dp_net = {
 
 static void init()
 {
-	const char *opt = conf_get_opt("net-dpdk", "socket");
+	const char *opt = conf_get_opt("accel-dp", "socket");
 
 	if (!opt)
 		return;
@@ -479,7 +501,7 @@ static void init()
 
 	dp_addr.sun_family = AF_UNIX;
 
-	dp_sock = socket(AF_UNIX, SOCK_DGRAM, 0);
+	dp_sock = socket(AF_UNIX, SOCK_SEQPACKET, 0);
 	if (dp_sock < 0)
 		return;
 
@@ -488,6 +510,8 @@ static void init()
 		close(dp_sock);
 		return;
 	}
+
+	ap_net_register(&dp_net);
 }
 
 DEFINE_INIT(1, init)
