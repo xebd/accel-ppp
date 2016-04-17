@@ -93,11 +93,8 @@ int __export establish_ppp(struct ppp_t *ppp)
 	}
 
 	fcntl(ppp->chan_fd, F_SETFD, fcntl(ppp->chan_fd, F_GETFD) | FD_CLOEXEC);
-	if (fcntl(ppp->chan_fd, F_SETFL, O_NONBLOCK)) {
-		log_ppp_error("ppp: cannot set nonblocking mode: %s\n",
-			      strerror(errno));
-		goto exit_close_chan;
-	}
+
+	net->set_nonblocking(ppp->chan_fd, 1);
 
 	if (net->ppp_ioctl(ppp->chan_fd, PPPIOCATTCHAN, &ppp->chan_idx) < 0) {
 		log_ppp_error("ioctl(PPPIOCATTCHAN): %s\n", strerror(errno));
@@ -357,16 +354,12 @@ static int ppp_chan_read(struct triton_md_handler_t *h)
 cont:
 		ppp->buf_size = net->read(h->fd, ppp->buf, PPP_BUF_SIZE);
 		if (ppp->buf_size < 0) {
-			if (errno != EAGAIN)
+			if (errno != EAGAIN) {
 				log_ppp_error("ppp_chan_read: %s\n", strerror(errno));
+				ap_session_terminate(&ppp->ses, TERM_NAS_ERROR, 1);
+				return 1;
+			}
 			break;
-		}
-
-		//printf("ppp_chan_read: ");
-		//print_buf(ppp->buf,ppp->buf_size);
-		if (ppp->buf_size == 0) {
-			ap_session_terminate(&ppp->ses, TERM_NAS_ERROR, 1);
-			return 1;
 		}
 
 		if (ppp->buf_size < 2) {
@@ -409,20 +402,13 @@ static int ppp_unit_read(struct triton_md_handler_t *h)
 cont:
 		ppp->buf_size = net->read(h->fd, ppp->buf, PPP_BUF_SIZE);
 		if (ppp->buf_size < 0) {
-			if (errno != EAGAIN)
+			if (errno != EAGAIN) {
 				log_ppp_error("ppp_unit_read: %s\n",strerror(errno));
+				ap_session_terminate(&ppp->ses, TERM_NAS_ERROR, 1);
+				return 1;
+			}
 			break;
 		}
-
-		//printf("ppp_unit_read: %i\n", ppp->buf_size);
-		if (ppp->buf_size == 0)
-			return 0;
-		//print_buf(ppp->buf,ppp->buf_size);
-
-		/*if (ppp->buf_size == 0) {
-			ap_session_terminate(ppp, TERM_NAS_ERROR, 1);
-			return 1;
-		}*/
 
 		if (ppp->buf_size < 2) {
 			log_ppp_error("ppp_unit_read: short read %i\n", ppp->buf_size);

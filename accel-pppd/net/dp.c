@@ -1,5 +1,8 @@
 #include <unistd.h>
+#include <stdlib.h>
 #include <errno.h>
+#include <pthread.h>
+#include <sched.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/ioctl.h>
@@ -13,8 +16,101 @@
 
 #include "if_dp.h"
 
+#define MAX_PIPE 16
+
+struct dp_pipe {
+	struct list_head entry;
+	int sock;
+	uint8_t pid;
+};
+
 static struct sockaddr_un dp_addr;
 static int dp_sock;
+
+static LIST_HEAD(pipes);
+static pthread_mutex_t pipe_lock;
+static int pipe_cnt;
+
+static int pipe_open(uint8_t pid)
+{
+	struct msg_pipe msg = {
+		.id = MSG_PIPE,
+		.pid = pid,
+	};
+	struct msg_result res;
+	int sock = socket(AF_UNIX, SOCK_SEQPACKET, 0);
+	if (sock < 0) {
+		log_error("dp: socket: %s\n", strerror(errno));
+		return -1;
+	}
+
+	if (connect(sock, (struct sockaddr *)&dp_addr, sizeof(dp_addr))) {
+		log_error("dp: connect: %s\n", strerror(errno));
+		close(sock);
+		return -1;
+	}
+
+	if (write(sock, &msg, sizeof(msg)) < 0) {
+		close(sock);
+		return -1;
+	}
+
+	if (read(sock, &res, sizeof(res)) != sizeof(res)) {
+		close(sock);
+		return -1;
+	}
+
+	if (res.err) {
+		log_error("dp: failed to connect pipe: %s\n", strerror(res.err));
+		close(sock);
+		return -1;
+	}
+
+	return sock;
+}
+
+static struct dp_pipe *pipe_get()
+{
+	struct dp_pipe *p;
+	uint8_t pid;
+	int sock;
+
+	while (1) {
+		pthread_mutex_lock(&pipe_lock);
+		if (list_empty(&pipes)) {
+			if (pipe_cnt == MAX_PIPE) {
+				pthread_mutex_unlock(&pipe_lock);
+				sched_yield();
+			}
+			pid = pipe_cnt;
+			pipe_cnt++;
+			pthread_mutex_unlock(&pipe_lock);
+
+			sock = pipe_open(pid);
+			if (sock < 0)
+				return NULL;
+
+			p = malloc(sizeof(*p));
+			p->pid = pid;
+			p->sock = sock;
+			break;
+		} else {
+			p = list_entry(pipes.next, typeof(*p), entry);
+			list_del(&p->entry);
+			pthread_mutex_unlock(&pipe_lock);
+			break;
+		}
+	}
+
+	return p;
+}
+
+static void pipe_put(struct dp_pipe *p)
+{
+	pthread_mutex_lock(&pipe_lock);
+	list_add(&p->entry, &pipes);
+	pthread_mutex_unlock(&pipe_lock);
+}
 
 static int dp_socket(int domain, int type, int proto)
 {
@@ -270,11 +366,24 @@ static ssize_t dp_write(int sock, const void *buf, size_t len)
 			.iov_len = len,
 		}
 	};
+	struct dp_pipe *p = pipe_get();
+	int r;
 
-	if (writev(sock, iov, 2) < 0)
+	if (!p)
 		return -1;
 
-	if (read(sock, &res, sizeof(res)) != sizeof(res)) {
+	msg.pid = p->pid;
+
+	if (writev(sock, iov, 2) < 0) {
+		pipe_put(p);
+		return -1;
+	}
+
+	r = read(p->sock, &res, sizeof(res));
+
+	pipe_put(p);
+
+	if (r != sizeof(res)) {
 		errno = EBADE;
 		return -1;
 	}
@@ -310,11 +419,24 @@ static ssize_t dp_sendto(int sock, const void *buf, size_t len, int flags, const
 			.iov_len = len,
 		}
 	};
+	struct dp_pipe *p = pipe_get();
+	int r;
 
-	if (writev(sock, iov, 3) < 0)
+	if (!p)
 		return -1;
 
-	if (read(sock, &res, sizeof(res)) != sizeof(res)) {
+	msg.pid = p->pid;
+
+	if (writev(sock, iov, 3) < 0) {
+		pipe_put(p);
+		return -1;
+	}
+
+	r = read(p->sock, &res, sizeof(res));
+
+	pipe_put(p);
+
+	if (r != sizeof(res)) {
 		errno = EBADE;
 		return -1;
 	}
@@ -340,9 +462,11 @@ static int dp_setsockopt(int sock, int level, int optname, const void *optval, s
 
 static int dp_ppp_open()
 {
-	int id = MSG_PPP_OPEN;
+	struct msg_hdr msg = {
+		.id = MSG_PPP_OPEN,
+	};
 	struct msg_result res;
-	int sock = socket(AF_UNIX, SOCK_STREAM, 0);
+	int sock = socket(AF_UNIX, SOCK_SEQPACKET, 0);
 
 	if (sock < 0)
 		return -1;
@@ -352,7 +476,7 @@ static int dp_ppp_open()
 		return -1;
 	}
 
-	if (write(sock, &id, sizeof(id)) < 0) {
+	if (write(sock, &msg, sizeof(msg)) < 0) {
 		close(sock);
 		return -1;
 	}
@@ -388,6 +512,11 @@ static int dp_ppp_ioctl(int fd, unsigned long request, void *arg)
 			.iov_base = arg,
 		}
 	};
+	struct dp_pipe *p = pipe_get();
+	int r;
+
+	if (!p)
+		return -1;
 
 	switch (request) {
 		case PPPIOCSNPMODE:
@@ -398,9 +527,9 @@ static int dp_ppp_ioctl(int fd, unsigned long request, void *arg)
 			break;
 		case PPPIOCGFLAGS:
 		case PPPIOCGCHAN:
-		case PPPIOCNEWUNIT:
 			iov[1].iov_len = 0;
 			break;
+		case PPPIOCNEWUNIT:
 		case PPPIOCSFLAGS:
 		case PPPIOCSMRU:
 		case PPPIOCATTCHAN:
@@ -410,15 +539,23 @@ static int dp_ppp_ioctl(int fd, unsigned long request, void *arg)
 
 	}
 
-	if (writev(fd, iov, iov[1].iov_len ? 2 : 1) < 0)
+	msg.pid = p->pid;
+
+	if (writev(fd, iov, 2) < 0) {
+		pipe_put(p);
 		return -1;
+	}
 
 	iov[0].iov_base = &res;
 	iov[0].iov_len = sizeof(res);
 	iov[1].iov_base = arg;
 	iov[1].iov_len = 1024;
 
-	if (readv(fd, iov, 2) < sizeof(res)) {
+	r = readv(p->sock, iov, 2);
+
+	pipe_put(p);
+
+	if (r < sizeof(res)) {
 		errno = EBADE;
 		return -1;
 	}
@@ -448,14 +585,27 @@ static int dp_sock_ioctl(unsigned long request, void *arg)
 			.iov_len = sizeof(struct ifreq),
 		}
 	};
+	struct dp_pipe *p = pipe_get();
+	int r;
 
-	if (writev(dp_sock, iov, 2) < 0)
+	if (!p)
 		return -1;
+
+	msg.pid = p->pid;
+
+	if (writev(dp_sock, iov, 2) < 0) {
+		pipe_put(p);
+		return -1;
+	}
 
 	iov[0].iov_base = &res;
 	iov[0].iov_len = sizeof(res);
 
-	if (readv(dp_sock, iov, 2) < sizeof(res)) {
+	r = readv(p->sock, iov, 2);
+
+	pipe_put(p);
+
+	if (r < sizeof(res)) {
 		errno = EBADE;
 		return -1;
 	}

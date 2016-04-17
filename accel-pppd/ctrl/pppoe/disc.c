@@ -32,6 +32,7 @@ struct disc_net {
 	struct triton_context_t ctx;
 	struct triton_md_handler_t hnd;
 	const struct ap_net *net;
+	int refs;
 	struct tree tree[0];
 };
 
@@ -76,7 +77,7 @@ static struct disc_net *init_net(const struct ap_net *net)
 	fcntl(sock, F_SETFD, FD_CLOEXEC);
 	net->set_nonblocking(sock, 1);
 
-	n = malloc(sizeof(*net) + (HASH_BITS + 1) * sizeof(struct tree));
+	n = _malloc(sizeof(*net) + (HASH_BITS + 1) * sizeof(struct tree));
 	tree = n->tree;
 
 	for (i = 0; i <= HASH_BITS; i++) {
@@ -89,6 +90,7 @@ static struct disc_net *init_net(const struct ap_net *net)
 	n->hnd.fd = sock;
 	n->hnd.read = disc_read;
 	n->net = net;
+	n->refs = 1;
 
 	triton_context_register(&n->ctx, NULL);
 	triton_md_register_handler(&n->ctx, &n->hnd);
@@ -100,6 +102,24 @@ static struct disc_net *init_net(const struct ap_net *net)
 
 	return n;
 }
+
+static void free_net(struct disc_net *net)
+{
+	int i;
+
+	pthread_mutex_lock(&nets_lock);
+	for (i = 0; i < MAX_NET; i++) {
+		if (nets[i] == net) {
+			memcpy(nets + i, nets + i + 1, net_cnt - i - 1);
+			net_cnt--;
+			break;
+		}
+	}
+	pthread_mutex_unlock(&nets_lock);
+
+	_free(net);
+}
+
 
 static struct disc_net *find_net(const struct ap_net *net)
 {
@@ -134,6 +154,9 @@ int pppoe_disc_start(struct pppoe_serv_t *serv)
 			return -1;
 	}
 
+	if (net->hnd.fd == -1)
+		return -1;
+
 	t = &net->tree[ifindex & HASH_BITS];
 
 	pthread_mutex_lock(&t->lock);
@@ -159,6 +182,8 @@ int pppoe_disc_start(struct pppoe_serv_t *serv)
 	rb_link_node(&serv->node, parent, p);
 	rb_insert_color(&serv->node, &t->root);
 
+	__sync_add_and_fetch(&net->refs, 1);
+
 	pthread_mutex_unlock(&t->lock);
 
 	return net->hnd.fd;
@@ -172,6 +197,9 @@ void pppoe_disc_stop(struct pppoe_serv_t *serv)
 	pthread_mutex_lock(&t->lock);
 	rb_erase(&serv->node, &t->root);
 	pthread_mutex_unlock(&t->lock);
+
+	if (__sync_sub_and_fetch(&n->refs, 1) == 0)
+		free_net(n);
 }
 
 static int forward(struct disc_net *net, int ifindex, void *pkt, int len)
@@ -232,6 +260,31 @@ static void notify_down(struct disc_net *net, int ifindex)
 	pthread_mutex_unlock(&t->lock);
 }
 
+static void disc_stop(struct disc_net *net)
+{
+	struct pppoe_serv_t *s;
+	struct rb_node *n;
+	int i;
+
+	triton_md_unregister_handler(&net->hnd, 1);
+	triton_context_unregister(&net->ctx);
+
+	for (i = 0; i <= HASH_BITS; i++) {
+		struct tree *t = &net->tree[i];
+
+		pthread_mutex_lock(&t->lock);
+		for (n = rb_first(&t->root); n; n = rb_next(n)) {
+			s = rb_entry(n, typeof(*s), node);
+			triton_context_call(&s->ctx, (triton_event_func)_server_stop, s);
+		}
+		pthread_mutex_unlock(&t->lock);
+	}
+
+	if (__sync_sub_and_fetch(&net->refs, 1) == 0)
+		free_net(net);
+}
+
+
 static int disc_read(struct triton_md_handler_t *h)
 {
 	struct disc_net *net = container_of(h, typeof(*net), hnd);
@@ -252,12 +305,17 @@ static int disc_read(struct triton_md_handler_t *h)
 			if (errno == EAGAIN)
 				break;
 
+			log_error("pppoe: disc: read: %s\n", strerror(errno));
+
 			if (errno == ENETDOWN) {
 				notify_down(net, src.sll_ifindex);
 				continue;
 			}
 
-			log_error("pppoe: disc: read: %s\n", strerror(errno));
+			if (errno == EBADE) {
+				disc_stop(net);
+				return 1;
+			}
 			continue;
 		}
 

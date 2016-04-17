@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 enum {
+	MSG_PIPE,
 	MSG_SOCKET,
 	MSG_CONNECT,
 	MSG_BIND,
@@ -20,6 +21,11 @@ enum {
 
 struct msg_hdr {
 	uint8_t id;
+};
+
+struct msg_pipe {
+	uint8_t id;
+	uint8_t pid;
 };
 
 struct msg_socket {
@@ -55,6 +61,7 @@ struct msg_recv {
 
 struct msg_send {
 	uint8_t id;
+	uint8_t pid;
 	size_t len;
 	int flags;
 	socklen_t addrlen;
@@ -62,7 +69,8 @@ struct msg_send {
 
 struct msg_ioctl {
 	uint8_t id;
-	unsigned long request;
+	uint8_t pid;
+	unsigned int request;
 	char arg[0];
 };
 

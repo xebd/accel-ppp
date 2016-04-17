@@ -427,7 +427,7 @@ static void connect_channel(struct pppoe_conn_t *conn)
 	triton_event_fire(EV_CTRL_STARTED, &conn->ppp.ses);
 
 	sock = net->socket(AF_PPPOX, SOCK_DGRAM, PX_PROTO_OE);
-	if (!sock) {
+	if (sock < 0) {
 		log_error("pppoe: socket(PPPOX): %s\n", strerror(errno));
 		goto out_err;
 	}
