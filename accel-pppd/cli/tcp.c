@@ -95,7 +95,7 @@ static int cli_client_send(struct cli_client_t *tcln, const void *_buf, int size
 	if (cln->disconnect)
 		return -1;
 
-	if (!list_empty(&cln->xmit_queue)) {
+	if (cln->xmit_buf) {
 		b = _malloc(sizeof(*b) + size);
 		b->size = size;
 		memcpy(b->buf, buf, size);

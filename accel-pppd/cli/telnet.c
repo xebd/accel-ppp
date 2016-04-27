@@ -143,7 +143,7 @@ static int telnet_send(struct telnet_client_t *cln, const void *_buf, int size)
 	if (cln->disconnect)
 		return -1;
 
-	if (!list_empty(&cln->xmit_queue)) {
+	if (cln->xmit_buf) {
 		b = _malloc(sizeof(*b) + size);
 		b->size = size;
 		memcpy(b->buf, buf, size);
