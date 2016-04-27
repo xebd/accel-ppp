@@ -157,7 +157,7 @@ static int telnet_send(struct telnet_client_t *cln, const void *_buf, int size)
 			if (errno == EAGAIN) {
 				b = _malloc(sizeof(*b) + size - n);
 				b->size = size - n;
-				memcpy(b->buf, buf, size - n);
+				memcpy(b->buf, buf + n, size - n);
 				queue_buffer(cln, b);
 
 				triton_md_enable_handler(&cln->hnd, MD_MODE_WRITE);
