@@ -22,6 +22,7 @@
 #define EV_MPPE_KEYS        102
 #define EV_DNS              103
 #define EV_WINS             104
+#define EV_FORCE_INTERIM_UPDATE 105
 #define EV_RADIUS_ACCESS_ACCEPT 200
 #define EV_RADIUS_COA           201
 

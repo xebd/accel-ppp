@@ -520,6 +520,19 @@ static void ses_finished(struct ap_session *ses)
 	release_pd(rpd);
 }
 
+static void force_interim_update(struct ap_session *ses)
+{
+	struct radius_pd_t *rpd = find_pd(ses);
+
+	if (ses->terminating)
+		return;
+
+	if (!rpd)
+		return;
+
+	rad_acct_force_interim_update(rpd);
+}
+
 struct radius_pd_t *find_pd(struct ap_session *ses)
 {
 	struct ap_private *pd;
@@ -806,6 +819,7 @@ static void radius_init(void)
 	triton_event_register_handler(EV_SES_ACCT_START, (triton_event_func)ses_acct_start);
 	triton_event_register_handler(EV_SES_FINISHING, (triton_event_func)ses_finishing);
 	triton_event_register_handler(EV_SES_FINISHED, (triton_event_func)ses_finished);
+	triton_event_register_handler(EV_FORCE_INTERIM_UPDATE, (triton_event_func)force_interim_update);
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 }
 

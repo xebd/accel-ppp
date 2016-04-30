@@ -41,6 +41,7 @@ struct radius_pd_t {
 	int authenticated:1;
 	int acct_started:1;
 	int ipv6_dp_assigned:1;
+	int ipv6_dp_sent:1;
 
 	struct rad_req_t *acct_req;
 	struct triton_timer_t acct_interim_timer;
@@ -202,6 +203,7 @@ int rad_auth_null(struct radius_pd_t *rpd, const char *username, va_list args);
 int rad_acct_start(struct radius_pd_t *rpd);
 int rad_acct_stop(struct radius_pd_t *rpd);
 void rad_acct_stop_defer(struct radius_pd_t *rpd);
+void rad_acct_force_interim_update(struct radius_pd_t *rpd);
 
 struct rad_packet_t *rad_packet_alloc(int code);
 int rad_packet_build(struct rad_packet_t *pack, uint8_t *RA);

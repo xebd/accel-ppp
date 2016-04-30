@@ -363,8 +363,11 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 			ia_na->T1 = conf_pref_lifetime == -1 ? -1 : htonl(conf_pref_lifetime / 2);
 			ia_na->T2 = conf_pref_lifetime == -1 ? -1 : htonl((conf_pref_lifetime * 4) / 5);
 
-			if (!ses->ipv6_dp)
+			if (!ses->ipv6_dp) {
 				ses->ipv6_dp = ipdb_get_ipv6_prefix(ses);
+				if (ses->ipv6_dp)
+					triton_event_fire(EV_FORCE_INTERIM_UPDATE, ses);
+			}
 
 			if ((req->hdr->type == D6_RENEW) && pd->dp_iaid != ia_na->iaid) {
 				insert_status(reply, opt1, D6_STATUS_NoBinding);
@@ -539,8 +542,11 @@ static void dhcpv6_send_reply2(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, 
 			ia_na->T1 = conf_pref_lifetime == -1 ? -1 : htonl(conf_pref_lifetime / 2);
 			ia_na->T2 = conf_pref_lifetime == -1 ? -1 : htonl((conf_pref_lifetime * 4) / 5);
 
-			if (!ses->ipv6_dp)
-				ses->ipv6_dp = ipdb_get_ipv6_prefix(req->ses);
+			if (!ses->ipv6_dp) {
+				ses->ipv6_dp = ipdb_get_ipv6_prefix(ses);
+				if (ses->ipv6_dp)
+					triton_event_fire(EV_FORCE_INTERIM_UPDATE, ses);
+			}
 
 			if (!ses->ipv6_dp)
 				goto out;

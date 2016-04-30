@@ -147,13 +147,15 @@ static void rad_acct_timeout(struct triton_timer_t *t)
 static void rad_acct_interim_update(struct triton_timer_t *t)
 {
 	struct radius_pd_t *rpd = container_of(t, typeof(*rpd), acct_interim_timer);
+	struct ap_session *ses = rpd->ses;
 	struct timespec ts;
+	int force = 0;
 
 	if (rpd->acct_req->entry.next || rpd->acct_req->timeout.tpd)
 		return;
 
 	if (rpd->session_timeout.expire_tv.tv_sec &&
-			rpd->session_timeout.expire_tv.tv_sec - (_time() - rpd->ses->start_time) < INTERIM_SAFE_TIME)
+			rpd->session_timeout.expire_tv.tv_sec - (_time() - ses->start_time) < INTERIM_SAFE_TIME)
 			return;
 
 	if (req_set_stat(rpd->acct_req, rpd->ses)) {
@@ -161,7 +163,15 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 		return;
 	}
 
-	if (!rpd->acct_interim_interval)
+	if (ses->ipv6_dp && !rpd->ipv6_dp_sent) {
+		struct ipv6db_addr_t *a;
+		list_for_each_entry(a, &ses->ipv6_dp->prefix_list, entry)
+			rad_packet_add_ipv6prefix(rpd->acct_req->pack, NULL, "Delegated-IPv6-Prefix", &a->addr, a->prefix_len);
+		rpd->ipv6_dp_sent = 1;
+		force = 1;
+	}
+
+	if (!rpd->acct_interim_interval && !force)
 		return;
 
 	clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -178,6 +188,14 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 		log_ppp_warn("radius:acct: no servers available, terminating session...\n");
 		ap_session_terminate(rpd->ses, TERM_NAS_ERROR, 0);
 	}
+}
+
+void rad_acct_force_interim_update(struct radius_pd_t *rpd)
+{
+	if (!rpd->acct_req)
+		return;
+
+	rad_acct_interim_update(&rpd->acct_interim_timer);
 }
 
 static int rad_acct_before_send(struct rad_req_t *req)
