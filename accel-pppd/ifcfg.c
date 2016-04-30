@@ -1,4 +1,4 @@
-#include <unistd.h>
+[6~#include <unistd.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -298,7 +298,7 @@ int __export ap_session_rename(struct ap_session *ses, const char *ifname, int l
 		if (!ses->ifname_rename)
 			ses->ifname_rename = _strdup(ifr.ifr_newname);
 		else
-			log_ppp_warn("interface rename failed: %s\n", strerror(errno));
+			log_ppp_warn("interface rename to %s failed: %s\n", ifr.ifr_newname, strerror(errno));
 	} else {
 		log_ppp_info2("rename interface to '%s'\n", ifr.ifr_newname);
 		memcpy(ses->ifname, ifname, len);
