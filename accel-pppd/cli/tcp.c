@@ -95,7 +95,7 @@ static int cli_client_send(struct cli_client_t *tcln, const void *_buf, int size
 	if (cln->disconnect)
 		return -1;
 
-	if (!list_empty(&cln->xmit_queue)) {
+	if (cln->xmit_buf) {
 		b = _malloc(sizeof(*b) + size);
 		b->size = size;
 		memcpy(b->buf, buf, size);
@@ -109,7 +109,7 @@ static int cli_client_send(struct cli_client_t *tcln, const void *_buf, int size
 			if (errno == EAGAIN) {
 				b = _malloc(sizeof(*b) + size - n);
 				b->size = size - n;
-				memcpy(b->buf, buf, size - n);
+				memcpy(b->buf, buf + n, size - n);
 				queue_buffer(cln, b);
 
 				triton_md_enable_handler(&cln->hnd, MD_MODE_WRITE);
@@ -147,7 +147,7 @@ static int cln_read(struct triton_md_handler_t *h)
 	while (1) {
 		n = read(h->fd, cln->cmdline + cln->recv_pos, RECV_BUF_SIZE - 1 - cln->recv_pos);
 		if (n == 0)
-			break;
+			goto disconn_soft;
 		if (n < 0) {
 			if (errno != EAGAIN)
 				log_error("cli: read: %s\n", strerror(errno));
@@ -162,7 +162,7 @@ static int cln_read(struct triton_md_handler_t *h)
 			if (!d) {
 				if (cln->recv_pos == RECV_BUF_SIZE - 1) {
 					log_warn("cli: tcp: recv buffer overflow\n");
-					goto drop;
+					goto disconn_hard;
 				}
 				break;
 			}
@@ -171,7 +171,7 @@ static int cln_read(struct triton_md_handler_t *h)
 
 			if (!cln->auth) {
 				if (strcmp((char *)cln->cmdline, conf_cli_passwd))
-					goto drop;
+					goto disconn_hard;
 				cln->auth = 1;
 			} else {
 				if (conf_verbose == 2)
@@ -181,15 +181,25 @@ static int cln_read(struct triton_md_handler_t *h)
 			}
 
 			if (cln->disconnect)
-				goto drop;
+				goto disconn_soft;
 
 			cln->recv_pos -= (uint8_t *)d + 1 - cln->cmdline;
 			memmove(cln->cmdline, d + 1, cln->recv_pos);
 		}
 	}
 
-drop:
+disconn_soft:
+	/* Wait for pending data to be transmitted before disconnecting */
+	if (cln->xmit_buf) {
+		triton_md_disable_handler(&cln->hnd, MD_MODE_READ);
+		cln->disconnect = 1;
+
+		return 0;
+	}
+
+disconn_hard:
 	disconnect(cln);
+
 	return -1;
 }
 
@@ -198,10 +208,7 @@ static int cln_write(struct triton_md_handler_t *h)
 	struct tcp_client_t *cln = container_of(h, typeof(*cln), hnd);
 	int k;
 
-	if (!cln->xmit_buf)
-		return 0;
-
-	while (1) {
+	while (cln->xmit_buf) {
 		for (; cln->xmit_pos < cln->xmit_buf->size; cln->xmit_pos += k) {
 			k = write(cln->hnd.fd, cln->xmit_buf->buf + cln->xmit_pos, cln->xmit_buf->size - cln->xmit_pos);
 			if (k < 0) {
@@ -209,8 +216,7 @@ static int cln_write(struct triton_md_handler_t *h)
 					return 0;
 				if (errno != EPIPE)
 					log_error("cli: tcp: write: %s\n", strerror(errno));
-				disconnect(cln);
-				return -1;
+				goto disconn;
 			}
 		}
 
@@ -219,16 +225,25 @@ static int cln_write(struct triton_md_handler_t *h)
 
 		if (list_empty(&cln->xmit_queue)) {
 			cln->xmit_buf = NULL;
-			break;
+		} else {
+			cln->xmit_buf = list_first_entry(&cln->xmit_queue,
+							 typeof(*cln->xmit_buf),
+							 entry);
+			list_del(&cln->xmit_buf->entry);
 		}
-
-		cln->xmit_buf = list_entry(cln->xmit_queue.next, typeof(*cln->xmit_buf), entry);
-		list_del(&cln->xmit_buf->entry);
 	}
+
+	if (cln->disconnect)
+		goto disconn;
 
 	triton_md_disable_handler(&cln->hnd, MD_MODE_WRITE);
 
 	return 0;
+
+disconn:
+	disconnect(cln);
+
+	return -1;
 }
 
 static int serv_read(struct triton_md_handler_t *h)
