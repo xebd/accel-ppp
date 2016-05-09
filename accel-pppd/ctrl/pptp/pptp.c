@@ -773,6 +773,19 @@ static void load_config(void)
 	}
 
 	conf_ip_pool = conf_get_opt("pptp", "ip-pool");
+
+	switch (iprange_check_activation()) {
+	case IPRANGE_DISABLED:
+		log_warn("pptp: iprange module disabled, improper IP configuration of PPP interfaces may cause kernel soft lockup\n");
+		break;
+	case IPRANGE_NO_RANGE:
+		log_warn("pptp: no IP address range defined in section [%s], incoming PPTP connections will be rejected\n",
+			 IPRANGE_CONF_SECTION);
+		break;
+	default:
+		/* Makes compiler happy */
+		break;
+	}
 }
 
 static void pptp_init(void)

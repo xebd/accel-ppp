@@ -4910,6 +4910,19 @@ static void load_config(void)
 	}
 
 	conf_ip_pool = conf_get_opt("l2tp", "ip-pool");
+
+	switch (iprange_check_activation()) {
+	case IPRANGE_DISABLED:
+		log_warn("l2tp: iprange module disabled, improper IP configuration of PPP interfaces may cause kernel soft lockup\n");
+		break;
+	case IPRANGE_NO_RANGE:
+		log_warn("l2tp: no IP address range defined in section [%s], incoming L2TP connections will be rejected\n",
+			 IPRANGE_CONF_SECTION);
+		break;
+	default:
+		/* Makes compiler happy */
+		break;
+	}
 }
 
 static void l2tp_init(void)

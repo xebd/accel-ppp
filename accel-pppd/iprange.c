@@ -168,11 +168,8 @@ static bool load_ranges(struct list_head *list, const char *conf_sect)
 	struct conf_option_t *opt;
 	struct iprange_t *r;
 
-	if (!s) {
-		log_emerg("iprange: section '%s' not found in config file, pptp and l2tp probably will not work...\n", conf_sect);
-
+	if (!s)
 		return false;
-	}
 
 	list_for_each_entry(opt, &s->items, entry) {
 		/* Ignore parsing errors, parse_iprange() already logs suitable
@@ -182,7 +179,6 @@ static bool load_ranges(struct list_head *list, const char *conf_sect)
 			continue;
 
 		if (!r) {
-			log_warn("iprange: iprange module disabled, improper IP address assignment may cause kernel soft lockup!\n");
 			free_ranges(list);
 
 			return true;
@@ -205,6 +201,25 @@ static int check_range(struct list_head *list, in_addr_t ipaddr)
 	}
 
 	return -1;
+}
+
+enum iprange_status __export iprange_check_activation(void)
+{
+	bool disabled;
+	bool empty;
+
+	pthread_mutex_lock(&iprange_lock);
+	disabled = conf_disable;
+	empty = list_empty(&client_ranges);
+	pthread_mutex_unlock(&iprange_lock);
+
+	if (disabled)
+		return IPRANGE_DISABLED;
+
+	if (empty)
+		return IPRANGE_NO_RANGE;
+
+	return IPRANGE_ACTIVE;
 }
 
 int __export iprange_client_check(in_addr_t ipaddr)
@@ -241,7 +256,7 @@ static void iprange_load_config(void *data)
 	LIST_HEAD(old_ranges);
 	bool disable;
 
-	disable = load_ranges(&new_ranges, "client-ip-range");
+	disable = load_ranges(&new_ranges, IPRANGE_CONF_SECTION);
 
 	pthread_mutex_lock(&iprange_lock);
 	list_replace(&client_ranges, &old_ranges);
