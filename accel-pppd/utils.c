@@ -1,7 +1,9 @@
 #include <errno.h>
+#include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <netinet/in.h>
 
 #include "triton.h"
 #include "utils.h"
@@ -33,6 +35,31 @@ int __export u_readlong(long int *dst, const char *src,
                 *dst = rv;
                 return 0;
         }
+}
+
+int __export u_parse_ip4addr(const char *src, struct in_addr *addr,
+			     const char **err_msg)
+{
+	struct addrinfo hint = {
+		.ai_flags = AI_NUMERICHOST,
+		.ai_family = AF_INET,
+		.ai_socktype = 0,
+		.ai_protocol = 0,
+	};
+	struct addrinfo *ainfo;
+	int err;
+
+	err = getaddrinfo(src, NULL, &hint, &ainfo);
+	if (err) {
+		*err_msg = gai_strerror(err);
+		return err;
+	}
+
+	*addr = ((struct sockaddr_in *)ainfo->ai_addr)->sin_addr;
+
+	freeaddrinfo(ainfo);
+
+	return 0;
 }
 
 int __export u_randbuf(void *buf, size_t buf_len, int *err)
