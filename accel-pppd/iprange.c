@@ -1,3 +1,4 @@
+#include <pthread.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -8,6 +9,7 @@
 #include <netinet/in.h>
 
 #include "triton.h"
+#include "events.h"
 #include "list.h"
 #include "log.h"
 #include "utils.h"
@@ -23,8 +25,8 @@ struct iprange_t
 	uint32_t end;
 };
 
-static int conf_disable = 0;
-
+static pthread_mutex_t iprange_lock = PTHREAD_MUTEX_INITIALIZER;
+static bool conf_disable = false;
 static LIST_HEAD(client_ranges);
 
 /* Maximum IPv4 address length with CIDR notation but no extra 0,
@@ -160,7 +162,7 @@ disable:
 	return 0;
 }
 
-static void load_ranges(struct list_head *list, const char *conf_sect)
+static bool load_ranges(struct list_head *list, const char *conf_sect)
 {
 	struct conf_sect_t *s =	conf_get_section(conf_sect);
 	struct conf_option_t *opt;
@@ -168,7 +170,8 @@ static void load_ranges(struct list_head *list, const char *conf_sect)
 
 	if (!s) {
 		log_emerg("iprange: section '%s' not found in config file, pptp and l2tp probably will not work...\n", conf_sect);
-		return;
+
+		return false;
 	}
 
 	list_for_each_entry(opt, &s->items, entry) {
@@ -181,13 +184,14 @@ static void load_ranges(struct list_head *list, const char *conf_sect)
 		if (!r) {
 			log_warn("iprange: iprange module disabled, improper IP address assignment may cause kernel soft lockup!\n");
 			free_ranges(list);
-			conf_disable = 1;
 
-			return;
+			return true;
 		}
 
 		list_add_tail(&r->entry, list);
 	}
+
+	return false;
 }
 
 static int check_range(struct list_head *list, in_addr_t ipaddr)
@@ -205,22 +209,56 @@ static int check_range(struct list_head *list, in_addr_t ipaddr)
 
 int __export iprange_client_check(in_addr_t ipaddr)
 {
-	if (conf_disable)
-		return 0;
+	int res;
 
-	return check_range(&client_ranges, ipaddr);
+	pthread_mutex_lock(&iprange_lock);
+	if (conf_disable)
+		res = 0;
+	else
+		res = check_range(&client_ranges, ipaddr);
+	pthread_mutex_unlock(&iprange_lock);
+
+	return res;
 }
+
 int __export iprange_tunnel_check(in_addr_t ipaddr)
 {
-	if (conf_disable)
-		return 0;
+	int res;
 
-	return !check_range(&client_ranges, ipaddr);
+	pthread_mutex_lock(&iprange_lock);
+	if (conf_disable)
+		res = 0;
+	else
+		res = !check_range(&client_ranges, ipaddr);
+	pthread_mutex_unlock(&iprange_lock);
+
+	return res;
+}
+
+static void iprange_load_config(void *data)
+{
+	LIST_HEAD(new_ranges);
+	LIST_HEAD(old_ranges);
+	bool disable;
+
+	disable = load_ranges(&new_ranges, "client-ip-range");
+
+	pthread_mutex_lock(&iprange_lock);
+	list_replace(&client_ranges, &old_ranges);
+	list_replace(&new_ranges, &client_ranges);
+	conf_disable = disable;
+	pthread_mutex_unlock(&iprange_lock);
+
+	free_ranges(&old_ranges);
 }
 
 static void iprange_init(void)
 {
-	load_ranges(&client_ranges, "client-ip-range");
+	iprange_load_config(NULL);
+	if (triton_event_register_handler(EV_CONFIG_RELOAD,
+					  iprange_load_config) < 0)
+		log_error("iprange: registration of CONFIG_RELOAD event failed,"
+			  " iprange will not be able to reload its configuration\n");
 }
 
 DEFINE_INIT(10, iprange_init);
