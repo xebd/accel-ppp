@@ -114,8 +114,12 @@ static int parse_iprange(const char *str, struct iprange_t **range)
 		}
 
 		/* Interpret /0 as disable request */
-		if (prefix_len == 0)
+		if (prefix_len == 0) {
+			if (ipmin != INADDR_ANY)
+				log_warn("iprange: %s is equivalent to 0.0.0.0/0 and disables the iprange module\n",
+					 str);
 			goto disable;
+		}
 
 		mask = INADDR_BROADCAST << (32 - prefix_len);
 		if (ipmin != (ipmin & mask)) {
