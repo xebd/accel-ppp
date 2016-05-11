@@ -117,8 +117,7 @@ static int parse_iprange(const char *str, struct iprange_t **range)
 		if (prefix_len == 0)
 			goto disable;
 
-		mask = UINT32_MAX << (32 - prefix_len);
-
+		mask = INADDR_BROADCAST << (32 - prefix_len);
 		if (ipmin != (ipmin & mask)) {
 			char buf[INET_ADDRSTRLEN] = { 0 };
 
