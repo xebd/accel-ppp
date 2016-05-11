@@ -115,9 +115,9 @@ static int pcomp_recv_conf_ack(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, 
 	if (net->ppp_ioctl(lcp->ppp->chan_fd, PPPIOCGFLAGS, &flags))
 		goto err;
 
-	flags &= ~SC_COMP_AC;
+	flags &= ~SC_COMP_PROT;
 	if (pcomp_opt->pcomp & 1)
-		flags |= SC_COMP_AC;
+		flags |= SC_COMP_PROT;
 
 	if (net->ppp_ioctl(lcp->ppp->chan_fd, PPPIOCSFLAGS, &flags))
 		goto err;
