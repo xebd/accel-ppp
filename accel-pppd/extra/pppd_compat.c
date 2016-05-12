@@ -582,7 +582,7 @@ static void build_addr(struct ipv6db_addr_t *a, uint64_t intf_id, struct in6_add
 	if (a->prefix_len <= 64)
 		*(uint64_t *)(addr->s6_addr + 8) = intf_id;
 	else
-		*(uint64_t *)(addr->s6_addr + 8) |= intf_id & ((1 << (128 - a->prefix_len)) - 1);
+		*(uint64_t *)(addr->s6_addr + 8) |= intf_id & htobe64((1 << (128 - a->prefix_len)) - 1);
 }
 
 static void fill_env(char **env, char *mem, struct pppd_compat_pd *pd)
