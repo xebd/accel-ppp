@@ -52,7 +52,7 @@ static void devconf(struct ap_session *ses, const char *attr, const char *val)
 	if (a->prefix_len <= 64)
 		*(uint64_t *)(addr->s6_addr + 8) = intf_id;
 	else
-		*(uint64_t *)(addr->s6_addr + 8) |= intf_id & ((1 << (128 - a->prefix_len)) - 1);
+		*(uint64_t *)(addr->s6_addr + 8) |= intf_id & htobe64((1 << (128 - a->prefix_len)) - 1);
 }*/
 
 void ap_session_ifup(struct ap_session *ses)
