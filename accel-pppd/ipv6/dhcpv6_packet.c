@@ -22,12 +22,12 @@ static void print_ia_na(struct dhcpv6_option *opt, void (*print)(const char *fmt
 static void print_ia_ta(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...));
 static void print_ia_addr(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...));
 static void print_oro(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...));
+static void print_hex_array(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...));
 static void print_uint8(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...));
 static void print_time(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...));
 static void print_ipv6addr(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...));
 static void print_ipv6addr_array(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...));
 static void print_status(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...));
-static void print_uint64(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...));
 static void print_reconf(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...));
 static void print_dnssl(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...));
 static void print_ia_prefix(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...));
@@ -47,9 +47,9 @@ static struct dict_option known_options[] = {
 	{ D6_OPTION_STATUS_CODE, "Status", 0, 0, print_status },
 	{ D6_OPTION_RAPID_COMMIT, "Rapid-Commit", 1, 0 },
 	{ D6_OPTION_USER_CLASS, "User-Class", 1, 0 },
-	{ D6_OPTION_VENDOR_CLASS, "Vendor-Class", 1, 0, print_uint64 },
-	{ D6_OPTION_VENDOR_SPECIFIC, "Vendor-Specific", 1, 0, print_uint64 },
-	{ D6_OPTION_INTERFACE_ID, "Interface-ID", 1, 0, print_uint64 },
+	{ D6_OPTION_VENDOR_CLASS, "Vendor-Class", 1, 0, print_hex_array },
+	{ D6_OPTION_VENDOR_SPECIFIC, "Vendor-Specific", 1, 0, print_hex_array },
+	{ D6_OPTION_INTERFACE_ID, "Interface-ID", 1, 0, print_hex_array },
 	{ D6_OPTION_RECONF_MSG, "Reconfigure", 0, 0, print_reconf },
 	{ D6_OPTION_RECONF_ACCEPT, "Reconfigure-Accept", 1, 0 },
 	{ D6_OPTION_DNS_SERVERS, "DNS", 1, 0, print_ipv6addr_array },
@@ -375,6 +375,15 @@ static void print_oro(struct dhcpv6_option *opt, void (*print)(const char *fmt, 
 	}
 }
 
+static void print_hex_array(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...))
+{
+	int i;
+
+	print(" ");
+	for (i = 0; i < ntohs(opt->hdr->len); i++)
+		print("%02x", opt->hdr->data[i]);
+}
+
 static void print_uint8(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...))
 {
 	print(" %i", *(uint8_t *)opt->hdr->data);
@@ -425,11 +434,6 @@ static void print_status(struct dhcpv6_option *opt, void (*print)(const char *fm
 		print(" %u", ntohs(o->code));
 	else
 		print(" %s", status_name[ntohs(o->code)]);
-}
-
-static void print_uint64(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...))
-{
-	print(" %llu", *(uint64_t *)opt->hdr->data);
 }
 
 static void print_reconf(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...))
