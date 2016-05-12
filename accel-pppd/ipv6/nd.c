@@ -42,6 +42,7 @@ static int conf_AdvCurHopLimit = 64;
 static int conf_AdvDefaultLifetime;
 static int conf_AdvPrefixValidLifetime = 2592000;
 static int conf_AdvPrefixPreferredLifetime = 604800;
+static int conf_AdvPrefixOnLinkFlag;
 static int conf_AdvPrefixAutonomousFlag;
 
 
@@ -132,8 +133,9 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ad
 		pinfo->nd_opt_pi_type = ND_OPT_PREFIX_INFORMATION;
 		pinfo->nd_opt_pi_len = 4;
 		pinfo->nd_opt_pi_prefix_len = a->prefix_len;
-		pinfo->nd_opt_pi_flags_reserved = ND_OPT_PI_FLAG_ONLINK |
-			(a->flag_auto || (conf_AdvPrefixAutonomousFlag && a->prefix_len == 64)) ? ND_OPT_PI_FLAG_AUTO : 0;
+		pinfo->nd_opt_pi_flags_reserved =
+			((a->flag_onlink || conf_AdvPrefixOnLinkFlag) ? ND_OPT_PI_FLAG_ONLINK : 0) |
+			((a->flag_auto || (conf_AdvPrefixAutonomousFlag && a->prefix_len == 64)) ? ND_OPT_PI_FLAG_AUTO : 0);
 		pinfo->nd_opt_pi_valid_time = htonl(conf_AdvPrefixValidLifetime);
 		pinfo->nd_opt_pi_preferred_time = htonl(conf_AdvPrefixPreferredLifetime);
 		memcpy(&pinfo->nd_opt_pi_prefix, &a->addr, 8);
@@ -488,6 +490,7 @@ static void load_config(void)
 
 	conf_AdvManagedFlag = triton_module_loaded("ipv6_dhcp");
 	conf_AdvOtherConfigFlag = triton_module_loaded("ipv6_dhcp");
+	conf_AdvPrefixOnLinkFlag = 1;
 	conf_AdvPrefixAutonomousFlag = !conf_AdvManagedFlag;
 	conf_rdnss_lifetime = conf_MaxRtrAdvInterval;
 
@@ -537,6 +540,10 @@ static void load_config(void)
 	opt = conf_get_opt("ipv6-nd", "AdvPreferredLifetime");
 	if (opt)
 		conf_AdvPrefixPreferredLifetime = atoi(opt);
+
+	opt = conf_get_opt("ipv6-nd", "AdvOnLinkFlag");
+	if (opt)
+		conf_AdvPrefixOnLinkFlag = atoi(opt);
 
 	opt = conf_get_opt("ipv6-nd", "AdvAutonomousFlag");
 	if (opt)

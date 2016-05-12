@@ -17,6 +17,7 @@ struct ipv6db_addr_t
 	struct list_head entry;
 	struct in6_addr addr;
 	int prefix_len;
+	int flag_onlink:1;
 	int flag_auto:1;
 	int installed:1;
 };
