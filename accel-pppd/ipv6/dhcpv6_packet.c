@@ -296,7 +296,7 @@ void dhcpv6_packet_print(struct dhcpv6_packet *pkt, void (*print)(const char *fm
 		"Decline",
 		"Reconfigure",
 		"Information-Request",
-		"Relay-Form",
+		"Relay-Forward",
 		"Relay-Reply"
 	};
 
