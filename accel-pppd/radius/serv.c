@@ -69,7 +69,7 @@ static struct rad_server_t *__rad_server_get(int type, struct rad_server_t *excl
 
 		if ((s->backup < s0->backup) ||
 			((s->backup == s0->backup) &&
-			((s->client_cnt[0] + s->client_cnt[1])/s->weight < (s0->client_cnt[0] + s0->client_cnt[1])/s0->weight)))
+			((s->client_cnt[0] + s->client_cnt[1])*s0->weight < (s0->client_cnt[0] + s0->client_cnt[1])*s->weight)))
 		s0 = s;
 	}
 
