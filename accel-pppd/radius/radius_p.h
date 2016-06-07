@@ -225,6 +225,8 @@ void rad_server_fail(struct rad_server_t *);
 void rad_server_timeout(struct rad_server_t *);
 void rad_server_reply(struct rad_server_t *);
 
+void rad_update_session_timeout(struct radius_pd_t *rpd, int timeout);
+
 void radius_restore_session(struct ap_session *ses, struct radius_pd_t *rpd);
 
 struct rtnl_link_stats;

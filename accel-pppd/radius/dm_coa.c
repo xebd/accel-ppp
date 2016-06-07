@@ -146,6 +146,7 @@ static void disconnect_request(struct radius_pd_t *rpd)
 static void coa_request(struct radius_pd_t *rpd)
 {
 	struct rad_attr_t *class;
+	struct rad_attr_t *attr;
 	void *prev_class = rpd->attr_class;
 	struct ev_radius_t ev = {
 		.ses = rpd->ses,
@@ -180,6 +181,10 @@ static void coa_request(struct radius_pd_t *rpd)
 			else
 				rad_packet_add_octets(rpd->acct_req->pack, NULL, "Class", rpd->attr_class, rpd->attr_class_len);
 		}
+
+		attr = rad_packet_find_attr(rpd->dm_coa_req, NULL, "Session-Timeout");
+		if (attr)
+			rad_update_session_timeout(rpd, attr->val.integer);
 
 		dm_coa_send_ack(serv.hnd.fd, rpd->dm_coa_req, &rpd->dm_coa_addr);
 	}

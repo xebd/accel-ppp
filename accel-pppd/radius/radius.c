@@ -369,6 +369,17 @@ static void session_timeout(struct triton_timer_t *t)
 		ap_session_terminate(rpd->ses, TERM_SESSION_TIMEOUT, 0);
 }
 
+void rad_update_session_timeout(struct radius_pd_t *rpd, int timeout)
+{
+	rpd->session_timeout.expire_tv.tv_sec = timeout;
+	rpd->session_timeout.expire = session_timeout;
+
+	if (rpd->session_timeout.tpd)
+		triton_timer_mod(&rpd->session_timeout, 0);
+	else
+		triton_timer_add(rpd->ses->ctrl->ctx, &rpd->session_timeout, 0);
+}
+
 static void ses_starting(struct ap_session *ses)
 {
 	struct radius_pd_t *rpd = mempool_alloc(rpd_pool);
