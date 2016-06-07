@@ -37,10 +37,8 @@ Requirment
 8. net-snmp-5.x 
 
 In debian/ubuntu, the dependencies can be resolved by installing
+ sudo apt-get install libnl-dev libcrypto++-dev libpcre3-dev libpq-dev libsnmp-dev build-essential
 
-```
-sudo apt-get install libnl-dev libcrypto++-dev libpcre3-dev libpq-dev libsnmp-dev build-essential
-```
 
 Compilation and instalation
 -----------
