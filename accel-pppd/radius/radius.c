@@ -216,12 +216,14 @@ int rad_proc_attrs(struct rad_req_t *req)
 				break;
 			case Framed_IPv6_Prefix:
 				a = _malloc(sizeof(*a));
+				memset(a, 0, sizeof(*a));
 				a->prefix_len = attr->val.ipv6prefix.len;
 				a->addr = attr->val.ipv6prefix.prefix;
 				list_add_tail(&a->entry, &rpd->ipv6_addr.addr_list);
 				break;
 			case Delegated_IPv6_Prefix:
 				a = _malloc(sizeof(*a));
+				memset(a, 0, sizeof(*a));
 				a->prefix_len = attr->val.ipv6prefix.len;
 				a->addr = attr->val.ipv6prefix.prefix;
 				list_add_tail(&a->entry, &rpd->ipv6_dp.prefix_list);

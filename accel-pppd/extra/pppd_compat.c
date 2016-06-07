@@ -468,7 +468,7 @@ static void write_radattr(struct pppd_compat_pd *pd, struct rad_packet_t *pack)
 					fprintf(f, "%i.%i.%i.%i\n", (addr >> 24) & 0xff, (addr >> 16) & 0xff, (addr >> 8) & 0xff, addr & 0xff);
 					break;
 				case ATTR_TYPE_DATE:
-					fprintf(f, "%lu\n", attr->val.date);
+					fprintf(f, "%lu\n", (unsigned long) attr->val.date);
 					break;
 			}
 		}
@@ -560,7 +560,7 @@ static void fill_env(char **env, char *mem, struct pppd_compat_pd *pd)
 
 	if (pd->ses->stop_time) {
 		env[n++] = mem;
-		mem += sprintf(mem, "CONNECT_TIME=%lu", pd->ses->stop_time - pd->ses->start_time) + 1;
+		mem += sprintf(mem, "CONNECT_TIME=%lu", (unsigned long)(pd->ses->stop_time - pd->ses->start_time)) + 1;
 		env[n++] = mem;
 		mem += sprintf(mem, "BYTES_SENT=%" PRIu64, tx_bytes) + 1;
 		env[n++] = mem;

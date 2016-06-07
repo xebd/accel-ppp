@@ -20,7 +20,7 @@ void core_restart(int);
 static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
 {
 	struct timespec ts;
-	time_t dt;
+	unsigned long dt;
 	int day,hour;
 	char statm_fname[128];
 	FILE *f;
