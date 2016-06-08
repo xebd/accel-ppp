@@ -120,6 +120,7 @@ void arp_send(int ifindex, struct _arphdr *arph)
 	dst.sll_family = AF_PACKET;
 	dst.sll_ifindex = ifindex;
 	dst.sll_protocol = htons(ETH_P_ARP);
+	memcpy(dst.sll_addr, arph->ar_tha, ETH_ALEN);
 
 	arph->ar_op = htons(ARPOP_REPLY);
 

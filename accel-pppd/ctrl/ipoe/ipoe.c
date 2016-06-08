@@ -892,6 +892,19 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 	} else
 		ses->ctrl.dont_ifcfg = 0;
 
+	if (ses->arph) {
+		if (ses->arph->ar_tpa == ses->router) {
+			memcpy(ses->arph->ar_tha, ses->arph->ar_sha, ETH_ALEN);
+			memcpy(ses->arph->ar_sha, ses->serv->hwaddr, ETH_ALEN);
+			ses->arph->ar_tpa = ses->arph->ar_spa;
+			ses->arph->ar_spa = ses->router;
+			arp_send(ses->serv->ifindex, ses->arph);
+		}
+
+		_free(ses->arph);
+		ses->arph = NULL;
+	}
+
 	if (ses->serv->opt_mode == MODE_L2 && ses->serv->opt_ipv6 && sock6_fd != -1) {
 		ses->ses.ipv6 = ipdb_get_ipv6(&ses->ses);
 		if (!ses->ses.ipv6)
@@ -919,14 +932,6 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 
 		dhcpv4_packet_free(ses->dhcpv4_request);
 		ses->dhcpv4_request = NULL;
-	} else if (ses->arph) {
-		if (ses->arph->ar_tpa == ses->router) {
-			memcpy(ses->arph->ar_tha, ses->serv->hwaddr, ETH_ALEN);
-			arp_send(ses->serv->ifindex, ses->arph);
-		}
-
-		_free(ses->arph);
-		ses->arph = NULL;
 	}
 
 	ses->timer.expire = ipoe_session_timeout;
