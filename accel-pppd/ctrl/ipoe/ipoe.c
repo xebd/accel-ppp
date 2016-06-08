@@ -2462,6 +2462,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	in_addr_t opt_src = conf_src;
 	int opt_arp = conf_arp;
 	struct ifreq ifr;
+	uint8_t hwaddr[ETH_ALEN];
 
 	str0 = strchr(opt, ',');
 	if (str0) {
@@ -2660,6 +2661,8 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 		return;
 	}
 
+	memcpy(hwaddr, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
+
 	ioctl(sock_fd, SIOCGIFFLAGS, &ifr);
 
 	if ((ifr.ifr_flags & IFF_UP) && opt_shared == 0) {
@@ -2707,7 +2710,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	INIT_LIST_HEAD(&serv->sessions);
 	INIT_LIST_HEAD(&serv->disc_list);
 	INIT_LIST_HEAD(&serv->req_list);
-	memcpy(serv->hwaddr, ifr.ifr_hwaddr.sa_data, ETH_ALEN);
+	memcpy(serv->hwaddr, hwaddr, ETH_ALEN);
 	serv->disc_timer.expire = ipoe_serv_disc_timer;
 
 	triton_context_register(&serv->ctx, NULL);
