@@ -195,6 +195,9 @@ Specifies timeout in seconds to wait for any peer activity. If this option speci
 .BI "unit-cache=" n
 Specifies number of interfaces to keep in cache. It means that don't destory interface after corresponding session is destoyed, instead place it to cache and use it later for new sessions repeatedly.
 This should reduce kernel-level interface creation/deletion rate lack.
+.TP
+.BI "unit-preallocate=" 0|1
+If set to 1 then allocate ppp unit (interface) before authorization, so Nas-Port and Nas-Port-Id would be defined in Access-Request phase.
 .SH [ipoe]
 .TP
 .BI "verbose=" n
