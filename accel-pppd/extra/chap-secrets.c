@@ -43,6 +43,7 @@ struct cs_pd_t
 	struct ipv4db_item_t ip;
 	char *passwd;
 	char *rate;
+	char *pool;
 };
 
 #ifdef CRYPTO_OPENSSL
@@ -229,8 +230,12 @@ found:
 	}
 
 	pd->ip.addr = conf_gw_ip_address;
-	if (n >= 3 && ptr[2][0] != '*')
-		pd->ip.peer_addr = inet_addr(ptr[2]);
+	if (n >= 3 && ptr[2][0] != '*') {
+		if (strncmp(ptr[2], "pool=", 5) == 0)
+			pd->pool = _strdup(ptr[2] + 5);
+		else
+			pd->ip.peer_addr = inet_addr(ptr[2]);
+	}
 	pd->ip.mask = conf_netmask;
 	pd->ip.owner = &ipdb;
 
@@ -269,6 +274,8 @@ static void ev_ses_finished(struct ap_session *ses)
 	_free(pd->passwd);
 	if (pd->rate)
 		_free(pd->rate);
+	if (pd->pool)
+		_free(pd->pool);
 	_free(pd);
 }
 
@@ -300,7 +307,12 @@ static struct ipv4db_item_t *get_ip(struct ap_session *ses)
 	if (!pd)
 		return NULL;
 
-	if (!pd->ip.peer_addr)
+	if (pd->pool) {
+		if (ses->ipv4_pool_name)
+			_free(ses->ipv4_pool_name);
+		ses->ipv4_pool_name = _strdup(pd->pool);
+		return NULL;
+	} else if (!pd->ip.peer_addr)
 		return NULL;
 
 	if (!ses->ctrl->ppp)
