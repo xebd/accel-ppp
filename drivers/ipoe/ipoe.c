@@ -576,7 +576,7 @@ static netdev_tx_t ipoe_xmit(struct sk_buff *skb, struct net_device *dev)
 
 		return NETDEV_TX_OK;
 	}
-	drop:
+drop:
 	stats->tx_dropped++;
 	dev_kfree_skb(skb);
 	return NETDEV_TX_OK;
@@ -723,7 +723,7 @@ static void ipoe_process_queue(struct work_struct *w)
 				kfree_skb(skb);
 				continue;
 
-				nl_err:
+nl_err:
 				nlmsg_free(report_skb);
 				report_skb = NULL;
 			}
@@ -821,7 +821,7 @@ static unsigned int ipt_in_hook(const struct nf_hook_ops *ops, struct sk_buff *s
 	if (!iph->saddr)
 		return NF_ACCEPT;
 
-	// pr_info("ipoe: recv %08x %08x\n", iph->saddr, iph->daddr);
+	//pr_info("ipoe: recv %08x %08x\n", iph->saddr, iph->daddr);
 
 	ses = ipoe_lookup(iph->saddr);
 
@@ -898,7 +898,7 @@ static unsigned int ipt_in_hook(const struct nf_hook_ops *ops, struct sk_buff *s
 	stats->rx_bytes += skb->len;
 #endif
 
-	out:
+out:
 	atomic_dec(&ses->refs);
 	return ret;
 }
@@ -1010,7 +1010,7 @@ static int vlan_pt_recv(struct sk_buff *skb, struct net_device *dev, struct pack
 
 	schedule_work(&vlan_notify_work);
 
-	out:
+out:
 	kfree_skb(skb);
 	return 0;
 }
@@ -1293,9 +1293,9 @@ static int ipoe_create(__be32 peer_addr, __be32 addr, const char *link_ifname, c
 
 	return r;
 
-	failed_free:
+failed_free:
 	free_netdev(dev);
-	failed:
+failed:
 	if (link_dev)
 		dev_put(link_dev);
 	return r;
@@ -1334,10 +1334,10 @@ static int ipoe_nl_cmd_noop(struct sk_buff *skb, struct genl_info *info)
 	return genlmsg_unicast(genl_info_net(info), msg, info->snd_portid);
 #endif
 
-	err_out:
+err_out:
 	nlmsg_free(msg);
 
-	out:
+out:
 	return ret;
 }
 
@@ -1411,10 +1411,10 @@ static int ipoe_nl_cmd_create(struct sk_buff *skb, struct genl_info *info)
 	return genlmsg_unicast(genl_info_net(info), msg, info->snd_portid);
 #endif
 
-	err_out:
+err_out:
 	nlmsg_free(msg);
 
-	out:
+out:
 	return ret;
 }
 
@@ -1473,7 +1473,7 @@ static int ipoe_nl_cmd_delete(struct sk_buff *skb, struct genl_info *info)
 
 	ret = 0;
 
-	out_unlock:
+out_unlock:
 	up(&ipoe_wlock);
 	return ret;
 }
@@ -1586,7 +1586,7 @@ static int ipoe_nl_cmd_modify(struct sk_buff *skb, struct genl_info *info)
 
 	ret = 0;
 
-	out_unlock:
+out_unlock:
 	up(&ipoe_wlock);
 	return ret;
 }
@@ -1611,7 +1611,7 @@ static int fill_info(struct sk_buff *skb, struct ipoe_session *ses, u32 pid, u32
 	return genlmsg_end(skb, hdr);
 #endif
 
-	nla_put_failure:
+nla_put_failure:
 	genlmsg_cancel(skb, hdr);
 	return -EMSGSIZE;
 }
@@ -2311,9 +2311,9 @@ static int __init ipoe_init(void)
 
 	return 0;
 
-	out_unreg:
+out_unreg:
 	genl_unregister_family(&ipoe_nl_family);
-	out:
+out:
 	return err;
 }
 

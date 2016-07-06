@@ -570,7 +570,7 @@ static void auth_result(struct ipoe_session *ses, int r)
 	ap_session_set_username(&ses->ses, username);
 	log_ppp_info1("%s: authentication succeeded\n", ses->ses.username);
 
-	cont:
+cont:
 	triton_event_fire(EV_SES_AUTHORIZED, &ses->ses);
 
 	if (ses->serv->opt_nat)
@@ -1678,7 +1678,7 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 		}
 	}
 
-	out:
+out:
 	pthread_mutex_unlock(&serv->lock);
 }
 
@@ -2672,9 +2672,9 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 
 	return;
 
-	parse_err:
+parse_err:
 	log_error("ipoe: failed to parse '%s'\n", opt);
-	out_err:
+out_err:
 	_free(str0);
 }
 
@@ -2819,7 +2819,7 @@ static void parse_local_net(const char *opt)
 
 	return;
 
-	out_err:
+out_err:
 	log_error("ipoe: failed to parse 'local-net=%s'\n", opt);
 }
 
@@ -3035,7 +3035,7 @@ int parse_offer_delay(const char *str)
 	_free(str1);
 	return 0;
 
-	out_err:
+out_err:
 	_free(str1);
 	log_error("ipoe: failed to parse offer-delay\n");
 	return -1;
@@ -3089,7 +3089,7 @@ static int parse_vlan_mon(const char *opt, long *mask)
 
 	return 0;
 
-	out_err:
+out_err:
 	log_error("ipoe: vlan-mon=%s: failed to parse\n", opt);
 	return -1;
 }

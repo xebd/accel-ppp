@@ -337,7 +337,7 @@ int ipoe_nl_create(uint32_t peer_addr, uint32_t addr, const char *ifname, uint8_
 
 	ret = *(uint32_t *)(RTA_DATA(tb[IPOE_ATTR_IFINDEX]));
 
-	out:
+out:
 	rtnl_close(&rth);
 
 	return ret;
