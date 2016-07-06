@@ -126,6 +126,7 @@ static LIST_HEAD(ipoe_list2);
 static LIST_HEAD(ipoe_list2_u);
 static DEFINE_SEMAPHORE(ipoe_wlock);
 static LIST_HEAD(ipoe_networks);
+static LIST_HEAD(ipoe_bypass_nets);
 static LIST_HEAD(ipoe_interfaces);
 static struct work_struct ipoe_queue_work;
 static struct sk_buff_head ipoe_queue;
@@ -217,6 +218,25 @@ static int ipoe_check_network(__be32 addr)
 	return r;
 }
 
+static int ipoe_check_bypass(__be32 addr)
+{
+	struct ipoe_network *n;
+	int r = 0;
+
+	rcu_read_lock();
+
+	list_for_each_entry_rcu(n, &ipoe_bypass_nets, entry) {
+		if ((ntohl(addr) & n->mask) == n->addr) {
+			r = 1;
+			break;
+		}
+	}
+
+	rcu_read_unlock();
+
+	return r;
+}
+
 static int ipoe_check_exclude(__be32 addr)
 {
 	struct ipoe_network *n;
@@ -275,8 +295,8 @@ static int ipoe_do_nat(struct sk_buff *skb, __be32 new_addr, int to_peer)
 		addr = iph->saddr;
 
 	if (skb_cloned(skb) &&
-			!skb_clone_writable(skb, sizeof(*iph) + noff) &&
-			pskb_expand_head(skb, 0, 0, GFP_ATOMIC))
+		!skb_clone_writable(skb, sizeof(*iph) + noff) &&
+		pskb_expand_head(skb, 0, 0, GFP_ATOMIC))
 		return -1;
 
 	iph = ip_hdr(skb);
@@ -291,77 +311,77 @@ static int ipoe_do_nat(struct sk_buff *skb, __be32 new_addr, int to_peer)
 	ihl = iph->ihl * 4;
 
 	switch (iph->frag_off & htons(IP_OFFSET) ? 0 : iph->protocol) {
-	case IPPROTO_TCP:
-	{
-		struct tcphdr *tcph;
+		case IPPROTO_TCP:
+		{
+			struct tcphdr *tcph;
 
-		if (!pskb_may_pull(skb, ihl + sizeof(*tcph) + noff) ||
+			if (!pskb_may_pull(skb, ihl + sizeof(*tcph) + noff) ||
 				(skb_cloned(skb) &&
 				 !skb_clone_writable(skb, ihl + sizeof(*tcph) + noff) &&
 				 pskb_expand_head(skb, 0, 0, GFP_ATOMIC)))
-			return -1;
+				return -1;
 
-		tcph = (void *)(skb_network_header(skb) + ihl);
-		inet_proto_csum_replace4(&tcph->check, skb, addr, new_addr, 1);
-		break;
-	}
-	case IPPROTO_UDP:
-	{
-		struct udphdr *udph;
+			tcph = (void *)(skb_network_header(skb) + ihl);
+			inet_proto_csum_replace4(&tcph->check, skb, addr, new_addr, 1);
+			break;
+		}
+		case IPPROTO_UDP:
+		{
+			struct udphdr *udph;
 
-		if (!pskb_may_pull(skb, ihl + sizeof(*udph) + noff) ||
+			if (!pskb_may_pull(skb, ihl + sizeof(*udph) + noff) ||
 				(skb_cloned(skb) &&
 				 !skb_clone_writable(skb, ihl + sizeof(*udph) + noff) &&
 				 pskb_expand_head(skb, 0, 0, GFP_ATOMIC)))
-			return -1;
+				return -1;
 
-		udph = (void *)(skb_network_header(skb) + ihl);
-		if (udph->check || skb->ip_summed == CHECKSUM_PARTIAL) {
-			inet_proto_csum_replace4(&udph->check, skb, addr, new_addr, 1);
-			if (!udph->check)
-				udph->check = CSUM_MANGLED_0;
+			udph = (void *)(skb_network_header(skb) + ihl);
+			if (udph->check || skb->ip_summed == CHECKSUM_PARTIAL) {
+				inet_proto_csum_replace4(&udph->check, skb, addr, new_addr, 1);
+				if (!udph->check)
+					udph->check = CSUM_MANGLED_0;
+			}
+			break;
 		}
-		break;
-	}
-	case IPPROTO_ICMP:
-	{
-		struct icmphdr *icmph;
+		case IPPROTO_ICMP:
+		{
+			struct icmphdr *icmph;
 
-		if (!pskb_may_pull(skb, ihl + sizeof(*icmph) + noff))
-			return -1;
+			if (!pskb_may_pull(skb, ihl + sizeof(*icmph) + noff))
+				return -1;
 
-		icmph = (void *)(skb_network_header(skb) + ihl);
+			icmph = (void *)(skb_network_header(skb) + ihl);
 
-		if ((icmph->type != ICMP_DEST_UNREACH) &&
+			if ((icmph->type != ICMP_DEST_UNREACH) &&
 				(icmph->type != ICMP_TIME_EXCEEDED) &&
 				(icmph->type != ICMP_PARAMETERPROB))
-			break;
+				break;
 
-		if (!pskb_may_pull(skb, ihl + sizeof(*icmph) + sizeof(*iph) +
-					noff))
-			return -1;
+			if (!pskb_may_pull(skb, ihl + sizeof(*icmph) + sizeof(*iph) +
+									noff))
+				return -1;
 
-		icmph = (void *)(skb_network_header(skb) + ihl);
-		iph = (void *)(icmph + 1);
+			icmph = (void *)(skb_network_header(skb) + ihl);
+			iph = (void *)(icmph + 1);
 
-		if (skb_cloned(skb) &&
+			if (skb_cloned(skb) &&
 				!skb_clone_writable(skb, ihl + sizeof(*icmph) +
-							 sizeof(*iph) + noff) &&
+										 sizeof(*iph) + noff) &&
 				pskb_expand_head(skb, 0, 0, GFP_ATOMIC))
-			return -1;
+				return -1;
 
-		icmph = (void *)(skb_network_header(skb) + ihl);
-		iph = (void *)(icmph + 1);
-		if (to_peer)
-			iph->saddr = new_addr;
-		else
-			iph->daddr = new_addr;
+			icmph = (void *)(skb_network_header(skb) + ihl);
+			iph = (void *)(icmph + 1);
+			if (to_peer)
+				iph->saddr = new_addr;
+			else
+				iph->daddr = new_addr;
 
-		inet_proto_csum_replace4(&icmph->checksum, skb, addr, new_addr, 0);
-		break;
-	}
-	default:
-		break;
+			inet_proto_csum_replace4(&icmph->checksum, skb, addr, new_addr, 0);
+			break;
+		}
+		default:
+			break;
 	}
 
 	return 0;
@@ -556,7 +576,7 @@ static netdev_tx_t ipoe_xmit(struct sk_buff *skb, struct net_device *dev)
 
 		return NETDEV_TX_OK;
 	}
-drop:
+	drop:
 	stats->tx_dropped++;
 	dev_kfree_skb(skb);
 	return NETDEV_TX_OK;
@@ -703,7 +723,7 @@ static void ipoe_process_queue(struct work_struct *w)
 				kfree_skb(skb);
 				continue;
 
-nl_err:
+				nl_err:
 				nlmsg_free(report_skb);
 				report_skb = NULL;
 			}
@@ -801,7 +821,7 @@ static unsigned int ipt_in_hook(const struct nf_hook_ops *ops, struct sk_buff *s
 	if (!iph->saddr)
 		return NF_ACCEPT;
 
-	//pr_info("ipoe: recv %08x %08x\n", iph->saddr, iph->daddr);
+	// pr_info("ipoe: recv %08x %08x\n", iph->saddr, iph->daddr);
 
 	ses = ipoe_lookup(iph->saddr);
 
@@ -810,6 +830,9 @@ static unsigned int ipt_in_hook(const struct nf_hook_ops *ops, struct sk_buff *s
 			return NF_ACCEPT;
 
 		if (!ipoe_check_network(iph->saddr))
+			return NF_ACCEPT;
+
+		if(ipoe_check_bypass(iph->daddr))
 			return NF_ACCEPT;
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,1,0)
@@ -875,7 +898,7 @@ static unsigned int ipt_in_hook(const struct nf_hook_ops *ops, struct sk_buff *s
 	stats->rx_bytes += skb->len;
 #endif
 
-out:
+	out:
 	atomic_dec(&ses->refs);
 	return ret;
 }
@@ -987,7 +1010,7 @@ static int vlan_pt_recv(struct sk_buff *skb, struct net_device *dev, struct pack
 
 	schedule_work(&vlan_notify_work);
 
-out:
+	out:
 	kfree_skb(skb);
 	return 0;
 }
@@ -1059,7 +1082,7 @@ static void vlan_do_notify(struct work_struct *w)
 		kfree(n);
 		continue;
 
-nl_err:
+		nl_err:
 		nlmsg_free(report_skb);
 		report_skb = NULL;
 	}
@@ -1136,26 +1159,26 @@ static void ipoe_free_netdev(struct net_device *dev)
 }
 
 static int ipoe_hard_header(struct sk_buff *skb, struct net_device *dev,
-			       unsigned short type, const void *daddr,
-			       const void *saddr, unsigned len)
+							unsigned short type, const void *daddr,
+							const void *saddr, unsigned len)
 {
 	const struct ipoe_session *ses = netdev_priv(dev);
 
 	if (ses->link_dev)
 		return dev_hard_header(skb, ses->link_dev, type, daddr,
-			       saddr, len);
+							   saddr, len);
 	else
 		return eth_header(skb, dev, type, daddr, saddr, len);
 }
 
 static const struct header_ops ipoe_hard_header_ops = {
-	.create  	= ipoe_hard_header,
+		.create  	= ipoe_hard_header,
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,1,0)
-	.rebuild	= eth_rebuild_header,
+		.rebuild	= eth_rebuild_header,
 #endif
-	.parse		= eth_header_parse,
-	.cache		= eth_header_cache,
-	.cache_update	= eth_header_cache_update,
+		.parse		= eth_header_parse,
+		.cache		= eth_header_cache,
+		.cache_update	= eth_header_cache_update,
 };
 
 static void ipoe_netdev_setup(struct net_device *dev)
@@ -1270,9 +1293,9 @@ static int ipoe_create(__be32 peer_addr, __be32 addr, const char *link_ifname, c
 
 	return r;
 
-failed_free:
+	failed_free:
 	free_netdev(dev);
-failed:
+	failed:
 	if (link_dev)
 		dev_put(link_dev);
 	return r;
@@ -1295,7 +1318,7 @@ static int ipoe_nl_cmd_noop(struct sk_buff *skb, struct genl_info *info)
 #else
 	hdr = genlmsg_put(msg, info->snd_portid, info->snd_seq,
 #endif
-			  &ipoe_nl_family, 0, IPOE_CMD_NOOP);
+					  &ipoe_nl_family, 0, IPOE_CMD_NOOP);
 	if (IS_ERR(hdr)) {
 		ret = PTR_ERR(hdr);
 		goto err_out;
@@ -1311,10 +1334,10 @@ static int ipoe_nl_cmd_noop(struct sk_buff *skb, struct genl_info *info)
 	return genlmsg_unicast(genl_info_net(info), msg, info->snd_portid);
 #endif
 
-err_out:
+	err_out:
 	nlmsg_free(msg);
 
-out:
+	out:
 	return ret;
 }
 
@@ -1362,7 +1385,7 @@ static int ipoe_nl_cmd_create(struct sk_buff *skb, struct genl_info *info)
 #else
 	hdr = genlmsg_put(msg, info->snd_portid, info->snd_seq,
 #endif
-			  &ipoe_nl_family, 0, IPOE_CMD_CREATE);
+					  &ipoe_nl_family, 0, IPOE_CMD_CREATE);
 	if (IS_ERR(hdr)) {
 		ret = PTR_ERR(hdr);
 		goto err_out;
@@ -1388,10 +1411,10 @@ static int ipoe_nl_cmd_create(struct sk_buff *skb, struct genl_info *info)
 	return genlmsg_unicast(genl_info_net(info), msg, info->snd_portid);
 #endif
 
-err_out:
+	err_out:
 	nlmsg_free(msg);
 
-out:
+	out:
 	return ret;
 }
 
@@ -1450,7 +1473,7 @@ static int ipoe_nl_cmd_delete(struct sk_buff *skb, struct genl_info *info)
 
 	ret = 0;
 
-out_unlock:
+	out_unlock:
 	up(&ipoe_wlock);
 	return ret;
 }
@@ -1563,7 +1586,7 @@ static int ipoe_nl_cmd_modify(struct sk_buff *skb, struct genl_info *info)
 
 	ret = 0;
 
-out_unlock:
+	out_unlock:
 	up(&ipoe_wlock);
 	return ret;
 }
@@ -1577,8 +1600,8 @@ static int fill_info(struct sk_buff *skb, struct ipoe_session *ses, u32 pid, u32
 		return -EMSGSIZE;
 
 	if (nla_put_u32(skb, IPOE_ATTR_IFINDEX, ses->dev->ifindex) ||
-	    nla_put_u32(skb, IPOE_ATTR_PEER_ADDR, ses->peer_addr) ||
-	    nla_put_u32(skb, IPOE_ATTR_ADDR, ses->addr))
+		nla_put_u32(skb, IPOE_ATTR_PEER_ADDR, ses->peer_addr) ||
+		nla_put_u32(skb, IPOE_ATTR_ADDR, ses->addr))
 		goto nla_put_failure;
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,0,0)
@@ -1588,7 +1611,7 @@ static int fill_info(struct sk_buff *skb, struct ipoe_session *ses, u32 pid, u32
 	return genlmsg_end(skb, hdr);
 #endif
 
-nla_put_failure:
+	nla_put_failure:
 	genlmsg_cancel(skb, hdr);
 	return -EMSGSIZE;
 }
@@ -1657,6 +1680,58 @@ static int ipoe_nl_cmd_del_net(struct sk_buff *skb, struct genl_info *info)
 
 	rcu_read_lock();
 	list_for_each_entry_rcu(n, &ipoe_networks, entry) {
+		if (!addr || addr == n->addr) {
+			//pr_info("del net %08x/%08x\n", n->addr, n->mask);
+			list_del_rcu(&n->entry);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
+			kfree_rcu(n, rcu_head);
+#else
+			call_rcu(&n->rcu_head, ipoe_kfree_rcu);
+#endif
+		}
+	}
+	rcu_read_unlock();
+
+	synchronize_rcu();
+
+	return 0;
+}
+
+static int ipoe_nl_cmd_add_bypass_net(struct sk_buff *skb, struct genl_info *info)
+{
+	struct ipoe_network *n;
+
+	if (!info->attrs[IPOE_ATTR_ADDR] || !info->attrs[IPOE_ATTR_MASK])
+		return -EINVAL;
+
+	n = kmalloc(sizeof(*n), GFP_KERNEL);
+	if (!n)
+		return -ENOMEM;
+
+	n->addr = nla_get_u32(info->attrs[IPOE_ATTR_ADDR]);
+	n->mask = nla_get_u32(info->attrs[IPOE_ATTR_MASK]);
+	n->addr = ntohl(n->addr) & n->mask;
+	//pr_info("add net %08x/%08x\n", n->addr, n->mask);
+
+	down(&ipoe_wlock);
+	list_add_tail_rcu(&n->entry, &ipoe_bypass_nets);
+	up(&ipoe_wlock);
+
+	return 0;
+}
+
+static int ipoe_nl_cmd_del_bypass_net(struct sk_buff *skb, struct genl_info *info)
+{
+	struct ipoe_network *n;
+	__be32 addr;
+
+	if (!info->attrs[IPOE_ATTR_ADDR])
+		return -EINVAL;
+
+	addr = nla_get_u32(info->attrs[IPOE_ATTR_ADDR]);
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(n, &ipoe_bypass_nets, entry) {
 		if (!addr || addr == n->addr) {
 			//pr_info("del net %08x/%08x\n", n->addr, n->mask);
 			list_del_rcu(&n->entry);
@@ -1996,108 +2071,122 @@ static int ipoe_nl_cmd_del_vlan_mon(struct sk_buff *skb, struct genl_info *info)
 
 
 static struct nla_policy ipoe_nl_policy[IPOE_ATTR_MAX + 1] = {
-	[IPOE_ATTR_NONE]		    = { .type = NLA_UNSPEC,                     },
-	[IPOE_ATTR_ADDR]	      = { .type = NLA_U32,                        },
-	[IPOE_ATTR_PEER_ADDR]	= { .type = NLA_U32,                          },
-	[IPOE_ATTR_IFNAME]	    = { .type = NLA_STRING, .len = IFNAMSIZ - 1 },
-	[IPOE_ATTR_HWADDR]	    = { .type = NLA_U64                         },
-	[IPOE_ATTR_IFNAME]	    = { .type = NLA_STRING, .len = IFNAMSIZ - 1 },
-	[IPOE_ATTR_MASK]	      = { .type = NLA_U32,                        },
-	[IPOE_ATTR_VLAN_MASK]	  = { .type = NLA_BINARY, .len = 4096/8       },
+		[IPOE_ATTR_NONE]		= { .type = NLA_UNSPEC,						},
+		[IPOE_ATTR_ADDR]		= { .type = NLA_U32,                        },
+		[IPOE_ATTR_PEER_ADDR]	= { .type = NLA_U32,						},
+		[IPOE_ATTR_IFNAME]	    = { .type = NLA_STRING, .len = IFNAMSIZ - 1 },
+		[IPOE_ATTR_HWADDR]	    = { .type = NLA_U64                         },
+		[IPOE_ATTR_IFNAME]	    = { .type = NLA_STRING, .len = IFNAMSIZ - 1 },
+		[IPOE_ATTR_MASK]		= { .type = NLA_U32,                        },
+		[IPOE_ATTR_VLAN_MASK]	= { .type = NLA_BINARY, .len = 4096/8       },
 };
 
 static struct genl_ops ipoe_nl_ops[] = {
-	{
-		.cmd = IPOE_CMD_NOOP,
-		.doit = ipoe_nl_cmd_noop,
-		.policy = ipoe_nl_policy,
-		/* can be retrieved by unprivileged users */
-	},
-	{
-		.cmd = IPOE_CMD_CREATE,
-		.doit = ipoe_nl_cmd_create,
-		.policy = ipoe_nl_policy,
-		.flags = GENL_ADMIN_PERM,
-	},
-	{
-		.cmd = IPOE_CMD_DELETE,
-		.doit = ipoe_nl_cmd_delete,
-		.policy = ipoe_nl_policy,
-		.flags = GENL_ADMIN_PERM,
-	},
-	{
-		.cmd = IPOE_CMD_MODIFY,
-		.doit = ipoe_nl_cmd_modify,
-		.policy = ipoe_nl_policy,
-		.flags = GENL_ADMIN_PERM,
-	},
-	{
-		.cmd = IPOE_CMD_GET,
-		.dumpit = ipoe_nl_cmd_dump_sessions,
-		.policy = ipoe_nl_policy,
-	},
-	{
-		.cmd = IPOE_CMD_ADD_NET,
-		.doit = ipoe_nl_cmd_add_net,
-		.policy = ipoe_nl_policy,
-		.flags = GENL_ADMIN_PERM,
-	},
-	{
-		.cmd = IPOE_CMD_DEL_NET,
-		.doit = ipoe_nl_cmd_del_net,
-		.policy = ipoe_nl_policy,
-		.flags = GENL_ADMIN_PERM,
-	},
-	{
-		.cmd = IPOE_CMD_ADD_IF,
-		.doit = ipoe_nl_cmd_add_interface,
-		.policy = ipoe_nl_policy,
-		.flags = GENL_ADMIN_PERM,
-	},
-	{
-		.cmd = IPOE_CMD_DEL_IF,
-		.doit = ipoe_nl_cmd_del_interface,
-		.policy = ipoe_nl_policy,
-		.flags = GENL_ADMIN_PERM,
-	},
-	{
-		.cmd = IPOE_CMD_ADD_VLAN_MON,
-		.doit = ipoe_nl_cmd_add_vlan_mon,
-		.policy = ipoe_nl_policy,
-		.flags = GENL_ADMIN_PERM,
-	},
-	{
-		.cmd = IPOE_CMD_ADD_VLAN_MON_VID,
-		.doit = ipoe_nl_cmd_add_vlan_mon_vid,
-		.policy = ipoe_nl_policy,
-		.flags = GENL_ADMIN_PERM,
-	},
-	{
-		.cmd = IPOE_CMD_DEL_VLAN_MON,
-		.doit = ipoe_nl_cmd_del_vlan_mon,
-		.policy = ipoe_nl_policy,
-		.flags = GENL_ADMIN_PERM,
-	},
-	{
-		.cmd = IPOE_CMD_ADD_EXCLUDE,
-		.doit = ipoe_nl_cmd_add_exclude,
-		.policy = ipoe_nl_policy,
-		.flags = GENL_ADMIN_PERM,
-	},
-	{
-		.cmd = IPOE_CMD_DEL_EXCLUDE,
-		.doit = ipoe_nl_cmd_del_exclude,
-		.policy = ipoe_nl_policy,
-		.flags = GENL_ADMIN_PERM,
-	},
+		{
+				.cmd = IPOE_CMD_NOOP,
+				.doit = ipoe_nl_cmd_noop,
+				.policy = ipoe_nl_policy,
+				/* can be retrieved by unprivileged users */
+		},
+		{
+				.cmd = IPOE_CMD_CREATE,
+				.doit = ipoe_nl_cmd_create,
+				.policy = ipoe_nl_policy,
+				.flags = GENL_ADMIN_PERM,
+		},
+		{
+				.cmd = IPOE_CMD_DELETE,
+				.doit = ipoe_nl_cmd_delete,
+				.policy = ipoe_nl_policy,
+				.flags = GENL_ADMIN_PERM,
+		},
+		{
+				.cmd = IPOE_CMD_MODIFY,
+				.doit = ipoe_nl_cmd_modify,
+				.policy = ipoe_nl_policy,
+				.flags = GENL_ADMIN_PERM,
+		},
+		{
+				.cmd = IPOE_CMD_GET,
+				.dumpit = ipoe_nl_cmd_dump_sessions,
+				.policy = ipoe_nl_policy,
+		},
+		{
+				.cmd = IPOE_CMD_ADD_NET,
+				.doit = ipoe_nl_cmd_add_net,
+				.policy = ipoe_nl_policy,
+				.flags = GENL_ADMIN_PERM,
+		},
+		{
+				.cmd = IPOE_CMD_DEL_NET,
+				.doit = ipoe_nl_cmd_del_net,
+				.policy = ipoe_nl_policy,
+				.flags = GENL_ADMIN_PERM,
+		},
+
+		{
+				.cmd = IPOE_CMD_ADD_BYPASS_NET,
+				.doit = ipoe_nl_cmd_add_bypass_net,
+				.policy = ipoe_nl_policy,
+				.flags = GENL_ADMIN_PERM,
+		},
+		{
+				.cmd = IPOE_CMD_DEL_BYPASS_NET,
+				.doit = ipoe_nl_cmd_del_bypass_net,
+				.policy = ipoe_nl_policy,
+				.flags = GENL_ADMIN_PERM,
+		},
+
+		{
+				.cmd = IPOE_CMD_ADD_IF,
+				.doit = ipoe_nl_cmd_add_interface,
+				.policy = ipoe_nl_policy,
+				.flags = GENL_ADMIN_PERM,
+		},
+		{
+				.cmd = IPOE_CMD_DEL_IF,
+				.doit = ipoe_nl_cmd_del_interface,
+				.policy = ipoe_nl_policy,
+				.flags = GENL_ADMIN_PERM,
+		},
+		{
+				.cmd = IPOE_CMD_ADD_VLAN_MON,
+				.doit = ipoe_nl_cmd_add_vlan_mon,
+				.policy = ipoe_nl_policy,
+				.flags = GENL_ADMIN_PERM,
+		},
+		{
+				.cmd = IPOE_CMD_ADD_VLAN_MON_VID,
+				.doit = ipoe_nl_cmd_add_vlan_mon_vid,
+				.policy = ipoe_nl_policy,
+				.flags = GENL_ADMIN_PERM,
+		},
+		{
+				.cmd = IPOE_CMD_DEL_VLAN_MON,
+				.doit = ipoe_nl_cmd_del_vlan_mon,
+				.policy = ipoe_nl_policy,
+				.flags = GENL_ADMIN_PERM,
+		},
+		{
+				.cmd = IPOE_CMD_ADD_EXCLUDE,
+				.doit = ipoe_nl_cmd_add_exclude,
+				.policy = ipoe_nl_policy,
+				.flags = GENL_ADMIN_PERM,
+		},
+		{
+				.cmd = IPOE_CMD_DEL_EXCLUDE,
+				.doit = ipoe_nl_cmd_del_exclude,
+				.policy = ipoe_nl_policy,
+				.flags = GENL_ADMIN_PERM,
+		},
 };
 
 static struct genl_family ipoe_nl_family = {
-	.id		= GENL_ID_GENERATE,
-	.name		= IPOE_GENL_NAME,
-	.version	= IPOE_GENL_VERSION,
-	.hdrsize	= 0,
-	.maxattr	= IPOE_ATTR_MAX,
+		.id		= GENL_ID_GENERATE,
+		.name		= IPOE_GENL_NAME,
+		.version	= IPOE_GENL_VERSION,
+		.hdrsize	= 0,
+		.maxattr	= IPOE_ATTR_MAX,
 };
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
@@ -2106,37 +2195,37 @@ static struct genl_multicast_group ipoe_nl_mcg = {
 };
 #else
 static struct genl_multicast_group ipoe_nl_mcgs[] = {
-	{ .name = IPOE_GENL_MCG_PKT, }
+		{ .name = IPOE_GENL_MCG_PKT, }
 };
 #endif
 
 static struct nf_hook_ops ipt_ops[] __read_mostly = {
-	{
-		.hook = ipt_out_hook,
-		.pf = PF_INET,
-		.hooknum = NF_INET_POST_ROUTING,
-		.priority = NF_IP_PRI_LAST,
-		.owner = THIS_MODULE,
-	},
-	{
-		.hook = ipt_out_hook,
-		.pf = PF_INET,
-		.hooknum = NF_INET_LOCAL_OUT,
-		.priority = NF_IP_PRI_LAST,
-		.owner = THIS_MODULE,
-	},
-	{
-		.hook = ipt_in_hook,
-		.pf = PF_INET,
-		.hooknum = NF_INET_PRE_ROUTING,
-		.priority = NF_IP_PRI_FIRST,
-		.owner = THIS_MODULE,
-	},
+		{
+				.hook = ipt_out_hook,
+				.pf = PF_INET,
+				.hooknum = NF_INET_POST_ROUTING,
+				.priority = NF_IP_PRI_LAST,
+				.owner = THIS_MODULE,
+		},
+		{
+				.hook = ipt_out_hook,
+				.pf = PF_INET,
+				.hooknum = NF_INET_LOCAL_OUT,
+				.priority = NF_IP_PRI_LAST,
+				.owner = THIS_MODULE,
+		},
+		{
+				.hook = ipt_in_hook,
+				.pf = PF_INET,
+				.hooknum = NF_INET_PRE_ROUTING,
+				.priority = NF_IP_PRI_FIRST,
+				.owner = THIS_MODULE,
+		},
 };
 
 static struct packet_type vlan_pt __read_mostly = {
-	.type = __constant_htons(ETH_P_ALL),
-	.func = vlan_pt_recv,
+		.type = __constant_htons(ETH_P_ALL),
+		.func = vlan_pt_recv,
 };
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,32)
@@ -2222,9 +2311,9 @@ static int __init ipoe_init(void)
 
 	return 0;
 
-out_unreg:
+	out_unreg:
 	genl_unregister_family(&ipoe_nl_family);
-out:
+	out:
 	return err;
 }
 

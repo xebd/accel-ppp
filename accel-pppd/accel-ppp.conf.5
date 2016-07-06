@@ -354,6 +354,9 @@ The
 .B proxy-arp
 parameter specifies whether accel-ppp should reply to arp requests.
 .TP
+.BI "bypass-net=" x.x.x.x/mask
+Specifies networks to which packets will be bypassed and therefore automatically allowed without session creation.
+TP
 .BI "local-net=" x.x.x.x/mask
 Specifies networks from which packets will be treated as unclassified. You may specify multiple local-net options.
 .TP
