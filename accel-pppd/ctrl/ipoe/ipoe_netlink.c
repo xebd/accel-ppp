@@ -75,7 +75,7 @@ void ipoe_nl_add_net(uint32_t addr, int mask)
 	ghdr = NLMSG_DATA(&req.n);
 	ghdr->cmd = IPOE_CMD_ADD_NET;
 
-	mask = ((1 << mask) - 1) << (32 - mask);
+	mask = (0xffffffff) << (32 - mask);
 
 	addattr32(nlh, 1024, IPOE_ATTR_ADDR, addr);
 	addattr32(nlh, 1024, IPOE_ATTR_MASK, mask);
@@ -130,7 +130,7 @@ void ipoe_nl_add_bypass_net(uint32_t addr, int mask)
 	ghdr = NLMSG_DATA(&req.n);
 	ghdr->cmd = IPOE_CMD_ADD_BYPASS_NET;
 
-	mask = ((1 << mask) - 1) << (32 - mask);
+	mask = (0xffffffff) << (32 - mask);
 
 	addattr32(nlh, 1024, IPOE_ATTR_ADDR, addr);
 	addattr32(nlh, 1024, IPOE_ATTR_MASK, mask);
