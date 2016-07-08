@@ -832,14 +832,14 @@ static unsigned int ipt_in_hook(const struct nf_hook_ops *ops, struct sk_buff *s
 		if (!ipoe_check_network(iph->saddr))
 			return NF_ACCEPT;
 
-		if(ipoe_check_bypass(iph->daddr))
-			return NF_ACCEPT;
-
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,1,0)
 		if (!ipoe_check_interface(in->ifindex))
 #else
 		if (!ipoe_check_interface(state->in->ifindex))
 #endif
+			return NF_ACCEPT;
+
+		if(ipoe_check_bypass(iph->daddr))
 			return NF_ACCEPT;
 
 		ipoe_queue_u(skb, iph->saddr);
