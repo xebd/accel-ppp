@@ -75,13 +75,68 @@ void ipoe_nl_add_net(uint32_t addr, int mask)
 	ghdr = NLMSG_DATA(&req.n);
 	ghdr->cmd = IPOE_CMD_ADD_NET;
 
-	mask = ((1 << mask) - 1) << (32 - mask);
+	mask = (0xffffffff) << (32 - mask);
 
 	addattr32(nlh, 1024, IPOE_ATTR_ADDR, addr);
 	addattr32(nlh, 1024, IPOE_ATTR_MASK, mask);
 
 	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 )
 		log_error("ipoe: nl_add_net: error talking to kernel\n");
+}
+
+void ipoe_nl_delete_bypass_nets(void)
+{
+	struct nlmsghdr *nlh;
+	struct genlmsghdr *ghdr;
+	struct {
+		struct nlmsghdr n;
+		char buf[1024];
+	} req;
+
+	if (rth.fd == -1)
+		return;
+
+	nlh = &req.n;
+	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
+	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+	nlh->nlmsg_type = ipoe_genl_id;
+
+	ghdr = NLMSG_DATA(&req.n);
+	ghdr->cmd = IPOE_CMD_DEL_BYPASS_NET;
+
+	addattr32(nlh, 1024, IPOE_ATTR_ADDR, 0);
+
+	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 )
+		log_error("ipoe: nl_del_net: error talking to kernel\n");
+}
+
+void ipoe_nl_add_bypass_net(uint32_t addr, int mask)
+{
+	struct nlmsghdr *nlh;
+	struct genlmsghdr *ghdr;
+	struct {
+		struct nlmsghdr n;
+		char buf[1024];
+	} req;
+
+	if (rth.fd == -1)
+		return;
+
+	nlh = &req.n;
+	nlh->nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN);
+	nlh->nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+	nlh->nlmsg_type = ipoe_genl_id;
+
+	ghdr = NLMSG_DATA(&req.n);
+	ghdr->cmd = IPOE_CMD_ADD_BYPASS_NET;
+
+	mask = (0xffffffff) << (32 - mask);
+
+	addattr32(nlh, 1024, IPOE_ATTR_ADDR, addr);
+	addattr32(nlh, 1024, IPOE_ATTR_MASK, mask);
+
+	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 )
+		log_error("ipoe: nl_add_bypass_net: error talking to kernel\n");
 }
 
 int ipoe_nl_add_exclude(uint32_t addr, int mask)
@@ -632,10 +687,10 @@ static int ipoe_mc_read(struct triton_md_handler_t *h)
 	struct sockaddr_nl nladdr;
 	struct iovec iov;
 	struct msghdr msg = {
-		.msg_name = &nladdr,
-		.msg_namelen = sizeof(nladdr),
-		.msg_iov = &iov,
-		.msg_iovlen = 1,
+			.msg_name = &nladdr,
+			.msg_namelen = sizeof(nladdr),
+			.msg_iov = &iov,
+			.msg_iovlen = 1,
 	};
 	char   buf[8192];
 
@@ -713,11 +768,11 @@ static void ipoe_mc_close(struct triton_context_t *ctx)
 }
 
 static struct triton_context_t mc_ctx = {
-	.close = ipoe_mc_close,
+		.close = ipoe_mc_close,
 };
 
 static struct triton_md_handler_t mc_hnd = {
-	.read = ipoe_mc_read,
+		.read = ipoe_mc_read,
 };
 
 static void init(void)

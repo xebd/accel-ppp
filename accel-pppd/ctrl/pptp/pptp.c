@@ -646,7 +646,7 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		log_info2("pptp: new connection from %s\n", inet_ntoa(addr.sin_addr));
 
 		if (iprange_client_check(addr.sin_addr.s_addr)) {
-			log_warn("pptp: IP is out of client-ip-range, droping connection...\n");
+			log_warn("pptp: IP %s is out of client-ip-range, droping connection...\n", inet_ntoa(addr.sin_addr));
 			close(sock);
 			continue;
 		}

@@ -1250,7 +1250,7 @@ static struct ipoe_session *ipoe_session_create_dhcpv4(struct ipoe_serv *serv, s
 
 	ptr = ses->hwaddr;
 	sprintf(ses->ctrl.calling_station_id, "%02x:%02x:%02x:%02x:%02x:%02x",
-		ptr[0], ptr[1], ptr[2], ptr[3], ptr[4], ptr[5]);
+			ptr[0], ptr[1], ptr[2], ptr[3], ptr[4], ptr[5]);
 
 	ses->ses.ctrl = &ses->ctrl;
 	ses->ses.chan_name = ses->ctrl.calling_station_id;
@@ -1438,7 +1438,7 @@ static void ipoe_serv_disc_timer(struct triton_timer_t *t)
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	while (!list_empty(&serv->disc_list)) {
-	  d = list_entry(serv->disc_list.next, typeof(*d), entry);
+		d = list_entry(serv->disc_list.next, typeof(*d), entry);
 
 		delay = (ts.tv_sec - d->ts.tv_sec) * 1000 + (ts.tv_nsec - d->ts.tv_nsec) / 1000000;
 		offer_delay = get_offer_delay();
@@ -2469,7 +2469,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 				if (strcmp(ptr1, "ifname") == 0)
 					opt_username = USERNAME_IFNAME;
 #ifdef USE_LUA
-				else if (strlen(ptr1) > 4 && memcmp(ptr1, "lua:", 4) == 0) {
+					else if (strlen(ptr1) > 4 && memcmp(ptr1, "lua:", 4) == 0) {
 					opt_username = USERNAME_LUA;
 					opt_lua_username_func = _strdup(ptr1 + 4);
 				}
@@ -2539,7 +2539,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 		}
 
 		if (serv->dhcpv4_relay &&
-				(serv->dhcpv4_relay->addr != relay_addr || serv->dhcpv4_relay->giaddr != opt_giaddr)) {
+			(serv->dhcpv4_relay->addr != relay_addr || serv->dhcpv4_relay->giaddr != opt_giaddr)) {
 			if (serv->opt_ifcfg)
 				ipoe_serv_del_addr(serv, serv->dhcpv4_relay->giaddr, 0);
 			dhcpv4_relay_free(serv->dhcpv4_relay, &serv->ctx);
@@ -2768,7 +2768,7 @@ static void load_interfaces(struct conf_sect_t *sect)
 	ipoe_nl_delete_interfaces();
 
 	list_for_each_entry(serv, &serv_list, entry)
-		serv->active = 0;
+	serv->active = 0;
 
 	list_for_each_entry(opt, &sect->items, entry) {
 		if (strcmp(opt->name, "interface"))
@@ -2823,6 +2823,39 @@ out_err:
 	log_error("ipoe: failed to parse 'local-net=%s'\n", opt);
 }
 
+static void parse_bypass_net(const char *opt)
+{
+	const char *ptr;
+	char str[17];
+	in_addr_t addr;
+	int mask;
+	char *endptr;
+
+	ptr = strchr(opt, '/');
+	if (ptr) {
+		memcpy(str, opt, ptr - opt);
+		str[ptr - opt] = 0;
+		addr = inet_addr(str);
+		if (addr == INADDR_NONE)
+			goto out_err;
+		mask = strtoul(ptr + 1, &endptr, 10);
+		if (mask > 32)
+			goto out_err;
+	} else {
+		addr = inet_addr(opt);
+		if (addr == INADDR_NONE)
+			goto out_err;
+		mask = 24;
+	}
+
+	ipoe_nl_add_bypass_net(addr, mask);
+
+	return;
+
+	out_err:
+	log_error("ipoe: failed to parse 'bypass-net=%s'\n", opt);
+}
+
 static void load_local_nets(struct conf_sect_t *sect)
 {
 	struct conf_option_t *opt;
@@ -2835,6 +2868,21 @@ static void load_local_nets(struct conf_sect_t *sect)
 		if (!opt->val)
 			continue;
 		parse_local_net(opt->val);
+	}
+}
+
+static void load_bypass_nets(struct conf_sect_t *sect)
+{
+	struct conf_option_t *opt;
+
+	ipoe_nl_delete_bypass_nets();
+
+	list_for_each_entry(opt, &sect->items, entry) {
+		if (strcmp(opt->name, "bypass-net"))
+			continue;
+		if (!opt->val)
+			continue;
+		parse_bypass_net(opt->val);
 	}
 }
 
@@ -3193,7 +3241,7 @@ static void load_config(void)
 		if (strcmp(opt, "ifname") == 0)
 			conf_username = USERNAME_IFNAME;
 #ifdef USE_LUA
-		else if (strlen(opt) > 4 && memcmp(opt, "lua:", 4) == 0) {
+			else if (strlen(opt) > 4 && memcmp(opt, "lua:", 4) == 0) {
 			conf_username = USERNAME_LUA;
 			conf_lua_username_func = opt + 4;
 		}
@@ -3438,16 +3486,17 @@ static void load_config(void)
 
 	load_interfaces(s);
 	load_local_nets(s);
+	load_bypass_nets(s);
 	load_vlan_mon(s);
 	load_gw_addr(s);
 }
 
 static struct triton_context_t l4_redirect_ctx = {
-	.close = l4_redirect_ctx_close,
+		.close = l4_redirect_ctx_close,
 };
 
 static struct triton_timer_t l4_redirect_timer = {
-	.expire = l4_redirect_list_timer,
+		.expire = l4_redirect_list_timer,
 };
 
 static void ipoe_init(void)
