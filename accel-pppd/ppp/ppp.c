@@ -370,6 +370,9 @@ cont:
 			break;
 		}
 
+		if (ppp->buf_size == 0)
+			break;
+
 		if (ppp->buf_size < 2) {
 			log_ppp_error("ppp_chan_read: short read %i\n", ppp->buf_size);
 			continue;
