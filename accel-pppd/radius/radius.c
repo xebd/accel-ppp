@@ -232,7 +232,11 @@ int rad_proc_attrs(struct rad_req_t *req)
 				rpd->ses->unit_idx = attr->val.integer;
 				break;
 			case NAS_Port_Id:
-				ap_session_rename(rpd->ses, attr->val.string, attr->len);
+				if (rpd->ses->ifname_rename)
+					_free(rpd->ses->ifname_rename);
+				rpd->ses->ifname_rename = _malloc(attr->len + 1);
+				memcpy(rpd->ses->ifname_rename, attr->val.string, attr->len);
+				rpd->ses->ifname_rename[attr->len] = 0;
 				break;
 			case Framed_Route:
 				parse_framed_route(rpd, attr->val.string);
