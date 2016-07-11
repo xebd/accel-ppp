@@ -1,8 +1,12 @@
 #ifndef __AP_NET_H
 #define __AP_NET_H
 
+struct rtnl_handle;
+
 struct ap_net {
-	const char *name;
+	struct list_head entry;
+	int refs;
+	char *name;
 	int (*socket)(int domain, int type, int proto);
 	int (*connect)(int sock, const struct sockaddr *, socklen_t len);
 	int (*bind)(int sock, const struct sockaddr *, socklen_t len);
@@ -14,11 +18,23 @@ struct ap_net {
 	int (*set_nonblocking)(int sock, int f);
 	int (*setsockopt)(int sockfd, int level, int optname, const void *optval, socklen_t optlen);
 	int (*sock_ioctl)(unsigned long request, void *arg);
+	int (*sock6_ioctl)(unsigned long request, void *arg);
 	int (*ppp_open)();
 	int (*ppp_ioctl)(int fd, unsigned long request, void *arg);
+	void (*enter_ns)();
+	void (*exit_ns)();
+	struct rtnl_handle *(*rtnl_get)();
+	void (*rtnl_put)(struct rtnl_handle *);
+	int (*rtnl_open)(struct rtnl_handle *h, int proto);
+	int (*move_link)(struct ap_net *net, int ifindex);
+	void (*release)(struct ap_net *net);
 };
 
-int ap_net_register(const struct ap_net *net);
-const struct ap_net *ap_net_find(const char *name);
+extern __thread struct ap_net *net;
+extern struct ap_net *def_net;
+
+int ap_net_register(struct ap_net *net);
+struct ap_net *ap_net_find(const char *name);
+struct ap_net *ap_net_open_ns(const char *name);
 
 #endif

@@ -455,10 +455,10 @@ static int remove_htb_ifb(struct rtnl_handle *rth, int ifindex, int priority)
 
 int install_limiter(struct ap_session *ses, int down_speed, int down_burst, int up_speed, int up_burst, int idx)
 {
-	struct rtnl_handle rth;
+	struct rtnl_handle *rth = net->rtnl_get();
 	int r;
 
-	if (rtnl_open(&rth, 0)) {
+	if (!rth) {
 		log_ppp_error("shaper: cannot open rtnetlink\n");
 		return -1;
 	}
@@ -469,45 +469,45 @@ int install_limiter(struct ap_session *ses, int down_speed, int down_burst, int 
 	up_burst = up_burst ? up_burst : conf_up_burst_factor * up_speed;
 
 	if (conf_down_limiter == LIM_TBF)
-		r = install_tbf(&rth, ses->ifindex, down_speed, down_burst);
+		r = install_tbf(rth, ses->ifindex, down_speed, down_burst);
 	else {
-		r = install_htb(&rth, ses->ifindex, down_speed, down_burst);
+		r = install_htb(rth, ses->ifindex, down_speed, down_burst);
 		if (r == 0)
-			r = install_leaf_qdisc(&rth, ses->ifindex, 0x00010001, 0x00020000);
+			r = install_leaf_qdisc(rth, ses->ifindex, 0x00010001, 0x00020000);
 	}
 
 	if (conf_up_limiter == LIM_POLICE)
-		r = install_police(&rth, ses->ifindex, up_speed, up_burst);
+		r = install_police(rth, ses->ifindex, up_speed, up_burst);
 	else {
-		r = install_htb_ifb(&rth, ses->ifindex, idx, up_speed, up_burst);
+		r = install_htb_ifb(rth, ses->ifindex, idx, up_speed, up_burst);
 		if (r == 0)
-			r = install_leaf_qdisc(&rth, conf_ifb_ifindex, 0x00010000 + idx, idx << 16);
+			r = install_leaf_qdisc(rth, conf_ifb_ifindex, 0x00010000 + idx, idx << 16);
 	}
 
 	if (conf_fwmark)
-		install_fwmark(&rth, ses->ifindex, 0x00010000);
+		install_fwmark(rth, ses->ifindex, 0x00010000);
 
-	rtnl_close(&rth);
+	net->rtnl_put(rth);
 
 	return r;
 }
 
 int remove_limiter(struct ap_session *ses, int idx)
 {
-	struct rtnl_handle rth;
+	struct rtnl_handle *rth = net->rtnl_get();
 
-	if (rtnl_open(&rth, 0)) {
+	if (!rth) {
 		log_ppp_error("shaper: cannot open rtnetlink\n");
 		return -1;
 	}
 
-	remove_root(&rth, ses->ifindex);
-	remove_ingress(&rth, ses->ifindex);
+	remove_root(rth, ses->ifindex);
+	remove_ingress(rth, ses->ifindex);
 
 	if (conf_up_limiter == LIM_HTB)
-		remove_htb_ifb(&rth, ses->ifindex, idx);
+		remove_htb_ifb(rth, ses->ifindex, idx);
 
-	rtnl_close(&rth);
+	net->rtnl_put(rth);
 
 	return 0;
 }
@@ -518,6 +518,7 @@ int init_ifb(const char *name)
 	struct rtattr *tail;
 	struct ifreq ifr;
 	int r;
+	int sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
 
 	struct {
 			struct nlmsghdr 	n;
@@ -541,6 +542,7 @@ int init_ifb(const char *name)
 
 	if (ioctl(sock_fd, SIOCGIFINDEX, &ifr)) {
 		log_emerg("shaper: ioctl(SIOCGIFINDEX): %s\n", strerror(errno));
+		close(sock_fd);
 		return -1;
 	}
 
@@ -550,11 +552,13 @@ int init_ifb(const char *name)
 
 	if (ioctl(sock_fd, SIOCSIFFLAGS, &ifr)) {
 		log_emerg("shaper: ioctl(SIOCSIFINDEX): %s\n", strerror(errno));
+		close(sock_fd);
 		return -1;
 	}
 
 	if (rtnl_open(&rth, 0)) {
 		log_emerg("shaper: cannot open rtnetlink\n");
+		close(sock_fd);
 		return -1;
 	}
 
@@ -587,6 +591,7 @@ int init_ifb(const char *name)
 
 out:
 	rtnl_close(&rth);
+	close(sock_fd);
 
 	return r;
 }

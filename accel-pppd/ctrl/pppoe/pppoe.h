@@ -70,7 +70,7 @@ struct pppoe_serv_t
 	struct triton_context_t ctx;
 	struct rb_node node;
 
-	const struct ap_net *net;
+	struct ap_net *net;
 	int disc_sock;
 
 	uint8_t hwaddr[ETH_ALEN];

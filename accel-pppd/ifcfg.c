@@ -149,9 +149,11 @@ void __export ap_session_accounting_started(struct ap_session *ses)
 			}
 
 			if (ses->ipv6) {
+				net->enter_ns();
 				devconf(ses, "accept_ra", "0");
 				devconf(ses, "autoconf", "0");
 				devconf(ses, "forwarding", "1");
+				net->exit_ns();
 
 				memset(&ifr6, 0, sizeof(ifr6));
 
@@ -161,7 +163,7 @@ void __export ap_session_accounting_started(struct ap_session *ses)
 					ifr6.ifr6_prefixlen = 64;
 					ifr6.ifr6_ifindex = ses->ifindex;
 
-					if (ioctl(sock6_fd, SIOCSIFADDR, &ifr6))
+					if (net->sock6_ioctl(SIOCSIFADDR, &ifr6))
 						log_ppp_error("faild to set LL IPv6 address: %s\n", strerror(errno));
 				}
 
@@ -246,7 +248,7 @@ void __export ap_session_ifdown(struct ap_session *ses)
 			ifr6.ifr6_addr.s6_addr32[0] = htonl(0xfe800000);
 			*(uint64_t *)(ifr6.ifr6_addr.s6_addr + 8) = ses->ipv6->intf_id;
 			ifr6.ifr6_prefixlen = 64;
-			ioctl(sock6_fd, SIOCDIFADDR, &ifr6);
+			net->sock6_ioctl(SIOCDIFADDR, &ifr6);
 		}
 
 		list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
@@ -267,42 +269,72 @@ void __export ap_session_ifdown(struct ap_session *ses)
 int __export ap_session_rename(struct ap_session *ses, const char *ifname, int len)
 {
 	struct ifreq ifr;
-	int r, up = 0;
+	int i, r, up = 0;
+	struct ap_net *ns = NULL;
+	char ns_name[256];
 
 	if (len == -1)
 		len = strlen(ifname);
 
+	for (i = 0; i < len; i++) {
+		if (ifname[i] == '/') {
+			memcpy(ns_name, ifname, i);
+			ns_name[i] = 0;
+
+			ns = ap_net_open_ns(ns_name);
+			if (!ns)
+				return -1;
+
+			ifname += i + 1;
+			len -= i + 1;
+			break;
+		}
+	}
+
 	if (len >= IFNAMSIZ) {
-		log_ppp_warn("cannot rename interface (name is too long)\n");
+		log_ppp_error("cannot rename interface (name is too long)\n");
 		return -1;
 	}
 
-	strcpy(ifr.ifr_name, ses->ifname);
-	memcpy(ifr.ifr_newname, ifname, len);
-	ifr.ifr_newname[len] = 0;
-
-	r = net->sock_ioctl(SIOCSIFNAME, &ifr);
-	if (r && errno == EBUSY) {
-		net->sock_ioctl(SIOCGIFFLAGS, &ifr);
-		ifr.ifr_flags &= ~IFF_UP;
-		net->sock_ioctl(SIOCSIFFLAGS, &ifr);
-
+	if (len) {
+		strcpy(ifr.ifr_name, ses->ifname);
 		memcpy(ifr.ifr_newname, ifname, len);
 		ifr.ifr_newname[len] = 0;
-		r = net->sock_ioctl(SIOCSIFNAME, &ifr);
 
-		up = 1;
+		r = net->sock_ioctl(SIOCSIFNAME, &ifr);
+		if (r && errno == EBUSY) {
+			net->sock_ioctl(SIOCGIFFLAGS, &ifr);
+			ifr.ifr_flags &= ~IFF_UP;
+			net->sock_ioctl(SIOCSIFFLAGS, &ifr);
+
+			memcpy(ifr.ifr_newname, ifname, len);
+			ifr.ifr_newname[len] = 0;
+			r = net->sock_ioctl(SIOCSIFNAME, &ifr);
+
+			up = 1;
+		}
+
+		if (r) {
+			if (!ses->ifname_rename)
+				ses->ifname_rename = _strdup(ifr.ifr_newname);
+			else
+				log_ppp_warn("interface rename to %s failed: %s\n", ifr.ifr_newname, strerror(errno));
+		} else {
+			log_ppp_info2("rename interface to '%s'\n", ifr.ifr_newname);
+			memcpy(ses->ifname, ifname, len);
+			ses->ifname[len] = 0;
+		}
 	}
 
-	if (r) {
-		if (!ses->ifname_rename)
-			ses->ifname_rename = _strdup(ifr.ifr_newname);
-		else
-			log_ppp_warn("interface rename to %s failed: %s\n", ifr.ifr_newname, strerror(errno));
-	} else {
-		log_ppp_info2("rename interface to '%s'\n", ifr.ifr_newname);
-		memcpy(ses->ifname, ifname, len);
-		ses->ifname[len] = 0;
+	if (ns) {
+		if (net->move_link(ns, ses->ifindex)) {
+			log_ppp_error("failed to attach namespace\n");
+			ns->release(ns);
+			return -1;
+		}
+		ses->net = ns;
+		net = ns;
+		log_ppp_info2("move to namespace %s\n", ns->name);
 	}
 
 	if (up) {
@@ -311,6 +343,6 @@ int __export ap_session_rename(struct ap_session *ses, const char *ifname, int l
 		net->sock_ioctl(SIOCSIFFLAGS, &ifr);
 	}
 
-	return r;
+	return 0;
 }
 

@@ -203,7 +203,7 @@ static void ipoe_serv_timeout(struct triton_timer_t *t);
 
 static void ipoe_ctx_switch(struct triton_context_t *ctx, void *arg)
 {
-	net = &def_net;
+	net = def_net;
 	log_switch(ctx, arg);
 }
 
@@ -3263,7 +3263,7 @@ static void load_config(void)
 	if (!s)
 		return;
 
-	net = &def_net;
+	net = def_net;
 
 	opt = conf_get_opt("ipoe", "username");
 	if (opt) {

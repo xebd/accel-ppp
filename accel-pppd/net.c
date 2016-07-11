@@ -1,21 +1,37 @@
+#include <stdlib.h>
+#include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <string.h>
+#include <pthread.h>
+#include <sched.h>
+#include <limits.h>
+#include <errno.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 
 #include "triton.h"
-
+#include "log.h"
+#include "libnetlink.h"
 #include "ap_net.h"
+#include "memdebug.h"
 
-#define MAX_NET 2
+struct kern_net {
+	struct ap_net net;
+	struct rtnl_handle *rth;
+	int ns_fd;
+	int sock;
+	int sock6;
+};
 
-static const struct ap_net *nets[MAX_NET];
-static int net_cnt;
+static const char *conf_netns_run_dir;
 
-extern int sock_fd;
+static LIST_HEAD(nets);
+static pthread_mutex_t nets_lock = PTHREAD_MUTEX_INITIALIZER;
 
-__export __thread const struct ap_net *net;
+__export __thread struct ap_net *net;
+__export struct ap_net *def_net;
+static int def_ns_fd;
 
 static int def_socket(int domain, int type, int proto)
 {
@@ -79,57 +95,269 @@ static int def_ppp_ioctl(int fd, unsigned long request, void *arg)
 
 static int def_sock_ioctl(unsigned long request, void *arg)
 {
-	return ioctl(sock_fd, request, arg);
+	struct kern_net *n = container_of(net, typeof(*n), net);
+
+	return ioctl(n->sock, request, arg);
 }
 
-__export const struct ap_net def_net = {
-	.name = "kernel",
-	.socket = def_socket,
-	.connect = def_connect,
-	.bind = def_bind,
-	.listen = def_listen,
-	.read = def_read,
-	.recvfrom = def_recvfrom,
-	.write = def_write,
-	.sendto = def_sendto,
-	.set_nonblocking = def_set_nonblocking,
-	.setsockopt = def_setsockopt,
-	.ppp_open = def_ppp_open,
-	.ppp_ioctl = def_ppp_ioctl,
-	.sock_ioctl = def_sock_ioctl,
-};
-
-static void __init init()
+static int def_sock6_ioctl(unsigned long request, void *arg)
 {
-	nets[0] = &def_net;
-	net_cnt = 1;
+	struct kern_net *n = container_of(net, typeof(*n), net);
+
+	return ioctl(n->sock6, request, arg);
 }
 
-int __export ap_net_register(const struct ap_net *net)
+static void enter_ns()
 {
-	int i;
+	if (net != def_net) {
+		struct kern_net *n = container_of(net, typeof(*n), net);
+		setns(n->ns_fd, CLONE_NEWNET);
+	}
+}
 
-	if (net_cnt == MAX_NET)
-		return -1;
+static void exit_ns()
+{
+	if (net != def_net)
+		setns(def_ns_fd, CLONE_NEWNET);
+}
 
-	for (i = 0; i < net_cnt; i++) {
-		if (!strcmp(net->name, nets[i]->name))
-			return -1;
+static struct rtnl_handle *def_rtnl_get()
+{
+	struct kern_net *n = container_of(net, typeof(*n), net);
+	struct rtnl_handle *rth = __sync_lock_test_and_set(&n->rth, NULL);
+	int r;
+
+	if (!rth) {
+		rth = _malloc(sizeof(*rth));
+		enter_ns();
+		r = rtnl_open(rth, 0);
+		exit_ns();
+
+		if (r) {
+			_free(rth);
+			return NULL;
+		}
 	}
 
-	nets[net_cnt++] = net;
+	return rth;
+}
+
+static void def_rtnl_put(struct rtnl_handle *rth)
+{
+	struct kern_net *n = container_of(net, typeof(*n), net);
+
+	if (!__sync_bool_compare_and_swap(&n->rth, NULL, rth)) {
+		rtnl_close(rth);
+		_free(rth);
+	}
+}
+
+static int def_rtnl_open(struct rtnl_handle *rth, int proto)
+{
+	struct kern_net *n = container_of(net, typeof(*n), net);
+	int r;
+
+	enter_ns();
+	r = rtnl_open_byproto(rth, 0, proto);
+	exit_ns();
+
+	return r;
+}
+
+static int def_move_link(struct ap_net *new_net, int ifindex)
+{
+	struct iplink_req {
+		struct nlmsghdr n;
+		struct ifinfomsg i;
+		char buf[1024];
+	} req;
+	struct rtnl_handle *rth = new_net->rtnl_get();
+	struct kern_net *n = container_of(new_net, typeof(*n), net);
+	int r = 0;
+
+	if (!rth)
+		return -1;
+
+	memset(&req, 0, sizeof(req) - 1024);
+
+	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
+	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+	req.n.nlmsg_type = RTM_SETLINK;
+	req.i.ifi_family = AF_UNSPEC;
+	req.i.ifi_index = ifindex;
+
+	addattr_l(&req.n, 4096, IFLA_NET_NS_FD, &n->ns_fd, sizeof(n->ns_fd));
+
+	//if (setns(n->ns_fd, CLONE_NEWNET))
+	//perror("setns");
+
+	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
+		r = -1;
+
+	//setns(def_ns_fd, CLONE_NEWNET);
+
+	new_net->rtnl_put(rth);
+
+	return r;
+}
+
+static void def_release(struct ap_net *d)
+{
+	struct kern_net *n = container_of(d, typeof(*n), net);
+
+	if (d == def_net)
+		return;
+
+	pthread_mutex_lock(&nets_lock);
+	if (--d->refs) {
+		pthread_mutex_unlock(&nets_lock);
+		return;
+	}
+
+	list_del(&d->entry);
+	pthread_mutex_unlock(&nets_lock);
+
+	net = def_net;
+
+	log_debug("close ns %s\n", n->net.name);
+
+	close(n->sock);
+	close(n->sock6);
+	close(n->ns_fd);
+
+	if (n->rth) {
+		rtnl_close(n->rth);
+		_free(n->rth);
+	}
+
+	_free(n);
+}
+
+static struct ap_net *alloc_net(const char *name)
+{
+	struct kern_net *n;
+	struct ap_net *net;
+	int ns_fd;
+
+	if (name) {
+		char fname[PATH_MAX];
+		sprintf(fname, "%s/%s", conf_netns_run_dir, name);
+		ns_fd = open(fname, O_RDONLY);
+		if (ns_fd == -1) {
+			log_ppp_error("open %s: %s\n", fname, strerror(errno));
+			return NULL;
+		}
+
+		if (setns(ns_fd, CLONE_NEWNET)) {
+			log_ppp_error("setns %s: %s\n", fname, strerror(errno));
+			close(ns_fd);
+			return NULL;
+		}
+	} else
+		def_ns_fd = ns_fd = open("/proc/self/ns/net", O_RDONLY);
+
+	log_debug("open ns %s\n", name);
+
+	n = _malloc(sizeof(*n));
+	net = &n->net;
+
+	net->refs = 1;
+	net->name = name ? _strdup(name) : "def";
+	net->socket = def_socket;
+	net->connect = def_connect;
+	net->bind = def_bind;
+	net->listen = def_listen;
+	net->read = def_read;
+	net->recvfrom = def_recvfrom;
+	net->write = def_write;
+	net->sendto = def_sendto;
+	net->set_nonblocking = def_set_nonblocking;
+	net->setsockopt = def_setsockopt;
+	net->ppp_open = def_ppp_open;
+	net->ppp_ioctl = def_ppp_ioctl;
+	net->sock_ioctl = def_sock_ioctl;
+	net->sock6_ioctl = def_sock6_ioctl;
+	net->enter_ns = enter_ns;
+	net->exit_ns = exit_ns;
+	net->rtnl_get = def_rtnl_get;
+	net->rtnl_put = def_rtnl_put;
+	net->rtnl_open = def_rtnl_open;
+	net->move_link = def_move_link;
+	net->release = def_release;
+
+	n->ns_fd = ns_fd;
+
+	n->sock = socket(AF_INET, SOCK_DGRAM, 0);
+	n->sock6 = socket(AF_INET6, SOCK_DGRAM, 0);
+	n->rth = _malloc(sizeof(*n->rth));
+	rtnl_open(n->rth, 0);
+
+	if (ns_fd != def_ns_fd)
+		setns(def_ns_fd, CLONE_NEWNET);
+
+	list_add_tail(&net->entry, &nets);
+
+	return net;
+};
+
+int __export ap_net_register(struct ap_net *net)
+{
+	pthread_mutex_lock(&nets_lock);
+	list_add_tail(&net->entry, &nets);
+	pthread_mutex_unlock(&nets_lock);
 
 	return 0;
 }
 
-__export const struct ap_net *ap_net_find(const char *name)
+static struct ap_net *find_net(const char *name)
 {
-	int i;
+	struct ap_net *n;
 
-	for (i = 0; i < net_cnt; i++) {
-		if (!strcmp(name, nets[i]->name))
-			return nets[i];
+	list_for_each_entry(n, &nets, entry) {
+		if (!strcmp(name, n->name)) {
+			n->refs++;
+			return n;
+		}
 	}
 
 	return NULL;
 }
+
+__export struct ap_net *ap_net_find(const char *name)
+{
+	struct ap_net *n;
+
+	pthread_mutex_lock(&nets_lock);
+	n = find_net(name);
+	pthread_mutex_unlock(&nets_lock);
+
+	return n;
+}
+
+__export struct ap_net *ap_net_open_ns(const char *name)
+{
+	struct ap_net *n;
+
+	pthread_mutex_lock(&nets_lock);
+	n = find_net(name);
+	if (!n)
+		n = alloc_net(name);
+	pthread_mutex_unlock(&nets_lock);
+
+	return n;
+}
+
+static void __init init()
+{
+	const char *opt;
+
+	opt = conf_get_opt("common", "netns-run-dir");
+	if (opt)
+		conf_netns_run_dir = opt;
+	else
+		conf_netns_run_dir = "/var/run/netns";
+
+	def_net = net = alloc_net(NULL);
+}
+
+DEFINE_INIT(1, init);

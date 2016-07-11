@@ -185,7 +185,7 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ad
 	} else
 		endptr = rdnss_addr;
 
-	sendto(h->hnd.fd, buf, endptr - buf, 0, (struct sockaddr *)addr, sizeof(*addr));
+	net->sendto(h->hnd.fd, buf, endptr - buf, 0, (struct sockaddr *)addr, sizeof(*addr));
 
 	mempool_free(buf);
 }
@@ -225,7 +225,7 @@ static int ipv6_nd_read(struct triton_md_handler_t *_h)
 	}
 
 	while (1) {
-		n = recvfrom(h->hnd.fd, icmph, BUF_SIZE, 0, &addr, &addr_len);
+		n = net->recvfrom(h->hnd.fd, icmph, BUF_SIZE, 0, (struct sockaddr *)&addr, &addr_len);
 		if (n == -1) {
 			if (errno == EAGAIN)
 				break;
@@ -269,31 +269,31 @@ static int ipv6_nd_start(struct ap_session *ses)
 	int val;
 	struct ipv6_nd_handler_t *h;
 
-	sock = socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
+	sock = net->socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6);
 
 	if (sock < 0) {
 		log_ppp_error("socket(AF_INET6, SOCK_RAW, IPPROTO_ICMPV6): %s\n", strerror(errno));
 		return -1;
 	}
 
-	if (setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, ses->ifname, strlen(ses->ifname))) {
+	if (net->setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, ses->ifname, strlen(ses->ifname))) {
 		log_ppp_error("ipv6_nd: setsockopt(SO_BINDTODEVICE): %s\n", strerror(errno));
 		goto out_err;
 	}
 
 	val = 2;
-	if (setsockopt(sock, IPPROTO_RAW, IPV6_CHECKSUM, &val, sizeof(val))) {
+	if (net->setsockopt(sock, IPPROTO_RAW, IPV6_CHECKSUM, &val, sizeof(val))) {
 		log_ppp_error("ipv6_nd: setsockopt(IPV6_CHECKSUM): %s\n", strerror(errno));
 		goto out_err;
 	}
 
 	val = 255;
-	if (setsockopt(sock, IPPROTO_IPV6, IPV6_UNICAST_HOPS, &val, sizeof(val))) {
+	if (net->setsockopt(sock, IPPROTO_IPV6, IPV6_UNICAST_HOPS, &val, sizeof(val))) {
 		log_ppp_error("ipv6_nd: setsockopt(IPV6_UNICAST_HOPS): %s\n", strerror(errno));
 		goto out_err;
 	}
 
-	if (setsockopt(sock, IPPROTO_IPV6, IPV6_MULTICAST_HOPS, &val, sizeof(val))) {
+	if (net->setsockopt(sock, IPPROTO_IPV6, IPV6_MULTICAST_HOPS, &val, sizeof(val))) {
 		log_ppp_error("ipv6_nd: setsockopt(IPV6_MULTICAST_HOPS): %s\n", strerror(errno));
 		goto out_err;
 	}
@@ -307,7 +307,7 @@ static int ipv6_nd_start(struct ap_session *ses)
 	ICMP6_FILTER_SETBLOCKALL(&filter);
 	ICMP6_FILTER_SETPASS(ND_ROUTER_SOLICIT, &filter);
 
-	if (setsockopt(sock, IPPROTO_ICMPV6, ICMP6_FILTER, &filter, sizeof(filter))) {
+	if (net->setsockopt(sock, IPPROTO_ICMPV6, ICMP6_FILTER, &filter, sizeof(filter))) {
 		log_ppp_error("ipv6_nd: setsockopt(ICMP6_FILTER): %s\n", strerror(errno));
 		goto out_err;
 	}
@@ -317,13 +317,14 @@ static int ipv6_nd_start(struct ap_session *ses)
 	mreq.ipv6mr_multiaddr.s6_addr32[0] = htonl(0xff020000);
 	mreq.ipv6mr_multiaddr.s6_addr32[3] = htonl(0x2);
 
-	if (setsockopt(sock, SOL_IPV6, IPV6_ADD_MEMBERSHIP, &mreq, sizeof(mreq))) {
+	if (net->setsockopt(sock, SOL_IPV6, IPV6_ADD_MEMBERSHIP, &mreq, sizeof(mreq))) {
 		log_ppp_error("ipv6_nd: failed to join ipv6 allrouters\n");
 		goto out_err;
 	}
 
 	fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
-	fcntl(sock, F_SETFL, O_NONBLOCK);
+
+	net->set_nonblocking(sock, 1);
 
 	h = _malloc(sizeof(*h));
 	memset(h, 0, sizeof(*h));

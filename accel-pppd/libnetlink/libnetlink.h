@@ -76,8 +76,6 @@ extern int __parse_rtattr_nested_compat(struct rtattr *tb[], int max, struct rta
 
 extern int rtnl_listen(struct rtnl_handle *, rtnl_filter_t handler,
 		       void *jarg);
-extern int rtnl_from_file(FILE *, rtnl_filter_t handler,
-		       void *jarg);
 
 #define NLMSG_TAIL(nmsg) \
 	((struct rtattr *) (((void *) (nmsg)) + NLMSG_ALIGN((nmsg)->nlmsg_len)))

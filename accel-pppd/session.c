@@ -62,6 +62,7 @@ void __export ap_session_init(struct ap_session *ses)
 	INIT_LIST_HEAD(&ses->pd_list);
 	ses->ifindex = -1;
 	ses->unit_idx = -1;
+	ses->net = net;
 }
 
 void __export ap_session_set_ifindex(struct ap_session *ses)
@@ -234,6 +235,9 @@ void __export ap_session_finished(struct ap_session *ses)
 		_free(ses->ifname_rename);
 		ses->ifname_rename = NULL;
 	}
+
+	if (ses->net)
+		ses->net->release(ses->net);
 
 	if (ses->timer.tpd)
 		triton_timer_del(&ses->timer);

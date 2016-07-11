@@ -66,15 +66,15 @@ static void ev_ses_started(struct ap_session *ses)
 	if (!ses->ipv6)
 		return;
 
-	sock = socket(AF_INET6, SOCK_DGRAM, 0);
+	sock = net->socket(AF_INET6, SOCK_DGRAM, 0);
 	if (!sock) {
 		log_ppp_error("dhcpv6: socket: %s\n", strerror(errno));
 		return;
 	}
 
-	setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &f, sizeof(f));
+	net->setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &f, sizeof(f));
 
-	if (setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, ses->ifname, strlen(ses->ifname))) {
+	if (net->setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, ses->ifname, strlen(ses->ifname))) {
 		log_ppp_error("ipv6_nd: setsockopt(SO_BINDTODEVICE): %s\n", strerror(errno));
 		close(sock);
 		return;
@@ -84,7 +84,7 @@ static void ev_ses_started(struct ap_session *ses)
 	addr.sin6_family = AF_INET6;
 	addr.sin6_port = htons(DHCPV6_SERV_PORT);
 
-	if (bind(sock, (struct sockaddr *)&addr, sizeof(addr))) {
+	if (net->bind(sock, (struct sockaddr *)&addr, sizeof(addr))) {
 		log_ppp_error("dhcpv6: bind: %s\n", strerror(errno));
 		close(sock);
 		return;
@@ -95,14 +95,14 @@ static void ev_ses_started(struct ap_session *ses)
 	mreq.ipv6mr_multiaddr.s6_addr32[0] = htonl(0xff020000);
 	mreq.ipv6mr_multiaddr.s6_addr32[3] = htonl(0x010002);
 
-	if (setsockopt(sock, SOL_IPV6, IPV6_ADD_MEMBERSHIP, &mreq, sizeof(mreq))) {
+	if (net->setsockopt(sock, SOL_IPV6, IPV6_ADD_MEMBERSHIP, &mreq, sizeof(mreq))) {
 		log_ppp_error("dhcpv6: failed to join to All_DHCP_Relay_Agents_and_Servers\n");
 		close(sock);
 		return;
 	}
 
-	fcntl(sock, F_SETFL, O_NONBLOCK);
 	fcntl(sock, F_SETFD, fcntl(sock, F_GETFD) | FD_CLOEXEC);
+	net->set_nonblocking(sock, 1);
 
 	pd = _malloc(sizeof(*pd));
 	memset(pd, 0, sizeof(*pd));
@@ -189,7 +189,7 @@ static void insert_dp_routes(struct ap_session *ses, struct dhcpv6_pd *pd)
 			rt6.rtmsg_flags |= RTF_GATEWAY;
 			list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
 				build_addr(a, ses->ipv6->peer_intf_id, &rt6.rtmsg_gateway);
-				if (ioctl(sock6_fd, SIOCADDRT, &rt6)) {
+				if (net->sock6_ioctl(SIOCADDRT, &rt6)) {
 					err = errno;
 					inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
 					inet_ntop(AF_INET6, &rt6.rtmsg_gateway, str2, sizeof(str2));
@@ -202,7 +202,7 @@ static void insert_dp_routes(struct ap_session *ses, struct dhcpv6_pd *pd)
 				rt6.rtmsg_metric++;
 			}
 		} else {
-			if (ioctl(sock6_fd, SIOCADDRT, &rt6)) {
+			if (net->sock6_ioctl(SIOCADDRT, &rt6)) {
 				err = errno;
 				inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
 				log_ppp_error("dhcpv6: route add %s/%i: %s\n",
@@ -457,7 +457,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 		dhcpv6_packet_print(reply, log_ppp_info2);
 	}
 
-	sendto(pd->hnd.fd, reply->hdr, reply->endptr - (void *)reply->hdr, 0, (struct sockaddr *)&req->addr, sizeof(req->addr));
+	net->sendto(pd->hnd.fd, reply->hdr, reply->endptr - (void *)reply->hdr, 0, (struct sockaddr *)&req->addr, sizeof(req->addr));
 
 	dhcpv6_packet_free(reply);
 }
@@ -609,7 +609,7 @@ static void dhcpv6_send_reply2(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, 
 		dhcpv6_packet_print(reply, log_ppp_info2);
 	}
 
-	sendto(pd->hnd.fd, reply->hdr, reply->endptr - (void *)reply->hdr, 0, (struct sockaddr *)&req->addr, sizeof(req->addr));
+	net->sendto(pd->hnd.fd, reply->hdr, reply->endptr - (void *)reply->hdr, 0, (struct sockaddr *)&req->addr, sizeof(req->addr));
 
 out:
 	dhcpv6_packet_free(reply);
@@ -799,7 +799,7 @@ static int dhcpv6_read(struct triton_md_handler_t *h)
 	uint8_t *buf = _malloc(BUF_SIZE);
 
 	while (1) {
-		n = recvfrom(h->fd, buf, BUF_SIZE, 0, &addr, &len);
+		n = net->recvfrom(h->fd, buf, BUF_SIZE, 0, (struct sockaddr *)&addr, &len);
 		if (n == -1) {
 			if (errno == EAGAIN)
 				break;

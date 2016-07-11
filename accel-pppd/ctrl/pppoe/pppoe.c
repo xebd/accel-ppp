@@ -264,7 +264,7 @@ static int pppoe_rad_send_accounting_request(struct rad_plugin_t *rad, struct ra
 static void pppoe_conn_ctx_switch(struct triton_context_t *ctx, void *arg)
 {
 	struct pppoe_conn_t *conn = arg;
-	net = conn->serv->net;
+	net = conn->ppp.ses.net;
 	log_switch(ctx, &conn->ppp.ses);
 }
 
@@ -400,6 +400,7 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 
 	ppp_init(&conn->ppp);
 
+	conn->ppp.ses.net = serv->net;
 	conn->ppp.ses.ctrl = &conn->ctrl;
 	conn->ppp.ses.chan_name = conn->ctrl.calling_station_id;
 
@@ -1266,7 +1267,7 @@ static void pppoe_serv_timeout(struct triton_timer_t *t)
 	pppoe_server_free(serv);
 }
 
-static int parse_server(const char *opt, int *padi_limit, const struct ap_net **net)
+static int parse_server(const char *opt, int *padi_limit, struct ap_net **net)
 {
 	char *ptr, *endptr;
 	char name[64];
@@ -1374,7 +1375,7 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli,
 	struct pppoe_serv_t *serv;
 	struct ifreq ifr;
 	int padi_limit = conf_padi_limit;
-	const struct ap_net *net = &def_net;
+	struct ap_net *net = def_net;
 
 	if (parse_server(opt, &padi_limit, &net)) {
 		if (cli)
@@ -1462,7 +1463,7 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli,
 		goto out_err;
 	}
 
-	if (parent_ifindex == -1 && net == &def_net)
+	if (parent_ifindex == -1 && net == def_net)
 		vid = iplink_vlan_get_vid(ifr.ifr_ifindex, &parent_ifindex);
 
 	serv->ctx.close = pppoe_serv_close;
