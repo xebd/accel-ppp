@@ -247,10 +247,22 @@ static void destablish_ppp(struct ppp_t *ppp)
 	if (conf_unit_cache) {
 		struct ifreq ifr;
 
+		if (ppp->ses.net != def_net) {
+			if (net->move_link(def_net, ppp->ses.ifindex)) {
+				log_ppp_warn("failed to attach to default namespace\n");
+				triton_md_unregister_handler(&ppp->unit_hnd, 1);
+				ap_session_finished(&ppp->ses);
+				goto skip;
+			}
+			ppp->ses.net = def_net;
+			net = def_net;
+		}
+
 		sprintf(ifr.ifr_newname, "ppp%i", ppp->ses.unit_idx);
 		if (strcmp(ifr.ifr_newname, ppp->ses.ifname)) {
 			strncpy(ifr.ifr_name, ppp->ses.ifname, IFNAMSIZ);
 			if (net->sock_ioctl(SIOCSIFNAME, &ifr)) {
+				log_ppp_warn("failed to rename ppp to default name\n");
 				triton_md_unregister_handler(&ppp->unit_hnd, 1);
 				ap_session_finished(&ppp->ses);
 				goto skip;
