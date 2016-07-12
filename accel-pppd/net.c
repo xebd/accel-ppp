@@ -171,7 +171,7 @@ static int def_move_link(struct ap_net *new_net, int ifindex)
 		struct ifinfomsg i;
 		char buf[1024];
 	} req;
-	struct rtnl_handle *rth = new_net->rtnl_get();
+	struct rtnl_handle *rth = net->rtnl_get();
 	struct kern_net *n = container_of(new_net, typeof(*n), net);
 	int r = 0;
 
@@ -196,7 +196,7 @@ static int def_move_link(struct ap_net *new_net, int ifindex)
 
 	//setns(def_ns_fd, CLONE_NEWNET);
 
-	new_net->rtnl_put(rth);
+	net->rtnl_put(rth);
 
 	return r;
 }
