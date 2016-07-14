@@ -188,13 +188,8 @@ static int def_move_link(struct ap_net *new_net, int ifindex)
 
 	addattr_l(&req.n, 4096, IFLA_NET_NS_FD, &n->ns_fd, sizeof(n->ns_fd));
 
-	//if (setns(n->ns_fd, CLONE_NEWNET))
-	//perror("setns");
-
 	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
 		r = -1;
-
-	//setns(def_ns_fd, CLONE_NEWNET);
 
 	net->rtnl_put(rth);
 
