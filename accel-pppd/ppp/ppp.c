@@ -251,7 +251,6 @@ static void destablish_ppp(struct ppp_t *ppp)
 			if (net->move_link(def_net, ppp->ses.ifindex)) {
 				log_ppp_warn("failed to attach to default namespace\n");
 				triton_md_unregister_handler(&ppp->unit_hnd, 1);
-				ap_session_finished(&ppp->ses);
 				goto skip;
 			}
 			ppp->ses.net = def_net;
@@ -264,13 +263,10 @@ static void destablish_ppp(struct ppp_t *ppp)
 			if (net->sock_ioctl(SIOCSIFNAME, &ifr)) {
 				log_ppp_warn("failed to rename ppp to default name\n");
 				triton_md_unregister_handler(&ppp->unit_hnd, 1);
-				ap_session_finished(&ppp->ses);
 				goto skip;
 			}
 		}
 	}
-
-	ap_session_finished(&ppp->ses);
 
 	if (conf_unit_cache) {
 		triton_md_unregister_handler(&ppp->unit_hnd, 0);
@@ -282,6 +278,8 @@ static void destablish_ppp(struct ppp_t *ppp)
 		triton_md_unregister_handler(&ppp->unit_hnd, 1);
 
 skip:
+	ap_session_finished(&ppp->ses);
+
 	ppp->unit_fd = -1;
 
 	destroy_ppp_channel(ppp);
