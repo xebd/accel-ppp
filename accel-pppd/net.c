@@ -9,12 +9,23 @@
 #include <errno.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
+#include <sys/syscall.h>
 
+#include "config.h"
 #include "triton.h"
 #include "log.h"
 #include "libnetlink.h"
 #include "ap_net.h"
 #include "memdebug.h"
+
+#ifndef HAVE_SETNS
+#ifdef SYS_setns
+int setns(int fd, int nstype)
+{
+	return syscall(SYS_setns, fd, nstype);
+}
+#endif
+#endif
 
 struct kern_net {
 	struct ap_net net;
@@ -109,16 +120,20 @@ static int def_sock6_ioctl(unsigned long request, void *arg)
 
 static void enter_ns()
 {
+#ifdef SYS_setns
 	if (net != def_net) {
 		struct kern_net *n = container_of(net, typeof(*n), net);
 		setns(n->ns_fd, CLONE_NEWNET);
 	}
+#endif
 }
 
 static void exit_ns()
 {
+#ifdef SYS_setns
 	if (net != def_net)
 		setns(def_ns_fd, CLONE_NEWNET);
+#endif
 }
 
 static struct rtnl_handle *def_rtnl_get()
@@ -166,6 +181,7 @@ static int def_rtnl_open(struct rtnl_handle *rth, int proto)
 
 static int def_move_link(struct ap_net *new_net, int ifindex)
 {
+#ifdef SYS_setns
 	struct iplink_req {
 		struct nlmsghdr n;
 		struct ifinfomsg i;
@@ -194,6 +210,9 @@ static int def_move_link(struct ap_net *new_net, int ifindex)
 	net->rtnl_put(rth);
 
 	return r;
+#else
+	return -1;
+#endif
 }
 
 static void def_release(struct ap_net *d)
@@ -232,6 +251,7 @@ static struct ap_net *alloc_net(const char *name)
 {
 	struct kern_net *n;
 	struct ap_net *net;
+#ifdef SYS_setns
 	int ns_fd;
 
 	if (name) {
@@ -252,6 +272,7 @@ static struct ap_net *alloc_net(const char *name)
 		def_ns_fd = ns_fd = open("/proc/self/ns/net", O_RDONLY);
 
 	log_debug("open ns %s\n", name);
+#endif
 
 	n = _malloc(sizeof(*n));
 	net = &n->net;
@@ -280,15 +301,16 @@ static struct ap_net *alloc_net(const char *name)
 	net->move_link = def_move_link;
 	net->release = def_release;
 
-	n->ns_fd = ns_fd;
-
 	n->sock = socket(AF_INET, SOCK_DGRAM, 0);
 	n->sock6 = socket(AF_INET6, SOCK_DGRAM, 0);
 	n->rth = _malloc(sizeof(*n->rth));
 	rtnl_open(n->rth, 0);
 
+#ifdef SYS_setns
+	n->ns_fd = ns_fd;
 	if (ns_fd != def_ns_fd)
 		setns(def_ns_fd, CLONE_NEWNET);
+#endif
 
 	list_add_tail(&net->entry, &nets);
 
@@ -331,6 +353,7 @@ __export struct ap_net *ap_net_find(const char *name)
 
 __export struct ap_net *ap_net_open_ns(const char *name)
 {
+#ifdef SYS_setns
 	struct ap_net *n;
 
 	pthread_mutex_lock(&nets_lock);
@@ -340,6 +363,10 @@ __export struct ap_net *ap_net_open_ns(const char *name)
 	pthread_mutex_unlock(&nets_lock);
 
 	return n;
+#else
+	log_ppp_error("netns is not suppotred\n");
+	return NULL;
+#endif
 }
 
 static void __init init()
