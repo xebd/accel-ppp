@@ -525,13 +525,9 @@ static void build_addr(struct ipv6db_addr_t *a, uint64_t intf_id, struct in6_add
 static void fill_env(char **env, char *mem, struct pppd_compat_pd *pd)
 {
 	struct ap_session *ses = pd->ses;
-	uint64_t tx_bytes, rx_bytes;
 	size_t mem_sz = ENV_MEM;
 	int write_sz;
 	int n = 0;
-
-	tx_bytes = (uint64_t)ses->acct_tx_bytes + 4294967296llu*ses->acct_output_gigawords;
-	rx_bytes = (uint64_t)ses->acct_rx_bytes + 4294967296llu*ses->acct_input_gigawords;
 
 	env[n] = mem;
 	write_sz = snprintf(mem, mem_sz, "PEERNAME=%s", pd->ses->username);
@@ -599,6 +595,13 @@ static void fill_env(char **env, char *mem, struct pppd_compat_pd *pd)
 	}
 
 	if (pd->ses->stop_time) {
+		uint64_t gword_sz = (uint64_t)UINT32_MAX + 1;
+		uint64_t tx_bytes;
+		uint64_t rx_bytes;
+
+		tx_bytes = ses->acct_tx_bytes + gword_sz * ses->acct_output_gigawords;
+		rx_bytes = ses->acct_rx_bytes + gword_sz * ses->acct_input_gigawords;
+
 		env[n] = mem;
 		write_sz = snprintf(mem, mem_sz, "CONNECT_TIME=%lu",
 				    (unsigned long)(pd->ses->stop_time -
