@@ -526,48 +526,108 @@ static void fill_env(char **env, char *mem, struct pppd_compat_pd *pd)
 {
 	struct ap_session *ses = pd->ses;
 	uint64_t tx_bytes, rx_bytes;
+	size_t mem_sz = ENV_MEM;
+	int write_sz;
 	int n = 0;
 
 	tx_bytes = (uint64_t)ses->acct_tx_bytes + 4294967296llu*ses->acct_output_gigawords;
 	rx_bytes = (uint64_t)ses->acct_rx_bytes + 4294967296llu*ses->acct_input_gigawords;
 
-	env[n++] = mem;
-	mem += sprintf(mem, "PEERNAME=%s", pd->ses->username) + 1;
-	env[n++] = mem;
-	mem += sprintf(mem, "CALLING_SID=%s", pd->ses->ctrl->calling_station_id) + 1;
-	env[n++] = mem;
-	mem += sprintf(mem, "CALLED_SID=%s", pd->ses->ctrl->called_station_id) + 1;
+	env[n] = mem;
+	write_sz = snprintf(mem, mem_sz, "PEERNAME=%s", pd->ses->username);
+	if (write_sz < 0 || write_sz >= mem_sz)
+		goto out;
+	mem_sz -= write_sz + 1;
+	mem += write_sz + 1;
+	++n;
+
+	env[n] = mem;
+	write_sz = snprintf(mem, mem_sz, "CALLING_SID=%s",
+			    pd->ses->ctrl->calling_station_id);
+	if (write_sz < 0 || write_sz >= mem_sz)
+		goto out;
+	mem_sz -= write_sz + 1;
+	mem += write_sz + 1;
+	++n;
+
+	env[n] = mem;
+	write_sz = snprintf(mem, mem_sz, "CALLED_SID=%s",
+			    pd->ses->ctrl->called_station_id);
+	if (write_sz < 0 || write_sz >= mem_sz)
+		goto out;
+	mem_sz -= write_sz + 1;
+	mem += write_sz + 1;
+	++n;
 
 	if (ses->ipv6) {
 		///FIXME only first address is passed to env
-		struct ipv6db_addr_t *a = list_first_entry(&ses->ipv6->addr_list, typeof(*a), entry);
+		struct ipv6db_addr_t *a = list_first_entry(&ses->ipv6->addr_list,
+							   typeof(*a), entry);
+		char ip6_buf[INET6_ADDRSTRLEN];
 		struct in6_addr addr;
+
 		build_addr(a, ses->ipv6->peer_intf_id, &addr);
-		env[n++] = mem;
-		strcpy(mem, "IPV6_PREFIX="); mem += 12;
-		inet_ntop(AF_INET6, &addr, mem, ENV_MEM); mem = strchr(mem, 0);
-		mem += sprintf(mem, "/%i", a->prefix_len) + 1;
+
+		env[n] = mem;
+		write_sz = snprintf(mem, mem_sz, "IPV6_PREFIX=%s/%i",
+				    inet_ntop(AF_INET6, &addr, ip6_buf,
+					      sizeof(ip6_buf)),
+				    a->prefix_len);
+		if (write_sz < 0 || write_sz >= mem_sz)
+			goto out;
+		mem_sz -= write_sz + 1;
+		mem += write_sz + 1;
+		++n;
 	}
 
 	if (ses->ipv6_dp) {
 		///FIXME only first prefix is passed to env
-		struct ipv6db_addr_t *a = list_first_entry(&ses->ipv6_dp->prefix_list, typeof(*a), entry);
-		env[n++] = mem;
-		strcpy(mem, "IPV6_DELEGATED_PREFIX="); mem += 22;
-		inet_ntop(AF_INET6, &a->addr, mem, ENV_MEM); mem = strchr(mem, 0);
-		mem += sprintf(mem, "/%i", a->prefix_len) + 1;
+		struct ipv6db_addr_t *a = list_first_entry(&ses->ipv6_dp->prefix_list,
+							   typeof(*a), entry);
+		char ip6_buf[INET6_ADDRSTRLEN];
+
+		env[n] = mem;
+		write_sz = snprintf(mem, mem_sz, "IPV6_DELEGATED_PREFIX=%s/%i",
+				    inet_ntop(AF_INET6, &a->addr, ip6_buf,
+					      sizeof(ip6_buf)),
+				    a->prefix_len);
+		if (write_sz < 0 || write_sz >= mem_sz)
+			goto out;
+		mem_sz -= write_sz + 1;
+		mem += write_sz + 1;
+		++n;
 	}
 
 	if (pd->ses->stop_time) {
-		env[n++] = mem;
-		mem += sprintf(mem, "CONNECT_TIME=%lu", (unsigned long)(pd->ses->stop_time - pd->ses->start_time)) + 1;
-		env[n++] = mem;
-		mem += sprintf(mem, "BYTES_SENT=%" PRIu64, tx_bytes) + 1;
-		env[n++] = mem;
-		mem += sprintf(mem, "BYTES_RCVD=%" PRIu64, rx_bytes) + 1;
+		env[n] = mem;
+		write_sz = snprintf(mem, mem_sz, "CONNECT_TIME=%lu",
+				    (unsigned long)(pd->ses->stop_time -
+						    pd->ses->start_time));
+		if (write_sz < 0 || write_sz >= mem_sz)
+			goto out;
+		mem_sz -= write_sz + 1;
+		mem += write_sz + 1;
+		++n;
+
+		env[n] = mem;
+		write_sz = snprintf(mem, mem_sz, "BYTES_SENT=%" PRIu64,
+				    tx_bytes);
+		if (write_sz < 0 || write_sz >= mem_sz)
+			goto out;
+		mem_sz -= write_sz + 1;
+		mem += write_sz + 1;
+		++n;
+
+		env[n] = mem;
+		write_sz = snprintf(mem, mem_sz, "BYTES_RCVD=%" PRIu64,
+				    rx_bytes);
+		if (write_sz < 0 || write_sz >= mem_sz)
+			goto out;
+		++n;
 	}
 
-	env[n++] = NULL;
+out:
+	env[n] = NULL;
 }
 
 static void init(void)
