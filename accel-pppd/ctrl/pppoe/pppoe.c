@@ -762,7 +762,7 @@ static void pppoe_send_PADO(struct pppoe_serv_t *serv, const uint8_t *addr, cons
 	if (conf_service_name[0]) {
 		int i = 0;
 		do {
-		    add_tag(pack, TAG_SERVICE_NAME, (uint8_t *)conf_service_name, strlen(conf_service_name[i]));
+		    add_tag(pack, TAG_SERVICE_NAME, (uint8_t *)conf_service_name[i], strlen(conf_service_name[i]));
 		    i++;
 		} while(conf_service_name[i]);
 	}
