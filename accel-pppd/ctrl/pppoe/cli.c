@@ -170,9 +170,15 @@ static int show_service_name_exec(const char *cmd, char * const *f, int f_cnt, v
 	if (f_cnt != 3)
 		return CLI_CMD_SYNTAX;
 
-	if (conf_service_name)
-		cli_sendv(cli, "%s\r\n", conf_service_name);
-	else
+	if (conf_service_name[0]) {
+		int i = 0;
+		do {
+		    cli_sendv(cli, "%s", conf_service_name[i]);
+		    i++;
+		    if (conf_service_name[i]) { cli_sendv(cli, ","); }
+		} while(conf_service_name[i]);
+		cli_sendv(cli, "\r\n");
+	} else
 		cli_sendv(cli, "*\r\n");
 
 	return CLI_CMD_OK;
@@ -219,13 +225,27 @@ static int set_service_name_exec(const char *cmd, char * const *f, int f_cnt, vo
 	if (f_cnt != 4)
 		return CLI_CMD_SYNTAX;
 
-	if (conf_service_name)
-		_free(conf_service_name);
-
+	if (conf_service_name[0]) {
+		int i = 0;
+		do {
+		    _free(conf_service_name[i]);
+		    i++;
+		} while(conf_service_name[i]);
+		conf_service_name[0] = NULL;
+	}
 	if (!strcmp(f[3], "*"))
-		conf_service_name = NULL;
-	else
-		conf_service_name = _strdup(f[3]);
+		conf_service_name[0] = NULL;
+	else {
+	    char *conf_service_name_string = _strdup(f[3]);
+	    char *p = strtok (conf_service_name_string, ",");
+	    int i = 0;
+	    while (p != NULL && i<255) {
+		conf_service_name[i++] = _strdup(p);
+		p = strtok(NULL, ",");
+	    }
+	    conf_service_name[i] = NULL;
+	    _free(conf_service_name_string);
+	}
 
 	return CLI_CMD_OK;
 }

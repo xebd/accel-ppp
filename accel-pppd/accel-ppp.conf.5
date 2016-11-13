@@ -478,6 +478,10 @@ Specifies AC-Name tag value. If absent tag will not be sent.
 .BI "service-name=" service-name
 Specifies Service-Name to respond. If absent any Service-Name is acceptable and client's Service-Name will be sent back.
 .TP
+.BI "accept-any-service=" n
+If service-name specified still will answer with service names, but accepts any service name in PADR request. Useful 
+for scenarios, where selection of PPPoE done by client, based on service names in PADO.
+.TP
 .BI "pado-delay=" delay[,delay1:count1[,delay2:count2[,...]]]
 Specifies delays (also in condition of connection count) to send PADO (ms).
 Last delay in list may be -1 which means don't accept new connections.
