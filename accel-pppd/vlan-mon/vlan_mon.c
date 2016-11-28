@@ -18,6 +18,7 @@
 #include "genl.h"
 #include "libnetlink.h"
 #include "iputils.h"
+#include "ap_net.h"
 
 #include "vlan_mon.h"
 #include "if_vlan_mon.h"
@@ -503,6 +504,12 @@ static void vlan_mon_mc_close(struct triton_context_t *ctx)
 	triton_context_unregister(ctx);
 }
 
+static void mc_ctx_switch(struct triton_context_t *ctx, void *arg)
+{
+	net = def_net;
+	log_switch(NULL, NULL);
+}
+
 static struct triton_context_t mc_ctx = {
 	.close = vlan_mon_mc_close,
 };
@@ -531,6 +538,7 @@ static void init(void)
 	fcntl(rth.fd, F_SETFL, O_NONBLOCK);
 	fcntl(rth.fd, F_SETFD, fcntl(rth.fd, F_GETFD) | FD_CLOEXEC);
 
+	mc_ctx.before_switch = mc_ctx_switch;
 	triton_context_register(&mc_ctx, NULL);
 	mc_hnd.fd = rth.fd;
 	triton_md_register_handler(&mc_ctx, &mc_hnd);
