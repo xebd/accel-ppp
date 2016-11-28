@@ -606,8 +606,16 @@ static void ipoe_mc_close(struct triton_context_t *ctx)
 	triton_context_unregister(ctx);
 }
 
+static void ipoe_mc_ctx_switch(struct triton_context_t *ctx, void *arg)
+{
+	net = def_net;
+	log_switch(NULL, NULL);
+}
+
+
 static struct triton_context_t mc_ctx = {
 	.close = ipoe_mc_close,
+	.before_switch = ipoe_mc_ctx_switch,
 };
 
 static struct triton_md_handler_t mc_hnd = {
