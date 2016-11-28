@@ -1139,7 +1139,8 @@ static void ipoe_session_terminated(struct ipoe_session *ses)
 	if (ses->l4_redirect_set)
 		ipoe_change_l4_redirect(ses, 1);
 
-	ap_session_finished(&ses->ses);
+	if (!ses->ses.terminated)
+		ap_session_finished(&ses->ses);
 }
 
 static void ipoe_session_terminated_pkt(struct dhcpv4_packet *pack)
