@@ -814,7 +814,7 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 			ses->router = ses->serv->opt_src;
 
 		if (!ses->router)
-			ses->siaddr = iproute_get(ses->yiaddr, NULL);
+			ses->router = iproute_get(ses->yiaddr, NULL);
 
 		if (!ses->router) {
 			log_ppp_error("can't determine router address\n");
