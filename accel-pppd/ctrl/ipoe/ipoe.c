@@ -156,7 +156,6 @@ static int conf_proto;
 static LIST_HEAD(conf_offer_delay);
 static const char *conf_vlan_name;
 static int conf_ip_unnumbered;
-static int conf_ip_unnumbered_peer_mode;
 static int conf_check_mac_change;
 static int conf_soft_terminate;
 static int conf_calling_sid = SID_MAC;
@@ -884,16 +883,7 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 
 	if (ses->ifindex == -1) {
 		if (serv->opt_ifcfg)
-			if(conf_ip_unnumbered && conf_ip_unnumbered_peer_mode) {
-				ipaddr_add_peer(serv->ifindex, ses->router, 32, ses->yiaddr);
-			} else {
-				ipaddr_add(serv->ifindex, ses->router, conf_ip_unnumbered ? 32 : ses->mask);
-			}
-		else if (!conf_ip_unnumbered)
-			iproute_add(serv->ifindex, ses->router, ses->yiaddr, 0, conf_proto, ses->mask);
-
-		if (conf_ip_unnumbered && !conf_ip_unnumbered_peer_mode)
-			iproute_add(serv->ifindex, serv->opt_src ?: ses->router, ses->yiaddr, 0, conf_proto, 32);
+			ipaddr_add_peer(serv->ifindex, ses->router, 32, ses->yiaddr);
 	} else
 		ses->ctrl.dont_ifcfg = 0;
 
@@ -925,6 +915,13 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 	ses->started = 1;
 
 	ap_session_activate(&ses->ses);
+
+	if (ses->ifindex == -1) {
+		if (!conf_ip_unnumbered)
+			iproute_add(serv->ifindex, ses->router, ses->yiaddr, 0, conf_proto, ses->mask);
+		else if (!serv->opt_ifcfg)
+			iproute_add(serv->ifindex, serv->opt_src ?: ses->router, ses->yiaddr, 0, conf_proto, 32);
+	}
 
 	if (ses->l4_redirect)
 		ipoe_change_l4_redirect(ses, 0);
@@ -2676,7 +2673,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 
 	ioctl(sock_fd, SIOCGIFFLAGS, &ifr);
 
-	if ((ifr.ifr_flags & IFF_UP) && opt_shared == 0) {
+	if ((ifr.ifr_flags & IFF_UP) && opt_shared == 0 && opt_ifcfg) {
 		int flags = ifr.ifr_flags;
 
 		ifr.ifr_flags &= ~IFF_UP;
@@ -3478,12 +3475,6 @@ static void load_config(void)
 		conf_ip_unnumbered = atoi(opt);
 	else
 		conf_ip_unnumbered = 1;
-
-	opt = conf_get_opt("ipoe", "ip-unnumbered-peer-mode");
-	if (opt)
-		conf_ip_unnumbered_peer_mode = atoi(opt);
-	else
-		conf_ip_unnumbered_peer_mode = 0;
 
 	opt = conf_get_opt("ipoe", "idle-timeout");
 	if (opt)
