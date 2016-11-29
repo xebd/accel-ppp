@@ -627,9 +627,16 @@ static void ipoe_session_start(struct ipoe_session *ses)
 	char *username;
 	const char *pass;
 
-	if (ses->dhcpv4_request && conf_verbose) {
-		log_ppp_info2("recv ");
-		dhcpv4_print_packet(ses->dhcpv4_request, 0, log_ppp_info2);
+	if (conf_verbose) {
+		if (ses->dhcpv4_request) {
+			log_ppp_info2("recv ");
+			dhcpv4_print_packet(ses->dhcpv4_request, 0, log_ppp_info2);
+		} else if (ses->arph) {
+			char addr1[64], addr2[64];
+			u_inet_ntoa(ses->arph->ar_tpa, addr1);
+			u_inet_ntoa(ses->arph->ar_spa, addr2);
+			log_ppp_info2("recv [ARP Request who-has %s tell %s]\n", addr1, addr2);
+		}
 	}
 
 	__sync_add_and_fetch(&stat_starting, 1);
@@ -703,6 +710,24 @@ static void find_gw_addr(struct ipoe_session *ses)
 			return;
 		}
 	}
+}
+
+static void send_arp_reply(struct ipoe_serv *serv, struct _arphdr *arph)
+{
+	__be32 tpa = arph->ar_tpa;
+
+	if (conf_verbose) {
+		char addr[64];
+		u_inet_ntoa(arph->ar_tpa, addr);
+		log_ppp_info2("send [ARP Reply %s is-at %02x:%02x:%02x:%02x:%02x:%02x]\n", addr,
+			serv->hwaddr[0], serv->hwaddr[1], serv->hwaddr[2], serv->hwaddr[3], serv->hwaddr[4], serv->hwaddr[5]);
+	}
+
+	memcpy(arph->ar_tha, arph->ar_sha, ETH_ALEN);
+	memcpy(arph->ar_sha, serv->hwaddr, ETH_ALEN);
+	arph->ar_tpa = arph->ar_spa;
+	arph->ar_spa = tpa;
+	arp_send(serv->ifindex, arph);
 }
 
 static void __ipoe_session_start(struct ipoe_session *ses)
@@ -800,11 +825,6 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 
 		dhcpv4_packet_free(ses->dhcpv4_request);
 		ses->dhcpv4_request = NULL;
-
-		ses->timer.expire = ipoe_session_timeout;
-		ses->timer.period = 0;
-		ses->timer.expire_tv.tv_sec = conf_offer_timeout;
-		triton_timer_add(&ses->ctx, &ses->timer, 0);
 	} else {
 		if (!ses->router)
 			find_gw_addr(ses);
@@ -826,8 +846,20 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 
 		ses->siaddr = ses->router;
 
-		__ipoe_session_activate(ses);
+		if (ses->arph) {
+			send_arp_reply(ses->serv, ses->arph);
+			_free(ses->arph);
+			ses->arph = NULL;
+		} else {
+			__ipoe_session_activate(ses);
+			return;
+		}
 	}
+
+	ses->timer.expire = ipoe_session_timeout;
+	ses->timer.period = 0;
+	ses->timer.expire_tv.tv_sec = conf_offer_timeout;
+	triton_timer_add(&ses->ctx, &ses->timer, 0);
 }
 
 static void make_ipv6_intfid(uint64_t *intfid, const uint8_t *hwaddr)
@@ -846,8 +878,10 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 	uint32_t addr, gw = 0;
 	struct ipoe_serv *serv = ses->serv;
 
-	if (ses->terminating)
+	if (ses->terminating || ses->started)
 		return;
+
+	log_ppp_debug("ipoe: activate session\n");
 
 	if (ses->ifindex != -1) {
 		addr = 0;
@@ -891,19 +925,6 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 			ipaddr_add_peer(serv->ifindex, ses->router, 32, ses->yiaddr);
 	} else
 		ses->ctrl.dont_ifcfg = 0;
-
-	if (ses->arph) {
-		if (ses->arph->ar_tpa == ses->router) {
-			memcpy(ses->arph->ar_tha, ses->arph->ar_sha, ETH_ALEN);
-			memcpy(ses->arph->ar_sha, ses->serv->hwaddr, ETH_ALEN);
-			ses->arph->ar_tpa = ses->arph->ar_spa;
-			ses->arph->ar_spa = ses->router;
-			arp_send(ses->serv->ifindex, ses->arph);
-		}
-
-		_free(ses->arph);
-		ses->arph = NULL;
-	}
 
 	if (ses->serv->opt_mode == MODE_L2 && ses->serv->opt_ipv6 && sock6_fd != -1) {
 		ses->ses.ipv6 = ipdb_get_ipv6(&ses->ses);
@@ -1944,13 +1965,14 @@ void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph, struct _ar
 
 		pthread_mutex_lock(&serv->lock);
 
-		if (!serv->opt_shared && !list_empty(&serv->sessions)) {
-			pthread_mutex_unlock(&serv->lock);
-			break;
-		}
-
 		list_for_each_entry(ses, &serv->sessions, entry) {
 			if (ses->yiaddr == saddr) {
+				if (arph) {
+					if (!ses->arph)
+						send_arp_reply(serv, arph);
+				} else if (!ses->started)
+					triton_context_call(&ses->ctx, (triton_event_func)__ipoe_session_activate, ses);
+
 				pthread_mutex_unlock(&serv->lock);
 				pthread_mutex_unlock(&serv_lock);
 				return;
