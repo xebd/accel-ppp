@@ -350,6 +350,39 @@ int __export ipaddr_add(int ifindex, in_addr_t addr, int mask)
 	return 0;
 }
 
+int __export ipaddr_add_peer(int ifindex, in_addr_t addr, int mask, in_addr_t peer_addr)
+{
+	struct ipaddr_req {
+		struct nlmsghdr n;
+		struct ifaddrmsg i;
+		char buf[4096];
+	} req;
+	struct rtnl_handle *rth = net->rtnl_get();
+	int r = 0;
+
+	if (!rth)
+		return -1;
+
+	memset(&req, 0, sizeof(req) - 4096);
+
+	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
+	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE;
+	req.n.nlmsg_type = RTM_NEWADDR;
+	req.i.ifa_family = AF_INET;
+	req.i.ifa_index = ifindex;
+	req.i.ifa_prefixlen = mask;
+
+	addattr32(&req.n, sizeof(req), IFA_LOCAL, addr);
+	addattr32(&req.n, sizeof(req), IFA_ADDRESS, peer_addr);
+
+	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
+		r = -1;
+
+	net->rtnl_put(rth);
+
+	return r;
+}
+
 int __export ipaddr_del(int ifindex, in_addr_t addr, int mask)
 {
 	struct ipaddr_req {

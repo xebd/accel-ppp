@@ -13,6 +13,7 @@ int iplink_vlan_del(int ifindex);
 int iplink_vlan_get_vid(int ifindex, int *iflink);
 
 int ipaddr_add(int ifindex, in_addr_t addr, int mask);
+int ipaddr_add_peer(int ifindex, in_addr_t addr, int mask, in_addr_t peer_addr);
 int ipaddr_del(int ifindex, in_addr_t addr, int mask);
 
 int iproute_add(int ifindex, in_addr_t src, in_addr_t dst, in_addr_t gw, int proto, int mask);
