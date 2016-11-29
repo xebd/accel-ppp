@@ -357,8 +357,9 @@ int __export ipaddr_add_peer(int ifindex, in_addr_t addr, int mask, in_addr_t pe
 		struct ifaddrmsg i;
 		char buf[4096];
 	} req;
-	struct rtnl_handle *rth = net->rtnl_get();
-	int r = 0;
+
+	if (!rth)
+		open_rth();
 
 	if (!rth)
 		return -1;
@@ -376,11 +377,9 @@ int __export ipaddr_add_peer(int ifindex, in_addr_t addr, int mask, in_addr_t pe
 	addattr32(&req.n, sizeof(req), IFA_ADDRESS, peer_addr);
 
 	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
-		r = -1;
+		return -1;
 
-	net->rtnl_put(rth);
-
-	return r;
+	return 0;
 }
 
 int __export ipaddr_del(int ifindex, in_addr_t addr, int mask)
