@@ -41,6 +41,7 @@ struct ipoe_serv {
 	struct dhcpv4_relay *dhcpv4_relay;
 	void *arp;
 	struct list_head disc_list;
+	struct list_head arp_list;
 	struct list_head req_list;
 	struct triton_timer_t disc_timer;
 	struct triton_timer_t timer;
@@ -133,6 +134,7 @@ void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph, struct _ar
 struct ipoe_session *ipoe_session_alloc(const char *ifname);
 
 struct ipoe_serv *ipoe_find_serv(const char *ifname);
+void ipoe_serv_recv_arp(struct ipoe_serv *s, struct _arphdr *arph);
 
 void ipoe_nl_add_interface(int ifindex, uint8_t mode);
 void ipoe_nl_del_interface(int ifindex);
@@ -148,7 +150,7 @@ void ipoe_nl_del_net(uint32_t addr);
 
 void *arpd_start(struct ipoe_serv *ipoe);
 void arpd_stop(void *arp);
-void arp_send(int ifindex, struct _arphdr *arph);
+void arp_send(int ifindex, struct _arphdr *arph, int bc);
 
 #endif
 

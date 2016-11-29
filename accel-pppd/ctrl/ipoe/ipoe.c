@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <assert.h>
 #include <time.h>
+#include <limits.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <net/ethernet.h>
@@ -14,6 +15,7 @@
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 #include <linux/if.h>
+#include <linux/if_arp.h>
 #include <linux/route.h>
 
 #include <pcre.h>
@@ -74,6 +76,12 @@ struct disc_item {
 	struct list_head entry;
 	struct dhcpv4_packet *pack;
 	struct timespec ts;
+};
+
+struct arp_item {
+	struct list_head entry;
+	struct timespec ts;
+	struct _arphdr arph;
 };
 
 struct delay {
@@ -166,6 +174,7 @@ static unsigned int stat_delayed_offer;
 
 static mempool_t ses_pool;
 static mempool_t disc_item_pool;
+static mempool_t arp_item_pool;
 static mempool_t req_item_pool;
 
 static int connlimit_loaded;
@@ -200,6 +209,7 @@ static int ipoe_rad_send_auth_request(struct rad_plugin_t *rad, struct rad_packe
 static int ipoe_rad_send_acct_request(struct rad_plugin_t *rad, struct rad_packet_t *pack);
 static void ipoe_session_create_auto(struct ipoe_serv *serv);
 static void ipoe_serv_timeout(struct triton_timer_t *t);
+static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struct ethhdr *eth, struct iphdr *iph, struct _arphdr *arph);
 
 static void ipoe_ctx_switch(struct triton_context_t *ctx, void *arg)
 {
@@ -727,7 +737,7 @@ static void send_arp_reply(struct ipoe_serv *serv, struct _arphdr *arph)
 	memcpy(arph->ar_sha, serv->hwaddr, ETH_ALEN);
 	arph->ar_tpa = arph->ar_spa;
 	arph->ar_spa = tpa;
-	arp_send(serv->ifindex, arph);
+	arp_send(serv->ifindex, arph, 1);
 }
 
 static void __ipoe_session_start(struct ipoe_session *ses)
@@ -1449,36 +1459,79 @@ static void ipoe_ses_recv_dhcpv4_request(struct dhcpv4_packet *pack)
 static void ipoe_serv_disc_timer(struct triton_timer_t *t)
 {
 	struct ipoe_serv *serv = container_of(t, typeof(*serv), disc_timer);
-	struct disc_item *d;
 	struct timespec ts;
-	int delay, offer_delay;
+	int delay, delay1 = INT_MAX, delay2 = INT_MAX, offer_delay;
 
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 
 	while (!list_empty(&serv->disc_list)) {
-	  d = list_entry(serv->disc_list.next, typeof(*d), entry);
+		struct disc_item *d = list_entry(serv->disc_list.next, typeof(*d), entry);
 
 		delay = (ts.tv_sec - d->ts.tv_sec) * 1000 + (ts.tv_nsec - d->ts.tv_nsec) / 1000000;
 		offer_delay = get_offer_delay();
 
 		if (delay < offer_delay - 1) {
-			delay = offer_delay - delay;
-			t->expire_tv.tv_sec = delay / 1000;
-			t->expire_tv.tv_usec = (delay % 1000) * 1000;
-			triton_timer_mod(t, 0);
-			return;
+			delay1 = delay;
+			break;
 		}
 
 		__ipoe_recv_dhcpv4(serv->dhcpv4, d->pack, 1);
+		dhcpv4_packet_free(d->pack);
 
 		list_del(&d->entry);
-		dhcpv4_packet_free(d->pack);
 		mempool_free(d);
 
 		__sync_sub_and_fetch(&stat_delayed_offer, 1);
 	}
 
-	triton_timer_del(t);
+	while (!list_empty(&serv->arp_list)) {
+		struct arp_item *d = list_entry(serv->arp_list.next, typeof(*d), entry);
+
+		delay = (ts.tv_sec - d->ts.tv_sec) * 1000 + (ts.tv_nsec - d->ts.tv_nsec) / 1000000;
+		offer_delay = get_offer_delay();
+
+		if (delay < offer_delay - 1) {
+			delay2 = delay;
+			break;
+		}
+
+		ipoe_session_create_up(serv, NULL, NULL, &d->arph);
+
+		list_del(&d->entry);
+		mempool_free(d);
+
+		__sync_sub_and_fetch(&stat_delayed_offer, 1);
+	}
+
+	if (list_empty(&serv->disc_list) && list_empty(&serv->arp_list))
+		triton_timer_del(t);
+	else {
+		delay = delay1 < delay2 ? delay1 : delay2;
+		delay = offer_delay - delay;
+		t->expire_tv.tv_sec = delay / 1000;
+		t->expire_tv.tv_usec = (delay % 1000) * 1000;
+		triton_timer_mod(t, 0);
+	}
+}
+
+static void ipoe_serv_add_disc_arp(struct ipoe_serv *serv, struct _arphdr *arph, int offer_delay)
+{
+	struct arp_item *d = mempool_alloc(arp_item_pool);
+
+	if (!d)
+		return;
+
+	__sync_add_and_fetch(&stat_delayed_offer, 1);
+
+	memcpy(&d->arph, arph, sizeof(*arph));
+	clock_gettime(CLOCK_MONOTONIC, &d->ts);
+	list_add_tail(&d->entry, &serv->arp_list);
+
+	if (!serv->disc_timer.tpd) {
+		serv->disc_timer.expire_tv.tv_sec = offer_delay / 1000;
+		serv->disc_timer.expire_tv.tv_usec = (offer_delay % 1000) * 1000;
+		triton_timer_add(&serv->ctx, &serv->disc_timer, 0);
+	}
 }
 
 static void ipoe_serv_add_disc(struct ipoe_serv *serv, struct dhcpv4_packet *pack, int offer_delay)
@@ -1988,6 +2041,39 @@ void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph, struct _ar
 	pthread_mutex_unlock(&serv_lock);
 }
 
+void ipoe_serv_recv_arp(struct ipoe_serv *serv, struct _arphdr *arph)
+{
+	struct arp_item *d;
+
+	if (arph->ar_op == htons(ARPOP_REQUEST)) {
+		int offer_delay = get_offer_delay();
+
+		if (offer_delay == -1)
+			return;
+
+		list_for_each_entry(d, &serv->arp_list, entry) {
+			if (d->arph.ar_spa == arph->ar_spa)
+				return;
+		}
+
+		if (offer_delay)
+			ipoe_serv_add_disc_arp(serv, arph, offer_delay);
+		else
+			ipoe_session_create_up(serv, NULL, NULL, arph);
+	} else {
+		list_for_each_entry(d, &serv->arp_list, entry) {
+			if (d->arph.ar_spa == arph->ar_tpa) {
+				list_del(&d->entry);
+				mempool_free(d);
+
+				__sync_sub_and_fetch(&stat_delayed_offer, 1);
+
+				break;
+			}
+		}
+	}
+}
+
 #ifdef RADIUS
 static void ev_radius_access_accept(struct ev_radius_t *ev)
 {
@@ -2169,6 +2255,13 @@ static void ipoe_serv_release(struct ipoe_serv *serv)
 		struct disc_item *d = list_entry(serv->disc_list.next, typeof(*d), entry);
 		list_del(&d->entry);
 		dhcpv4_packet_free(d->pack);
+		mempool_free(d);
+		__sync_sub_and_fetch(&stat_delayed_offer, 1);
+	}
+
+	while (!list_empty(&serv->arp_list)) {
+		struct arp_item *d = list_entry(serv->arp_list.next, typeof(*d), entry);
+		list_del(&d->entry);
 		mempool_free(d);
 		__sync_sub_and_fetch(&stat_delayed_offer, 1);
 	}
@@ -2637,10 +2730,10 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 		if (!serv->dhcpv4_relay && serv->opt_dhcpv4 && opt_relay)
 			serv->dhcpv4_relay = dhcpv4_relay_create(opt_relay, opt_giaddr, &serv->ctx, (triton_event_func)ipoe_recv_dhcpv4_relay);
 
-		if (serv->arp && !conf_arp) {
+		if (serv->arp && !opt_arp && !opt_up) {
 			arpd_stop(serv->arp);
 			serv->arp = NULL;
-		} else if (!serv->arp && conf_arp)
+		} else if (!serv->arp && (opt_arp || opt_up))
 			serv->arp = arpd_start(serv);
 
 		serv->opt_up = opt_up;
@@ -2744,6 +2837,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	serv->active = 1;
 	INIT_LIST_HEAD(&serv->sessions);
 	INIT_LIST_HEAD(&serv->disc_list);
+	INIT_LIST_HEAD(&serv->arp_list);
 	INIT_LIST_HEAD(&serv->req_list);
 	memcpy(serv->hwaddr, hwaddr, ETH_ALEN);
 	serv->disc_timer.expire = ipoe_serv_disc_timer;
@@ -3563,6 +3657,7 @@ static void ipoe_init(void)
 {
 	ses_pool = mempool_create(sizeof(struct ipoe_session));
 	disc_item_pool = mempool_create(sizeof(struct disc_item));
+	arp_item_pool = mempool_create(sizeof(struct arp_item));
 	req_item_pool = mempool_create(sizeof(struct request_item));
 	uc_pool = mempool_create(sizeof(struct unit_cache));
 

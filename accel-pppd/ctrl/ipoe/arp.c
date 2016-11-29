@@ -39,6 +39,8 @@ struct arp_tree {
 static mempool_t arp_pool;
 static mempool_t arp_hdr_pool;
 
+static uint8_t bc_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+
 #define HASH_BITS 0xff
 static struct arp_tree *arp_tree;
 
@@ -63,6 +65,12 @@ static void arp_ctx_read(struct _arphdr *ah)
 	ah2.ar_op = htons(ARPOP_REPLY);
 
 	pthread_mutex_lock(&ipoe->lock);
+	if (ah->ar_op == htons(ARPOP_REPLY)) {
+		ipoe_serv_recv_arp(ipoe, ah);
+		pthread_mutex_unlock(&ipoe->lock);
+		goto out;
+	}
+
 	list_for_each_entry(ses, &ipoe->sessions, entry) {
 		if (ses->yiaddr == ah->ar_spa) {
 			ses1 = ses;
@@ -80,8 +88,14 @@ static void arp_ctx_read(struct _arphdr *ah)
 			break;
 	}
 
-	if (!ses1 || (ses1->ses.state != AP_STATE_ACTIVE) ||
-			(ses2 && ses2->ses.state != AP_STATE_ACTIVE)) {
+	if (!ses1 && ipoe->opt_up) {
+		ipoe_serv_recv_arp(ipoe, ah);
+		pthread_mutex_unlock(&ipoe->lock);
+		goto out;
+	}
+
+	if (!ipoe->opt_arp || !ses1 || ses1->arph ||
+		(ses2 && ses2->ses.state != AP_STATE_ACTIVE)) {
 		pthread_mutex_unlock(&ipoe->lock);
 		goto out;
 	}
@@ -112,7 +126,7 @@ out:
 	mempool_free(ah);
 }
 
-void arp_send(int ifindex, struct _arphdr *arph)
+void arp_send(int ifindex, struct _arphdr *arph, int broadcast)
 {
 	struct sockaddr_ll dst;
 
@@ -120,7 +134,10 @@ void arp_send(int ifindex, struct _arphdr *arph)
 	dst.sll_family = AF_PACKET;
 	dst.sll_ifindex = ifindex;
 	dst.sll_protocol = htons(ETH_P_ARP);
-	memcpy(dst.sll_addr, arph->ar_tha, ETH_ALEN);
+	if (broadcast)
+		memcpy(dst.sll_addr, bc_addr, ETH_ALEN);
+	else
+		memcpy(dst.sll_addr, arph->ar_tha, ETH_ALEN);
 
 	arph->ar_op = htons(ARPOP_REPLY);
 
@@ -151,8 +168,13 @@ static int arp_read(struct triton_md_handler_t *h)
 		if (r < sizeof(*ah))
 			continue;
 
-		if (ah->ar_op != htons(ARPOP_REQUEST))
-			continue;
+		if (ah->ar_op != htons(ARPOP_REQUEST)) {
+			if (ah->ar_op != htons(ARPOP_REPLY))
+				continue;
+
+			if (memcmp(src.sll_addr, bc_addr, ETH_ALEN))
+				continue;
+		}
 
 		if (ah->ar_pln != 4)
 			continue;

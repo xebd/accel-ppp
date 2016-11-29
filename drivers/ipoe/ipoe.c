@@ -703,7 +703,6 @@ static rx_handler_result_t ipoe_recv(struct sk_buff **pskb)
 	struct net_device *out = NULL;
 	struct ipoe_session *ses = NULL;
 	struct iphdr *iph = NULL;
-	struct _arphdr *arph = NULL;
 	struct ethhdr *eth = eth_hdr(skb);
 	int noff;
 	struct net_device_stats *stats;
@@ -724,7 +723,9 @@ static rx_handler_result_t ipoe_recv(struct sk_buff **pskb)
 		iph = ip_hdr(skb);
 		saddr = iph->saddr;
 
-	} else if (likely(skb->protocol == htons(ETH_P_ARP))) {
+	} /*else if (likely(skb->protocol == htons(ETH_P_ARP))) {
+		struct _arphdr *arph = NULL;
+
 		noff = skb_network_offset(skb);
 
 		if (skb->len < sizeof(*arph))
@@ -745,7 +746,7 @@ static rx_handler_result_t ipoe_recv(struct sk_buff **pskb)
 			return RX_HANDLER_PASS;
 
 		saddr = arph->ar_sip;
-	} else
+	}*/ else
 		return RX_HANDLER_PASS;
 
 	if (!saddr || saddr == 0xffffffff)
