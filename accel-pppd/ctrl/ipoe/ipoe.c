@@ -3277,9 +3277,6 @@ static void load_vlan_mon(struct conf_sect_t *sect)
 	long mask[4096/8/sizeof(long)];
 	static int registered = 0;
 
-	if (!triton_module_loaded("vlan-mon"))
-		return;
-
 	if (!registered) {
 		vlan_mon_register_proto(ETH_P_IP, ipoe_vlan_mon_notify);
 		registered = 1;
