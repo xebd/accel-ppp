@@ -932,8 +932,10 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 
 	if (ses->ifindex == -1) {
 		if (serv->opt_ifcfg)
-			ipaddr_add_peer(serv->ifindex, ses->router, 32, ses->yiaddr);
-	} else
+			ipaddr_add_peer(serv->ifindex, ses->router, ses->yiaddr);
+	} else if (ses->ses.ipv4->peer_addr != ses->yiaddr)
+		ipaddr_add_peer(ses->ifindex, ses->router, ses->yiaddr);
+	else
 		ses->ctrl.dont_ifcfg = 0;
 
 	if (ses->serv->opt_mode == MODE_L2 && ses->serv->opt_ipv6 && sock6_fd != -1) {
@@ -1061,6 +1063,9 @@ static void ipoe_session_started(struct ap_session *s)
 		}
 		ses->dhcpv4->recv = ipoe_ses_recv_dhcpv4;
 	}
+
+	if (ses->ses.ipv4->peer_addr != ses->yiaddr)
+		iproute_add(ses->ifindex, ses->ses.ipv4->addr, ses->ses.ipv4->peer_addr, 0, conf_proto, 32);
 }
 
 static void ipoe_session_free(struct ipoe_session *ses)
@@ -1107,11 +1112,23 @@ static void ipoe_session_finished(struct ap_session *s)
 	struct ipoe_session *ses = container_of(s, typeof(*ses), ses);
 	struct ipoe_serv *serv = ses->serv;
 	struct unit_cache *uc;
+	struct ifreq ifr;
 
 	log_ppp_info1("ipoe: session finished\n");
 
 	if (ses->ifindex != -1) {
-		if (uc_size < conf_unit_cache && !ipoe_nl_modify(ses->ifindex, 0, 0, 0, 0, NULL)) {
+		if (uc_size < conf_unit_cache) {
+			strcpy(ifr.ifr_name, s->ifname);
+			ioctl(sock_fd, SIOCGIFFLAGS, &ifr);
+			if (ifr.ifr_flags & IFF_UP) {
+				ifr.ifr_flags &= ~IFF_UP;
+				ioctl(sock_fd, SIOCSIFFLAGS, &ifr);
+			}
+
+			ipaddr_del_peer(ses->ifindex, ses->router, ses->yiaddr);
+
+			ipoe_nl_modify(ses->ifindex, 0, 0, 0, 0, NULL);
+
 			uc = mempool_alloc(uc_pool);
 			uc->ifindex = ses->ifindex;
 			pthread_mutex_lock(&uc_lock);
@@ -1141,7 +1158,6 @@ static void ipoe_session_finished(struct ap_session *s)
 	triton_event_fire(EV_CTRL_FINISHED, s);
 
 	if (s->ifindex == ses->serv->ifindex && strcmp(s->ifname, ses->serv->ifname)) {
-		struct ifreq ifr;
 		int flags;
 
 		log_info2("ipoe: rename %s to %s\n", s->ifname, ses->serv->ifname);

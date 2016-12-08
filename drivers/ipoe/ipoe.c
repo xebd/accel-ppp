@@ -138,6 +138,8 @@ static int ipoe_do_nat(struct sk_buff *skb, __be32 new_addr, int to_peer);
 static int ipoe_queue_u(struct sk_buff *skb, __be32 addr);
 static int ipoe_lookup1_u(__be32 addr, unsigned long *ts);
 
+static struct net *pick_net(struct sk_buff *skb);
+
 static const struct net_device_ops ipoe_netdev_ops;
 
 static struct genl_family ipoe_nl_family;
@@ -219,6 +221,33 @@ static int ipoe_check_exclude(__be32 addr)
 	}
 
 	rcu_read_unlock();
+
+	return r;
+}
+
+static int check_nat_required(struct sk_buff *skb, struct net_device *link)
+{
+	struct net *net = pick_net(skb);
+	struct rtable *rt;
+	struct flowi4 fl4;
+	struct iphdr *iph = ip_hdr(skb);
+	int r = 0;
+
+	if (!list_empty(&ipoe_networks))
+		return ipoe_check_network(iph->daddr) == 0;
+
+	memset(&fl4, 0, sizeof(fl4));
+	fl4.daddr = iph->daddr;
+	fl4.flowi4_tos = RT_TOS(0);
+	fl4.flowi4_scope = RT_SCOPE_UNIVERSE;
+	rt = ip_route_output_key(net, &fl4);
+	if (IS_ERR(rt))
+		return 0;
+
+	if (rt->rt_gateway || (rt->dst.dev != link && rt->dst.dev != skb->dev))
+		r = 1;
+
+	ip_rt_put(rt);
 
 	return r;
 }
@@ -789,7 +818,7 @@ static rx_handler_result_t ipoe_recv(struct sk_buff **pskb)
 	else if (memcmp(eth->h_source, ses->hwaddr, ETH_ALEN))
 		goto drop;
 
-	if (ses->addr > 1 && ipoe_do_nat(skb, ses->addr, 0))
+	if (ses->addr > 1 && check_nat_required(skb, ses->link_dev) && ipoe_do_nat(skb, ses->addr, 0))
 		goto drop;
 
 	skb->dev = ses->dev;
