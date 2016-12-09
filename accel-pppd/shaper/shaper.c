@@ -443,7 +443,7 @@ static void ev_shaper(struct ev_shaper_t *ev)
 	if (!pd->idx)
 		pd->idx = alloc_idx(pd->ses->ifindex);
 
-	if (pd->down_speed > 0 && pd->up_speed > 0) {
+	if (pd->down_speed > 0 || pd->up_speed > 0) {
 		if (!install_limiter(ev->ses, down_speed, down_burst, up_speed, up_burst, pd->idx)) {
 			if (conf_verbose)
 				log_ppp_info2("shaper: installed shaper %i/%i (Kbit)\n", down_speed, up_speed);
@@ -483,7 +483,7 @@ static void ev_ppp_pre_up(struct ap_session *ses)
 	if (!pd->idx)
 		pd->idx = alloc_idx(ses->ifindex);
 
-	if (down_speed > 0 && up_speed > 0) {
+	if (down_speed > 0 || up_speed > 0) {
 		if (!install_limiter(ses, down_speed, down_burst, up_speed, up_burst, pd->idx)) {
 			if (conf_verbose)
 				log_ppp_info2("shaper: installed shaper %i/%i (Kbit)\n", down_speed, up_speed);
