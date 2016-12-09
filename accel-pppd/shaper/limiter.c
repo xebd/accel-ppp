@@ -463,25 +463,30 @@ int install_limiter(struct ap_session *ses, int down_speed, int down_burst, int 
 		return -1;
 	}
 
-	down_speed = down_speed * 1000 / 8;
-	down_burst = down_burst ? down_burst : conf_down_burst_factor * down_speed;
-	up_speed = up_speed * 1000 / 8;
-	up_burst = up_burst ? up_burst : conf_up_burst_factor * up_speed;
+	if (down_speed) {
+		down_speed = down_speed * 1000 / 8;
+		down_burst = down_burst ? down_burst : conf_down_burst_factor * down_speed;
 
-	if (conf_down_limiter == LIM_TBF)
-		r = install_tbf(&rth, ses->ifindex, down_speed, down_burst);
-	else {
-		r = install_htb(&rth, ses->ifindex, down_speed, down_burst);
-		if (r == 0)
-			r = install_leaf_qdisc(&rth, ses->ifindex, 0x00010001, 0x00020000);
+		if (conf_down_limiter == LIM_TBF)
+			r = install_tbf(&rth, ses->ifindex, down_speed, down_burst);
+		else {
+			r = install_htb(&rth, ses->ifindex, down_speed, down_burst);
+			if (r == 0)
+				r = install_leaf_qdisc(&rth, ses->ifindex, 0x00010001, 0x00020000);
+		}
 	}
 
-	if (conf_up_limiter == LIM_POLICE)
-		r = install_police(&rth, ses->ifindex, up_speed, up_burst);
-	else {
-		r = install_htb_ifb(&rth, ses->ifindex, idx, up_speed, up_burst);
-		if (r == 0)
-			r = install_leaf_qdisc(&rth, conf_ifb_ifindex, 0x00010000 + idx, idx << 16);
+	if (up_speed) {
+		up_speed = up_speed * 1000 / 8;
+		up_burst = up_burst ? up_burst : conf_up_burst_factor * up_speed;
+
+		if (conf_up_limiter == LIM_POLICE)
+			r = install_police(&rth, ses->ifindex, up_speed, up_burst);
+		else {
+			r = install_htb_ifb(&rth, ses->ifindex, idx, up_speed, up_burst);
+			if (r == 0)
+				r = install_leaf_qdisc(&rth, conf_ifb_ifindex, 0x00010000 + idx, idx << 16);
+		}
 	}
 
 	if (conf_fwmark)
