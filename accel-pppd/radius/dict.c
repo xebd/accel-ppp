@@ -30,7 +30,7 @@ static int split(char *buf, char **ptr)
 {
 	int i;
 
-	for (i = 0; i < 3; i++) {
+	for (i = 0; i < 4; i++) {
 		buf = skip_word(buf);
 		if (!*buf)
 			return i;
@@ -70,12 +70,13 @@ static char *path, *fname1, *buf;
 static int dict_load(const char *fname)
 {
 	FILE *f;
-	char *ptr[3], *endptr;
+	char *ptr[4], *endptr;
 	int r, n = 0;
-	struct rad_dict_attr_t *attr;
+	struct rad_dict_attr_t *attr = NULL;
 	struct rad_dict_value_t *val;
 	struct rad_dict_vendor_t *vendor;
 	struct list_head *items;
+	struct list_head *parent_items;
 
 	f = fopen(fname, "r");
 	if (!f) {
@@ -90,48 +91,77 @@ static int dict_load(const char *fname)
 		if (buf[0] == '#' || buf[0] == '\n' || buf[0] == 0)
 			continue;
 		r = split(buf, ptr);
-		if (r == 1) {
-			if (!strcmp(buf, "BEGIN-VENDOR")) {
+
+		if (*ptr[r - 1] == '#')
+			r--;
+
+		if (!strcmp(buf, "VENDOR")) {
+			if (r < 2)
+				goto out_err_syntax;
+
+			vendor = malloc(sizeof(*vendor));
+			if (!vendor) {
+				log_emerg("radius: out of memory\n");
+				goto out_err;
+			}
+
+			vendor->id = strtol(ptr[1], &endptr, 10);
+			if (*endptr != 0)
+				goto out_err_syntax;
+
+			vendor->name = strdup(ptr[0]);
+			if (!vendor->name) {
+				log_emerg("radius: out of memory\n");
+				goto out_err;
+			}
+
+			if (r == 3) {
+				if (memcmp(ptr[2], "format=", 7))
+					goto out_err_syntax;
+
+				vendor->tag = strtoul(ptr[2] + 7, &endptr, 10);
+				if (*endptr != ',')
+					goto out_err_syntax;
+
+				vendor->len = strtoul(endptr + 1, &endptr, 10);
+			} else {
+				vendor->tag = 1;
+				vendor->len = 1;
+			}
+
+			INIT_LIST_HEAD(&vendor->items);
+			list_add_tail(&vendor->entry, &dict->vendors);
+		} else if (!strcmp(buf, "BEGIN-VENDOR")) {
+				if (r < 1)
+					goto out_err_syntax;
+
 				vendor = rad_dict_find_vendor_name(ptr[0]);
 				if (!vendor) {
 					log_emerg("radius:%s:%i: vendor not found\n", fname, n);
 					goto out_err;
 				}
 				items = &vendor->items;
-			} else if (!strcmp(buf, "END-VENDOR"))
-				items = &dict->items;
-			else if (!strcmp(buf, "$INCLUDE")) {
-				for (r = strlen(path) - 1; r; r--)
-					if (path[r] == '/') {
-						path[r + 1] = 0;
-						break;
-					}
-				strcpy(fname1, path);
-				strcat(fname1, ptr[0]);
-				if (dict_load(fname1))
-					goto out_err;
-			} else
+		} else if (!strcmp(buf, "END-VENDOR"))
+			items = &dict->items;
+		else if (!strcmp(buf, "$INCLUDE")) {
+			if (r < 1)
 				goto out_err_syntax;
-		} else if (r == 2) {
-			if (!strcmp(buf, "VENDOR")) {
-				vendor = malloc(sizeof(*vendor));
-				if (!vendor) {
-					log_emerg("radius: out of memory\n");
-					goto out_err;
+
+			for (r = strlen(path) - 1; r; r--)
+				if (path[r] == '/') {
+					path[r + 1] = 0;
+					break;
 				}
-				vendor->id = strtol(ptr[1], &endptr, 10);
-				if (*endptr != 0)
-					goto out_err_syntax;
-				vendor->name = strdup(ptr[0]);
-				if (!vendor->name) {
-					log_emerg("radius: out of memory\n");
-					goto out_err;
-				}
-				INIT_LIST_HEAD(&vendor->items);
-				list_add_tail(&vendor->entry, &dict->vendors);
-			} else
-				goto out_err_syntax;
-		} else if (r == 3) {
+			strcpy(fname1, path);
+			strcat(fname1, ptr[0]);
+			if (dict_load(fname1))
+				goto out_err;
+		} else if (!strcmp(buf, "BEGIN-TLV")) {
+			parent_items = items;
+			items = &attr->tlv;
+		} else if (!strcmp(buf, "END-TLV")) {
+			items = parent_items;
+		} else if (r > 2) {
 			if (!strcmp(buf, "ATTRIBUTE")) {
 				attr = malloc(sizeof(*attr));
 				if (!attr) {
@@ -140,14 +170,26 @@ static int dict_load(const char *fname)
 				}
 				memset(attr, 0, sizeof(*attr));
 				INIT_LIST_HEAD(&attr->values);
+				INIT_LIST_HEAD(&attr->tlv);
 				list_add_tail(&attr->entry, items);
 				attr->name = strdup(ptr[0]);
 				attr->id = strtol(ptr[1], &endptr, 10);
-				if (*endptr != 0)
-					goto out_err_syntax;
-				if (!strcmp(ptr[2], "integer"))
+				attr->array = 0;
+				attr->size = 0;
+
+				if (r > 3 && !strcmp(ptr[3], "array"))
+					attr->array = 1;
+
+				if (!strcmp(ptr[2], "integer")) {
 					attr->type = ATTR_TYPE_INTEGER;
-				else if (!strcmp(ptr[2], "string"))
+					attr->size = 4;
+				} else if (!strcmp(ptr[2], "short")) {
+					attr->type = ATTR_TYPE_INTEGER;
+					attr->size = 2;
+				} else if (!strcmp(ptr[2], "byte")) {
+					attr->type = ATTR_TYPE_INTEGER;
+					attr->size = 1;
+				} else if (!strcmp(ptr[2], "string"))
 					attr->type = ATTR_TYPE_STRING;
 				else if (!strcmp(ptr[2], "date"))
 					attr->type = ATTR_TYPE_DATE;
@@ -161,6 +203,10 @@ static int dict_load(const char *fname)
 					attr->type = ATTR_TYPE_IPV6ADDR;
 				else if (!strcmp(ptr[2], "ipv6prefix"))
 					attr->type = ATTR_TYPE_IPV6PREFIX;
+				else if (!strcmp(ptr[2], "ether"))
+					attr->type = ATTR_TYPE_ETHER;
+				else if (!strcmp(ptr[2], "tlv"))
+					attr->type = ATTR_TYPE_TLV;
 				else {
 					log_emerg("radius:%s:%i: unknown attribute type\n", fname, n);
 					goto out_err;
@@ -181,7 +227,10 @@ static int dict_load(const char *fname)
 				val->name = strdup(ptr[1]);
 				switch (attr->type) {
 					case ATTR_TYPE_INTEGER:
-						val->val.integer = strtol(ptr[2], &endptr, 10);
+						if (ptr[2][0] == '0' && ptr[2][1] == 'x')
+							val->val.integer = strtol(ptr[2] + 2, &endptr, 16);
+						else
+							val->val.integer = strtol(ptr[2], &endptr, 10);
 						if (*endptr != 0)
 							goto out_err_syntax;
 						break;

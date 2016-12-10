@@ -14,6 +14,8 @@
 #define ATTR_TYPE_IFID    5
 #define ATTR_TYPE_IPV6ADDR 6
 #define ATTR_TYPE_IPV6PREFIX 7
+#define ATTR_TYPE_ETHER   8
+#define ATTR_TYPE_TLV     9
 
 #define CODE_ACCESS_REQUEST 1
 #define CODE_ACCESS_ACCEPT  2
@@ -55,6 +57,8 @@ struct rad_dict_vendor_t
 {
 	struct list_head entry;
 	int id;
+	int tag;
+	int len;
 	const char *name;
 	struct list_head items;
 };
@@ -71,8 +75,11 @@ struct rad_dict_attr_t
 	struct list_head entry;
 	const char *name;
 	int id;
-	int type;
+	int type:31;
+	int array:1;
+	int size;
 	struct list_head values;
+	struct list_head tlv;
 };
 
 struct rad_attr_t
@@ -81,8 +88,10 @@ struct rad_attr_t
 	struct rad_dict_attr_t *attr;
 	struct rad_dict_vendor_t *vendor;
 	//struct rad_dict_value_t *val;
-	rad_value_t val;
 	int len;
+	int cnt;
+	void *raw;
+	rad_value_t val;
 };
 
 struct rad_packet_t
