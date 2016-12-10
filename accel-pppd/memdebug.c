@@ -49,9 +49,6 @@ static struct mem_t *_md_malloc(size_t size, const char *fname, int line)
 	if (mem == NULL)
 		return NULL;
 
-	if (size > 4096)
-		line = 0;
-
 	mem->fname = fname;
 	mem->line = line;
 	mem->size = size;

@@ -30,6 +30,7 @@
 #include "ap_session.h"
 #include "pwdb.h"
 #include "ipdb.h"
+#include "dhcp_attr_defs.h"
 
 #include "iputils.h"
 #include "ipset.h"
@@ -2089,6 +2090,19 @@ void ipoe_serv_recv_arp(struct ipoe_serv *serv, struct _arphdr *arph)
 }
 
 #ifdef RADIUS
+
+static int ipaddr_to_prefix(in_addr_t ipaddr)
+{
+	if (ipaddr == 0xffffffff)
+		return 32;
+
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+	return 31 - ffs(htonl(ipaddr));
+#else
+	return 31 - ffs(ipaddr);
+#endif
+}
+
 static void ev_radius_access_accept(struct ev_radius_t *ev)
 {
 	struct ipoe_session *ses = container_of(ev->ses, typeof(*ses), ses);
@@ -2107,16 +2121,8 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 			if (attr->attr->type == ATTR_TYPE_INTEGER) {
 				if (attr->val.integer > 0 && attr->val.integer < 31)
 					ses->mask = attr->val.integer;
-			} else if (attr->attr->type == ATTR_TYPE_IPADDR) {
-				if (attr->val.ipaddr == 0xffffffff)
-					ses->mask = 32;
-				else
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-				ses->mask = 31 - ffs(htonl(attr->val.ipaddr));
-#else
-				ses->mask = 31 - ffs(attr->val.ipaddr);
-#endif
-			}
+			} else if (attr->attr->type == ATTR_TYPE_IPADDR)
+				ses->mask = ipaddr_to_prefix(attr->val.ipaddr);
 		} else if (attr->attr->id == conf_attr_l4_redirect) {
 			if (attr->attr->type == ATTR_TYPE_STRING) {
 				if (attr->len && attr->val.string[0] != '0')
@@ -2134,6 +2140,31 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 		else if (attr->attr->id == conf_attr_l4_redirect_ipset) {
 			if (attr->attr->type == ATTR_TYPE_STRING)
 				ses->l4_redirect_ipset = _strdup(attr->val.string);
+		} else if (attr->vendor && attr->vendor->id == VENDOR_DHCP) {
+			ses->dhcpv4_relay_reply = dhcpv4_clone_radius(ev->reply);
+
+			switch (attr->attr->id) {
+				case DHCP_Your_IP_Address:
+					ses->yiaddr = attr->val.ipaddr;
+					break;
+				case DHCP_Server_IP_Address:
+					ses->yiaddr = attr->val.ipaddr;
+					break;
+				case DHCP_Router_Address:
+					ses->router = *(in_addr_t *)attr->raw;
+					break;
+				case DHCP_Subnet_Mask:
+					ses->mask = ipaddr_to_prefix(attr->val.ipaddr);
+					break;
+				case DHCP_IP_Address_Lease_Time:
+					ses->lease_time = attr->val.integer;
+					lease_time_set = 1;
+					break;
+				case DHCP_Renewal_Time:
+					ses->renew_time = attr->val.integer;
+					renew_time_set = 1;
+					break;
+			}
 		}
 	}
 

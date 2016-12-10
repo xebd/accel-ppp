@@ -101,6 +101,7 @@ struct dhcpv4_relay {
 };
 
 struct ap_session;
+struct rad_packet_t;
 
 struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifname, const char *opt);
 void dhcpv4_free(struct dhcpv4_serv *);
@@ -120,6 +121,7 @@ void dhcpv4_packet_ref(struct dhcpv4_packet *pack);
 struct dhcpv4_option *dhcpv4_packet_find_opt(struct dhcpv4_packet *pack, int type);
 int dhcpv4_packet_insert_opt82(struct dhcpv4_packet *pack, const char *agent_circuit_id, const char *agent_remote_id);
 void dhcpv4_packet_free(struct dhcpv4_packet *pack);
+struct dhcpv4_packet *dhcpv4_clone_radius(struct rad_packet_t *);
 
 int dhcpv4_check_options(struct dhcpv4_packet *);
 void dhcpv4_print_options(struct dhcpv4_packet *, void (*)(const char *, ...));

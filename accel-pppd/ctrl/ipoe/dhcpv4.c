@@ -22,6 +22,8 @@
 #include "memdebug.h"
 #include "ap_session.h"
 #include "ipdb.h"
+#include "radius.h"
+#include "dhcp_attr_defs.h"
 
 #include "dhcpv4.h"
 
@@ -1124,6 +1126,46 @@ void dhcpv4_reserve_ip(struct dhcpv4_serv *serv, uint32_t ip)
 	pthread_mutex_lock(&serv->range->lock);
 	serv->range->free[n / (8 * sizeof(long))] |= 1 << (n % (8 * sizeof(long)));
 	pthread_mutex_unlock(&serv->range->lock);
+}
+
+struct dhcpv4_packet *dhcpv4_clone_radius(struct rad_packet_t *rad)
+{
+	struct dhcpv4_packet *pkt = dhcpv4_packet_alloc();
+	uint8_t *ptr = pkt->data, *endptr = ptr + BUF_SIZE;
+	struct dhcpv4_option *opt;
+	struct rad_attr_t *attr;
+
+	if (!pkt)
+		return NULL;
+
+	pkt->refs = 1;
+
+	list_for_each_entry(attr, &rad->attrs, entry) {
+		if (attr->vendor && attr->vendor->id == VENDOR_DHCP && attr->attr->id < 256) {
+			if (ptr + attr->len >= endptr)
+				goto out;
+
+			opt = mempool_alloc(opt_pool);
+			if (!opt) {
+				log_emerg("out of memory\n");
+				goto out;
+			}
+			memset(opt, 0, sizeof(*opt));
+			opt->type = attr->attr->id;
+			opt->len = attr->len;
+			opt->data = ptr;
+			memcpy(ptr, attr->raw, attr->len);
+			ptr += attr->len;
+
+			list_add_tail(&opt->entry, &pkt->options);
+		}
+	}
+
+	return pkt;
+
+out:
+	dhcpv4_packet_free(pkt);
+	return NULL;
 }
 
 static void load_config()
