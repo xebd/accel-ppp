@@ -289,20 +289,20 @@ int l2tp_recv(int fd, struct l2tp_packet_t **p, struct in_pktinfo *pkt_info,
 		return 0;
 	}
 
-	if (n < sizeof(*hdr)) {
+	if (n < 6) {
 		if (conf_verbose)
 			log_warn("l2tp: short packet received (%i/%zu)\n", n, sizeof(*hdr));
 		goto out_err_hdr;
 	}
+
+	if (hdr->T == 0)
+		goto out_err_hdr;
 
 	if (n < ntohs(hdr->length)) {
 		if (conf_verbose)
 			log_warn("l2tp: short packet received (%i/%i)\n", n, ntohs(hdr->length));
 		goto out_err_hdr;
 	}
-
-	if (hdr->T == 0)
-		goto out_err_hdr;
 
 	if (hdr->ver == 2) {
 		if (hdr->L == 0) {
