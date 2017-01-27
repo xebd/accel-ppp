@@ -413,6 +413,9 @@ static int pptp_echo_rqst(struct pptp_conn_t *conn)
 		log_ppp_debug("send [PPTP Echo-Reply <Identifier %x>]\n", out_msg.identifier);
 	}
 
+	if (conn->echo_timer.tpd)
+		triton_timer_mod(&conn->echo_timer, 0);
+
 	return post_msg(conn, &out_msg, sizeof(out_msg));
 }
 
