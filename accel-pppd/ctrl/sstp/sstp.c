@@ -57,6 +57,7 @@ struct sstp_conn_t {
 #endif
 	int state;
 	int sstp_state;
+	int nak_sent;
 	int hello_sent;
 
 //	int bypass_auth:1;
@@ -647,6 +648,12 @@ static int sstp_msg_call_connect_request(struct sstp_conn_t *conn)
 		return 0;
 	}
 	if (ntohs(msg->attr.protocol_id) != SSTP_ENCAPSULATED_PROTOCOL_PPP) {
+		if (conn->nak_sent++ == 3) {
+			log_ppp_warn("sstp: nak limit reached\n");
+			conn->sstp_state = STATE_CALL_ABORT_IN_PROGRESS_1;
+			if (send_sstp_msg_call_abort(conn))
+				return -1;
+		} else
 		if (send_sstp_msg_call_connect_nak(conn))
 			return -1;
 		return 0;
