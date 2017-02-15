@@ -2713,6 +2713,9 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 		}
 	}
 
+	if (!opt_arp && opt_up && opt_mode == MODE_L2)
+		opt_arp = 1;
+
 	if (!opt_up && !opt_dhcpv4 && !opt_auto) {
 		opt_up = conf_up;
 		opt_dhcpv4 = conf_dhcpv4;
@@ -2775,10 +2778,10 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 		if (!serv->dhcpv4_relay && serv->opt_dhcpv4 && opt_relay)
 			serv->dhcpv4_relay = dhcpv4_relay_create(opt_relay, opt_giaddr, &serv->ctx, (triton_event_func)ipoe_recv_dhcpv4_relay);
 
-		if (serv->arp && !opt_arp && !opt_up) {
+		if (serv->arp && !opt_arp) {
 			arpd_stop(serv->arp);
 			serv->arp = NULL;
-		} else if (!serv->arp && (opt_arp || opt_up))
+		} else if (!serv->arp && opt_arp)
 			serv->arp = arpd_start(serv);
 
 		serv->opt_up = opt_up;
