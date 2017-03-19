@@ -68,6 +68,14 @@ static void free_rth(void *arg)
 	_free(rth);
 }
 
+struct rtnl_handle __export *iputils_get_handle()
+{
+	if (!rth)
+		open_rth();
+
+	return rth;
+}
+
 static int store_nlmsg(const struct sockaddr_nl *who, struct nlmsghdr *n, void *arg)
 {
 	struct ifinfomsg *ifi = NLMSG_DATA(n);

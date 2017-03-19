@@ -27,4 +27,6 @@ int ip6addr_del(int ifindex, struct in6_addr *addr, int prefix_len);
 
 int iprule_add(uint32_t addr, int table);
 int iprule_del(uint32_t addr, int table);
+
+struct rtnl_handle *iputils_get_handle();
 #endif
