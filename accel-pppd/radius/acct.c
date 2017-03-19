@@ -150,6 +150,7 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 	struct ap_session *ses = rpd->ses;
 	struct timespec ts;
 	int force = 0;
+	struct rad_plugin_t *plugin;
 
 	if (rpd->acct_req->entry.next || rpd->acct_req->timeout.tpd)
 		return;
@@ -169,6 +170,11 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 			rad_packet_add_ipv6prefix(rpd->acct_req->pack, NULL, "Delegated-IPv6-Prefix", &a->addr, a->prefix_len);
 		rpd->ipv6_dp_sent = 1;
 		force = 1;
+	}
+
+	list_for_each_entry(plugin, &rpd->plugin_list, entry) {
+		if (plugin->send_accounting_update)
+			plugin->send_accounting_update(plugin, rpd->acct_req->pack);
 	}
 
 	if (!rpd->acct_interim_interval && !force)
@@ -430,6 +436,7 @@ int rad_acct_stop(struct radius_pd_t *rpd)
 {
 	struct rad_req_t *req = rpd->acct_req;
 	struct timespec ts;
+	struct rad_plugin_t *plugin;
 
 	if (rpd->acct_interim_timer.tpd)
 		triton_timer_del(&rpd->acct_interim_timer);
@@ -486,7 +493,14 @@ int rad_acct_stop(struct radius_pd_t *rpd)
 	}
 
 	rad_packet_change_val(req->pack, NULL, "Acct-Status-Type", "Stop");
+
 	req_set_stat(req, rpd->ses);
+
+	list_for_each_entry(plugin, &rpd->plugin_list, entry) {
+		if (plugin->send_accounting_update)
+			plugin->send_accounting_update(plugin, rpd->acct_req->pack);
+	}
+
 	req_set_RA(req, req->serv->secret);
 
 	req->recv = rad_acct_stop_recv;

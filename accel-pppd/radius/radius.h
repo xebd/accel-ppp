@@ -100,6 +100,7 @@ struct rad_plugin_t
 	struct list_head entry;
 	int (*send_access_request)(struct rad_plugin_t *, struct rad_packet_t *pack);
 	int (*send_accounting_request)(struct rad_plugin_t *, struct rad_packet_t *pack);
+	int (*send_accounting_update)(struct rad_plugin_t *, struct rad_packet_t *pack);
 };
 
 struct ap_session;
@@ -122,6 +123,7 @@ int rad_packet_add_octets(struct rad_packet_t *pack, const char *vendor, const c
 int rad_packet_change_int(struct rad_packet_t *pack, const char *vendor, const char *name, int val);
 int rad_packet_change_val(struct rad_packet_t *pack, const char *vendor, const char *name, const char *val);
 int rad_packet_change_octets(struct rad_packet_t *pack, const char *vendor, const char *name, const uint8_t *val, int len);
+int rad_packet_change_str(struct rad_packet_t *pack, const char *vendor_name, const char *name, const char *val, int len);
 int rad_packet_add_ipaddr(struct rad_packet_t *pack, const char *vendor, const char *name, in_addr_t ipaddr);
 int rad_packet_add_ifid(struct rad_packet_t *pack, const char *vendor, const char *name, uint64_t ifid);
 int rad_packet_add_ipv6prefix(struct rad_packet_t *pack, const char *vendor, const char *name, struct in6_addr *prefix, int len);
