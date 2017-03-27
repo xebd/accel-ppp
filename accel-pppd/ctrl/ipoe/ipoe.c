@@ -1962,6 +1962,18 @@ void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph, struct _ar
 }
 
 #ifdef RADIUS
+static int ipaddr_to_prefix(in_addr_t ipaddr)
+{
+	if (ipaddr == 0)
+		return 0;
+
+#if __BYTE_ORDER == __LITTLE_ENDIAN
+	return 33 - ffs(htonl(ipaddr));
+#else
+	return 33 - ffs(ipaddr);
+#endif
+}
+
 static void ev_radius_access_accept(struct ev_radius_t *ev)
 {
 	struct ipoe_session *ses = container_of(ev->ses, typeof(*ses), ses);
@@ -1978,18 +1990,10 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 			ses->router = attr->val.ipaddr;
 		else if (attr->attr->id == conf_attr_dhcp_mask) {
 			if (attr->attr->type == ATTR_TYPE_INTEGER) {
-				if (attr->val.integer > 0 && attr->val.integer < 31)
+				if (attr->val.integer > 0 && attr->val.integer <= 32)
 					ses->mask = attr->val.integer;
-			} else if (attr->attr->type == ATTR_TYPE_IPADDR) {
-				if (attr->val.ipaddr == 0xffffffff)
-					ses->mask = 32;
-				else
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-				ses->mask = 31 - ffs(htonl(attr->val.ipaddr));
-#else
-				ses->mask = 31 - ffs(attr->val.ipaddr);
-#endif
-			}
+			} else if (attr->attr->type == ATTR_TYPE_IPADDR)
+				ses->mask = ipaddr_to_prefix(attr->val.ipaddr);
 		} else if (attr->attr->id == conf_attr_l4_redirect) {
 			if (attr->attr->type == ATTR_TYPE_STRING) {
 				if (attr->len && attr->val.string[0] != '0')
