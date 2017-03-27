@@ -24,6 +24,20 @@ IF (NOT DEFINED LIB_SUFFIX)
 	ENDIF (ARCH STREQUAL x86_64)
 ENDIF (NOT DEFINED LIB_SUFFIX)
 
+#color console example  message(FATAL_ERROR "${Esc}[31m Red Text ${Esc}[m Restore Normal Text")
+string(ASCII 27 Esc)
+
+#Check libpcre
+find_library(PCRE_LIBRARY pcre
+	HINTS ${CMAKE_SOURCE_DIR}/lib/linux/gcc/${BIT}/lib
+	PATHS ${CMAKE_SOURCE_DIR}/lib/linux/gcc/${BIT}/lib
+)
+
+IF(NOT PCRE_LIBRARY)
+	message(FATAL_ERROR "${Esc}[31mRequired libpcre not found.\n Install libpcre3-dev and run cmake again${Esc}[m")
+ENDIF(NOT PCRE_LIBRARY)
+
+
 IF (EXISTS ${CMAKE_HOME_DIRECTORY}/.git AND NOT IGNORE_GIT)
 	EXECUTE_PROCESS(
 		COMMAND git log --no-color
@@ -48,8 +62,15 @@ if (NOT BUILD_DRIVER_ONLY)
 	if (NOT DEFINED CRYPTO)
 		set(CRYPTO OPENSSL)
 	endif (NOT DEFINED CRYPTO)
-
+	
 	if (CRYPTO STREQUAL OPENSSL)
+		find_library(CRYPTO_LIBRARY ssl
+			HINTS ${CMAKE_SOURCE_DIR}/lib/linux/gcc/${BIT}/lib
+			PATHS ${CMAKE_SOURCE_DIR}/lib/linux/gcc/${BIT}/lib
+		)
+		IF(NOT CRYPTO_LIBRARY)
+			message(FATAL_ERROR "${Esc}[31mRequired libcrypto-0.9.8 or probably later (openssl-0.9.8)  not found.\n Install libssl-dev and run cmake again${Esc}[m")
+		ENDIF(NOT CRYPTO_LIBRARY)
 		add_definitions(-DCRYPTO_OPENSSL)
 		set(crypto_lib crypto ssl)
 	elseif (CRYPTO STREQUAL TOMCRYPT)
