@@ -616,7 +616,6 @@ cont:
 	if (ses->serv->opt_shared == 0 && ses->ses.ipv4 && ses->ses.ipv4->peer_addr != ses->yiaddr) {
 		if (ipoe_create_interface(ses))
 			return;
-
 	}
 
 	ap_session_set_ifindex(&ses->ses);
@@ -858,6 +857,7 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 		ses->siaddr = ses->router;
 
 		if (ses->arph) {
+			ses->wait_start = 1;
 			send_arp_reply(ses->serv, ses->arph);
 			_free(ses->arph);
 			ses->arph = NULL;
@@ -2035,11 +2035,10 @@ void ipoe_recv_up(int ifindex, struct ethhdr *eth, struct iphdr *iph, struct _ar
 
 		list_for_each_entry(ses, &serv->sessions, entry) {
 			if (ses->yiaddr == saddr) {
-				if (arph) {
-					if (!ses->arph)
-						send_arp_reply(serv, arph);
-				} else if (!ses->started)
+				if (ses->wait_start) {
+					ses->wait_start = 0;
 					triton_context_call(&ses->ctx, (triton_event_func)__ipoe_session_activate, ses);
+				}
 
 				pthread_mutex_unlock(&serv->lock);
 				pthread_mutex_unlock(&serv_lock);
