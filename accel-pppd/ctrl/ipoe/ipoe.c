@@ -2093,13 +2093,13 @@ void ipoe_serv_recv_arp(struct ipoe_serv *serv, struct _arphdr *arph)
 
 static int ipaddr_to_prefix(in_addr_t ipaddr)
 {
-	if (ipaddr == 0xffffffff)
-		return 32;
+	if (ipaddr == 0)
+		return 0;
 
 #if __BYTE_ORDER == __LITTLE_ENDIAN
-	return 31 - ffs(htonl(ipaddr));
+	return 33 - ffs(htonl(ipaddr));
 #else
-	return 31 - ffs(ipaddr);
+	return 33 - ffs(ipaddr);
 #endif
 }
 
@@ -2119,7 +2119,7 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 			ses->router = attr->val.ipaddr;
 		else if (attr->attr->id == conf_attr_dhcp_mask) {
 			if (attr->attr->type == ATTR_TYPE_INTEGER) {
-				if (attr->val.integer > 0 && attr->val.integer < 31)
+				if (attr->val.integer > 0 && attr->val.integer <= 32)
 					ses->mask = attr->val.integer;
 			} else if (attr->attr->type == ATTR_TYPE_IPADDR)
 				ses->mask = ipaddr_to_prefix(attr->val.ipaddr);
