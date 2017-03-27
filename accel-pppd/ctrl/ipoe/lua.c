@@ -36,7 +36,7 @@ static int packet4_vlan(lua_State *L);
 
 int luaopen_lpack(lua_State *L);
 
-static const struct luaL_reg packet4_lib [] = {
+static const struct luaL_Reg packet4_lib [] = {
 	{"hdr", packet4_hdr},
 	{"ifname", packet4_ifname},
 	{"option", packet4_option},
