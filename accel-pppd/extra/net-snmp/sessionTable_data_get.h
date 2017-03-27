@@ -19,6 +19,10 @@
 extern "C" {
 #endif
 
+#ifndef U64
+    typedef struct counter64 U64;
+#endif
+
 /* *********************************************************************
  * GET function declarations
  */
