@@ -252,7 +252,7 @@ static int l_pack(lua_State *L) 		/** pack(f,...) */
  return 1;
 }
 
-static const luaL_Reg R[] =
+static const luaL_reg R[] =
 {
 	{"pack",	l_pack},
 	{"unpack",	l_unpack},
