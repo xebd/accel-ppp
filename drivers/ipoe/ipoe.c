@@ -1668,7 +1668,7 @@ static struct genl_ops ipoe_nl_ops[] = {
 };
 
 static struct genl_family ipoe_nl_family = {
-	.id		= GENL_ID_GENERATE,
+	.id		= 0,
 	.name		= IPOE_GENL_NAME,
 	.version	= IPOE_GENL_VERSION,
 	.hdrsize	= 0,

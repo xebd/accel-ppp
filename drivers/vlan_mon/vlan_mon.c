@@ -660,7 +660,7 @@ static struct genl_ops vlan_mon_nl_ops[] = {
 };
 
 static struct genl_family vlan_mon_nl_family = {
-	.id		= GENL_ID_GENERATE,
+	.id		= 0,
 	.name		= VLAN_MON_GENL_NAME,
 	.version	= VLAN_MON_GENL_VERSION,
 	.hdrsize	= 0,
