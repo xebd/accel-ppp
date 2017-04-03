@@ -659,6 +659,7 @@ static struct genl_ops vlan_mon_nl_ops[] = {
 	},
 };
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,10,0)
 static struct genl_family vlan_mon_nl_family = {
 	.id		= 0,
 	.name		= VLAN_MON_GENL_NAME,
@@ -666,6 +667,20 @@ static struct genl_family vlan_mon_nl_family = {
 	.hdrsize	= 0,
 	.maxattr	= VLAN_MON_ATTR_MAX,
 };
+#else
+static struct genl_family vlan_mon_nl_family = {
+	.name		= VLAN_MON_GENL_NAME,
+	.version	= VLAN_MON_GENL_VERSION,
+	.maxattr	= VLAN_MON_ATTR_MAX,
+	.netnsok	= true,
+	.module		= THIS_MODULE,
+	.ops		= vlan_mon_nl_ops,
+	.n_ops		= ARRAY_SIZE(vlan_mon_nl_ops),
+	.mcgrps		= vlan_mon_nl_mcgrps,
+	.n_mcgrps	= ARRAY_SIZE(vlan_mon_nl_mcgrps),
+};
+#endif
+
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 static struct genl_multicast_group vlan_mon_nl_mcg = {
@@ -695,8 +710,10 @@ static int __init vlan_mon_init(void)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 	err = genl_register_family_with_ops(&vlan_mon_nl_family, vlan_mon_nl_ops, ARRAY_SIZE(vlan_mon_nl_ops));
-#else
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(4,10,0)
 	err = genl_register_family_with_ops_groups(&vlan_mon_nl_family, vlan_mon_nl_ops, vlan_mon_nl_mcgs);
+#else
+	err = genl_register_family(&vlan_mon_nl_family);
 #endif
 	if (err < 0) {
 		printk(KERN_INFO "vlan_mon: can't register netlink interface\n");

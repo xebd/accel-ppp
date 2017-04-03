@@ -1667,14 +1667,6 @@ static struct genl_ops ipoe_nl_ops[] = {
 	},
 };
 
-static struct genl_family ipoe_nl_family = {
-	.id		= 0,
-	.name		= IPOE_GENL_NAME,
-	.version	= IPOE_GENL_VERSION,
-	.hdrsize	= 0,
-	.maxattr	= IPOE_ATTR_MAX,
-};
-
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 static struct genl_multicast_group ipoe_nl_mcg = {
 	.name = IPOE_GENL_MCG_PKT,
@@ -1684,6 +1676,30 @@ static struct genl_multicast_group ipoe_nl_mcgs[] = {
 	{ .name = IPOE_GENL_MCG_PKT, }
 };
 #endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,10,0)
+static struct genl_family ipoe_nl_family = {
+	.id		= 0,
+	.name		= IPOE_GENL_NAME,
+	.version	= IPOE_GENL_VERSION,
+	.hdrsize	= 0,
+	.maxattr	= IPOE_ATTR_MAX,
+};
+#else
+static struct genl_family ipoe_nl_family = {
+	.name		= IPOE_GENL_NAME,
+	.version	= IPOE_GENL_VERSION,
+	.maxattr	= IPOE_ATTR_MAX,
+	.netnsok	= true,
+	.module		= THIS_MODULE,
+	.ops		= ipoe_nl_ops,
+	.n_ops		= ARRAY_SIZE(ipoe_nl_ops),
+	.mcgrps		= ipoe_nl_mcgs,
+	.n_mcgrps	= ARRAY_SIZE(ipoe_nl_mcgs),
+};
+#endif
+
+
 
 static const struct net_device_ops ipoe_netdev_ops = {
 	.ndo_start_xmit	= ipoe_xmit,
@@ -1718,8 +1734,10 @@ static int __init ipoe_init(void)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 	err = genl_register_family_with_ops(&ipoe_nl_family, ipoe_nl_ops, ARRAY_SIZE(ipoe_nl_ops));
-#else
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(4,10,0)
 	err = genl_register_family_with_ops_groups(&ipoe_nl_family, ipoe_nl_ops, ipoe_nl_mcgs);
+#else
+	err = genl_register_family(&ipoe_nl_family);
 #endif
 	if (err < 0) {
 		printk(KERN_INFO "ipoe: can't register netlink interface\n");
