@@ -35,6 +35,7 @@ static int packet4_agent_remote_id(lua_State *L);
 static int packet4_vlan(lua_State *L);
 
 int luaopen_lpack(lua_State *L);
+int luaopen_bit(lua_State *L);
 
 static const struct luaL_reg packet4_lib [] = {
 	{"hdr", packet4_hdr},
@@ -193,6 +194,7 @@ static void init_lua()
 	luaL_openlibs(L);
 
 	luaopen_lpack(L);
+	luaopen_bit(L);
 	luaopen_packet4(L);
 
 	if (luaL_loadfile(L, conf_filename))

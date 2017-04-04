@@ -2730,6 +2730,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	serv->opt_lua_username_func = opt_lua_username_func;
 #endif
 	serv->parent_ifindex = parent_ifindex;
+	serv->parent_vid = parent_ifindex ? iplink_vlan_get_vid(parent_ifindex, NULL) : 0;
 	serv->vid = vid;
 	serv->active = 1;
 	INIT_LIST_HEAD(&serv->sessions);
