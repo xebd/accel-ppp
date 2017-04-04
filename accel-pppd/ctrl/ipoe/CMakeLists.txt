@@ -16,7 +16,7 @@ IF (LUA)
 	ENDIF (NOT LUA51_FOUND)
 	INCLUDE_DIRECTORIES(${LUA_INCLUDE_DIR})
 	ADD_DEFINITIONS(-DUSE_LUA)
-	SET(sources ${sources} lua.c lua_lpack.c)
+	SET(sources ${sources} lua.c lua_lpack.c lua_bit.c)
 ENDIF (LUA)
 
 ADD_LIBRARY(ipoe SHARED ${sources})
