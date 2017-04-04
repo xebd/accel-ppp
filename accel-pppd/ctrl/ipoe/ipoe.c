@@ -2026,8 +2026,9 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 {
 	struct ipoe_session *ses = container_of(ev->ses, typeof(*ses), ses);
 	struct rad_attr_t *attr;
-	int l4_redirect;
+	int l4_redirect = -1;
 	int lease_time_set = 0, renew_time_set = 0;
+	char *ipset = NULL;
 
 	if (ev->ses->ctrl->type != CTRL_TYPE_IPOE)
 		return;
@@ -2037,9 +2038,9 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 	list_for_each_entry(attr, &ev->request->attrs, entry) {
 		if (attr->attr->id == conf_attr_l4_redirect) {
 			if (attr->attr->type == ATTR_TYPE_STRING)
-				ses->l4_redirect = attr->len && attr->val.string[0] != '0';
+				l4_redirect = attr->len && attr->val.string[0] != '0';
 			else
-				ses->l4_redirect = ((unsigned int)attr->val.integer) > 0;
+				l4_redirect = ((unsigned int)attr->val.integer) > 0;
 		} else if (strcmp(attr->attr->name, "Framed-IP-Address") == 0) {
 			if (ses->ses.ipv4 && ses->ses.ipv4->peer_addr != attr->val.ipaddr)
 				ipoe_change_addr(ses, attr->val.ipaddr);
@@ -2053,10 +2054,8 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 			ses->l4_redirect_table = attr->val.integer;
 		else if (attr->attr->id == conf_attr_l4_redirect_ipset) {
 			if (attr->attr->type == ATTR_TYPE_STRING) {
-				if (ses->l4_redirect_ipset && strcmp(ses->l4_redirect_ipset, attr->val.string)) {
-					_free(ses->l4_redirect_ipset);
-					ses->l4_redirect_ipset = _strdup(attr->val.string);
-				}
+				if (!ses->l4_redirect_ipset || strcmp(ses->l4_redirect_ipset, attr->val.string))
+					ipset = attr->val.string;
 			}
 		}
 	}
@@ -2068,9 +2067,23 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 		ses->renew_time = ses->lease_time / 2;
 	}
 
-	//if (l4_redirect && !ses->l4_redirect) || (!l4_redirect && ses->l4_redirect))
-	if (l4_redirect != ses->l4_redirect && ev->ses->state == AP_STATE_ACTIVE)
-		ipoe_change_l4_redirect(ses, l4_redirect);
+	if (l4_redirect >= 0 && ev->ses->state == AP_STATE_ACTIVE) {
+		if (ses->l4_redirect && l4_redirect && ipset) {
+			ipoe_change_l4_redirect(ses, 1);
+			ses->l4_redirect = 0;
+		}
+
+		if (ipset) {
+			if (ses->l4_redirect_ipset)
+				_free(ses->l4_redirect_ipset);
+			ses->l4_redirect_ipset = _strdup(ipset);
+		}
+
+		if (l4_redirect != ses->l4_redirect ) {
+			ipoe_change_l4_redirect(ses, l4_redirect == 0);
+			ses->l4_redirect = l4_redirect;
+		}
+	}
 }
 
 static int ipoe_rad_send_acct_request(struct rad_plugin_t *rad, struct rad_packet_t *pack)
