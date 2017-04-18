@@ -121,7 +121,7 @@ static int alloc_idx(int init)
 	pthread_rwlock_wrlock(&shaper_lock);
 	if (idx_map[init / __BITS_PER_LONG] & (1 << (init % __BITS_PER_LONG))) {
 		i = init / __BITS_PER_LONG;
-		p = init % __BITS_PER_LONG;
+		p = (init % __BITS_PER_LONG) + 1;
 	} else {
 		for (i = init / __BITS_PER_LONG; i < MAX_IDX / __BITS_PER_LONG; i++) {
 			p = ffs(idx_map[i]);
