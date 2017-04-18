@@ -1190,6 +1190,12 @@ static struct ipoe_session *ipoe_session_create_dhcpv4(struct ipoe_serv *serv, s
 	int dlen = 0;
 	uint8_t *ptr = NULL;
 
+	if (ap_shutdown)
+		return NULL;
+
+	if (conf_max_sessions && ap_session_stat.active + ap_session_stat.starting >= conf_max_sessions)
+		return NULL;
+
 	ses = ipoe_session_alloc(serv->ifname);
 	if (!ses)
 		return NULL;
@@ -1788,6 +1794,9 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 	in_addr_t saddr = arph ? arph->ar_spa : iph->saddr;
 
 	if (ap_shutdown)
+		return NULL;
+
+	if (conf_max_sessions && ap_session_stat.active + ap_session_stat.starting >= conf_max_sessions)
 		return NULL;
 
 	if (l4_redirect_list_check(saddr))
