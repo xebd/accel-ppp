@@ -644,14 +644,9 @@ static int pptp_connect(struct triton_md_handler_t *h)
 			continue;
 		}
 
-		if (conf_max_sessions && ap_session_stat.active + ap_session_stat.starting > conf_max_sessions) {
-			close(sock);
-			continue;
-		}
-
 		if (triton_module_loaded("connlimit") && connlimit_check(cl_key_from_ipv4(addr.sin_addr.s_addr))) {
 			close(sock);
-			continue;
+			return 0;
 		}
 
 		log_info2("pptp: new connection from %s\n", inet_ntoa(addr.sin_addr));
