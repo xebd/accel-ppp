@@ -34,6 +34,7 @@ static int conf_single_session = -1;
 static int conf_sid_source;
 static int conf_seq_save_timeout = 10;
 static const char *conf_seq_file;
+int __export conf_max_sessions;
 
 pthread_rwlock_t __export ses_lock = PTHREAD_RWLOCK_INITIALIZER;
 __export LIST_HEAD(ses_list);
@@ -76,6 +77,10 @@ void __export ap_session_set_ifindex(struct ap_session *ses)
 		ses->acct_tx_packets_i = stats.tx_packets;
 		ses->acct_rx_bytes_i = stats.rx_bytes;
 		ses->acct_tx_bytes_i = stats.tx_bytes;
+		ses->acct_rx_bytes = 0;
+		ses->acct_tx_bytes = 0;
+		ses->acct_input_gigawords = 0;
+		ses->acct_output_gigawords = 0;
 	}
 }
 
@@ -511,6 +516,12 @@ static void load_config(void)
 	conf_seq_file = conf_get_opt("common", "seq-file");
 	if (!conf_seq_file)
 		conf_seq_file = "/var/lib/accel-ppp/seq";
+
+	opt = conf_get_opt("common", "max-sessions");
+	if (opt)
+		conf_max_sessions = atoi(opt);
+	else
+		conf_max_sessions = 0;
 }
 
 static void init(void)
