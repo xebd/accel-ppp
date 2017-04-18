@@ -129,6 +129,7 @@ extern int sock_fd; // internet socket for ioctls
 extern int sock6_fd; // internet socket for ioctls
 extern int urandom_fd;
 extern struct ap_session_stat ap_session_stat;
+extern int conf_max_sessions;
 
 extern __thread const struct ap_net *net;
 extern const struct ap_net def_net;
