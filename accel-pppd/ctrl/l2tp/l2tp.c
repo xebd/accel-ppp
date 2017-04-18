@@ -2737,6 +2737,9 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 		return 0;
 	}
 
+	if (conf_max_sessions && ap_session_stat.active + ap_session_stat.starting >= conf_max_sessions)
+		return 0;
+
 	if (triton_module_loaded("connlimit")
 	    && connlimit_check(cl_key_from_ipv4(pack->addr.sin_addr.s_addr))) {
 		log_warn("l2tp: connection limits reached,"
@@ -3263,6 +3266,9 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
 		return 0;
 	}
 
+	if (conf_max_sessions && ap_session_stat.active + ap_session_stat.starting >= conf_max_sessions)
+		return 0;
+
 	if (triton_module_loaded("connlimit")
 	    && connlimit_check(cl_key_from_ipv4(conn->peer_addr.sin_addr.s_addr))) {
 		log_tunnel(log_warn, conn, "connection limits reached,"
@@ -3562,6 +3568,9 @@ static int l2tp_recv_OCRQ(struct l2tp_conn_t *conn,
 			   " discarding OCRQ\n");
 		return 0;
 	}
+
+	if (conf_max_sessions && ap_session_stat.active + ap_session_stat.starting >= conf_max_sessions)
+		return 0;
 
 	if (triton_module_loaded("connlimit")
 	    && connlimit_check(cl_key_from_ipv4(conn->peer_addr.sin_addr.s_addr))) {
