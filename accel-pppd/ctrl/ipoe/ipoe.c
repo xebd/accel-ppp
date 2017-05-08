@@ -116,6 +116,7 @@ static const char *conf_password;
 static int conf_unit_cache;
 static int conf_noauth;
 #ifdef RADIUS
+static int conf_vendor;
 static int conf_attr_dhcp_client_ip;
 static int conf_attr_dhcp_router_ip;
 static int conf_attr_dhcp_mask;
@@ -1993,6 +1994,11 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 		return;
 
 	list_for_each_entry(attr, &ev->reply->attrs, entry) {
+		int vendor_id = attr->vendor ? attr->vendor->id : 0;
+
+		if (conf_vendor != vendor_id)
+			continue;
+
 		if (attr->attr->id == conf_attr_dhcp_client_ip)
 			ses->yiaddr = attr->val.ipaddr;
 		else if (attr->attr->id == conf_attr_dhcp_router_ip)
@@ -2045,6 +2051,11 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 	l4_redirect = ses->l4_redirect;
 
 	list_for_each_entry(attr, &ev->request->attrs, entry) {
+		int vendor_id = attr->vendor ? attr->vendor->id : 0;
+
+		if (conf_vendor != vendor_id)
+			continue;
+
 		if (attr->attr->id == conf_attr_l4_redirect) {
 			if (attr->attr->type == ATTR_TYPE_STRING)
 				l4_redirect = attr->len && attr->val.string[0] != '0';
@@ -2950,25 +2961,43 @@ static void parse_conf_rad_attr(const char *opt, int *val)
 {
 	struct rad_dict_attr_t *attr;
 
-	opt = conf_get_opt("ipoe", opt);
-
 	*val = 0;
 
-	if (opt) {
-		if (atoi(opt) > 0)
-			*val = atoi(opt);
-		else {
-			attr = rad_dict_find_attr(opt);
-			if (attr)
-				*val = attr->id;
-			else
-				log_emerg("ipoe: couldn't find '%s' in dictionary\n", opt);
-		}
-	}
+	opt = conf_get_opt("ipoe", opt);
+	if (!opt)
+		return;
+
+	if (conf_vendor) {
+		struct rad_dict_vendor_t *vendor = rad_dict_find_vendor_id(conf_vendor);
+		attr = rad_dict_find_vendor_attr(vendor, opt);
+	} else
+		attr = rad_dict_find_attr(opt);
+
+	if (attr)
+		*val = attr->id;
+	else if (atoi(opt) > 0)
+		*val = atoi(opt);
+	else
+		log_emerg("ipoe: couldn't find '%s' in dictionary\n", opt);
 }
 
 static void load_radius_attrs(void)
 {
+	const char *vendor = conf_get_opt("ipoe", "vendor");
+
+	if (vendor) {
+		struct rad_dict_vendor_t *v = rad_dict_find_vendor_name(vendor);
+		if (v)
+			conf_vendor = v->id;
+		else {
+			conf_vendor = atoi(vendor);
+			if (!rad_dict_find_vendor_id(conf_vendor)) {
+				conf_vendor = 0;
+				log_emerg("ipoe: vendor '%s' not found\n", vendor);
+			}
+		}
+	}
+
 	parse_conf_rad_attr("attr-dhcp-client-ip", &conf_attr_dhcp_client_ip);
 	parse_conf_rad_attr("attr-dhcp-router-ip", &conf_attr_dhcp_router_ip);
 	parse_conf_rad_attr("attr-dhcp-mask", &conf_attr_dhcp_mask);
