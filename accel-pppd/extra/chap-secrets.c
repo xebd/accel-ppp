@@ -7,7 +7,6 @@
 #include <arpa/inet.h>
 
 #ifdef CRYPTO_OPENSSL
-#include "openssl/evp.h"
 #include "crypto.h"
 #endif
 
@@ -129,7 +128,7 @@ static struct cs_pd_t *create_pd(struct ap_session *ses, const char *username)
 	char username_hash[EVP_MAX_MD_SIZE * 2 + 1];
 	uint8_t hash[EVP_MAX_MD_SIZE];
 	struct hash_chain *hc;
-	EVP_MD_CTX md_ctx;
+	EVP_MD_CTX *md_ctx = NULL;
 	char c;
 #endif
 
@@ -140,11 +139,13 @@ static struct cs_pd_t *create_pd(struct ap_session *ses, const char *username)
 	if (conf_encrypted && !list_empty(&hash_chain)) {
 		unsigned int size = 0;
 		list_for_each_entry(hc, &hash_chain, entry) {
-			EVP_MD_CTX_init(&md_ctx);
-			EVP_DigestInit_ex(&md_ctx, hc->md, NULL);
-			EVP_DigestUpdate(&md_ctx, size == 0 ? (void *)username : (void *)hash, size == 0 ? strlen(username) : size);
-			EVP_DigestFinal_ex(&md_ctx, hash, &size);
-			EVP_MD_CTX_cleanup(&md_ctx);
+			md_ctx = EVP_MD_CTX_new();
+			EVP_MD_CTX_init(md_ctx);
+			EVP_DigestInit_ex(md_ctx, hc->md, NULL);
+			EVP_DigestUpdate(md_ctx, size == 0 ? (void *)username : (void *)hash, size == 0 ? strlen(username) : size);
+			EVP_DigestFinal_ex(md_ctx, hash, &size);
+			EVP_MD_CTX_free(md_ctx);
+			md_ctx = NULL;
 		}
 
 		for (n = 0; n < size; n++)
