@@ -169,53 +169,55 @@ void core_restart(int soft)
 
 static void sigsegv(int num)
 {
-	char cmd[PATH_MAX];
-	char fname[128];
+	char cmd[128];
+	char dump[128];
 	char exec_file[PATH_MAX];
-	struct rlimit lim;
 	pid_t pid;
-	int status;
+	FILE *f;
+	int fd;
+	char pid_str[16];
+	unsigned int t;
 
 	pthread_sigmask(SIG_SETMASK, &orig_set, NULL);
 
 	if (conf_dump) {
-		FILE *f;
-		unsigned int t = time(NULL);
-
+		t = time(NULL);
+		sprintf(pid_str, "%u", getpid());
+		sprintf(cmd, "cmd-%u", t);
 		chdir(conf_dump);
 
-		sprintf(fname, "cmd-%u", t);
-		f = fopen(fname, "w");
+		pid = fork();
+		if (pid == 0) {
+		printf("starting gdb...\n");
+		sprintf(dump, "dump-%u", t);
+		fd = open(dump, O_CREAT|O_TRUNC|O_WRONLY,0600);
+		if (fd == -1)
+			_exit(0);
+
+		dup2(fd, STDOUT_FILENO);
+		dup2(fd, STDERR_FILENO);
+		close(fd);
+
+		f = fopen(cmd, "w");
 		if (!f)
-			goto out;
-		fprintf(f, "thread apply all bt full\ndetach\nquit\n");
+			_exit(0);
+		fprintf(f, "info shared\nthread apply all bt full\ngenerate-core-file core-%u\ndetach\nquit\n", t);
 		fclose(f);
 
-		sprintf(exec_file, "/proc/%u/exe", getpid());
+		sprintf(exec_file, "/proc/%s/exe", pid_str);
 		readlink(exec_file, exec_file, PATH_MAX);
 
-		sprintf(cmd, "gdb -x %s %s %d > dump-%u", fname, exec_file, getpid(), t);
+		execlp("gdb", "gdb", "-x", cmd, exec_file, pid_str, NULL);
+		perror("exec");
+		_exit(0);
+		}
 
-		system(cmd);
+		printf("waitpid: %i\n", waitpid(pid, NULL, 0));
 
-		unlink(fname);
+		unlink(cmd);
 	}
 
-out:
-	pid = fork();
-	if (pid) {
-		waitpid(pid, &status, 0);
-		__core_restart(1);
-	}
-
-	if (conf_dump) {
-		lim.rlim_cur = RLIM_INFINITY;
-		lim.rlim_max = RLIM_INFINITY;
-
-		setrlimit(RLIMIT_CORE, &lim);
-	}
-
-	abort();
+	__core_restart(1);
 }
 
 static void shutdown_cb()
