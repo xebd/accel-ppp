@@ -102,7 +102,8 @@ struct pppoe_serv_t
 };
 
 extern int conf_verbose;
-extern char *conf_service_name;
+extern char *conf_service_name[255];
+extern int conf_accept_any_service;
 extern char *conf_ac_name;
 extern char *conf_pado_delay;
 

@@ -88,7 +88,8 @@ struct iplink_arg {
 };
 
 int conf_verbose;
-char *conf_service_name;
+char *conf_service_name[255];
+int conf_accept_any_service;
 char *conf_ac_name;
 int conf_ifname_in_sid;
 char *conf_pado_delay;
@@ -759,8 +760,13 @@ static void pppoe_send_PADO(struct pppoe_serv_t *serv, const uint8_t *addr, cons
 	setup_header(pack, serv->hwaddr, addr, CODE_PADO, 0);
 
 	add_tag(pack, TAG_AC_NAME, (uint8_t *)conf_ac_name, strlen(conf_ac_name));
-	if (conf_service_name)
-		add_tag(pack, TAG_SERVICE_NAME, (uint8_t *)conf_service_name, strlen(conf_service_name));
+	if (conf_service_name[0]) {
+		int i = 0;
+		do {
+		    add_tag(pack, TAG_SERVICE_NAME, (uint8_t *)conf_service_name[i], strlen(conf_service_name[i]));
+		    i++;
+		} while(conf_service_name[i]);
+	}
 
 	if (service_name)
 		add_tag2(pack, service_name);
@@ -940,7 +946,7 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	struct pppoe_tag *host_uniq_tag = NULL;
 	struct pppoe_tag *relay_sid_tag = NULL;
 	struct pppoe_tag *service_name_tag = NULL;
-	int len, n, service_match = conf_service_name == NULL;
+	int len, n, service_match = conf_service_name[0] == NULL;
 	struct delayed_pado_t *pado;
 	struct timespec ts;
 	uint16_t ppp_max_payload = 0;
@@ -977,12 +983,16 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 			case TAG_END_OF_LIST:
 				break;
 			case TAG_SERVICE_NAME:
-				if (conf_service_name) {
-					if (ntohs(tag->tag_len) != strlen(conf_service_name))
-						break;
-					if (memcmp(tag->tag_data, conf_service_name, ntohs(tag->tag_len)))
-						break;
-					service_match = 1;
+				if (conf_service_name[0]) {
+					int svc_index = 0;
+					do {
+					    if (ntohs(tag->tag_len) == strlen(conf_service_name[svc_index]) && 
+						memcmp(tag->tag_data, conf_service_name[svc_index], ntohs(tag->tag_len)) == 0) {
+						    service_match = 1;
+						    break;
+					    }
+					    svc_index++;
+					} while(conf_service_name[svc_index]);
 				} else
 					service_name_tag = tag;
 				break;
@@ -1002,7 +1012,7 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	if (conf_verbose)
 		print_packet(serv->ifname, "recv", pack);
 
-	if (!service_match) {
+	if (!service_match && !conf_accept_any_service) {
 		if (conf_verbose)
 			log_warn("pppoe: discarding PADI packet (Service-Name mismatch)\n");
 		return;
@@ -1110,12 +1120,16 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 				service_name_tag = tag;
 				if (tag->tag_len == 0)
 					service_match = 1;
-				else if (conf_service_name) {
-					if (ntohs(tag->tag_len) != strlen(conf_service_name))
-						break;
-					if (memcmp(tag->tag_data, conf_service_name, ntohs(tag->tag_len)))
-						break;
-					service_match = 1;
+				else if (conf_service_name[0]) {
+					int svc_index = 0;
+					do {
+					    if (ntohs(tag->tag_len) == strlen(conf_service_name[svc_index]) && 
+						memcmp(tag->tag_data, conf_service_name[svc_index], ntohs(tag->tag_len)) == 0) {
+						    service_match = 1;
+						    break;
+					    }
+					    svc_index++;
+					} while(conf_service_name[svc_index]);
 				} else {
 					service_match = 1;
 				}
@@ -1161,7 +1175,7 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 		return;
 	}
 
-	if (!service_match) {
+	if (!service_match && !conf_accept_any_service) {
 		if (conf_verbose)
 			log_warn("pppoe: Service-Name mismatch\n");
 		pppoe_send_err(serv, ethhdr->h_source, host_uniq_tag, relay_sid_tag, CODE_PADS, TAG_SERVICE_NAME_ERROR);
@@ -1907,6 +1921,10 @@ static void load_config(void)
 	if (opt)
 		conf_verbose = atoi(opt);
 
+	opt = conf_get_opt("pppoe", "accept-any-service");
+	if (opt)
+	    conf_accept_any_service = atoi(opt);
+
 	opt = conf_get_opt("pppoe", "ac-name");
 	if (!opt)
 		opt = conf_get_opt("pppoe", "AC-Name");
@@ -1921,9 +1939,23 @@ static void load_config(void)
 	if (!opt)
 		opt = conf_get_opt("pppoe", "Service-Name");
 	if (opt) {
-		if (conf_service_name)
-			_free(conf_service_name);
-		conf_service_name = _strdup(opt);
+		if (conf_service_name[0]) {
+			int i = 0;
+			do {
+			    _free(conf_service_name[i]);
+			    i++;
+			} while(conf_service_name[i]);
+			conf_service_name[0] = NULL;
+		}
+		char *conf_service_name_string = _strdup(opt);
+		char *p = strtok (conf_service_name_string, ",");
+		int i = 0;
+		while (p != NULL && i<255) {
+		    conf_service_name[i++] = _strdup(p);
+		    p = strtok(NULL, ",");
+		}
+		conf_service_name[i] = NULL;
+		_free(conf_service_name_string);
 	}
 
 	opt = conf_get_opt("pppoe", "ifname-in-sid");
@@ -2039,6 +2071,7 @@ static void pppoe_init(void)
 	conn_pool = mempool_create(sizeof(struct pppoe_conn_t));
 	pado_pool = mempool_create(sizeof(struct delayed_pado_t));
 	padi_pool = mempool_create(sizeof(struct padi_t));
+	conf_service_name[0] = NULL;
 
 	if (!conf_get_section("pppoe")) {
 		log_error("pppoe: no configuration, disabled...\n");
