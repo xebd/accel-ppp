@@ -1018,6 +1018,9 @@ static void ipoe_session_started(struct ap_session *s)
 	if (ses->timer.tpd)
 		triton_timer_mod(&ses->timer, 0);
 
+	if (ses->ses.ipv4->peer_addr != ses->yiaddr)
+		iproute_add(ses->ses.ifindex, ses->router, ses->yiaddr, 0, conf_proto, 32);
+
 	if (ses->ifindex != -1 && ses->xid) {
 		ses->dhcpv4 = dhcpv4_create(ses->ctrl.ctx, ses->ses.ifname, "");
 		if (!ses->dhcpv4) {
