@@ -60,10 +60,15 @@ static void ev_ses_started(struct ap_session *ses)
 	struct ipv6_mreq mreq;
 	struct dhcpv6_pd *pd;
 	struct sockaddr_in6 addr;
+	struct ipv6db_addr_t *a;
 	int sock;
 	int f = 1;
 
 	if (!ses->ipv6)
+		return;
+
+	a = list_entry(ses->ipv6->addr_list.next, typeof(*a), entry);
+	if (a->prefix_len == 0)
 		return;
 
 	sock = net->socket(AF_INET6, SOCK_DGRAM, 0);
