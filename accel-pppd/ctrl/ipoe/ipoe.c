@@ -563,6 +563,9 @@ static int ipoe_create_interface(struct ipoe_session *ses)
 	ses->ses.ifindex = ses->ifindex;
 	ses->ses.unit_idx = ses->ifindex;
 
+	if (ses->serv->opt_mtu)
+		iplink_set_mtu(ses->ses.ifindex, ses->serv->opt_mtu);
+
 	log_ppp_info2("create interface %s parent %s\n", ifr.ifr_name, ses->serv->ifname);
 
 	return 0;
@@ -2659,6 +2662,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	int opt_username = conf_username;
 	int opt_ipv6 = conf_ipv6;
 	int opt_auto = conf_auto;
+	int opt_mtu = 0;
 #ifdef USE_LUA
 	char *opt_lua_username_func = NULL;
 #endif
@@ -2726,6 +2730,8 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 				opt_arp = atoi(ptr1);
 			} else if (strcmp(str, "ipv6") == 0) {
 				opt_ipv6 = atoi(ptr1);
+			} else if (strcmp(str, "mtu") == 0) {
+				opt_mtu = atoi(ptr1);
 			} else if (strcmp(str, "username") == 0) {
 				if (strcmp(ptr1, "ifname") == 0)
 					opt_username = USERNAME_IFNAME;
@@ -2816,6 +2822,11 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 			serv->arp = NULL;
 		} else if (!serv->arp && opt_arp)
 			serv->arp = arpd_start(serv);
+
+		if (serv->opt_mtu != opt_mtu && opt_mtu) {
+			iplink_set_mtu(serv->ifindex, opt_mtu);
+			serv->opt_mtu = opt_mtu;
+		}
 
 		serv->opt_up = opt_up;
 		serv->opt_auto = opt_auto;
@@ -2910,6 +2921,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	serv->opt_arp = opt_arp;
 	serv->opt_username = opt_username;
 	serv->opt_ipv6 = opt_ipv6;
+	serv->opt_mtu = opt_mtu;
 #ifdef USE_LUA
 	serv->opt_lua_username_func = opt_lua_username_func;
 #endif
@@ -2942,6 +2954,9 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 		serv->vlan_mon = 1;
 		set_vlan_timeout(serv);
 	}
+
+	if (opt_mtu)
+		iplink_set_mtu(ifindex, opt_mtu);
 
 	if (serv->opt_auto && !serv->opt_shared)
 		triton_context_call(&serv->ctx, (triton_event_func)ipoe_session_create_auto, serv);
