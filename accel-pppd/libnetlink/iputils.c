@@ -153,6 +153,36 @@ out:
 	return r;
 }
 
+int __export iplink_set_mtu(int ifindex, int mtu)
+{
+	struct iplink_req {
+		struct nlmsghdr n;
+		struct ifinfomsg i;
+		char buf[1024];
+	} req;
+	struct rtnl_handle *rth = net->rtnl_get();
+	int r;
+
+	if (!rth)
+		return -1;
+
+	memset(&req, 0, sizeof(req) - 1024);
+
+	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
+	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+	req.n.nlmsg_type = RTM_SETLINK;
+	req.i.ifi_family = AF_UNSPEC;
+	req.i.ifi_index = ifindex;
+
+	addattr_l(&req.n, 1024, IFLA_MTU, &mtu, 4);
+
+	r = rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0);
+
+	net->rtnl_put(rth);
+
+	return r;
+}
+
 int __export iplink_vlan_add(const char *ifname, int ifindex, int vid)
 {
 	struct iplink_req {
