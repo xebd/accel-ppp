@@ -52,6 +52,7 @@ struct ipoe_serv {
 	uint32_t opt_src;
 	int opt_arp;
 	int opt_username;
+	int opt_mtu;
 #ifdef USE_LUA
 	char *opt_lua_username_func;
 #endif
