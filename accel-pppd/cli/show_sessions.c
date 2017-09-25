@@ -392,9 +392,64 @@ static void print_username(struct ap_session *ses, char *buf)
 		*buf = 0;
 }
 
+static void print_ip6_dp(struct ap_session *ses, char *buf)
+{
+	struct ipv6db_addr_t *a;
+	char *ptr;
+
+	if (!ses->ipv6_dp) {
+		*buf = 0;
+		return;
+	}
+
+	a = list_entry(ses->ipv6_dp->prefix_list.next, typeof(*a), entry);
+	inet_ntop(AF_INET6, &a->addr, buf, 64);
+	ptr = strchr(buf, 0);
+	sprintf(ptr, "/%i", a->prefix_len);
+}
+
+static void build_ip6_addr(struct ipv6db_addr_t *a, uint64_t intf_id, struct in6_addr *addr)
+{
+	memcpy(addr, &a->addr, sizeof(*addr));
+
+	if (a->prefix_len <= 64)
+		*(uint64_t *)(addr->s6_addr + 8) = intf_id;
+	else
+		*(uint64_t *)(addr->s6_addr + 8) |= intf_id & ((1 << (128 - a->prefix_len)) - 1);
+}
+
+static void print_ip6(struct ap_session *ses, char *buf)
+{
+	struct ipv6db_addr_t *a;
+	struct in6_addr addr;
+	char *ptr;
+
+	if (!ses->ipv6) {
+		*buf = 0;
+		return;
+	}
+
+	a = list_entry(ses->ipv6->addr_list.next, typeof(*a), entry);
+	if (a->prefix_len == 0) {
+		*buf = 0;
+		return;
+	}
+
+	build_ip6_addr(a, ses->ipv6->peer_intf_id, &addr);
+
+	inet_ntop(AF_INET6, &addr, buf, 64);
+	ptr = strchr(buf, 0);
+	sprintf(ptr, "/%i", a->prefix_len);
+}
+
 static void print_ip(struct ap_session *ses, char *buf)
 {
-	u_inet_ntoa(ses->ipv4 ? ses->ipv4->peer_addr : 0, buf);
+	if (!ses->ipv4) {
+		print_ip6(ses,buf);
+		return;
+	}
+
+	u_inet_ntoa(ses->ipv4->peer_addr, buf);
 }
 
 static void print_type(struct ap_session *ses, char *buf)
@@ -579,6 +634,8 @@ static void init(void)
 	cli_show_ses_register("ifname", "interface name", print_ifname);
 	cli_show_ses_register("username", "user name", print_username);
 	cli_show_ses_register("ip", "IP address", print_ip);
+	cli_show_ses_register("ip6", "IPv6 address", print_ip6);
+	cli_show_ses_register("ip6-dp", "IPv6 delegated prefix", print_ip6_dp);
 	cli_show_ses_register("type", "VPN type", print_type);
 	cli_show_ses_register("state", "state of session", print_state);
 	cli_show_ses_register("uptime", "uptime", print_uptime);
