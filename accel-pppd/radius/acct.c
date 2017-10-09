@@ -262,6 +262,7 @@ static void rad_acct_start_recv(struct rad_req_t *req)
 		req->recv = rad_acct_recv;
 		req->sent = rad_acct_sent;
 		req->log = conf_interim_verbose ? log_ppp_info2 : NULL;
+		req->prio = 1;
 	} else {
 		rad_req_free(rpd->acct_req);
 		rpd->acct_req = NULL;
@@ -291,7 +292,7 @@ static void rad_acct_start_timeout(struct triton_timer_t *t)
 
 int rad_acct_start(struct radius_pd_t *rpd)
 {
-	struct rad_req_t *req = rad_req_alloc(rpd, CODE_ACCOUNTING_REQUEST, rpd->ses->username);
+	struct rad_req_t *req = rad_req_alloc(rpd, CODE_ACCOUNTING_REQUEST, rpd->ses->username, 0);
 
 	if (!req)
 		return -1;
@@ -448,7 +449,7 @@ int rad_acct_stop(struct radius_pd_t *rpd)
 		req->ts = ts.tv_sec;
 		req->try = 0;
 	} else {
-		req = rad_req_alloc(rpd, CODE_ACCOUNTING_REQUEST, rpd->ses->username);
+		req = rad_req_alloc(rpd, CODE_ACCOUNTING_REQUEST, rpd->ses->username, 1);
 		if (!req)
 			return -1;
 

@@ -18,7 +18,7 @@
 static int make_socket(struct rad_req_t *req);
 static mempool_t req_pool;
 
-static struct rad_req_t *__rad_req_alloc(struct radius_pd_t *rpd, int code, const char *username, in_addr_t addr, int port)
+static struct rad_req_t *__rad_req_alloc(struct radius_pd_t *rpd, int code, const char *username, in_addr_t addr, int port, int prio)
 {
 	struct rad_plugin_t *plugin;
 	struct ppp_t *ppp = NULL;
@@ -42,6 +42,7 @@ static struct rad_req_t *__rad_req_alloc(struct radius_pd_t *rpd, int code, cons
 	req->ts = ts.tv_sec;
 
 	req->type = code == CODE_ACCESS_REQUEST ? RAD_SERV_AUTH : RAD_SERV_ACCT;
+	req->prio = prio;
 
 	if (addr)
 		req->serv = rad_server_get2(req->type, addr, port);
@@ -142,14 +143,14 @@ out_err:
 	return NULL;
 }
 
-struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *username)
+struct rad_req_t *rad_req_alloc(struct radius_pd_t *rpd, int code, const char *username, int prio)
 {
-	return __rad_req_alloc(rpd, code, username, 0, 0);
+	return __rad_req_alloc(rpd, code, username, 0, 0, prio);
 }
 
 struct rad_req_t *rad_req_alloc2(struct radius_pd_t *rpd, int code, const char *username, in_addr_t addr, int port)
 {
-	struct rad_req_t *req = __rad_req_alloc(rpd, code, username, addr, port);
+	struct rad_req_t *req = __rad_req_alloc(rpd, code, username, addr, port, 0);
 
 	if (!req)
 		return NULL;
