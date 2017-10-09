@@ -232,7 +232,7 @@ static void rad_auth_sent(struct rad_req_t *req, int res)
 
 static struct rad_req_t *rad_auth_req_alloc(struct radius_pd_t *rpd, const char *username, int (*recv)(struct rad_req_t *))
 {
-	struct rad_req_t *req = rad_req_alloc(rpd, CODE_ACCESS_REQUEST, username);
+	struct rad_req_t *req = rad_req_alloc(rpd, CODE_ACCESS_REQUEST, username, 0);
 
 	if (!req)
 		return NULL;

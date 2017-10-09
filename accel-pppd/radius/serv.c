@@ -204,7 +204,7 @@ int rad_server_req_enter(struct rad_req_t *req)
 
 	if (req->serv->req_cnt >= req->serv->req_limit) {
 		if (req->send) {
-			list_add_tail(&req->entry, &req->serv->req_queue);
+			list_add_tail(&req->entry, &req->serv->req_queue[req->prio]);
 			req->serv->queue_cnt++;
 			log_ppp_debug("radius(%i): queue %p\n", req->serv->id, req);
 			pthread_mutex_unlock(&req->serv->lock);
@@ -236,6 +236,8 @@ int rad_server_req_enter(struct rad_req_t *req)
 
 void rad_server_req_exit(struct rad_req_t *req)
 {
+	struct rad_server_t *serv = req->serv;
+
 	if (!req->serv->req_limit)
 		return;
 
@@ -243,20 +245,28 @@ void rad_server_req_exit(struct rad_req_t *req)
 
 	req->active = 0;
 
-	pthread_mutex_lock(&req->serv->lock);
-	req->serv->req_cnt--;
-	log_ppp_debug("radius(%i): req_exit %i\n", req->serv->id, req->serv->req_cnt);
-	assert(req->serv->req_cnt >= 0);
-	if (req->serv->req_cnt < req->serv->req_limit && !list_empty(&req->serv->req_queue)) {
-		struct rad_req_t *r = list_entry(req->serv->req_queue.next, typeof(*r), entry);
-		log_ppp_debug("radius(%i): wakeup %p\n", req->serv->id, r);
-		list_del(&r->entry);
-		req->serv->queue_cnt--;
-		req->serv->req_cnt++;
-		r->active = 1;
-		triton_context_call(r->rpd ? r->rpd->ses->ctrl->ctx : NULL, (triton_event_func)req_wakeup, r);
+	pthread_mutex_lock(&serv->lock);
+	serv->req_cnt--;
+	log_ppp_debug("radius(%i): req_exit %i\n", serv->id, serv->req_cnt);
+	assert(serv->req_cnt >= 0);
+	if (serv->req_cnt < serv->req_limit) {
+		struct list_head *list = NULL;
+		if (!list_empty(&serv->req_queue[0]))
+			list = &serv->req_queue[0];
+		else if (!list_empty(&serv->req_queue[1]))
+			list = &serv->req_queue[1];
+
+		if (list) {
+			struct rad_req_t *r = list_entry(list->next, typeof(*r), entry);
+			log_ppp_debug("radius(%i): wakeup %p\n", serv->id, r);
+			list_del(&r->entry);
+			serv->queue_cnt--;
+			serv->req_cnt++;
+			r->active = 1;
+			triton_context_call(r->rpd ? r->rpd->ses->ctrl->ctx : NULL, (triton_event_func)req_wakeup, r);
+		}
 	}
-	pthread_mutex_unlock(&req->serv->lock);
+	pthread_mutex_unlock(&serv->lock);
 }
 
 int rad_server_realloc(struct rad_req_t *req)
@@ -304,11 +314,18 @@ void rad_server_fail(struct rad_server_t *s)
 		log_warn("radius: server(%i) not responding\n", s->id);
 	}
 
-	while (!list_empty(&s->req_queue)) {
-		r = list_entry(s->req_queue.next, typeof(*r), entry);
+	while (!list_empty(&s->req_queue[0])) {
+		r = list_entry(s->req_queue[0].next, typeof(*r), entry);
 		list_del(&r->entry);
 		triton_context_call(r->rpd ? r->rpd->ses->ctrl->ctx : NULL, (triton_event_func)req_wakeup_failed, r);
 	}
+
+	while (!list_empty(&s->req_queue[1])) {
+		r = list_entry(s->req_queue[1].next, typeof(*r), entry);
+		list_del(&r->entry);
+		triton_context_call(r->rpd ? r->rpd->ses->ctrl->ctx : NULL, (triton_event_func)req_wakeup_failed, r);
+	}
+
 	s->queue_cnt = 0;
 	s->stat_fail_cnt++;
 
@@ -524,7 +541,8 @@ static void __add_server(struct rad_server_t *s)
 	}
 
 	s->id = ++num;
-	INIT_LIST_HEAD(&s->req_queue);
+	INIT_LIST_HEAD(&s->req_queue[0]);
+	INIT_LIST_HEAD(&s->req_queue[1]);
 	pthread_mutex_init(&s->lock, NULL);
 	list_add_tail(&s->entry, &serv_list);
 	s->starting = conf_acct_on;
@@ -883,8 +901,14 @@ static void load_config(void)
 		if (s->need_free) {
 			list_del(&s->entry);
 
-			while (!list_empty(&s->req_queue)) {
-				r = list_entry(s->req_queue.next, typeof(*r), entry);
+			while (!list_empty(&s->req_queue[0])) {
+				r = list_entry(s->req_queue[0].next, typeof(*r), entry);
+				list_del(&r->entry);
+				triton_context_call(r->rpd->ses->ctrl->ctx, (triton_event_func)req_wakeup, r);
+			}
+
+			while (!list_empty(&s->req_queue[1])) {
+				r = list_entry(s->req_queue[1].next, typeof(*r), entry);
 				list_del(&r->entry);
 				triton_context_call(r->rpd->ses->ctrl->ctx, (triton_event_func)req_wakeup, r);
 			}
