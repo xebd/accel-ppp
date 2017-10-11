@@ -21,7 +21,7 @@ struct backup_tag
 {
 	struct list_head entry;
 	uint16_t internal:1;
-	uint8_t id;
+	uint16_t id:15;
 	uint16_t size;
 	uint8_t *data;
 };

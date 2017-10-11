@@ -219,7 +219,6 @@ void __export backup_restore_session(struct backup_data *d)
 	}
 }
 
-
 void __export backup_register_module(struct backup_module *m)
 {
 	list_add_tail(&m->entry, &module_list);
