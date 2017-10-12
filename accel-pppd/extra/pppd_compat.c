@@ -38,17 +38,22 @@ static char *conf_ip_down;
 static char *conf_ip_change;
 static char *conf_radattr_prefix;
 static int conf_verbose = 0;
+static int conf_fork_limit;
 
 static void *pd_key;
+
+static pthread_mutex_t queue_lock;
+static int fork_cnt;
+static LIST_HEAD(queue0);
+static LIST_HEAD(queue1);
 
 struct pppd_compat_pd
 {
 	struct ap_private pd;
 	struct ap_session *ses;
-	struct sigchld_handler_t ip_pre_up_hnd;
+	struct list_head entry;
+	struct sigchld_handler_t hnd;
 	struct sigchld_handler_t ip_up_hnd;
-	struct sigchld_handler_t ip_change_hnd;
-	struct sigchld_handler_t ip_down_hnd;
 #ifdef RADIUS
 	char *tmp_fname;
 	int radattr_saved:1;
@@ -67,14 +72,68 @@ static void remove_radattr(struct pppd_compat_pd *);
 static void write_radattr(struct pppd_compat_pd *, struct rad_packet_t *pack);
 #endif
 
+static void fork_queue_wakeup()
+{
+	struct pppd_compat_pd *pd;
+
+	if (!conf_fork_limit)
+		return;
+
+	pthread_mutex_lock(&queue_lock);
+
+	if (!list_empty(&queue0)) {
+		pd = list_entry(queue0.next, typeof(*pd), entry);
+		list_del(&pd->entry);
+		pthread_mutex_unlock(&queue_lock);
+		triton_context_wakeup(pd->ses->ctrl->ctx);
+		return;
+	}
+
+	if (!list_empty(&queue1)) {
+		pd = list_entry(queue1.next, typeof(*pd), entry);
+		list_del(&pd->entry);
+		pthread_mutex_unlock(&queue_lock);
+		triton_context_wakeup(pd->ses->ctrl->ctx);
+		return;
+	}
+
+	--fork_cnt;
+
+	pthread_mutex_unlock(&queue_lock);
+}
+
+static void check_fork_limit(struct pppd_compat_pd *pd, struct list_head *queue)
+{
+	if (!conf_fork_limit)
+		return;
+
+	pthread_mutex_lock(&queue_lock);
+	if (fork_cnt >= conf_fork_limit) {
+		log_ppp_debug("pppd_compat: sleep\n");
+		list_add_tail(&pd->entry, queue);
+		pthread_mutex_unlock(&queue_lock);
+		triton_context_schedule();
+		log_ppp_debug("pppd_compat: wakeup\n");
+	} else {
+		++fork_cnt;
+		pthread_mutex_unlock(&queue_lock);
+	}
+}
+
+
 static void ip_pre_up_handler(struct sigchld_handler_t *h, int status)
 {
-	struct pppd_compat_pd *pd = container_of(h, typeof(*pd), ip_pre_up_hnd);
+	struct pppd_compat_pd *pd = container_of(h, typeof(*pd), hnd);
+
+	fork_queue_wakeup();
+
 	if (conf_verbose) {
 		log_switch(NULL, pd->ses);
 		log_ppp_info2("pppd_compat: ip-pre-up finished (%i)\n", status);
 	}
+
 	pd->res = status;
+
 	triton_context_wakeup(pd->ses->ctrl->ctx);
 }
 
@@ -86,28 +145,40 @@ static void ses_ip_up_handler(long status)
 static void ip_up_handler(struct sigchld_handler_t *h, int status)
 {
 	struct pppd_compat_pd *pd = container_of(h, typeof(*pd), ip_up_hnd);
+
+	fork_queue_wakeup();
+
 	if (conf_verbose)
 		triton_context_call(pd->ses->ctrl->ctx, (triton_event_func)ses_ip_up_handler, (void *)(long)status);
 }
 
 static void ip_down_handler(struct sigchld_handler_t *h, int status)
 {
-	struct pppd_compat_pd *pd = container_of(h, typeof(*pd), ip_down_hnd);
+	struct pppd_compat_pd *pd = container_of(h, typeof(*pd), hnd);
+
+	fork_queue_wakeup();
+
 	if (conf_verbose) {
 		log_switch(NULL, pd->ses);
 		log_ppp_info2("pppd_compat: ip-down finished (%i)\n", status);
 	}
+
 	triton_context_wakeup(pd->ses->ctrl->ctx);
 }
 
 static void ip_change_handler(struct sigchld_handler_t *h, int status)
 {
-	struct pppd_compat_pd *pd = container_of(h, typeof(*pd), ip_change_hnd);
+	struct pppd_compat_pd *pd = container_of(h, typeof(*pd), hnd);
+
+	fork_queue_wakeup();
+
 	if (conf_verbose) {
 		log_switch(NULL, pd->ses);
 		log_ppp_info2("pppd_compat: ip-change finished (%i)\n", status);
 	}
+
 	pd->res = status;
+
 	triton_context_wakeup(pd->ses->ctrl->ctx);
 }
 
@@ -124,10 +195,7 @@ static void ev_ses_starting(struct ap_session *ses)
 	memset(pd, 0, sizeof(*pd));
 	pd->pd.key = &pd_key;
 	pd->ses = ses;
-	pd->ip_pre_up_hnd.handler = ip_pre_up_handler;
 	pd->ip_up_hnd.handler = ip_up_handler;
-	pd->ip_down_hnd.handler = ip_down_handler;
-	pd->ip_change_hnd.handler = ip_change_handler;
 	list_add_tail(&pd->pd.entry, &ses->pd_list);
 }
 
@@ -174,17 +242,22 @@ static void ev_ses_pre_up(struct ap_session *ses)
 
 	fill_env(env, env_mem, pd);
 
+	check_fork_limit(pd, &queue0);
+
 	sigchld_lock();
 	pid = fork();
 	if (pid > 0) {
-		pd->ip_pre_up_hnd.pid = pid;
-		sigchld_register_handler(&pd->ip_pre_up_hnd);
+		pd->hnd.pid = pid;
+		pd->hnd.handler = ip_pre_up_handler;
+		sigchld_register_handler(&pd->hnd);
 		if (conf_verbose)
 			log_ppp_info2("pppd_compat: ip-pre-up started (pid %i)\n", pid);
 		sigchld_unlock();
+
 		triton_context_schedule();
-		pthread_mutex_lock(&pd->ip_pre_up_hnd.lock);
-		pthread_mutex_unlock(&pd->ip_pre_up_hnd.lock);
+
+		pthread_mutex_lock(&pd->hnd.lock);
+		pthread_mutex_unlock(&pd->hnd.lock);
 		if (pd->res != 0) {
 			ap_session_terminate(ses, pd->res > 127 ? TERM_NAS_ERROR : TERM_ADMIN_RESET, 0);
 			return;
@@ -224,6 +297,8 @@ static void ev_ses_started(struct ap_session *ses)
 	fill_argv(argv, pd, conf_ip_up);
 
 	fill_env(env, env_mem, pd);
+
+	check_fork_limit(pd, &queue1);
 
 	sigchld_lock();
 	pid = fork();
@@ -276,18 +351,22 @@ static void ev_ses_finished(struct ap_session *ses)
 
 		fill_env(env, env_mem, pd);
 
+		check_fork_limit(pd, &queue1);
+
 		sigchld_lock();
 		pid = fork();
 		if (pid > 0) {
-			pd->ip_down_hnd.pid = pid;
-			sigchld_register_handler(&pd->ip_down_hnd);
+			pd->hnd.pid = pid;
+			pd->hnd.handler = ip_down_handler;
+			sigchld_register_handler(&pd->hnd);
 			if (conf_verbose)
 				log_ppp_info2("pppd_compat: ip-down started (pid %i)\n", pid);
 			sigchld_unlock();
+
 			triton_context_schedule();
-			pthread_mutex_lock(&pd->ip_down_hnd.lock);
-			pthread_mutex_unlock(&pd->ip_down_hnd.lock);
-			sigchld_unregister_handler(&pd->ip_down_hnd);
+
+			pthread_mutex_lock(&pd->hnd.lock);
+			pthread_mutex_unlock(&pd->hnd.lock);
 		} else if (pid == 0) {
 			sigset_t set;
 			sigfillset(&set);
@@ -360,15 +439,21 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 		fill_argv(argv, pd, conf_ip_change);
 
 		fill_env(env, env_mem, pd);
-	  sigchld_lock();
+
+		check_fork_limit(pd, &queue1);
+
+		sigchld_lock();
 	  pid = fork();
 	  if (pid > 0) {
-			pd->ip_change_hnd.pid = pid;
-			sigchld_register_handler(&pd->ip_change_hnd);
+			pd->hnd.pid = pid;
+			pd->hnd.handler = ip_change_handler;
+			sigchld_register_handler(&pd->hnd);
 			sigchld_unlock();
 			if (conf_verbose)
 				log_ppp_info2("pppd_compat: ip-change started (pid %i)\n", pid);
+
 			triton_context_schedule();
+
 			if (!ev->res)
 				ev->res = pd->res;
 		} else if (pid == 0) {
@@ -646,6 +731,12 @@ static void load_config()
 		conf_verbose = atoi(opt);
 	else
 		conf_verbose = 0;
+
+	opt = conf_get_opt("pppd-compat", "fork-limit");
+	if (opt)
+		conf_fork_limit = atoi(opt);
+	else
+		conf_fork_limit = sysconf(_SC_NPROCESSORS_ONLN*2);
 }
 
 static void init(void)
