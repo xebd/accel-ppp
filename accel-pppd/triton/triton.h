@@ -138,6 +138,8 @@ void triton_terminate(void);
 #define __export __attribute__((visibility("default")))
 #define __unused __attribute__((unused))
 
+#define barrier() asm volatile ("" ::: "memory")
+
 #undef offsetof
 #ifdef __compiler_offsetof
 #define offsetof(TYPE,MEMBER) __compiler_offsetof(TYPE,MEMBER)

@@ -2,6 +2,7 @@
 #define TRITON_P_H
 
 #include <pthread.h>
+#include <ucontext.h>
 #include <sys/epoll.h>
 
 #include "triton.h"
@@ -18,6 +19,7 @@ struct _triton_thread_t
 	struct _triton_context_t *ctx;
 	pthread_mutex_t sleep_lock;
 	pthread_cond_t sleep_cond;
+	struct list_head wakeup_list;
 };
 
 struct _triton_context_t
@@ -42,6 +44,8 @@ struct _triton_context_t
 	int pending;
 	int priority;
 	int refs;
+
+	ucontext_t *uc;
 
 	struct triton_context_t *ud;
 	void *bf_arg;
