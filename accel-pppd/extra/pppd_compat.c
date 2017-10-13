@@ -736,7 +736,7 @@ static void load_config()
 	if (opt)
 		conf_fork_limit = atoi(opt);
 	else
-		conf_fork_limit = sysconf(_SC_NPROCESSORS_ONLN*2);
+		conf_fork_limit = sysconf(_SC_NPROCESSORS_ONLN)*2;
 }
 
 static void init(void)
