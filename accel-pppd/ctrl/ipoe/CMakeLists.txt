@@ -10,20 +10,19 @@ SET(sources
 )
 
 IF (LUA)
-	include(FindLua51)
-	IF (NOT LUA51_FOUND)
-		MESSAGE(FATAL_ERROR "lua not found")
-	ENDIF (NOT LUA51_FOUND)
 	INCLUDE_DIRECTORIES(${LUA_INCLUDE_DIR})
 	ADD_DEFINITIONS(-DUSE_LUA)
-	SET(sources ${sources} lua.c lua_lpack.c lua_bit.c)
+	SET(sources ${sources} lua.c)
 ENDIF (LUA)
 
 ADD_LIBRARY(ipoe SHARED ${sources})
+
 IF (LUA)
-	TARGET_LINK_LIBRARIES(ipoe ${LUA_LIBRARIES})
+	TARGET_LINK_LIBRARIES(ipoe luasupp)
 ENDIF(LUA)
+
 TARGET_LINK_LIBRARIES(ipoe vlan-mon)
+
 set_property(TARGET ipoe PROPERTY CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
 set_property(TARGET ipoe PROPERTY INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib${LIB_SUFFIX}/accel-ppp)
 

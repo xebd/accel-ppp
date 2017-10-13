@@ -32,6 +32,8 @@
 #include "lua.h"
 #include "lauxlib.h"
 
+#if LUA_VERSION_NUM < 503
+
 #ifdef _MSC_VER
 /* MSVC is stuck in the last century and doesn't have C99's stdint.h. */
 typedef __int32 int32_t;
@@ -160,7 +162,7 @@ static const struct luaL_Reg bit_funcs[] = {
 */
 #define BAD_SAR		(bsar(-8, 2) != (SBits)-2)
 
-LUALIB_API int luaopen_bit(lua_State *L)
+LUALIB_API __attribute__((visibility("default"))) int luaopen_bit(lua_State *L)
 {
   UBits b;
   lua_pushnumber(L, (lua_Number)1437217655L);
@@ -186,4 +188,4 @@ LUALIB_API int luaopen_bit(lua_State *L)
 #endif
   return 1;
 }
-
+#endif
