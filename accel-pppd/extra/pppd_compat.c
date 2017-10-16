@@ -262,6 +262,8 @@ static void ev_ses_pre_up(struct ap_session *ses)
 			ap_session_terminate(ses, pd->res > 127 ? TERM_NAS_ERROR : TERM_ADMIN_RESET, 0);
 			return;
 		}
+
+		pd->started = 1;
 	} else if (pid == 0) {
 		sigset_t set;
 		sigfillset(&set);
@@ -318,8 +320,6 @@ static void ev_ses_started(struct ap_session *ses)
 		_exit(EXIT_FAILURE);
 	} else
 		log_error("pppd_compat: fork: %s\n", strerror(errno));
-
-	pd->started = 1;
 }
 
 static void ev_ses_finished(struct ap_session *ses)
@@ -335,7 +335,7 @@ static void ev_ses_finished(struct ap_session *ses)
 	if (!pd)
 		return;
 
-	if (pd->started) {
+	if (pd->ip_up_hnd.pid) {
 		pthread_mutex_lock(&pd->ip_up_hnd.lock);
 		if (pd->ip_up_hnd.pid) {
 			log_ppp_warn("pppd_compat: ip-up is not yet finished, terminating it ...\n");
@@ -344,7 +344,7 @@ static void ev_ses_finished(struct ap_session *ses)
 		pthread_mutex_unlock(&pd->ip_up_hnd.lock);
 	}
 
-	if (conf_ip_down) {
+	if (pd->started && conf_ip_down) {
 		argv[4] = ipaddr;
 		argv[5] = peer_ipaddr;
 		fill_argv(argv, pd, conf_ip_down);
@@ -379,7 +379,7 @@ static void ev_ses_finished(struct ap_session *ses)
 			log_error("pppd_compat: fork: %s\n", strerror(errno));
 	}
 
-	if (pd->started) {
+	if (pd->ip_up_hnd.pid) {
 		pthread_mutex_lock(&pd->ip_up_hnd.lock);
 		if (pd->ip_up_hnd.pid) {
 			log_ppp_warn("pppd_compat: ip-up is not yet finished, killing it ...\n");
