@@ -4,6 +4,7 @@ INCLUDE_DIRECTORIES(${LUA_INCLUDE_DIR})
 SET(sources
     lua_lpack.c
     lua_bit.c
+		session.c
 )
 
 ADD_LIBRARY(luasupp SHARED ${sources})

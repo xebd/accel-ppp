@@ -1,6 +1,9 @@
 #ifndef __AP_SESSION_H__
 #define __AP_SESSION_H__
 
+#include <sys/socket.h>
+
+#include "triton.h"
 #include "ap_net.h"
 
 //#define AP_SESSIONID_LEN 16
