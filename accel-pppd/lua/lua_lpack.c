@@ -252,20 +252,20 @@ static int l_pack(lua_State *L) 		/** pack(f,...) */
  return 1;
 }
 
-static const luaL_reg R[] =
+static const struct luaL_Reg R[] =
 {
 	{"pack",	l_pack},
 	{"unpack",	l_unpack},
 	{NULL,	NULL}
 };
 
-int luaopen_lpack(lua_State *L)
+LUALIB_API __attribute__((visibility("default"))) int luaopen_lpack(lua_State *L)
 {
-#ifdef USE_GLOBALS
- lua_register(L,"bpack",l_pack);
- lua_register(L,"bunpack",l_unpack);
+#if LUA_VERSION_NUM < 502
+  luaL_register(L, LUA_STRLIBNAME, R);
 #else
- luaI_openlib(L, LUA_STRLIBNAME, R, 0);
+	luaL_newmetatable(L, LUA_STRLIBNAME);
+  luaL_newlib(L, R);
 #endif
- return 0;
+ return 1;
 }
