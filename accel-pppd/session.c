@@ -421,6 +421,10 @@ int __export ap_session_set_username(struct ap_session *s, char *username)
 					_free(username);
 					return -1;
 				} else {
+					if (!ses->wakeup) {
+						ses->wakeup = s->ctrl->ctx;
+						wait = 1;
+					}
 					ap_session_ifdown(ses);
 					triton_context_call(ses->ctrl->ctx, (triton_event_func)__terminate_sec, ses);
 					continue;
