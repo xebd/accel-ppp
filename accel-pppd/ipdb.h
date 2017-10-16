@@ -61,5 +61,7 @@ void ipdb_put_ipv6_prefix(struct ap_session *ses, struct ipv6db_prefix_t *it);
 
 void ipdb_register(struct ipdb_t *);
 
+void build_ip6_addr(struct ipv6db_addr_t *a, uint64_t intf_id, struct in6_addr *addr);
+
 #endif
 

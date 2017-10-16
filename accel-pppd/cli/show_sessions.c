@@ -408,16 +408,6 @@ static void print_ip6_dp(struct ap_session *ses, char *buf)
 	sprintf(ptr, "/%i", a->prefix_len);
 }
 
-static void build_ip6_addr(struct ipv6db_addr_t *a, uint64_t intf_id, struct in6_addr *addr)
-{
-	memcpy(addr, &a->addr, sizeof(*addr));
-
-	if (a->prefix_len <= 64)
-		*(uint64_t *)(addr->s6_addr + 8) = intf_id;
-	else
-		*(uint64_t *)(addr->s6_addr + 8) |= intf_id & ((1 << (128 - a->prefix_len)) - 1);
-}
-
 static void print_ip6(struct ap_session *ses, char *buf)
 {
 	struct ipv6db_addr_t *a;
