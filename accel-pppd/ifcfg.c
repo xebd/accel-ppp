@@ -215,6 +215,7 @@ void __export ap_session_accounting_started(struct ap_session *ses)
 	ses->ctrl->started(ses);
 
 	triton_event_fire(EV_SES_STARTED, ses);
+	triton_event_fire(EV_SES_POST_STARTED, ses);
 }
 
 void __export ap_session_ifdown(struct ap_session *ses)

@@ -14,9 +14,18 @@ IF (BACKUP)
 	SET(sources ${sources} backup.c)
 ENDIF (BACKUP)
 
+IF (LUA)
+	INCLUDE_DIRECTORIES(${LUA_INCLUDE_DIR})
+	SET(sources ${sources} lua.c)
+ENDIF ()
+
 ADD_DEFINITIONS(-DDICTIONARY="${CMAKE_INSTALL_PREFIX}/share/accel-ppp/radius/dictionary")
 
 ADD_LIBRARY(radius SHARED ${sources})
+
+IF (LUA)
+	TARGET_LINK_LIBRARIES(radius luasupp)
+ENDIF ()
 
 INSTALL(TARGETS radius
 	LIBRARY DESTINATION lib${LIB_SUFFIX}/accel-ppp

@@ -451,6 +451,11 @@ static void ses_started(struct ap_session *ses)
 			log_ppp_warn("radius: failed to add route %s/%i%s\n", dst, fr->mask, gw);
 		}
 	}
+
+	if (rpd->auth_reply) {
+		rad_packet_free(rpd->auth_reply);
+		rpd->auth_reply = NULL;
+	}
 }
 
 static void ses_finishing(struct ap_session *ses)
@@ -501,6 +506,9 @@ static void ses_finished(struct ap_session *ses)
 			rad_req_free(rpd->acct_req);
 		}
 	}
+
+	if (rpd->auth_reply)
+		rad_packet_free(rpd->auth_reply);
 
 	if (rpd->dm_coa_req)
 		dm_coa_cancel(rpd);
@@ -832,7 +840,7 @@ static void radius_init(void)
 	ipdb_register(&ipdb);
 
 	triton_event_register_handler(EV_SES_STARTING, (triton_event_func)ses_starting);
-	triton_event_register_handler(EV_SES_STARTED, (triton_event_func)ses_started);
+	triton_event_register_handler(EV_SES_POST_STARTED, (triton_event_func)ses_started);
 	triton_event_register_handler(EV_SES_ACCT_START, (triton_event_func)ses_acct_start);
 	triton_event_register_handler(EV_SES_FINISHING, (triton_event_func)ses_finishing);
 	triton_event_register_handler(EV_SES_FINISHED, (triton_event_func)ses_finished);

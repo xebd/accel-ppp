@@ -43,6 +43,8 @@ struct radius_pd_t {
 	int ipv6_dp_assigned:1;
 	int ipv6_dp_sent:1;
 
+	struct rad_packet_t *auth_reply;
+
 	struct rad_req_t *acct_req;
 	struct triton_timer_t acct_interim_timer;
 
