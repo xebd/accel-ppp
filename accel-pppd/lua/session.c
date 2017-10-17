@@ -12,6 +12,9 @@
 #include "utils.h"
 #include "luasupp.h"
 
+static int mod_cnt;
+static const struct lua_session_module **mods;
+
 static int session_ifname(lua_State *L);
 static int session_ifindex(lua_State *L);
 static int session_sid(lua_State *L);
@@ -24,6 +27,7 @@ static int session_ipv4(lua_State *L);
 static int session_ipv6(lua_State *L);
 static int session_rx_bytes(lua_State *L);
 static int session_tx_bytes(lua_State *L);
+static int session_module(lua_State *L);
 
 static const struct luaL_Reg session_lib [] = {
 	{"ifname", session_ifname},
@@ -38,11 +42,14 @@ static const struct luaL_Reg session_lib [] = {
 	{"ipv6", session_ipv6},
 	{"rx_bytes", session_rx_bytes},
 	{"tx_bytes", session_tx_bytes},
+	{"module", session_module},
 	{NULL, NULL}
 };
 
 int __export luaopen_ap_session(lua_State *L)
 {
+	int i;
+
   luaL_newmetatable(L, LUA_AP_SESSION);
 
 	lua_pushvalue(L, -1);
@@ -53,6 +60,9 @@ int __export luaopen_ap_session(lua_State *L)
 #else
   luaL_setfuncs(L, session_lib, 0);
 #endif
+
+	for (i = 0; i < mod_cnt; i++)
+		mods[i]->init(L);
 
 	return 1;
 }
@@ -231,4 +241,35 @@ static int session_tx_bytes(lua_State *L)
 	return 1;
 }
 
+static int session_module(lua_State *L)
+{
+	int i;
+	struct ap_session *ses = luaL_checkudata(L, 1, LUA_AP_SESSION);
+	const char *name;
 
+	if (!ses)
+		return 0;
+
+	name = luaL_checkstring(L, 2);
+	if (!name)
+		return 0;
+
+	for (i = 0; i < mod_cnt; i++) {
+		if (strcmp(name, mods[i]->name) == 0)
+			return mods[i]->get_instance(L, ses);
+	}
+
+	lua_pushnil(L);
+
+	return 1;
+}
+
+void __export lua_session_module_register(const struct lua_session_module *mod)
+{
+	if (!mods)
+		mods = malloc(sizeof(void *));
+	else
+		mods = realloc(mods, (mod_cnt + 1) * sizeof(void *));
+
+	mods[mod_cnt++] = mod;
+}
