@@ -225,6 +225,8 @@ static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct d
 	if (!serv->opt_shared) {
 		ses = list_entry(serv->sessions.next, typeof(*ses), entry);
 		ses->UP = 0;
+		if (opt82_ses)
+			*opt82_ses = ses;
 		return ses;
 	}
 
