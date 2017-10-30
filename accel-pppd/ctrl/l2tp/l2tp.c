@@ -94,6 +94,7 @@ static int conf_mppe = MPPE_UNSET;
 static int conf_dataseq = L2TP_DATASEQ_ALLOW;
 static int conf_reorder_timeout = 0;
 static const char *conf_ip_pool;
+static const char *conf_ifname;
 
 static unsigned int stat_conn_starting;
 static unsigned int stat_conn_active;
@@ -1796,6 +1797,8 @@ static int l2tp_session_start_data_channel(struct l2tp_sess_t *sess)
 			goto err;
 		}
 	}
+	if (conf_ifname)
+		sess->ppp.ses.ifname_rename = _strdup(conf_ifname);
 
 	sess->ppp.ses.ctrl = &sess->ctrl;
 	sess->apses_state = APSTATE_INIT;
@@ -4928,6 +4931,7 @@ static void load_config(void)
 	}
 
 	conf_ip_pool = conf_get_opt("l2tp", "ip-pool");
+	conf_ifname = conf_get_opt("l2tp", "ifname");
 
 	switch (iprange_check_activation()) {
 	case IPRANGE_DISABLED:
