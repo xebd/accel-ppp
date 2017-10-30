@@ -86,6 +86,7 @@ static int conf_ppp_max_mtu = SSTP_MAX_PACKET_SIZE - 8;
 static int conf_hash_protocol = CERT_HASH_PROTOCOL_SHA256;
 //static int conf_bypass_auth = 0;
 static const char *conf_ip_pool;
+static const char *conf_ifname;
 static int conf_ssl = 1;
 static char *conf_ssl_ciphers = "HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4";
 static char *conf_ssl_ca_file = NULL;
@@ -1330,6 +1331,8 @@ static int sstp_connect(struct triton_md_handler_t *h)
 		conn->ppp.ses.chan_name = conn->ctrl.calling_station_id;
 		if (conf_ip_pool)
 			conn->ppp.ses.ipv4_pool_name = _strdup(conf_ip_pool);
+		if (conf_ifname)
+			conn->ppp.ses.ifname_rename = _strdup(conf_ifname);
 
 		triton_context_register(&conn->ctx, &conn->ppp.ses);
 		triton_md_register_handler(&conn->ctx, &conn->hnd);
@@ -1396,6 +1399,7 @@ static void load_config(void)
 		conf_ppp_max_mtu = atoi(opt);
 
 	conf_ip_pool = conf_get_opt("sstp", "ip-pool");
+	conf_ifname = conf_get_opt("sstp", "ifname");
 
 	switch (iprange_check_activation()) {
 	case IPRANGE_DISABLED:
