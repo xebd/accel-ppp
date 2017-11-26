@@ -73,11 +73,6 @@ enum {
 };
 
 /* State */
-#define STATE_INIT				0
-#define STATE_ESTB				1
-#define STATE_PPP				2
-#define STATE_FIN				3
-#define STATE_CLOSE				4
 enum {
 	STATE_SERVER_CALL_DISCONNECTED = 0,
 	STATE_SERVER_CONNECT_REQUEST_PENDING,
