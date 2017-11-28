@@ -217,6 +217,13 @@ static inline void *buf_put_data(struct buffer_t *buf, const void *data, int len
 	return tmp;
 }
 
+static inline void *buf_put_zero(struct buffer_t *buf, int len)
+{
+	void *tmp = buf_put(buf, len);
+	memset(tmp, 0, len);
+	return tmp;
+}
+
 static inline void *buf_push(struct buffer_t *buf, int len)
 {
 	buf->head -= len;
@@ -863,7 +870,8 @@ static int sstp_send_msg_call_connect_ack(struct sstp_conn_t *conn)
 		return -1;
 	}
 
-	msg = buf_put(buf, sizeof(*msg));
+	msg = buf_put_zero(buf, sizeof(*msg));
+
 	INIT_SSTP_CTRL_HDR(&msg->hdr, SSTP_MSG_CALL_CONNECT_ACK, 1, sizeof(*msg));
 	INIT_SSTP_ATTR_HDR(&msg->attr.hdr, SSTP_ATTRIB_CRYPTO_BINDING_REQ, sizeof(msg->attr));
 	msg->attr.hash_protocol_bitmask = conf_hash_protocol;
@@ -890,7 +898,8 @@ static int sstp_send_msg_call_connect_nak(struct sstp_conn_t *conn)
 		return -1;
 	}
 
-	msg = buf_put(buf, sizeof(*msg));
+	msg = buf_put_zero(buf, sizeof(*msg));
+
 	INIT_SSTP_CTRL_HDR(&msg->hdr, SSTP_MSG_CALL_CONNECT_NAK, 1, sizeof(*msg));
 	INIT_SSTP_ATTR_HDR(&msg->attr.hdr, SSTP_ATTRIB_STATUS_INFO, sizeof(msg->attr));
 	msg->attr.attrib_id = SSTP_ATTRIB_ENCAPSULATED_PROTOCOL_ID;
@@ -916,7 +925,8 @@ static int sstp_send_msg_call_abort(struct sstp_conn_t *conn)
 		return -1;
 	}
 
-	msg = buf_put(buf, sizeof(*msg));
+	msg = buf_put_zero(buf, sizeof(*msg));
+
 	INIT_SSTP_CTRL_HDR(&msg->hdr, SSTP_MSG_CALL_ABORT, 1, sizeof(*msg));
 	INIT_SSTP_ATTR_HDR(&msg->attr.hdr, SSTP_ATTRIB_STATUS_INFO, sizeof(msg->attr));
 	msg->attr.attrib_id = SSTP_ATTRIB_STATUS_INFO;
@@ -941,7 +951,8 @@ static int sstp_send_msg_call_disconnect(struct sstp_conn_t *conn)
 		return -1;
 	}
 
-	msg = buf_put(buf, sizeof(*msg));
+	msg = buf_put_zero(buf, sizeof(*msg));
+
 	INIT_SSTP_CTRL_HDR(&msg->hdr, SSTP_MSG_CALL_DISCONNECT, 1, sizeof(*msg));
 	INIT_SSTP_ATTR_HDR(&msg->attr.hdr, SSTP_ATTRIB_STATUS_INFO, sizeof(msg->attr));
 	msg->attr.attrib_id = SSTP_ATTRIB_NO_ERROR;
@@ -965,7 +976,8 @@ static int sstp_send_msg_call_disconnect_ack(struct sstp_conn_t *conn)
 		return -1;
 	}
 
-	msg = buf_put(buf, sizeof(*msg));
+	msg = buf_put_zero(buf, sizeof(*msg));
+
 	INIT_SSTP_CTRL_HDR(&msg->hdr, SSTP_MSG_CALL_DISCONNECT_ACK, 0, sizeof(*msg));
 
 	return sstp_send(conn, buf);
@@ -986,7 +998,8 @@ static int sstp_send_msg_echo_request(struct sstp_conn_t *conn)
 		return -1;
 	}
 
-	msg = buf_put(buf, sizeof(*msg));
+	msg = buf_put_zero(buf, sizeof(*msg));
+
 	INIT_SSTP_CTRL_HDR(&msg->hdr, SSTP_MSG_ECHO_REQUEST, 0, sizeof(*msg));
 
 	return sstp_send(conn, buf);
@@ -1007,7 +1020,8 @@ static int sstp_send_msg_echo_response(struct sstp_conn_t *conn)
 		return -1;
 	}
 
-	msg = buf_put(buf, sizeof(*msg));
+	msg = buf_put_zero(buf, sizeof(*msg));
+
 	INIT_SSTP_CTRL_HDR(&msg->hdr, SSTP_MSG_ECHO_RESPONSE, 0, sizeof(*msg));
 
 	return sstp_send(conn, buf);
