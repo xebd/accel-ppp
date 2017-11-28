@@ -171,6 +171,7 @@ static EVP_PKEY *conf_ssl_pkey = NULL;
 
 static const char *conf_ssl_ca_file = NULL;
 static const char *conf_ssl_ciphers = "HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4";
+static int conf_ssl_prefer_server_ciphers = 0;
 static int conf_ssl = 1;
 #endif
 
@@ -1681,7 +1682,18 @@ static void sstp_start(struct sstp_conn_t *conn)
 			goto error;
 		}
 
-		SSL_CTX_set_options(conn->ssl_ctx, SSL_OP_NO_SSLv2 | SSL_OP_NO_SSLv3 | SSL_OP_NO_COMPRESSION);
+		SSL_CTX_set_options(conn->ssl_ctx,
+#ifdef SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS
+				SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS |
+#endif
+				SSL_OP_NO_SSLv2 |
+				SSL_OP_NO_SSLv3 |
+				SSL_OP_NO_COMPRESSION |
+				(conf_ssl_prefer_server_ciphers ? SSL_OP_CIPHER_SERVER_PREFERENCE : 0));
+		SSL_CTX_set_mode(conn->ssl_ctx,
+				SSL_MODE_ENABLE_PARTIAL_WRITE |
+				SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+		SSL_CTX_set_read_ahead(conn->ssl_ctx, 1);
 
 		if (conf_ssl_ciphers &&
 		    SSL_CTX_set_cipher_list(conn->ssl_ctx, conf_ssl_ciphers) != 1) {
@@ -1700,10 +1712,6 @@ static void sstp_start(struct sstp_conn_t *conn)
 			log_sstp_error(conn, "SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
 			goto error;
 		}
-
-		SSL_CTX_set_default_read_ahead(conn->ssl_ctx, 1);
-		SSL_CTX_set_mode(conn->ssl_ctx, SSL_CTX_get_mode(conn->ssl_ctx) |
-			SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER | SSL_MODE_ENABLE_PARTIAL_WRITE);
 
 		conn->stream = ssl_stream_init(conn->hnd.fd, conn->ssl_ctx);
 	} else
@@ -1923,6 +1931,10 @@ static void load_config(void)
 		conf_ssl = atoi(opt);
 
 	conf_ssl_ciphers = conf_get_opt("sstp", "ssl-ciphers");
+
+	opt = conf_get_opt("sstp", "ssl-prefer-server-ciphers");
+	if (opt)
+		conf_ssl_prefer_server_ciphers = atoi(opt);
 
 	conf_ssl_ca_file = conf_get_opt("sstp", "ssl-ca-file");
 
