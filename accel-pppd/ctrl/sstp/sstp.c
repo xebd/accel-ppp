@@ -170,7 +170,7 @@ static X509 *conf_ssl_cert = NULL;
 static EVP_PKEY *conf_ssl_pkey = NULL;
 
 static const char *conf_ssl_ca_file = NULL;
-static const char *conf_ssl_ciphers = "HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4";
+static const char *conf_ssl_ciphers = NULL;
 static int conf_ssl_prefer_server_ciphers = 0;
 static int conf_ssl = 1;
 #endif
