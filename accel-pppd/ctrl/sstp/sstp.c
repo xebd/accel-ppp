@@ -71,11 +71,23 @@
 #define PPP_F_ESCAPE	1
 #define PPP_F_TOSS	2
 
+#ifndef SHA_DIGEST_LENGTH
+#define SHA_DIGEST_LENGTH 20
+#endif
+#ifndef SHA256_DIGEST_LENGTH
+#define SHA256_DIGEST_LENGTH 32
+#endif
+
 enum {
 	STATE_INIT = 0,
 	STATE_STARTING,
 	STATE_STARTED,
 	STATE_FINISHED,
+};
+
+struct hash_t {
+	unsigned int len;
+	uint8_t hash[32];
 };
 
 struct buffer_t {
@@ -139,22 +151,28 @@ struct sstp_conn_t {
 static struct sstp_serv_t {
 	struct triton_context_t ctx;
 	struct triton_md_handler_t hnd;
-
-	uint8_t certificate_hash[32];
 } serv;
 
 static int conf_timeout = SSTP_NEGOTIOATION_TIMEOUT;
 static int conf_hello_interval = SSTP_HELLO_TIMEOUT;
 static int conf_verbose = 0;
 static int conf_ppp_max_mtu = 1456;
-static int conf_hash_protocol = CERT_HASH_PROTOCOL_SHA256;
-//static int conf_bypass_auth = 0;
 static const char *conf_ip_pool;
 static const char *conf_ifname;
+
+static int conf_hash_protocol = CERT_HASH_PROTOCOL_SHA1 | CERT_HASH_PROTOCOL_SHA256;
+static struct hash_t conf_hash_sha1 = { .len = 0 };
+static struct hash_t conf_hash_sha256 = { .len = 0 };
+//static int conf_bypass_auth = 0;
+
+#ifdef CRYPTO_OPENSSL
+static X509 *conf_ssl_cert = NULL;
+static EVP_PKEY *conf_ssl_pkey = NULL;
+
+static const char *conf_ssl_ca_file = NULL;
+static const char *conf_ssl_ciphers = "HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4";
 static int conf_ssl = 1;
-static char *conf_ssl_ciphers = "HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4";
-static char *conf_ssl_ca_file = NULL;
-static char *conf_ssl_pemfile = NULL;
+#endif
 
 static mempool_t conn_pool;
 
@@ -1138,6 +1156,21 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 	if (conn->nonce && memcmp(msg->attr.nonce, conn->nonce, SSTP_NONCE_SIZE) != 0)
 		return sstp_abort(conn, 0);
 
+	switch (msg->attr.hash_protocol_bitmask & conf_hash_protocol) {
+	case CERT_HASH_PROTOCOL_SHA1:
+		if (conf_hash_sha1.len == SHA_DIGEST_LENGTH &&
+		    memcmp(msg->attr.cert_hash, conf_hash_sha1.hash, SHA_DIGEST_LENGTH) != 0)
+			return sstp_abort(conn, 0);
+		break;
+	case CERT_HASH_PROTOCOL_SHA256:
+		if (conf_hash_sha256.len == SHA256_DIGEST_LENGTH &&
+		    memcmp(msg->attr.cert_hash, conf_hash_sha256.hash, SHA256_DIGEST_LENGTH) != 0)
+			return sstp_abort(conn, 0);
+		break;
+	default:
+		return sstp_abort(conn, 0);
+	}
+
 	conn->sstp_state = STATE_SERVER_CALL_CONNECTED;
 
 	_free(conn->nonce);
@@ -1660,9 +1693,9 @@ static void sstp_start(struct sstp_conn_t *conn)
 			log_sstp_error(conn, "SSL ca file error: %s\n", ERR_error_string(ERR_get_error(), NULL));
 			goto error;
 		}
-		if (!conf_ssl_pemfile ||
-		    SSL_CTX_use_certificate_file(conn->ssl_ctx, conf_ssl_pemfile, SSL_FILETYPE_PEM) != 1 ||
-		    SSL_CTX_use_PrivateKey_file(conn->ssl_ctx, conf_ssl_pemfile, SSL_FILETYPE_PEM) != 1 ||
+		if (!conf_ssl_cert || !conf_ssl_pkey ||
+		    SSL_CTX_use_certificate(conn->ssl_ctx, conf_ssl_cert) != 1 ||
+		    SSL_CTX_use_PrivateKey(conn->ssl_ctx, conf_ssl_pkey) != 1 ||
 		    SSL_CTX_check_private_key(conn->ssl_ctx) != 1) {
 			log_sstp_error(conn, "SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
 			goto error;
@@ -1818,21 +1851,148 @@ static void sstp_serv_close(struct triton_context_t *ctx)
 	triton_context_unregister(ctx);
 
 #ifdef CRYPTO_OPENSSL
+	if (conf_ssl_cert)
+		X509_free(conf_ssl_cert);
+	conf_ssl_cert = NULL;
+
+	if (conf_ssl_pkey)
+		EVP_PKEY_free(conf_ssl_pkey);
+	conf_ssl_pkey = NULL;
+
 	CRYPTO_thread_cleanup();
 #endif
+}
+
+static int strhas(const char *s1, const char *s2, int delim)
+{
+	char *ptr;
+	int n = strlen(s2);
+
+	while ((ptr = strchr(s1, delim))) {
+		if (ptr - s1 == n && memcmp(s1, s2, n) == 0)
+			return 0;
+		s1 = ++ptr;
+	}
+	return strcmp(s1, s2);
+}
+
+static int hex2bin(const char *src, uint8_t *dst, size_t size)
+{
+	char buf[3], *err;
+	int n;
+
+	memset(buf, 0, sizeof(buf));
+	for (n = 0; n < size && src[0] && src[1]; n++) {
+		buf[0] = *src++;
+		buf[1] = *src++;
+		dst[n] = strtoul(buf, &err, 16);
+		if (err == buf || *err)
+			break;
+	}
+	return n;
 }
 
 static void load_config(void)
 {
 	char *opt;
 
+	opt = conf_get_opt("sstp", "cert-hash-proto");
+	if (opt) {
+		conf_hash_protocol = 0;
+		if (strhas(opt, "sha1", ',') == 0)
+			conf_hash_protocol |= CERT_HASH_PROTOCOL_SHA1;
+		if (strhas(opt, "sha256", ',') == 0)
+			conf_hash_protocol |= CERT_HASH_PROTOCOL_SHA256;
+	}
+
+	memset(&conf_hash_sha1, 0, sizeof(conf_hash_sha1));
+	memset(&conf_hash_sha256, 0, sizeof(conf_hash_sha256));
+
+#ifdef CRYPTO_OPENSSL
+	if (conf_ssl_cert) {
+		X509_free(conf_ssl_cert);
+		conf_ssl_cert = NULL;
+	}
+	if (conf_ssl_pkey) {
+		EVP_PKEY_free(conf_ssl_pkey);
+		conf_ssl_pkey = NULL;
+	}
+
 	opt = conf_get_opt("sstp", "ssl");
 	if (opt)
 		conf_ssl = atoi(opt);
 
-	conf_ssl_ciphers = conf_get_opt("sstp", "ssl_ciphers");
-	conf_ssl_ca_file = conf_get_opt("sstp", "ssl_ca_file");
-	conf_ssl_pemfile = conf_get_opt("sstp", "ssl_pemfile");
+	conf_ssl_ciphers = conf_get_opt("sstp", "ssl-ciphers");
+
+	conf_ssl_ca_file = conf_get_opt("sstp", "ssl-ca-file");
+
+	opt = conf_get_opt("sstp", "ssl-pemfile");
+	if (opt) {
+		BIO *in;
+
+		in = BIO_new(BIO_s_file_internal());
+		if (!in) {
+			SSLerr(SSL_F_SSL_CTX_USE_CERTIFICATE_FILE, ERR_R_BUF_LIB);
+			log_error("sstp: SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+			goto done;
+		}
+
+		if (BIO_read_filename(in, opt) <= 0) {
+			SSLerr(SSL_F_SSL_CTX_USE_CERTIFICATE_FILE, ERR_R_SYS_LIB);
+			log_error("sstp: SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+			goto done;
+		}
+
+		conf_ssl_cert = PEM_read_bio_X509(in, NULL, NULL, NULL);
+		if (!conf_ssl_cert) {
+			SSLerr(SSL_F_SSL_CTX_USE_CERTIFICATE_FILE, ERR_R_PEM_LIB);
+			log_error("sstp: SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+			goto done;
+		}
+
+		if (conf_hash_protocol & CERT_HASH_PROTOCOL_SHA1) {
+			X509_digest(conf_ssl_cert, EVP_sha1(),
+					conf_hash_sha1.hash, &conf_hash_sha1.len);
+		}
+
+		if (conf_hash_protocol & CERT_HASH_PROTOCOL_SHA256) {
+			X509_digest(conf_ssl_cert, EVP_sha256(),
+					conf_hash_sha256.hash, &conf_hash_sha256.len);
+		}
+
+		if (!conf_ssl)
+			goto done;
+
+		if (BIO_read_filename(in, opt) <= 0) {
+			SSLerr(SSL_F_SSL_CTX_USE_CERTIFICATE_FILE, ERR_R_SYS_LIB);
+			log_error("sstp: SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+			goto done;
+		}
+
+		conf_ssl_pkey = PEM_read_bio_PrivateKey(in, NULL, NULL, NULL);
+		if (!conf_ssl_pkey) {
+			SSLerr(SSL_F_SSL_CTX_USE_PRIVATEKEY_FILE, ERR_R_PEM_LIB);
+			log_error("sstp: SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+			goto done;
+		}
+
+	done:
+		if (in)
+			BIO_free(in);
+	}
+#endif
+
+	opt = conf_get_opt("sstp", "cert-hash-sha1");
+	if (opt) {
+		conf_hash_sha1.len = hex2bin(opt,
+				conf_hash_sha1.hash, sizeof(conf_hash_sha1.hash));
+	}
+
+	opt = conf_get_opt("sstp", "cert-hash-sha256");
+	if (opt) {
+		conf_hash_sha256.len = hex2bin(opt,
+				conf_hash_sha256.hash, sizeof(conf_hash_sha256.hash));
+	}
 
 	opt = conf_get_opt("sstp", "timeout");
 	if (opt && atoi(opt) > 0)
@@ -1865,8 +2025,6 @@ static void load_config(void)
 		/* Makes compiler happy */
 		break;
 	}
-
-	//read(urandom_fd, &serv.certificate_hash, sizeof(serv.certificate_hash));
 }
 
 static struct sstp_serv_t serv = {

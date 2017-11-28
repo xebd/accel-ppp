@@ -130,8 +130,8 @@ struct sstp_attrib_crypto_binding {
 	uint8_t reserved[3];
 	uint8_t hash_protocol_bitmask;
 	uint8_t nonce[SSTP_NONCE_SIZE];
-	uint8_t cert_hash[SSTP_NONCE_SIZE];
-	uint8_t compound_mac[SSTP_NONCE_SIZE];
+	uint8_t cert_hash[32];
+	uint8_t compound_mac[32];
 } __attribute__((packed));
 
 struct sstp_attrib_crypto_binding_request {
