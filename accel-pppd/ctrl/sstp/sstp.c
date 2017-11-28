@@ -1900,6 +1900,8 @@ static int hex2bin(const char *src, uint8_t *dst, size_t size)
 		dst[n] = strtoul(buf, &err, 16);
 		if (err == buf || *err)
 			break;
+		if (*src == ':')
+			src++;
 	}
 	return n;
 }
