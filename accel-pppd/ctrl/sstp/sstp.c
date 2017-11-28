@@ -416,7 +416,9 @@ static ssize_t ssl_stream_read(struct sstp_stream_t *stream, void *buf, size_t c
 		errno = EAGAIN;
 		/* fall through */
 	case SSL_ERROR_SYSCALL:
+		return -1;
 	default:
+		errno = EIO;
 		return -1;
 	}
 }
@@ -437,7 +439,9 @@ static ssize_t ssl_stream_write(struct sstp_stream_t *stream, const void *buf, s
 		errno = EAGAIN;
 		/* fall through */
 	case SSL_ERROR_SYSCALL:
+		return -1;
 	default:
+		errno = EIO;
 		return -1;
 	}
 }
