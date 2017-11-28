@@ -114,9 +114,12 @@ struct sstp_conn_t {
 	int nak_sent;
 	int hello_sent;
 	int hello_interval;
+
 //	int bypass_auth:1;
 //	char *http_cookie;
 //	uint8_t auth_key[32];
+	uint8_t *nonce;
+
 	struct buffer_t *in;
 	struct list_head out_queue;
 
@@ -875,8 +878,8 @@ static int sstp_send_msg_call_connect_ack(struct sstp_conn_t *conn)
 	INIT_SSTP_CTRL_HDR(&msg->hdr, SSTP_MSG_CALL_CONNECT_ACK, 1, sizeof(*msg));
 	INIT_SSTP_ATTR_HDR(&msg->attr.hdr, SSTP_ATTRIB_CRYPTO_BINDING_REQ, sizeof(msg->attr));
 	msg->attr.hash_protocol_bitmask = conf_hash_protocol;
-	//read(urandom_fd, msg->attr.nonce, sizeof(msg->attr.nonce));
-	memset(msg->attr.nonce, 0, sizeof(msg->attr.nonce));
+	if (conn->nonce)
+		memcpy(msg->attr.nonce, conn->nonce, SSTP_NONCE_SIZE);
 
 	return sstp_send(conn, buf);
 }
@@ -1076,6 +1079,8 @@ static int sstp_recv_msg_call_connect_request(struct sstp_conn_t *conn, struct s
 
 //	triton_event_fire(EV_CTRL_STARTED, &conn->ppp.ses);
 
+	if (conn->nonce)
+		read(urandom_fd, conn->nonce, SSTP_NONCE_SIZE);
 	if (sstp_send_msg_call_connect_ack(conn))
 		goto error;
 
@@ -1100,8 +1105,13 @@ error:
 	return -1;
 }
 
-static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn)
+static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ctrl_hdr *hdr)
 {
+	struct {
+		struct sstp_ctrl_hdr hdr;
+		struct sstp_attrib_crypto_binding attr;
+	} __attribute__((packed)) *msg = (void *)hdr;
+
 	if (conf_verbose)
 		log_sstp_ppp_info2(conn, "recv [SSTP_MSG_CALL_CONNECTED]\n");
 
@@ -1118,7 +1128,20 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn)
 		return 0;
 	}
 
+	if (ntohs(msg->hdr.length) < sizeof(*msg) ||
+	    ntohs(msg->hdr.num_attributes) < 1 ||
+	    msg->attr.hdr.attribute_id != SSTP_ATTRIB_CRYPTO_BINDING ||
+	    ntohs(msg->attr.hdr.length) < sizeof(msg->attr)) {
+		return sstp_abort(conn, 0);
+	}
+
+	if (conn->nonce && memcmp(msg->attr.nonce, conn->nonce, SSTP_NONCE_SIZE) != 0)
+		return sstp_abort(conn, 0);
+
 	conn->sstp_state = STATE_SERVER_CALL_CONNECTED;
+
+	_free(conn->nonce);
+	conn->nonce = NULL;
 
 	if (conn->hello_interval) {
 		conn->hello_timer.period = conn->hello_interval * 1000;
@@ -1345,7 +1368,7 @@ static int sstp_recv_packet(struct sstp_conn_t *conn, struct sstp_hdr *hdr)
 	case SSTP_MSG_CALL_CONNECT_NAK:
 		return sstp_abort(conn, 0);
 	case SSTP_MSG_CALL_CONNECTED:
-		return sstp_recv_msg_call_connected(conn);
+		return sstp_recv_msg_call_connected(conn, msg);
 	case SSTP_MSG_CALL_ABORT:
 		return sstp_recv_msg_call_abort(conn);
 	case SSTP_MSG_CALL_DISCONNECT:
@@ -1586,6 +1609,8 @@ static void sstp_disconnect(struct sstp_conn_t *conn)
 	}
 //	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp.ses);
 
+	_free(conn->nonce);
+
 	if (conn->stream)
 		conn->stream->free(conn->stream);
 	free_buf(conn->in);
@@ -1744,6 +1769,7 @@ static int sstp_connect(struct triton_md_handler_t *h)
 		//conn->bypass_auth = conf_bypass_auth;
 		//conn->http_cookie = NULL:
 		//conn->auth_key...
+		conn->nonce = _malloc(SSTP_NONCE_SIZE);
 
 		conn->in = alloc_buf(SSTP_MAX_PACKET_SIZE*2);
 		INIT_LIST_HEAD(&conn->out_queue);
