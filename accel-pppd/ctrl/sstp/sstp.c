@@ -1907,6 +1907,9 @@ static int hex2bin(const char *src, uint8_t *dst, size_t size)
 static void load_config(void)
 {
 	char *opt;
+#ifdef CRYPTO_OPENSSL
+	BIO *in;
+#endif
 
 	opt = conf_get_opt("sstp", "cert-hash-proto");
 	if (opt) {
@@ -1942,59 +1945,54 @@ static void load_config(void)
 
 	conf_ssl_ca_file = conf_get_opt("sstp", "ssl-ca-file");
 
-	opt = conf_get_opt("sstp", "ssl-pemfile");
-	if (opt) {
-		BIO *in;
+	in = BIO_new(BIO_s_file_internal());
+	if (in) {
+		opt = conf_get_opt("sstp", "ssl-pemfile");
+		if (opt) do {
+			if (BIO_read_filename(in, opt) <= 0) {
+				SSLerr(SSL_F_SSL_CTX_USE_CERTIFICATE_FILE, ERR_R_SYS_LIB);
+				log_error("sstp: SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+				break;
+			}
 
-		in = BIO_new(BIO_s_file_internal());
-		if (!in) {
-			SSLerr(SSL_F_SSL_CTX_USE_CERTIFICATE_FILE, ERR_R_BUF_LIB);
-			log_error("sstp: SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
-			goto done;
-		}
+			conf_ssl_cert = PEM_read_bio_X509(in, NULL, NULL, NULL);
+			if (!conf_ssl_cert) {
+				SSLerr(SSL_F_SSL_CTX_USE_CERTIFICATE_FILE, ERR_R_PEM_LIB);
+				log_error("sstp: SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+				break;
+			}
 
-		if (BIO_read_filename(in, opt) <= 0) {
-			SSLerr(SSL_F_SSL_CTX_USE_CERTIFICATE_FILE, ERR_R_SYS_LIB);
-			log_error("sstp: SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
-			goto done;
-		}
+			if (conf_hash_protocol & CERT_HASH_PROTOCOL_SHA1) {
+				X509_digest(conf_ssl_cert, EVP_sha1(),
+						conf_hash_sha1.hash, &conf_hash_sha1.len);
+			}
 
-		conf_ssl_cert = PEM_read_bio_X509(in, NULL, NULL, NULL);
-		if (!conf_ssl_cert) {
-			SSLerr(SSL_F_SSL_CTX_USE_CERTIFICATE_FILE, ERR_R_PEM_LIB);
-			log_error("sstp: SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
-			goto done;
-		}
+			if (conf_hash_protocol & CERT_HASH_PROTOCOL_SHA256) {
+				X509_digest(conf_ssl_cert, EVP_sha256(),
+						conf_hash_sha256.hash, &conf_hash_sha256.len);
+			}
+		} while (0);
 
-		if (conf_hash_protocol & CERT_HASH_PROTOCOL_SHA1) {
-			X509_digest(conf_ssl_cert, EVP_sha1(),
-					conf_hash_sha1.hash, &conf_hash_sha1.len);
-		}
+		opt = conf_get_opt("sstp", "ssl-keyfile") ? : opt;
+		if (opt && conf_ssl) do {
+			if (BIO_read_filename(in, opt) <= 0) {
+				SSLerr(SSL_F_SSL_CTX_USE_CERTIFICATE_FILE, ERR_R_SYS_LIB);
+				log_error("sstp: SSL private key error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+				break;
+			}
 
-		if (conf_hash_protocol & CERT_HASH_PROTOCOL_SHA256) {
-			X509_digest(conf_ssl_cert, EVP_sha256(),
-					conf_hash_sha256.hash, &conf_hash_sha256.len);
-		}
+			conf_ssl_pkey = PEM_read_bio_PrivateKey(in, NULL, NULL, NULL);
+			if (!conf_ssl_pkey) {
+				SSLerr(SSL_F_SSL_CTX_USE_PRIVATEKEY_FILE, ERR_R_PEM_LIB);
+				log_error("sstp: SSL private key error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+				break;
+			}
+		} while (0);
 
-		if (!conf_ssl)
-			goto done;
-
-		if (BIO_read_filename(in, opt) <= 0) {
-			SSLerr(SSL_F_SSL_CTX_USE_CERTIFICATE_FILE, ERR_R_SYS_LIB);
-			log_error("sstp: SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
-			goto done;
-		}
-
-		conf_ssl_pkey = PEM_read_bio_PrivateKey(in, NULL, NULL, NULL);
-		if (!conf_ssl_pkey) {
-			SSLerr(SSL_F_SSL_CTX_USE_PRIVATEKEY_FILE, ERR_R_PEM_LIB);
-			log_error("sstp: SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
-			goto done;
-		}
-
-	done:
-		if (in)
-			BIO_free(in);
+		BIO_free(in);
+	} else {
+		SSLerr(SSL_F_SSL_CTX_USE_CERTIFICATE_FILE, ERR_R_BUF_LIB);
+		log_error("sstp: SSL error: %s\n", ERR_error_string(ERR_get_error(), NULL));
 	}
 #endif
 
