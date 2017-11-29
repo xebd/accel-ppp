@@ -2130,6 +2130,35 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 	list_for_each_entry(attr, &ev->reply->attrs, entry) {
 		int vendor_id = attr->vendor ? attr->vendor->id : 0;
 
+		if (vendor_id == VENDOR_DHCP) {
+			ses->dhcpv4_relay_reply = dhcpv4_clone_radius(ev->reply);
+
+			switch (attr->attr->id) {
+				case DHCP_Your_IP_Address:
+					ses->yiaddr = attr->val.ipaddr;
+					break;
+				case DHCP_Server_IP_Address:
+					ses->siaddr = attr->val.ipaddr;
+					break;
+				case DHCP_Router_Address:
+					ses->router = *(in_addr_t *)attr->raw;
+					break;
+				case DHCP_Subnet_Mask:
+					ses->mask = ipaddr_to_prefix(attr->val.ipaddr);
+					break;
+				case DHCP_IP_Address_Lease_Time:
+					ses->lease_time = attr->val.integer;
+					lease_time_set = 1;
+					break;
+				case DHCP_Renewal_Time:
+					ses->renew_time = attr->val.integer;
+					renew_time_set = 1;
+					break;
+			}
+
+			continue;
+		}
+
 		if (conf_vendor != vendor_id)
 			continue;
 
@@ -2160,31 +2189,6 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 		else if (attr->attr->id == conf_attr_l4_redirect_ipset) {
 			if (attr->attr->type == ATTR_TYPE_STRING)
 				ses->l4_redirect_ipset = _strdup(attr->val.string);
-		} else if (attr->vendor && attr->vendor->id == VENDOR_DHCP) {
-			ses->dhcpv4_relay_reply = dhcpv4_clone_radius(ev->reply);
-
-			switch (attr->attr->id) {
-				case DHCP_Your_IP_Address:
-					ses->yiaddr = attr->val.ipaddr;
-					break;
-				case DHCP_Server_IP_Address:
-					ses->yiaddr = attr->val.ipaddr;
-					break;
-				case DHCP_Router_Address:
-					ses->router = *(in_addr_t *)attr->raw;
-					break;
-				case DHCP_Subnet_Mask:
-					ses->mask = ipaddr_to_prefix(attr->val.ipaddr);
-					break;
-				case DHCP_IP_Address_Lease_Time:
-					ses->lease_time = attr->val.integer;
-					lease_time_set = 1;
-					break;
-				case DHCP_Renewal_Time:
-					ses->renew_time = attr->val.integer;
-					renew_time_set = 1;
-					break;
-			}
 		}
 	}
 
