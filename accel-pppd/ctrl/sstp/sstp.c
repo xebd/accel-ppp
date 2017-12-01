@@ -306,6 +306,26 @@ static struct buffer_t *alloc_buf(size_t size)
 	return buf;
 }
 
+static struct buffer_t *alloc_buf_printf(const char* format, ...)
+{
+	struct buffer_t *buf = NULL;
+	va_list ap;
+	int len;
+
+	va_start(ap, format);
+	len = vsnprintf(NULL, 0, format, ap);
+	if (len < 0) {
+		va_end(ap);
+		return NULL;
+	}
+
+	buf = alloc_buf(len + 1);
+	if (buf)
+		vsnprintf(buf_put(buf, len), len + 1, format, ap);
+	va_end(ap);
+	return buf;
+}
+
 static void free_buf(struct buffer_t *buf)
 {
 	_free(buf);
@@ -522,28 +542,24 @@ static char *http_getline(struct sstp_conn_t *conn, int *pos, char *buf, int siz
 
 static int http_send_response(struct sstp_conn_t *conn, char *proto, char *status, char *headers)
 {
-	char datetime[sizeof("aaa, dd bbb yyyy HH:MM:SS GMT")], msg[1024];
+	char datetime[sizeof("aaa, dd bbb yyyy HH:MM:SS GMT")];
 	struct buffer_t *buf;
 	time_t now = time(NULL);
-	int n;
+
+	if (conf_verbose)
+		log_sstp_info2(conn, "send [HTTP <%s %s>]\n", proto, status);
 
 	strftime(datetime, sizeof(datetime), "%a, %d %b %Y %H:%M:%S GMT", gmtime(&now));
-	n = snprintf(msg, sizeof(msg),
+	buf = alloc_buf_printf(
 		"%s %s\r\n"
 		/* "Server: %s\r\n" */
 		"Date: %s\r\n"
 		"%s"
 		"\r\n", proto, status, /* "accel-ppp",*/ datetime, headers ? : "");
-
-	if (conf_verbose)
-		log_sstp_info2(conn, "send [HTTP <%s %s>]\n", proto, status);
-
-	buf = alloc_buf(n);
 	if (!buf) {
 		log_sstp_error(conn, "no memory\n");
 		return -1;
 	}
-	buf_put_data(buf, msg, n);
 
 	return sstp_send(conn, buf);
 }
