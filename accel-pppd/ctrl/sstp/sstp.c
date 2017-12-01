@@ -406,20 +406,21 @@ static ssize_t ssl_stream_read(struct sstp_stream_t *stream, void *buf, size_t c
 
 	ERR_clear_error();
 	ret = SSL_read(stream->ssl, buf, count);
+	if (ret > 0)
+		return ret;
+
 	err = SSL_get_error(stream->ssl, ret);
 	switch (err) {
-	case SSL_ERROR_NONE:
-	case SSL_ERROR_ZERO_RETURN:
-		return ret;
 	case SSL_ERROR_WANT_WRITE:
 	case SSL_ERROR_WANT_READ:
 		errno = EAGAIN;
 		/* fall through */
+	case SSL_ERROR_ZERO_RETURN:
 	case SSL_ERROR_SYSCALL:
-		return -1;
+		return ret;
 	default:
 		errno = EIO;
-		return -1;
+		return ret;
 	}
 }
 
@@ -429,20 +430,21 @@ static ssize_t ssl_stream_write(struct sstp_stream_t *stream, const void *buf, s
 
 	ERR_clear_error();
 	ret = SSL_write(stream->ssl, buf, count);
+	if (ret > 0)
+		return ret;
+
 	err = SSL_get_error(stream->ssl, ret);
 	switch (err) {
-	case SSL_ERROR_NONE:
-	case SSL_ERROR_ZERO_RETURN:
-		return ret;
 	case SSL_ERROR_WANT_WRITE:
 	case SSL_ERROR_WANT_READ:
 		errno = EAGAIN;
 		/* fall through */
+	case SSL_ERROR_ZERO_RETURN:
 	case SSL_ERROR_SYSCALL:
-		return -1;
+		return ret;
 	default:
 		errno = EIO;
-		return -1;
+		return ret;
 	}
 }
 
