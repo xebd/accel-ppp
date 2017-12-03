@@ -309,21 +309,22 @@ static struct buffer_t *alloc_buf(size_t size)
 
 static struct buffer_t *alloc_buf_printf(const char* format, ...)
 {
-	struct buffer_t *buf = NULL;
+	struct buffer_t *buf;
 	va_list ap;
 	int len;
 
 	va_start(ap, format);
 	len = vsnprintf(NULL, 0, format, ap);
-	if (len < 0) {
-		va_end(ap);
+	va_end(ap);
+	if (len < 0)
 		return NULL;
-	}
 
 	buf = alloc_buf(len + 1);
-	if (buf)
+	if (buf) {
+		va_start(ap, format);
 		vsnprintf(buf_put(buf, len), len + 1, format, ap);
-	va_end(ap);
+		va_end(ap);
+	}
 	return buf;
 }
 
