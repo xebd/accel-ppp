@@ -592,7 +592,7 @@ static int http_recv_request(struct sstp_conn_t *conn)
 		goto error;
 	}
 	if (strcmp(method, SSTP_HTTP_METHOD) != 0) {
-		http_send_response(conn, proto, "405 Method Not Allowed", NULL);
+		http_send_response(conn, proto, "501 Not Implemented", NULL);
 		goto error;
 	}
 	if (strcmp(request, SSTP_HTTP_URI) != 0) {
