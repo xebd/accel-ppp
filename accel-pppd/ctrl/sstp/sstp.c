@@ -493,7 +493,6 @@ static struct sstp_stream_t *ssl_stream_init(int fd, SSL_CTX *ssl_ctx)
 		goto error;
 
 	SSL_set_verify(stream->ssl, SSL_VERIFY_NONE, NULL);
-	SSL_set_mode(stream->ssl, SSL_MODE_AUTO_RETRY);
 	SSL_set_accept_state(stream->ssl);
 	SSL_set_fd(stream->ssl, fd);
 
