@@ -512,32 +512,33 @@ error:
 
 /* http */
 
-static char *http_getline(struct sstp_conn_t *conn, int *pos, char *buf, int size)
+static char *http_getline(struct buffer_t *buf, char *line, size_t size)
 {
-	unsigned char *src, *dst, c, pc;
+	char *src, *dst, *ptr;
+	int len;
 
-	size = min(size - 1, conn->in->len - *pos);
-	if (size <= 0)
+	if (buf->len == 0 || size == 0)
 		return NULL;
 
-	src = conn->in->head + *pos;
-	dst = (unsigned char *)buf;
-	for (pc = 0; size--; dst++) {
-		c = *dst = *src++;
-		if (c == '\0')
-			break;
-		if (c == '\n') {
-			if (pc == '\r')
-				dst--;
-			break;
-		}
-		pc = c;
+	src = (void *)buf->head;
+	ptr = memchr(src, '\n', buf->len);
+	if (ptr) {
+		len = ptr - src;
+		buf_pull(buf, len + 1);
+		if (len > 0 && src[len - 1] == '\r')
+			len--;
+	} else {
+		len = buf->len;
+		buf_pull(buf, len);
 	}
-	*dst = '\0';
 
-	*pos = src - conn->in->head;
+	dst = line;
+	while (len-- > 0 && size-- > 1)
+		*dst++ = *src++;
+	if (size > 0)
+		*dst = '\0';
 
-	return buf;
+	return line;
 }
 
 static int http_send_response(struct sstp_conn_t *conn, char *proto, char *status, char *headers)
@@ -564,16 +565,18 @@ static int http_send_response(struct sstp_conn_t *conn, char *proto, char *statu
 	return sstp_send(conn, buf);
 }
 
-static int http_recv_request(struct sstp_conn_t *conn)
+static int http_recv_request(struct sstp_conn_t *conn, uint8_t *data, int len)
 {
-	char buf[1024];
-	char *line, *method, *request, *proto, *host;
-	int pos = 0;
+	char linebuf[1024], protobuf[sizeof("HTTP/1.x")];
+	char *line, *method, *request, *proto;
+	struct buffer_t buf;
+	int host_match;
 
-	if (conn->sstp_state != STATE_SERVER_CALL_DISCONNECTED)
-		return -1;
+	buf.head = data;
+	buf.end = data + len;
+	buf_set_length(&buf, len);
 
-	line = http_getline(conn, &pos, buf, sizeof(buf));
+	line = http_getline(&buf, linebuf, sizeof(linebuf));
 	if (!line)
 		goto error;
 	if (conf_verbose)
@@ -582,39 +585,44 @@ static int http_recv_request(struct sstp_conn_t *conn)
 	method = strsep(&line, " ");
 	request = strsep(&line, " ");
 	proto = strsep(&line, " ");
-	host = NULL;
 
 	if (!method || !request || !proto) {
 		http_send_response(conn, "HTTP/1.1", "400 Bad Request", NULL);
 		goto error;
 	}
-	if (strncmp(proto, "HTTP/1", sizeof("HTTP/1") - 1) != 0) {
+	if (strncasecmp(proto, "HTTP/1", sizeof("HTTP/1") - 1) != 0) {
 		http_send_response(conn, "HTTP/1.1", "505 HTTP Version Not Supported", NULL);
 		goto error;
 	}
-	if (strcmp(method, SSTP_HTTP_METHOD) != 0) {
+	if (strcasecmp(method, SSTP_HTTP_METHOD) != 0) {
 		http_send_response(conn, proto, "501 Not Implemented", NULL);
 		goto error;
 	}
-	if (strcmp(request, SSTP_HTTP_URI) != 0) {
+	if (strcasecmp(request, SSTP_HTTP_URI) != 0) {
 		http_send_response(conn, proto, "404 Not Found", NULL);
 		goto error;
 	}
 
-	while ((line = http_getline(conn, &pos, buf, sizeof(buf))) != NULL) {
+	snprintf(protobuf, sizeof(protobuf), "%s", proto);
+	proto = protobuf;
+
+	host_match = 0;
+	while ((line = http_getline(&buf, linebuf, sizeof(linebuf))) != NULL) {
 		if (*line == '\0')
 			break;
 		if (conf_verbose)
 			log_sstp_info2(conn, "recv [HTTP <%s>]\n", line);
 
-		if (conf_hostname && strncmp(line, "Host", sizeof("Host") - 1) == 0) {
-			host = line + sizeof("Host") - 1;
-			while (*host == ' ' || *host == ':')
-				host++;
+		if (conf_hostname && strncasecmp(line, "Host", sizeof("Host") - 1) == 0) {
+			line += sizeof("Host") - 1;
+			while (*line == ' ' || *line == ':')
+				line++;
+			if (strcasecmp(line, conf_hostname) == 0)
+				host_match = 1;
 		}
-	} while (*line);
+	}
 
-	if (conf_hostname && (!host || strcasecmp(host, conf_hostname) != 0)) {
+	if (conf_hostname && !host_match) {
 		http_send_response(conn, proto, "434 Requested host unavailable", NULL);
 		goto error;
 	}
@@ -623,10 +631,7 @@ static int http_recv_request(struct sstp_conn_t *conn)
 			"Content-Length: 18446744073709551615\r\n")) {
 		goto error;
 	}
-
-	conn->sstp_state = STATE_SERVER_CONNECT_REQUEST_PENDING;
-
-	return pos;
+	return 0;
 
 error:
 	return -1;
@@ -634,17 +639,35 @@ error:
 
 static int http_handler(struct sstp_conn_t *conn, struct buffer_t *buf)
 {
+	static const char *table[] = { "\r\n\r\n", "\n\n", NULL };
+	const char **pptr;
+	char *ptr, *end;
 	int n;
 
-	n = http_recv_request(conn);
-	if (n < 0)
+	if (conn->sstp_state != STATE_SERVER_CALL_DISCONNECTED)
+		return -1;
+
+	end = NULL;
+	for (pptr = table; *pptr; pptr++) {
+		ptr = memmem(buf->head, buf->len, *pptr, strlen(*pptr));
+		if (ptr && (!end || ptr < end))
+			end = ptr + strlen(*pptr);
+	}
+	if (!end) {
+		if (buf_tailroom(buf) > 0)
+			return 0;
+		log_sstp_error(conn, "recv [HTTP too long header]\n");
+		return -1;
+	} else
+		n = end - (char *)buf->head;
+
+	if (http_recv_request(conn, buf->head, n) < 0)
 		return -1;
 	buf_pull(buf, n);
 
-	if (conn->sstp_state == STATE_SERVER_CONNECT_REQUEST_PENDING)
-		conn->handler = sstp_handler;
-
-	return n;
+	conn->sstp_state = STATE_SERVER_CONNECT_REQUEST_PENDING;
+	conn->handler = sstp_handler;
+	return 0;
 }
 
 /* ppp */
