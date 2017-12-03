@@ -164,6 +164,7 @@ static int conf_hash_protocol = CERT_HASH_PROTOCOL_SHA1 | CERT_HASH_PROTOCOL_SHA
 static struct hash_t conf_hash_sha1 = { .len = 0 };
 static struct hash_t conf_hash_sha256 = { .len = 0 };
 //static int conf_bypass_auth = 0;
+static const char *conf_hostname = NULL;
 
 #ifdef CRYPTO_OPENSSL
 static X509 *conf_ssl_cert = NULL;
@@ -566,7 +567,7 @@ static int http_send_response(struct sstp_conn_t *conn, char *proto, char *statu
 static int http_recv_request(struct sstp_conn_t *conn)
 {
 	char buf[1024];
-	char *line, *method, *request, *proto;
+	char *line, *method, *request, *proto, *host;
 	int pos = 0;
 
 	if (conn->sstp_state != STATE_SERVER_CALL_DISCONNECTED)
@@ -581,6 +582,7 @@ static int http_recv_request(struct sstp_conn_t *conn)
 	method = strsep(&line, " ");
 	request = strsep(&line, " ");
 	proto = strsep(&line, " ");
+	host = NULL;
 
 	if (!method || !request || !proto) {
 		http_send_response(conn, "HTTP/1.1", "400 Bad Request", NULL);
@@ -604,7 +606,18 @@ static int http_recv_request(struct sstp_conn_t *conn)
 			break;
 		if (conf_verbose)
 			log_sstp_info2(conn, "recv [HTTP <%s>]\n", line);
+
+		if (conf_hostname && strncmp(line, "Host", sizeof("Host") - 1) == 0) {
+			host = line + sizeof("Host") - 1;
+			while (*host == ' ' || *host == ':')
+				host++;
+		}
 	} while (*line);
+
+	if (conf_hostname && (!host || strcasecmp(host, conf_hostname) != 0)) {
+		http_send_response(conn, proto, "434 Requested host unavailable", NULL);
+		goto error;
+	}
 
 	if (http_send_response(conn, proto, "200 OK",
 			"Content-Length: 18446744073709551615\r\n")) {
@@ -1691,6 +1704,27 @@ static void sstp_disconnect(struct sstp_conn_t *conn)
 	log_info2("sstp: disconnected\n");
 }
 
+#ifdef CRYPTO_OPENSSL
+#ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
+static int sstp_servername(SSL *ssl, int *al, void *arg)
+{
+	struct sstp_conn_t *conn = (struct sstp_conn_t *)arg;
+	const char *servername;
+
+	servername = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
+	if (conf_verbose)
+		log_sstp_info2(conn, "recv [SSL SNI <%s>]\n", servername ? : "");
+
+	if (conf_hostname && (!servername || strcasecmp(servername, conf_hostname) != 0)) {
+		log_sstp_error(conn, "recv [SSL SNI error]\n");
+		return SSL_TLSEXT_ERR_ALERT_FATAL;
+	}
+
+	return SSL_TLSEXT_ERR_OK;
+}
+#endif
+#endif
+
 static void sstp_start(struct sstp_conn_t *conn)
 {
 	log_sstp_debug(conn, "start\n");
@@ -1733,6 +1767,13 @@ static void sstp_start(struct sstp_conn_t *conn)
 			log_sstp_error(conn, "SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
 			goto error;
 		}
+
+#ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
+		if (SSL_CTX_set_tlsext_servername_callback(conn->ssl_ctx, sstp_servername) == 1)
+			SSL_CTX_set_tlsext_servername_arg(conn->ssl_ctx, conn);
+		else
+			log_sstp_warn(conn, "SSl library has no tlsext support");
+#endif
 
 		conn->stream = ssl_stream_init(conn->hnd.fd, conn->ssl_ctx);
 	} else
@@ -2026,6 +2067,8 @@ static void load_config(void)
 		conf_hash_sha256.len = hex2bin(opt,
 				conf_hash_sha256.hash, sizeof(conf_hash_sha256.hash));
 	}
+
+	conf_hostname = conf_get_opt("sstp", "host-name");
 
 	opt = conf_get_opt("sstp", "timeout");
 	if (opt && atoi(opt) > 0)
