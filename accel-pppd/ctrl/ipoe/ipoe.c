@@ -1697,7 +1697,7 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 			}
 
 			if (ap_shutdown)
-				return;
+				goto out;
 
 			offer_delay = get_offer_delay();
 			if (offer_delay == -1)
