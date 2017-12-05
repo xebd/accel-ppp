@@ -238,8 +238,10 @@ static void parse_string(const char *str, int dir, int *speed, int *burst, int *
 		}
 	}
 
+#ifdef RADIUS
 	if (conf_vendor == 9)
 		return;
+#endif
 
 	val = strtol(str, &endptr, 10);
 	if (*endptr == 0) {
