@@ -90,6 +90,7 @@ struct iplink_arg {
 int conf_verbose;
 char *conf_service_name[255];
 int conf_accept_any_service;
+int conf_accept_blank_service;
 char *conf_ac_name;
 int conf_ifname_in_sid;
 char *conf_pado_delay;
@@ -756,6 +757,7 @@ static void pppoe_send_PADO(struct pppoe_serv_t *serv, const uint8_t *addr, cons
 {
 	uint8_t pack[ETHER_MAX_LEN];
 	uint8_t cookie[COOKIE_LENGTH];
+	uint8_t request_tag_added = 0;
 
 	setup_header(pack, serv->hwaddr, addr, CODE_PADO, 0);
 
@@ -764,11 +766,15 @@ static void pppoe_send_PADO(struct pppoe_serv_t *serv, const uint8_t *addr, cons
 		int i = 0;
 		do {
 		    add_tag(pack, TAG_SERVICE_NAME, (uint8_t *)conf_service_name[i], strlen(conf_service_name[i]));
+		    /* Avoid adding tag twice, mark if tag same as in service list */
+		    if (service_name && strlen(conf_service_name[i]) == service_name->tag_len && memcmp(service_name->tag_data, conf_service_name[i], service_name->tag_len) == 0)
+			request_tag_added = 1;
 		    i++;
 		} while(conf_service_name[i]);
 	}
 
-	if (service_name)
+	/* If tag not added yet before, then add it now */
+	if (service_name && !request_tag_added)
 		add_tag2(pack, service_name);
 
 	generate_cookie(serv, addr, cookie, host_uniq, relay_sid);
@@ -986,6 +992,10 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 				if (conf_service_name[0]) {
 					int svc_index = 0;
 					do {
+					    if (ntohs(tag->tag_len) == 0 && conf_accept_blank_service) {
+						service_match = 1;
+						break;
+					    }
 					    if (ntohs(tag->tag_len) == strlen(conf_service_name[svc_index]) && 
 						memcmp(tag->tag_data, conf_service_name[svc_index], ntohs(tag->tag_len)) == 0) {
 						    service_match = 1;
@@ -993,8 +1003,8 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 					    }
 					    svc_index++;
 					} while(conf_service_name[svc_index]);
-				} else
-					service_name_tag = tag;
+				}
+				service_name_tag = tag;
 				break;
 			case TAG_HOST_UNIQ:
 				host_uniq_tag = tag;
@@ -1924,6 +1934,10 @@ static void load_config(void)
 	opt = conf_get_opt("pppoe", "accept-any-service");
 	if (opt)
 	    conf_accept_any_service = atoi(opt);
+
+	opt = conf_get_opt("pppoe", "accept-blank-service");
+	if (opt)
+	    conf_accept_blank_service = atoi(opt);
 
 	opt = conf_get_opt("pppoe", "ac-name");
 	if (!opt)
