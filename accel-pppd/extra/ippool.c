@@ -49,9 +49,12 @@ struct ipaddr_t
 static struct ipdb_t ipdb;
 
 static in_addr_t conf_gw_ip_address;
+static int conf_shuffle;
+
+#ifdef RADIUS
 static int conf_vendor = 0;
 static int conf_attr = 88; // Framed-Pool
-static int conf_shuffle;
+#endif
 
 static int cnt;
 static LIST_HEAD(pool_list);
@@ -102,7 +105,7 @@ static void parse_gw_ip_address(const char *val)
 //parses ranges like x.x.x.x/mask
 static int parse1(const char *str, uint32_t *begin, uint32_t *end)
 {
-	int n, f1, f2, f3, f4, m, mask = 0;
+	int n, f1, f2, f3, f4, m;
 
 	n = sscanf(str, "%u.%u.%u.%u/%u",&f1, &f2, &f3, &f4, &m);
 	if (n != 5)
@@ -118,11 +121,10 @@ static int parse1(const char *str, uint32_t *begin, uint32_t *end)
 	if (m == 0 || m > 32)
 		return -1;
 
-	*begin = (f4 << 24) | (f3 << 16) | (f2 << 8) | f1;
+	*begin = (f1 << 24) | (f2 << 16) | (f3 << 8) | f4;
 
-	mask = htonl(~((1 << (32 - m)) - 1));
-	*end = ntohl(*begin | ~mask);
-	*begin = ntohl(*begin);
+	m = m == 32 ? 0xffffffff : ((1 << (32 - m)) - 1);
+	*end = *begin | m;
 
 	return 0;
 }
@@ -130,9 +132,9 @@ static int parse1(const char *str, uint32_t *begin, uint32_t *end)
 //parses ranges like x.x.x.x-y
 static int parse2(const char *str, uint32_t *begin, uint32_t *end)
 {
-	int n, f1, f2, f3, f4, m;
+	int n, f1, f2, f3, f4, f5;
 
-	n = sscanf(str, "%u.%u.%u.%u-%u",&f1, &f2, &f3, &f4, &m);
+	n = sscanf(str, "%u.%u.%u.%u-%u",&f1, &f2, &f3, &f4, &f5);
 	if (n != 5)
 		return -1;
 	if (f1 > 255)
@@ -143,11 +145,11 @@ static int parse2(const char *str, uint32_t *begin, uint32_t *end)
 		return -1;
 	if (f4 > 255)
 		return -1;
-	if (m < f4 || m > 255)
+	if (f5 < f4 || f5 > 255)
 		return -1;
 
-	*begin = ntohl((f4 << 24) | (f3 << 16) | (f2 << 8) | f1);
-	*end = ntohl((m << 24) | (f3 << 16) | (f2 << 8) | f1);
+	*begin = (f1 << 24) | (f2 << 16) | (f3 << 8) | f4;
+	*end = (f1 << 24) | (f2 << 16) | (f3 << 8) | f5;
 
 	return 0;
 }
