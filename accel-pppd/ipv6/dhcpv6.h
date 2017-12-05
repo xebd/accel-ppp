@@ -46,7 +46,7 @@
 #define D6_DECLINE                 9
 #define D6_RECONFIGURE            10
 #define D6_INFORMATION_REQUEST    11
-#define D6_RELAY_FORM             12
+#define D6_RELAY_FORW             12
 #define D6_RELAY_REPL             13
 
 #define D6_STATUS_Success          0
