@@ -413,6 +413,9 @@ static int pptp_echo_rqst(struct pptp_conn_t *conn)
 		log_ppp_debug("send [PPTP Echo-Reply <Identifier %x>]\n", out_msg.identifier);
 	}
 
+	if (conn->echo_timer.tpd)
+		triton_timer_mod(&conn->echo_timer, 0);
+
 	return post_msg(conn, &out_msg, sizeof(out_msg));
 }
 
@@ -423,13 +426,10 @@ static int pptp_echo_rply(struct pptp_conn_t *conn)
 	if (conf_verbose)
 		log_ppp_debug("recv [PPTP Echo-Reply <Identifier %x>]\n", msg->identifier);
 
-	/*if (msg->identifier != conn->echo_sent) {
-		log_ppp_warn("pptp:echo: identifier mismatch\n");
-		//return -1;
-	}*/
 	conn->echo_sent = 0;
 	return 0;
 }
+
 static void pptp_send_echo(struct triton_timer_t *t)
 {
 	struct pptp_conn_t *conn = container_of(t, typeof(*conn), echo_timer);
@@ -443,8 +443,7 @@ static void pptp_send_echo(struct triton_timer_t *t)
 		return;
 	}
 
-	conn->echo_sent = random();
-	msg.identifier = conn->echo_sent;
+	msg.identifier = random();
 
 	if (conf_verbose)
 		log_ppp_debug("send [PPTP Echo-Request <Identifier %x>]\n", msg.identifier);
@@ -761,7 +760,7 @@ static void load_config(void)
 		conf_echo_interval = atoi(opt);
 
 	opt = conf_get_opt("pptp", "echo-failure");
-	if (opt && atoi(opt) > 0)
+	if (opt && atoi(opt) >= 0)
 		conf_echo_failure = atoi(opt);
 
 	opt = conf_get_opt("pptp", "verbose");
