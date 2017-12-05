@@ -236,6 +236,7 @@ sessionTable_container_load(netsnmp_container *container)
 				rowreq_ctx->data->calling_sid = _strdup(ses->ctrl->calling_station_id);
 				rowreq_ctx->data->called_sid = _strdup(ses->ctrl->called_station_id);
 
+				net = ses->net;
 				ap_session_read_stats(ses, &stats);
 				rowreq_ctx->data->rx_pkts = stats.rx_packets;
 				rowreq_ctx->data->rx_bytes = stats.rx_bytes;
