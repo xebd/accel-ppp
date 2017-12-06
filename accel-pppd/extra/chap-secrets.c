@@ -123,14 +123,16 @@ static struct cs_pd_t *create_pd(struct ap_session *ses, const char *username)
 	FILE *f;
 	char *buf;
 	char *ptr[5];
-	int n, i;
+	int n;
 	struct cs_pd_t *pd;
+	struct in_addr in;
 #ifdef CRYPTO_OPENSSL
 	char username_hash[EVP_MAX_MD_SIZE * 2 + 1];
 	uint8_t hash[EVP_MAX_MD_SIZE];
 	struct hash_chain *hc;
 	EVP_MD_CTX *md_ctx = NULL;
 	char c;
+	int i;
 #endif
 
 	if (!conf_chap_secrets)
@@ -230,11 +232,11 @@ found:
 	}
 
 	pd->ip.addr = conf_gw_ip_address;
-	if (n >= 3 && ptr[2][0] != '*') {
-		if (strncmp(ptr[2], "pool=", 5) == 0)
-			pd->pool = _strdup(ptr[2] + 5);
+	if (n >= 3 && !strchr("*-!", ptr[2][0])) {
+		if (inet_aton(ptr[2], &in))
+			pd->ip.peer_addr = in.s_addr;
 		else
-			pd->ip.peer_addr = inet_addr(ptr[2]);
+			pd->pool = _strdup(ptr[2]);
 	}
 	pd->ip.mask = conf_netmask;
 	pd->ip.owner = &ipdb;
