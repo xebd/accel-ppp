@@ -462,6 +462,11 @@ Specifies maximum number of echo-requests may be sent without valid echo-reply, 
 Timeout waiting reply from client in seconds (default 5).
 .TP
 .BI "mppe=" deny|allow|prefer|require
+.TP
+.BI "ifname=" ifname
+If this option is given ppp interface will be renamed using
+.B ifname
+as a template, i.e pptp%d => pptp0.
 .SH [pppoe]
 .br
 Configuration of PPPoE module.
@@ -522,6 +527,11 @@ Specifies whether to handle TR101 tags.
 Specifies overall limit of PADI packets to reply in 1 second period (default 0 - unlimited). Rate of per-mac PADI packets is limited to no more than 1 packet per second.
 .TP
 .BI "mppe=" deny|allow|prefer|require
+.TP
+.BI "ifname=" ifname
+If this option is given ppp interface will be renamed using
+.B ifname
+as a template, i.e pppoe%d => pppoe0.
 .SH [l2tp]
 .br
 Configuration of L2TP module.
@@ -572,7 +582,6 @@ is greater of zero then l2tp module will produce verbose logging.
 .TP
 .BI "mppe=" deny|allow|prefer|require
 .TP
-.TP
 .BI "secret=" string
 Specifies secret to connect to server.
 .TP
@@ -609,6 +618,11 @@ reply (SCCRP). Default value is 0.
 .BI "ppp-max-mtu=" n
 Set the maximun MTU value that can be negociated for PPP over L2TP
 sessions. Default value is 1420.
+.TP
+.BI "ifname=" ifname
+If this option is given ppp interface will be renamed using
+.B ifname
+as a template, i.e l2tp%d => l2tp0.
 .SH [radius]
 .br
 Configuration of RADIUS module.
