@@ -385,7 +385,8 @@ static void ev_ses_finished(struct ap_session *ses)
 			log_ppp_warn("pppd_compat: ip-up is not yet finished, killing it ...\n");
 			kill(pd->ip_up_hnd.pid, SIGKILL);
 			pthread_mutex_unlock(&pd->ip_up_hnd.lock);
-			sigchld_unregister_handler(&pd->ip_up_hnd);
+			if (sigchld_unregister_handler(&pd->ip_up_hnd))
+				fork_queue_wakeup();
 		} else
 			pthread_mutex_unlock(&pd->ip_up_hnd.lock);
 	}

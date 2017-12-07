@@ -82,16 +82,21 @@ void __export sigchld_register_handler(struct sigchld_handler_t *h)
 	pthread_mutex_unlock(&handlers_lock);
 }
 
-void __export sigchld_unregister_handler(struct sigchld_handler_t *h)
+int __export sigchld_unregister_handler(struct sigchld_handler_t *h)
 {
+	int r = 0;
+
 	pthread_mutex_lock(&handlers_lock);
 	pthread_mutex_lock(&h->lock);
 	if (h->pid) {
 		list_del(&h->entry);
 		h->pid = 0;
+		r = 1;
 	}
 	pthread_mutex_unlock(&h->lock);
 	pthread_mutex_unlock(&handlers_lock);
+
+	return r;
 }
 
 void __export sigchld_lock()

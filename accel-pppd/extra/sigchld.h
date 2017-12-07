@@ -13,7 +13,7 @@ struct sigchld_handler_t
 };
 
 void sigchld_register_handler(struct sigchld_handler_t *);
-void sigchld_unregister_handler(struct sigchld_handler_t *);
+int sigchld_unregister_handler(struct sigchld_handler_t *);
 void sigchld_lock();
 void sigchld_unlock();
 
