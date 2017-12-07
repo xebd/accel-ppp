@@ -22,6 +22,8 @@ ENDIF ()
 ADD_DEFINITIONS(-DDICTIONARY="${CMAKE_INSTALL_PREFIX}/share/accel-ppp/radius/dictionary")
 
 ADD_LIBRARY(radius SHARED ${sources})
+set_property(TARGET radius PROPERTY CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
+set_property(TARGET radius PROPERTY INSTALL_RPATH ${CMAKE_INSTALL_PREFIX}/lib${LIB_SUFFIX}/accel-ppp)
 
 IF (LUA)
 	TARGET_LINK_LIBRARIES(radius luasupp)
