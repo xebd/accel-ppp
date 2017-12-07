@@ -320,6 +320,8 @@ static void ev_ses_started(struct ap_session *ses)
 		_exit(EXIT_FAILURE);
 	} else
 		log_error("pppd_compat: fork: %s\n", strerror(errno));
+
+	pd->started = 1;
 }
 
 static void ev_ses_finished(struct ap_session *ses)
