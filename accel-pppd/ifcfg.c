@@ -303,7 +303,7 @@ int __export ap_session_rename(struct ap_session *ses, const char *ifname, int l
 		ifr.ifr_newname[len] = 0;
 
 		r = net->sock_ioctl(SIOCSIFNAME, &ifr);
-		if (r && errno == EBUSY) {
+		if (r < 0 && errno == EBUSY) {
 			net->sock_ioctl(SIOCGIFFLAGS, &ifr);
 			ifr.ifr_flags &= ~IFF_UP;
 			net->sock_ioctl(SIOCSIFFLAGS, &ifr);
@@ -315,7 +315,7 @@ int __export ap_session_rename(struct ap_session *ses, const char *ifname, int l
 			up = 1;
 		}
 
-		if (r) {
+		if (r < 0) {
 			if (!ses->ifname_rename)
 				ses->ifname_rename = _strdup(ifr.ifr_newname);
 			else
@@ -325,7 +325,7 @@ int __export ap_session_rename(struct ap_session *ses, const char *ifname, int l
 			if (strchr(ifr.ifr_newname, '%')) {
 				ifr.ifr_ifindex = ses->ifindex;
 				r = net->sock_ioctl(SIOCGIFNAME, &ifr);
-				if (r) {
+				if (r < 0) {
 					log_ppp_error("failed to get new interface name: %s\n", strerror(errno));
 					return -1;
 				}
