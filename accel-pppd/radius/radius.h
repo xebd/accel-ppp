@@ -75,7 +75,7 @@ struct rad_dict_attr_t
 	struct list_head entry;
 	const char *name;
 	int id;
-	int type:31;
+	int type:30;
 	int array:1;
 	int size;
 	struct list_head values;
@@ -90,6 +90,7 @@ struct rad_attr_t
 	//struct rad_dict_value_t *val;
 	int len;
 	int cnt;
+	int alloc:1;
 	void *raw;
 	rad_value_t val;
 };

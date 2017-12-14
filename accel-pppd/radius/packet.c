@@ -117,7 +117,7 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 	struct rad_attr_t *attr;
 	struct rad_dict_attr_t *da;
 	struct rad_dict_vendor_t *vendor;
-	uint8_t *ptr;
+	uint8_t *ptr, *endptr;
 	int n, id, len, vendor_id;
 	socklen_t addr_len = sizeof(*addr);
 
@@ -133,6 +133,8 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 		log_emerg("radius:packet: out of memory\n");
 		goto out_err;
 	}
+
+	endptr = ptr + REQ_LENGTH_MAX;
 
 	pack->buf = ptr;
 	clock_gettime(CLOCK_MONOTONIC, &pack->tv);
@@ -226,15 +228,12 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 			if (!da->array) {
 				switch (da->type) {
 					case ATTR_TYPE_STRING:
-						attr->val.string = _malloc(len+1);
-						if (!attr->val.string) {
-							log_emerg("radius:packet: out of memory\n");
-							_free(attr);
-							goto out_err;
+						if (ptr + len == endptr) {
+							attr->alloc = 1;
+							attr->val.string = _malloc(len + 1);
+							memcpy(attr->val.string, ptr, len);
+							break;
 						}
-						memcpy(attr->val.string, ptr, len);
-						attr->val.string[len] = 0;
-						break;
 					case ATTR_TYPE_OCTETS:
 					case ATTR_TYPE_ETHER:
 					case ATTR_TYPE_TLV:
@@ -270,6 +269,11 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 		n -= 2 + len;
 	}
 
+	list_for_each_entry(attr, &pack->attrs, entry) {
+		if (attr->attr->type == ATTR_TYPE_STRING)
+			attr->val.string[attr->len] = 0;
+	}
+
 	*p = pack;
 
 	return 0;
@@ -290,7 +294,7 @@ void rad_packet_free(struct rad_packet_t *pack)
 	while(!list_empty(&pack->attrs)) {
 		attr = list_entry(pack->attrs.next, typeof(*attr), entry);
 		list_del(&attr->entry);
-		if (attr->attr->type == ATTR_TYPE_STRING)
+		if (attr->alloc)
 			_free(attr->val.string);
 		mempool_free(attr);
 	}
@@ -481,6 +485,7 @@ int __export rad_packet_add_octets(struct rad_packet_t *pack, const char *vendor
 	ra->len = len;
 
 	if (len) {
+		ra->alloc = 1;
 		ra->val.octets = _malloc(len);
 		if (!ra->val.octets) {
 			log_emerg("radius: out of memory\n");
@@ -558,6 +563,7 @@ int __export rad_packet_add_str(struct rad_packet_t *pack, const char *vendor_na
 	ra->vendor = vendor;
 	ra->attr = attr;
 	ra->len = len;
+	ra->alloc = 1;
 	ra->val.string = _malloc(len + 1);
 	if (!ra->val.string) {
 		log_emerg("radius: out of memory\n");
