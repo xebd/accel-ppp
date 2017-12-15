@@ -2035,6 +2035,10 @@ static void load_config(void)
 {
 	char *opt;
 
+	opt = conf_get_opt("sstp", "verbose");
+	if (opt && atoi(opt) >= 0)
+		conf_verbose = atoi(opt) > 0;
+
 	conf_hostname = conf_get_opt("sstp", "host-name");
 
 	opt = conf_get_opt("sstp", "cert-hash-proto");
@@ -2048,7 +2052,12 @@ static void load_config(void)
 
 #ifdef CRYPTO_OPENSSL
 	ssl_load_config(&serv, conf_hostname);
+	opt = serv.ssl_ctx ? "enabled" : "disabled";
+#else
+	opt = "not available";
 #endif
+	if (conf_verbose)
+		log_info2("sstp: SSL support %s\n", opt);
 
 	opt = conf_get_opt("sstp", "cert-hash-sha1");
 	if (opt) {
@@ -2069,10 +2078,6 @@ static void load_config(void)
 	opt = conf_get_opt("sstp", "hello-interval");
 	if (opt && atoi(opt) >= 0)
 		conf_hello_interval = atoi(opt);
-
-	opt = conf_get_opt("sstp", "verbose");
-	if (opt && atoi(opt) >= 0)
-		conf_verbose = atoi(opt) > 0;
 
 	opt = conf_get_opt("sstp", "ppp-max-mtu");
 	if (opt && atoi(opt) > 0)
