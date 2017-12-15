@@ -536,6 +536,27 @@ static char *http_getline(struct buffer_t *buf, char *line, size_t size)
 	return line;
 }
 
+static char *http_getvalue(char *line, const char *name, int len)
+{
+	int sep;
+
+	if (len < 0)
+		len = strlen(name);
+
+	if (strncasecmp(line, name, len) != 0)
+		return NULL;
+
+	line += len;
+	for (sep = 0; *line; line++) {
+		if (!sep && *line == ':')
+			sep = 1;
+		else if (*line != ' ' && *line != '\t')
+			break;
+	}
+
+	return sep ? line : NULL;
+}
+
 static int http_send_response(struct sstp_conn_t *conn, char *proto, char *status, char *headers)
 {
 	char datetime[sizeof("aaa, dd bbb yyyy HH:MM:SS GMT")];
@@ -563,9 +584,9 @@ static int http_send_response(struct sstp_conn_t *conn, char *proto, char *statu
 static int http_recv_request(struct sstp_conn_t *conn, uint8_t *data, int len)
 {
 	char linebuf[1024], protobuf[sizeof("HTTP/1.x")];
-	char *line, *method, *request, *proto;
+	char *line, *method, *request, *proto, *host;
 	struct buffer_t buf;
-	int host_match;
+	int ret = -1;
 
 	buf.head = data;
 	buf.end = data + len;
@@ -573,13 +594,14 @@ static int http_recv_request(struct sstp_conn_t *conn, uint8_t *data, int len)
 
 	line = http_getline(&buf, linebuf, sizeof(linebuf));
 	if (!line)
-		goto error;
+		return -1;
 	if (conf_verbose)
 		log_sstp_info2(conn, "recv [HTTP <%s>]\n", line);
 
 	method = strsep(&line, " ");
 	request = strsep(&line, " ");
 	proto = strsep(&line, " ");
+	host = NULL;
 
 	if (!method || !request || !proto) {
 		http_send_response(conn, "HTTP/1.1", "400 Bad Request", NULL);
@@ -601,23 +623,20 @@ static int http_recv_request(struct sstp_conn_t *conn, uint8_t *data, int len)
 	snprintf(protobuf, sizeof(protobuf), "%s", proto);
 	proto = protobuf;
 
-	host_match = 0;
 	while ((line = http_getline(&buf, linebuf, sizeof(linebuf))) != NULL) {
 		if (*line == '\0')
 			break;
 		if (conf_verbose)
 			log_sstp_info2(conn, "recv [HTTP <%s>]\n", line);
 
-		if (conf_hostname && strncasecmp(line, "Host", sizeof("Host") - 1) == 0) {
-			line += sizeof("Host") - 1;
-			while (*line == ' ' || *line == ':')
-				line++;
-			if (strcasecmp(line, conf_hostname) == 0)
-				host_match = 1;
+		if (!host && conf_hostname) {
+			host = http_getvalue(line, "Host", sizeof("Host") - 1);
+			if (host)
+				host = _strdup(host);
 		}
 	}
 
-	if (conf_hostname && !host_match) {
+	if (conf_hostname && strcasecmp(host ? : "", conf_hostname) != 0) {
 		http_send_response(conn, proto, "434 Requested host unavailable", NULL);
 		goto error;
 	}
@@ -626,10 +645,11 @@ static int http_recv_request(struct sstp_conn_t *conn, uint8_t *data, int len)
 			"Content-Length: 18446744073709551615\r\n")) {
 		goto error;
 	}
-	return 0;
+	ret = 0;
 
 error:
-	return -1;
+	_free(host);
+	return ret;
 }
 
 static int http_handler(struct sstp_conn_t *conn, struct buffer_t *buf)
@@ -1916,14 +1936,17 @@ static int ssl_servername(SSL *ssl, int *al, void *arg)
 {
 	const char *servername;
 
-	servername = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
-	if (conf_verbose)
-		log_ppp_info2("sstp: recv [SSL SNI <%s>]\n", servername ? : "");
+	if (!conf_hostname)
+		return SSL_TLSEXT_ERR_OK;
 
-	if (conf_hostname && (!servername || strcasecmp(servername, conf_hostname) != 0)) {
-		log_ppp_error("sstp: recv [SSL SNI error]\n");
-		return SSL_TLSEXT_ERR_ALERT_FATAL;
+	servername = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
+	if (conf_verbose) {
+		log_ppp_info2("sstp: recv [SSL <%s%s>]\n",
+			      servername ? "SNI " : "no SNI", servername ? : "");
 	}
+
+	if (strcasecmp(servername ? : "", conf_hostname) != 0)
+		return SSL_TLSEXT_ERR_ALERT_FATAL;
 
 	return SSL_TLSEXT_ERR_OK;
 }
