@@ -87,7 +87,11 @@ enum {
 
 struct hash_t {
 	unsigned int len;
-	uint8_t hash[32];
+	union {
+		uint8_t hash[0];
+		uint8_t sha1[SHA_DIGEST_LENGTH];
+		uint8_t sha256[SHA256_DIGEST_LENGTH];
+	};
 };
 
 struct buffer_t {
@@ -142,15 +146,15 @@ struct sstp_conn_t {
 
 	struct ppp_t ppp;
 	struct ap_ctrl ctrl;
-
-#ifdef CRYPTO_OPENSSL
-	SSL_CTX *ssl_ctx;
-#endif
 };
 
 static struct sstp_serv_t {
 	struct triton_context_t ctx;
 	struct triton_md_handler_t hnd;
+
+#ifdef CRYPTO_OPENSSL
+	SSL_CTX *ssl_ctx;
+#endif
 } serv;
 
 static int conf_timeout = SSTP_NEGOTIOATION_TIMEOUT;
@@ -165,16 +169,6 @@ static struct hash_t conf_hash_sha1 = { .len = 0 };
 static struct hash_t conf_hash_sha256 = { .len = 0 };
 //static int conf_bypass_auth = 0;
 static const char *conf_hostname = NULL;
-
-#ifdef CRYPTO_OPENSSL
-static X509 *conf_ssl_cert = NULL;
-static EVP_PKEY *conf_ssl_pkey = NULL;
-
-static const char *conf_ssl_ca_file = NULL;
-static const char *conf_ssl_ciphers = NULL;
-static int conf_ssl_prefer_server_ciphers = 0;
-static int conf_ssl = 1;
-#endif
 
 static mempool_t conn_pool;
 
@@ -1720,89 +1714,19 @@ static void sstp_disconnect(struct sstp_conn_t *conn)
 	_free(conn->ctrl.calling_station_id);
 	_free(conn->ctrl.called_station_id);
 
-#ifdef CRYPTO_OPENSSL
-	if (conn->ssl_ctx)
-		SSL_CTX_free(conn->ssl_ctx);
-#endif
-
 	mempool_free(conn);
 
 	log_info2("sstp: disconnected\n");
 }
-
-#ifdef CRYPTO_OPENSSL
-#ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
-static int sstp_servername(SSL *ssl, int *al, void *arg)
-{
-	struct sstp_conn_t *conn = (struct sstp_conn_t *)arg;
-	const char *servername;
-
-	servername = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
-	if (conf_verbose)
-		log_sstp_info2(conn, "recv [SSL SNI <%s>]\n", servername ? : "");
-
-	if (conf_hostname && (!servername || strcasecmp(servername, conf_hostname) != 0)) {
-		log_sstp_error(conn, "recv [SSL SNI error]\n");
-		return SSL_TLSEXT_ERR_ALERT_FATAL;
-	}
-
-	return SSL_TLSEXT_ERR_OK;
-}
-#endif
-#endif
 
 static void sstp_start(struct sstp_conn_t *conn)
 {
 	log_sstp_debug(conn, "start\n");
 
 #ifdef CRYPTO_OPENSSL
-	if (conf_ssl) {
-		conn->ssl_ctx = SSL_CTX_new(SSLv23_server_method());
-		if (!conn->ssl_ctx) {
-			log_sstp_error(conn, "SSL_CTX error: %s\n", ERR_error_string(ERR_get_error(), NULL));
-			goto error;
-		}
-
-		SSL_CTX_set_options(conn->ssl_ctx,
-#ifdef SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS
-				SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS |
-#endif
-				SSL_OP_NO_SSLv2 |
-				SSL_OP_NO_SSLv3 |
-				SSL_OP_NO_COMPRESSION |
-				(conf_ssl_prefer_server_ciphers ? SSL_OP_CIPHER_SERVER_PREFERENCE : 0));
-		SSL_CTX_set_mode(conn->ssl_ctx,
-				SSL_MODE_ENABLE_PARTIAL_WRITE |
-				SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
-		SSL_CTX_set_read_ahead(conn->ssl_ctx, 1);
-
-		if (conf_ssl_ciphers &&
-		    SSL_CTX_set_cipher_list(conn->ssl_ctx, conf_ssl_ciphers) != 1) {
-			log_sstp_error(conn, "SSL cipher list error: %s\n", ERR_error_string(ERR_get_error(), NULL));
-			goto error;
-		}
-		if (conf_ssl_ca_file &&
-		    SSL_CTX_load_verify_locations(conn->ssl_ctx, conf_ssl_ca_file, NULL) != 1) {
-			log_sstp_error(conn, "SSL ca file error: %s\n", ERR_error_string(ERR_get_error(), NULL));
-			goto error;
-		}
-		if (!conf_ssl_cert || !conf_ssl_pkey ||
-		    SSL_CTX_use_certificate(conn->ssl_ctx, conf_ssl_cert) != 1 ||
-		    SSL_CTX_use_PrivateKey(conn->ssl_ctx, conf_ssl_pkey) != 1 ||
-		    SSL_CTX_check_private_key(conn->ssl_ctx) != 1) {
-			log_sstp_error(conn, "SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
-			goto error;
-		}
-
-#ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
-		if (SSL_CTX_set_tlsext_servername_callback(conn->ssl_ctx, sstp_servername) == 1)
-			SSL_CTX_set_tlsext_servername_arg(conn->ssl_ctx, conn);
-		else
-			log_sstp_warn(conn, "SSl library has no tlsext support");
-#endif
-
-		conn->stream = ssl_stream_init(conn->hnd.fd, conn->ssl_ctx);
-	} else
+	if (serv.ssl_ctx)
+		conn->stream = ssl_stream_init(conn->hnd.fd, serv.ssl_ctx);
+	else
 #endif
 		conn->stream = stream_init(conn->hnd.fd);
 	if (!conn->stream) {
@@ -1947,13 +1871,9 @@ static void sstp_serv_close(struct triton_context_t *ctx)
 	triton_context_unregister(ctx);
 
 #ifdef CRYPTO_OPENSSL
-	if (conf_ssl_cert)
-		X509_free(conf_ssl_cert);
-	conf_ssl_cert = NULL;
-
-	if (conf_ssl_pkey)
-		EVP_PKEY_free(conf_ssl_pkey);
-	conf_ssl_pkey = NULL;
+	if (serv->ssl_ctx)
+		SSL_CTX_free(serv->ssl_ctx);
+	serv->ssl_ctx = NULL;
 
 	CRYPTO_thread_cleanup();
 #endif
@@ -1990,12 +1910,132 @@ static int hex2bin(const char *src, uint8_t *dst, size_t size)
 	return n;
 }
 
+#ifdef CRYPTO_OPENSSL
+#ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
+static int ssl_servername(SSL *ssl, int *al, void *arg)
+{
+	const char *servername;
+
+	servername = SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name);
+	if (conf_verbose)
+		log_ppp_info2("sstp: recv [SSL SNI <%s>]\n", servername ? : "");
+
+	if (conf_hostname && (!servername || strcasecmp(servername, conf_hostname) != 0)) {
+		log_ppp_error("sstp: recv [SSL SNI error]\n");
+		return SSL_TLSEXT_ERR_ALERT_FATAL;
+	}
+
+	return SSL_TLSEXT_ERR_OK;
+}
+#endif
+
+static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
+{
+	SSL_CTX *old_ctx, *ssl_ctx = NULL;
+	X509 *cert = NULL;
+	BIO *in = NULL;
+	char *opt;
+
+	opt = conf_get_opt("sstp", "ssl-pemfile");
+	if (opt) {
+		in = BIO_new(BIO_s_file());
+		if (!in) {
+			log_error("sstp: SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+			goto error;
+		}
+
+		if (BIO_read_filename(in, opt) <= 0) {
+			log_error("sstp: SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+			goto error;
+		}
+
+		cert = PEM_read_bio_X509(in, NULL, NULL, NULL);
+		if (!cert) {
+			log_error("sstp: SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+			goto error;
+		}
+	}
+
+	opt = conf_get_opt("sstp", "ssl");
+	if (atoi(opt) > 0) {
+		ssl_ctx = SSL_CTX_new(SSLv23_server_method());
+		if (!ssl_ctx) {
+			log_error("sstp: SSL_CTX error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+			goto error;
+		}
+
+		SSL_CTX_set_options(ssl_ctx,
+#ifdef SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS
+				SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS |
+#endif
+				SSL_OP_NO_SSLv2 |
+				SSL_OP_NO_SSLv3 |
+				SSL_OP_NO_COMPRESSION);
+		SSL_CTX_set_mode(ssl_ctx,
+				SSL_MODE_ENABLE_PARTIAL_WRITE |
+				SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+		SSL_CTX_set_read_ahead(ssl_ctx, 1);
+
+		opt = conf_get_opt("sstp", "ssl-ciphers");
+		if (opt && SSL_CTX_set_cipher_list(ssl_ctx, opt) != 1) {
+			log_error("sstp: SSL cipher list error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+			goto error;
+		}
+
+		opt = conf_get_opt("sstp", "ssl-prefer-server-ciphers");
+		if (opt && atoi(opt))
+			SSL_CTX_set_options(ssl_ctx, SSL_OP_CIPHER_SERVER_PREFERENCE);
+
+		if (cert && SSL_CTX_use_certificate(ssl_ctx, cert) != 1) {
+			log_error("sstp: SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+			goto error;
+		}
+
+		opt = conf_get_opt("sstp", "ssl-keyfile") ? : conf_get_opt("sstp", "ssl-pemfile");
+		if ((opt && SSL_CTX_use_PrivateKey_file(ssl_ctx, opt, SSL_FILETYPE_PEM) != 1) ||
+		    SSL_CTX_check_private_key(ssl_ctx) != 1) {
+			log_error("sstp: SSL private key error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+			goto error;
+		}
+
+		opt = conf_get_opt("sstp", "ssl-ca-file");
+		if (opt && SSL_CTX_load_verify_locations(ssl_ctx, opt, NULL) != 1) {
+			log_error("sstp: SSL ca file error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+			goto error;
+		}
+
+#ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
+		if (servername && SSL_CTX_set_tlsext_servername_callback(ssl_ctx, ssl_servername) != 1)
+			log_warn("sstp: SSL server name check error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+#endif
+	}
+
+	if (cert) {
+		if (conf_hash_protocol & CERT_HASH_PROTOCOL_SHA1)
+			X509_digest(cert, EVP_sha1(), conf_hash_sha1.hash, &conf_hash_sha1.len);
+		if (conf_hash_protocol & CERT_HASH_PROTOCOL_SHA256)
+			X509_digest(cert, EVP_sha256(), conf_hash_sha256.hash, &conf_hash_sha256.len);
+	}
+
+	old_ctx = serv->ssl_ctx;
+	serv->ssl_ctx = ssl_ctx;
+	ssl_ctx = old_ctx;
+
+error:
+	if (ssl_ctx)
+		SSL_CTX_free(ssl_ctx);
+	if (cert)
+		X509_free(cert);
+	if (in)
+		BIO_free(in);
+}
+#endif
+
 static void load_config(void)
 {
 	char *opt;
-#ifdef CRYPTO_OPENSSL
-	BIO *in;
-#endif
+
+	conf_hostname = conf_get_opt("sstp", "host-name");
 
 	opt = conf_get_opt("sstp", "cert-hash-proto");
 	if (opt) {
@@ -2006,65 +2046,8 @@ static void load_config(void)
 			conf_hash_protocol |= CERT_HASH_PROTOCOL_SHA256;
 	}
 
-	memset(&conf_hash_sha1, 0, sizeof(conf_hash_sha1));
-	memset(&conf_hash_sha256, 0, sizeof(conf_hash_sha256));
-
 #ifdef CRYPTO_OPENSSL
-	if (conf_ssl_cert) {
-		X509_free(conf_ssl_cert);
-		conf_ssl_cert = NULL;
-	}
-	if (conf_ssl_pkey) {
-		EVP_PKEY_free(conf_ssl_pkey);
-		conf_ssl_pkey = NULL;
-	}
-
-	opt = conf_get_opt("sstp", "ssl");
-	if (opt)
-		conf_ssl = atoi(opt);
-
-	conf_ssl_ciphers = conf_get_opt("sstp", "ssl-ciphers");
-
-	opt = conf_get_opt("sstp", "ssl-prefer-server-ciphers");
-	if (opt)
-		conf_ssl_prefer_server_ciphers = atoi(opt);
-
-	conf_ssl_ca_file = conf_get_opt("sstp", "ssl-ca-file");
-
-	in = BIO_new(BIO_s_file());
-	if (in) {
-		opt = conf_get_opt("sstp", "ssl-pemfile");
-		if (opt) {
-			/* conf_ssl_cert set to NULL already */
-			if (BIO_read_filename(in, opt) > 0)
-				conf_ssl_cert = PEM_read_bio_X509(in, NULL, NULL, NULL);
-
-			if (conf_ssl_cert) {
-				if (conf_hash_protocol & CERT_HASH_PROTOCOL_SHA1) {
-					X509_digest(conf_ssl_cert, EVP_sha1(),
-							conf_hash_sha1.hash, &conf_hash_sha1.len);
-				}
-				if (conf_hash_protocol & CERT_HASH_PROTOCOL_SHA256) {
-					X509_digest(conf_ssl_cert, EVP_sha256(),
-							conf_hash_sha256.hash, &conf_hash_sha256.len);
-				}
-			} else
-				log_error("sstp: SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
-		}
-
-		opt = conf_get_opt("sstp", "ssl-keyfile") ? : opt;
-		if (opt && conf_ssl) {
-			/* conf_ssl_pkey set to NULL already */
-			if (BIO_read_filename(in, opt) > 0)
-				conf_ssl_pkey = PEM_read_bio_PrivateKey(in, NULL, NULL, NULL);
-
-			if (!conf_ssl_pkey)
-				log_error("sstp: SSL private key error: %s\n", ERR_error_string(ERR_get_error(), NULL));
-		}
-
-		BIO_free_all(in);
-	} else
-		log_error("sstp: SSL error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+	ssl_load_config(&serv, conf_hostname);
 #endif
 
 	opt = conf_get_opt("sstp", "cert-hash-sha1");
@@ -2078,8 +2061,6 @@ static void load_config(void)
 		conf_hash_sha256.len = hex2bin(opt,
 				conf_hash_sha256.hash, sizeof(conf_hash_sha256.hash));
 	}
-
-	conf_hostname = conf_get_opt("sstp", "host-name");
 
 	opt = conf_get_opt("sstp", "timeout");
 	if (opt && atoi(opt) > 0)
