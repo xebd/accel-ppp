@@ -37,7 +37,7 @@
 #define UPDATE 2
 #define END_UPDATE 3
 
-#define HASH_BITS 0xff
+#define IPOE_HASH_BITS 0xff
 
 #define IPOE_MAGIC 0x55aa
 #define IPOE_MAGIC2 0x67f8bc32
@@ -123,9 +123,9 @@ struct _arphdr {
 } __packed;
 
 
-static struct list_head ipoe_list[HASH_BITS + 1];
-static struct list_head ipoe_list1_u[HASH_BITS + 1];
-static struct list_head ipoe_excl_list[HASH_BITS + 1];
+static struct list_head ipoe_list[IPOE_HASH_BITS + 1];
+static struct list_head ipoe_list1_u[IPOE_HASH_BITS + 1];
+static struct list_head ipoe_excl_list[IPOE_HASH_BITS + 1];
 static LIST_HEAD(ipoe_list2);
 static LIST_HEAD(ipoe_list2_u);
 static DEFINE_SEMAPHORE(ipoe_wlock);
@@ -163,9 +163,9 @@ static struct genl_multicast_group ipoe_nl_mcg;
 static inline int hash_addr(__be32 addr)
 {
 #ifdef __LITTLE_ENDIAN
-	return ((addr >> 24) ^ (addr >> 16)) & HASH_BITS;
+	return ((addr >> 24) ^ (addr >> 16)) & IPOE_HASH_BITS;
 #else
-	return (addr  ^ (addr >> 8)) & HASH_BITS;
+	return (addr  ^ (addr >> 8)) & IPOE_HASH_BITS;
 #endif
 }
 
@@ -1442,7 +1442,7 @@ static void clean_excl_list(void)
 
 	down(&ipoe_wlock);
 	rcu_read_lock();
-	for (i = 0; i <= HASH_BITS; i++) {
+	for (i = 0; i <= IPOE_HASH_BITS; i++) {
 		ht = &ipoe_excl_list[i];
 		list_for_each_entry_rcu(n, ht, entry) {
 			list_del_rcu(&n->entry);
@@ -1734,7 +1734,7 @@ static int __init ipoe_init(void)
 	if (err < 0)
 		return err;*/
 
-	for (i = 0; i <= HASH_BITS; i++) {
+	for (i = 0; i <= IPOE_HASH_BITS; i++) {
 		INIT_LIST_HEAD(&ipoe_list[i]);
 		INIT_LIST_HEAD(&ipoe_list1_u[i]);
 		INIT_LIST_HEAD(&ipoe_excl_list[i]);
@@ -1802,7 +1802,7 @@ static void __exit ipoe_fini(void)
 
 	del_timer(&ipoe_timer_u);
 
-	for (i = 0; i <= HASH_BITS; i++)
+	for (i = 0; i <= IPOE_HASH_BITS; i++)
 		rcu_assign_pointer(ipoe_list[i].next, &ipoe_list[i]);
 
 	rcu_barrier();
