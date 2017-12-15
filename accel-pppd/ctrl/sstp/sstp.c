@@ -1701,6 +1701,8 @@ static void sstp_disconnect(struct sstp_conn_t *conn)
 	}
 //	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp.ses);
 
+	triton_context_unregister(&conn->ctx);
+
 	_free(conn->nonce);
 
 	if (conn->stream)
