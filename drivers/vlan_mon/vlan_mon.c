@@ -35,6 +35,10 @@
 #define NETIF_F_HW_VLAN_FILTER NETIF_F_HW_VLAN_CTAG_FILTER
 #endif
 
+#ifndef RHEL_MAJOR
+#define RHEL_MAJOR 0
+#endif
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,0,0) || RHEL_MAJOR == 7
 #define vlan_tx_tag_present(skb) skb_vlan_tag_present(skb)
 #endif

@@ -52,6 +52,10 @@
 #define DEFINE_SEMAPHORE(name) struct semaphore name = __SEMAPHORE_INITIALIZER(name, 1)
 #endif
 
+#ifndef RHEL_MAJOR
+#define RHEL_MAJOR 0
+#endif
+
 struct ipoe_stats {
 	struct u64_stats_sync sync;
 	u64 packets;
