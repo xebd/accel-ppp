@@ -188,6 +188,9 @@ static int arp_read(struct triton_md_handler_t *h)
 		if (memcmp(ah->ar_sha, src.sll_addr, ETH_ALEN))
 			continue;
 
+		if (ah->ar_spa == 0)
+			continue;
+
 		t = &arp_tree[src.sll_ifindex & HASH_BITS];
 
 		parent = NULL;
