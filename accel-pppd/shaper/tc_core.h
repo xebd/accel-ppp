@@ -6,6 +6,10 @@
 
 #define TIME_UNITS_PER_SEC	1000000
 
+#ifndef UINT16_MAX
+#define UINT16_MAX 65535
+#endif
+
 enum link_layer {
 	LINKLAYER_UNSPEC,
 	LINKLAYER_ETHERNET,

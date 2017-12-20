@@ -989,7 +989,7 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 				if (conf_service_name[0]) {
 					int svc_index = 0;
 					do {
-					    if (ntohs(tag->tag_len) == strlen(conf_service_name[svc_index]) && 
+					    if (ntohs(tag->tag_len) == strlen(conf_service_name[svc_index]) &&
 						memcmp(tag->tag_data, conf_service_name[svc_index], ntohs(tag->tag_len)) == 0) {
 						    service_match = 1;
 						    break;
@@ -1126,7 +1126,7 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 				else if (conf_service_name[0]) {
 					int svc_index = 0;
 					do {
-					    if (ntohs(tag->tag_len) == strlen(conf_service_name[svc_index]) && 
+					    if (ntohs(tag->tag_len) == strlen(conf_service_name[svc_index]) &&
 						memcmp(tag->tag_data, conf_service_name[svc_index], ntohs(tag->tag_len)) == 0) {
 						    service_match = 1;
 						    break;
