@@ -127,7 +127,7 @@ static int parse1(const char *str, uint32_t *begin, uint32_t *end)
 
 	*begin = (f1 << 24) | (f2 << 16) | (f3 << 8) | f4;
 
-	m = m == 32 ? 0xffffffff : ((1 << (32 - m)) - 1);
+	m = m == 32 ? 0 : ((1 << (32 - m)) - 1);
 	*end = *begin | m;
 
 	return 0;
