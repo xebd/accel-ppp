@@ -117,7 +117,7 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 	struct rad_attr_t *attr;
 	struct rad_dict_attr_t *da;
 	struct rad_dict_vendor_t *vendor;
-	uint8_t *ptr, *endptr;
+	uint8_t *ptr;
 	int n, id, len, vendor_id;
 	socklen_t addr_len = sizeof(*addr);
 
@@ -133,8 +133,6 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 		log_emerg("radius:packet: out of memory\n");
 		goto out_err;
 	}
-
-	endptr = ptr + REQ_LENGTH_MAX;
 
 	pack->buf = ptr;
 	clock_gettime(CLOCK_MONOTONIC, &pack->tv);
@@ -228,12 +226,11 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 			if (!da->array) {
 				switch (da->type) {
 					case ATTR_TYPE_STRING:
-						if (ptr + len == endptr) {
-							attr->alloc = 1;
-							attr->val.string = _malloc(len + 1);
-							memcpy(attr->val.string, ptr, len);
-							break;
-						}
+						attr->alloc = 1;
+						attr->val.string = _malloc(len + 1);
+						memcpy(attr->val.string, ptr, len);
+						attr->val.string[len] = 0;
+						break;
 					case ATTR_TYPE_OCTETS:
 					case ATTR_TYPE_ETHER:
 					case ATTR_TYPE_TLV:
@@ -267,11 +264,6 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 			log_ppp_warn("radius:packet: unknown attribute received (%i,%i)\n", vendor ? vendor->id : 0, id);
 		ptr += len;
 		n -= 2 + len;
-	}
-
-	list_for_each_entry(attr, &pack->attrs, entry) {
-		if (attr->attr->type == ATTR_TYPE_STRING)
-			attr->val.string[attr->len] = 0;
 	}
 
 	*p = pack;
