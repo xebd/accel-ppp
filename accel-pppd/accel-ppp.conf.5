@@ -873,6 +873,8 @@ fc00:0:1:ffff::/64
 .BI "delegate=" ipv6prefix/mask,prefix_len
 Specifies range of prefixes to delegate to clients through DHCPv6 prefix delegation (rfc3633).
 Format is same as described above.
+.BI "gw-ip6-address=" ipv6address
+Specifies gateway address (used only for /128 prefixes)
 .SH [connlimit]
 .br
 This module limits connection rate from single source.
