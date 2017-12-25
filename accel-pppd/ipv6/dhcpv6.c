@@ -166,6 +166,9 @@ static void build_addr(struct ipv6db_addr_t *a, uint64_t intf_id, struct in6_add
 {
 	memcpy(addr, &a->addr, sizeof(*addr));
 
+	if (a->prefix_len == 128)
+		return;
+
 	if (a->prefix_len <= 64)
 		*(uint64_t *)(addr->s6_addr + 8) = intf_id;
 	else
@@ -310,10 +313,14 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 					ia_addr->valid_lifetime = htonl(conf_valid_lifetime);
 
 					if (!a->installed) {
-						if (a->prefix_len > 64)
-							ip6route_add(ses->ifindex, &a->addr, a->prefix_len, 0);
-						else {
-							struct in6_addr addr;
+						struct in6_addr addr, peer_addr;
+						if (a->prefix_len == 128) {
+							memcpy(addr.s6_addr, &a->addr, 8);
+							memcpy(addr.s6_addr + 8, &ses->ipv6->intf_id, 8);
+							memcpy(peer_addr.s6_addr, &a->addr, 8);
+							memcpy(peer_addr.s6_addr + 8, &ses->ipv6->peer_intf_id, 8);
+							ip6addr_add_peer(ses->ifindex, &addr, &peer_addr);
+						} else {
 							memcpy(addr.s6_addr, &a->addr, 8);
 							memcpy(addr.s6_addr + 8, &ses->ipv6->intf_id, 8);
 							ip6addr_add(ses->ifindex, &addr, a->prefix_len);
