@@ -639,6 +639,40 @@ int __export ip6addr_add(int ifindex, struct in6_addr *addr, int prefix_len)
 	return r;
 }
 
+int __export ip6addr_add_peer(int ifindex, struct in6_addr *addr, struct in6_addr *peer)
+{
+	struct ipaddr_req {
+		struct nlmsghdr n;
+		struct ifaddrmsg i;
+		char buf[4096];
+	} req;
+	struct rtnl_handle *rth = net->rtnl_get();
+	int r = 0;
+
+	if (!rth)
+		return -1;
+
+	memset(&req, 0, sizeof(req) - 4096);
+
+	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
+	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE;
+	req.n.nlmsg_type = RTM_NEWADDR;
+	req.i.ifa_family = AF_INET6;
+	req.i.ifa_index = ifindex;
+	req.i.ifa_prefixlen = 128;
+	req.i.ifa_flags = IFA_F_NODAD;
+
+	addattr_l(&req.n, sizeof(req), IFA_LOCAL, addr, 16);
+	addattr_l(&req.n, sizeof(req), IFA_ADDRESS, peer, 16);
+
+	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
+		r = -1;
+
+	net->rtnl_put(rth);
+
+	return r;
+}
+
 int __export ip6addr_del(int ifindex, struct in6_addr *addr, int prefix_len)
 {
 	struct ipaddr_req {
