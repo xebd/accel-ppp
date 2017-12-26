@@ -111,9 +111,9 @@ static void config_reload(int num)
 static void close_all_fd(void)
 {
 	DIR *dirp;
-	struct dirent ent, *res;
+	struct dirent *ent;
 	char path[128];
-	int fd;
+	int fd, dir_fd;
 
 	sprintf(path, "/proc/%u/fd", getpid());
 
@@ -121,14 +121,15 @@ static void close_all_fd(void)
 	if (!dirp)
 		return;
 
+	dir_fd = dirfd(dirp);
+
 	while (1) {
-		if (readdir_r(dirp, &ent, &res))
-			return;
-		if (!res)
+		ent = readdir(dirp);
+		if (!ent)
 			break;
 
-		fd = atol(ent.d_name);
-		if (fd > 2)
+		fd = atol(ent->d_name);
+		if (fd > 2 && fd != dir_fd)
 			close(fd);
 	}
 
