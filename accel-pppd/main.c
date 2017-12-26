@@ -229,6 +229,11 @@ static void shutdown_cb()
 	pthread_mutex_unlock(&lock);
 }
 
+static void log_version()
+{
+	log_msg("accel-ppp version %s\n", ACCEL_PPP_VERSION);
+}
+
 int main(int _argc, char **_argv)
 {
 	sigset_t set;
@@ -312,13 +317,12 @@ int main(int _argc, char **_argv)
 	openssl_init();
 #endif
 
+	triton_register_init(0, log_version);
+
 	if (triton_load_modules("modules"))
 		return EXIT_FAILURE;
 
-	log_msg("accel-ppp version %s\n", ACCEL_PPP_VERSION);
-
 	triton_run();
-
 
 	sigfillset(&set);
 
