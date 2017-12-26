@@ -10,7 +10,7 @@ project(accel-ppp C)
 
 include(cmake/cpack.cmake)
 
-SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fno-strict-aliasing -D_GNU_SOURCE -fPIC -rdynamic")
+SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fno-strict-aliasing -D_GNU_SOURCE -fPIC -rdynamic -Wno-unused-result")
 
 IF (NOT DEFINED LIB_SUFFIX)
 	EXECUTE_PROCESS(

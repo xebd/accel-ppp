@@ -456,7 +456,7 @@ static int remove_htb_ifb(struct rtnl_handle *rth, int ifindex, int priority)
 int install_limiter(struct ap_session *ses, int down_speed, int down_burst, int up_speed, int up_burst, int idx)
 {
 	struct rtnl_handle *rth = net->rtnl_get();
-	int r;
+	int r = 0;
 
 	if (!rth) {
 		log_ppp_error("shaper: cannot open rtnetlink\n");
@@ -582,7 +582,7 @@ int init_ifb(const char *name)
 	req.t.tcm_ifindex = conf_ifb_ifindex;
 	req.t.tcm_handle = 1;
 	req.t.tcm_parent = 0x00010000;
-	req.t.tcm_info = TC_H_MAKE(100 << 16, ntohs(ETH_P_IP));
+	req.t.tcm_info = TC_H_MAKE(100 << 16, ntohs(ETH_P_ALL));
 
 	addattr_l(&req.n, sizeof(req), TCA_KIND, "flow", 5);
 
