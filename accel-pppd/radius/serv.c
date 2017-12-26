@@ -565,7 +565,7 @@ static void __add_server(struct rad_server_t *s)
 	s->ctx.close = serv_ctx_close;
 
 	triton_context_register(&s->ctx, NULL);
-	triton_context_set_priority(&s->ctx, 1);
+	triton_context_set_priority(&s->ctx, 0);
 	if (conf_acct_on)
 		triton_context_call(&s->ctx, (triton_event_func)send_acct_on, s);
 	triton_context_wakeup(&s->ctx);

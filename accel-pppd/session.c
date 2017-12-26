@@ -169,6 +169,8 @@ void __export ap_session_activate(struct ap_session *ses)
 		triton_timer_add(ses->ctrl->ctx, &ses->timer, 0);
 	}
 
+	triton_context_set_priority(ses->ctrl->ctx, 2);
+
 #ifdef USE_BACKUP
 	if (!ses->backup)
 		backup_save_session(ses);
@@ -264,6 +266,8 @@ void __export ap_session_terminate(struct ap_session *ses, int cause, int hard)
 {
 	if (ses->terminated)
 		return;
+
+	triton_context_set_priority(ses->ctrl->ctx, 3);
 
 	if (!ses->stop_time)
 		ses->stop_time = _time();

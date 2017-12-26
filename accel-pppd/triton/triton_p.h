@@ -10,6 +10,8 @@
 #include "spinlock.h"
 #include "mempool.h"
 
+#define CTX_PRIO_MAX 4
+
 struct _triton_thread_t
 {
 	struct list_head entry;
@@ -18,8 +20,7 @@ struct _triton_thread_t
 	int terminate;
 	struct _triton_context_t *ctx;
 	pthread_mutex_t sleep_lock;
-	pthread_cond_t sleep_cond;
-	struct list_head wakeup_list;
+	struct list_head wakeup_list[CTX_PRIO_MAX];
 };
 
 struct _triton_context_t
