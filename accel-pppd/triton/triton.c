@@ -133,7 +133,7 @@ static void* triton_thread(struct _triton_thread_t *thread)
 				if (this_ctx->before_switch)
 					this_ctx->before_switch(this_ctx, thread->ctx->bf_arg);
 
-				//alloca(thread->ctx->uc->uc_stack.ss_size);
+				alloca(thread->ctx->uc->uc_stack.ss_size + 64);
 				memcpy(thread_frame - thread->ctx->uc->uc_stack.ss_size, thread->ctx->uc->uc_stack.ss_sp, thread->ctx->uc->uc_stack.ss_size);
 				setcontext(thread->ctx->uc);
 				abort();
@@ -328,12 +328,12 @@ int triton_queue_ctx(struct _triton_context_t *ctx)
 {
 	spin_lock(&threads_lock);
 	ctx->pending = 1;
-	if (ctx->thread || ctx->queued || ctx->init || ctx->need_free) {
+	if (ctx->thread || ctx->entry2.next || ctx->need_free) {
 		spin_unlock(&threads_lock);
 		return 0;
 	}
 
-	if (list_empty(&sleep_threads) || need_config_reload) {
+	if (list_empty(&sleep_threads) || ctx->init || need_config_reload) {
 		list_add_tail(&ctx->entry2, &ctx_queue[ctx->priority]);
 		spin_unlock(&threads_lock);
 		ctx->queued = 1;
