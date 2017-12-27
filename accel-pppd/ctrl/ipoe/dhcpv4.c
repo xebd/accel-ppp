@@ -836,7 +836,7 @@ out_err:
 void dhcpv4_send_notify(struct dhcpv4_serv *serv, struct dhcpv4_packet *req, unsigned int weight)
 {
 	struct dhcpv4_packet *pack = dhcpv4_packet_alloc();
-	uint8_t opt[8];
+	uint8_t opt[8 + ETH_ALEN];
 
 	if (!pack) {
 		log_emerg("out of memory\n");
@@ -852,6 +852,7 @@ void dhcpv4_send_notify(struct dhcpv4_serv *serv, struct dhcpv4_packet *req, uns
 
 	*(uint32_t *)opt = htonl(ACCEL_PPP_MAGIC);
 	*(uint32_t *)(opt + 4) = htonl(weight);
+	memcpy(opt + 8, serv->hwaddr, ETH_ALEN);
 
 	dhcpv4_packet_add_opt_u8(pack, 53, DHCPDISCOVER);
 	dhcpv4_packet_add_opt(pack, 43, opt, sizeof(opt));

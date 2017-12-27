@@ -1685,7 +1685,7 @@ static int check_notify(struct ipoe_serv *serv, struct dhcpv4_packet *pack)
 	if (!opt)
 		return 0;
 
-	if (opt->len != 8)
+	if (opt->len != 8 + ETH_ALEN)
 		return 0;
 
 	if (*(uint32_t *)opt->data != htonl(ACCEL_PPP_MAGIC))
@@ -1694,8 +1694,8 @@ static int check_notify(struct ipoe_serv *serv, struct dhcpv4_packet *pack)
 	w = htonl(*(uint32_t *)(opt->data + 4));
 
 	list_for_each_entry(ses, &serv->sessions, entry) {
-		if (ses->xid == pack->hdr->xid) {
-			if (w < ses->weight || ses->weight == 0) {
+		if (ses->xid == pack->hdr->xid && memcmp(pack->hdr->chaddr, ses->hwaddr, ETH_ALEN) == 0) {
+			if (w < ses->weight || ses->weight == 0 || (w == ses->weight && memcmp(serv->hwaddr, opt->data + 8, ETH_ALEN) < 0)) {
 				log_debug("ipoe: terminate %s by weight %u (%u)\n", ses->ses.ifname, w, ses->weight);
 				triton_context_call(&ses->ctx, (triton_event_func)__terminate, &ses->ses);
 			}
