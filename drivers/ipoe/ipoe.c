@@ -895,8 +895,11 @@ static unsigned int ipt_out_hook(void *priv, struct sk_buff *skb, const struct n
 	return NF_ACCEPT;
 }*/
 
-static struct rtnl_link_stats64 *ipoe_stats64(struct net_device *dev,
-					     struct rtnl_link_stats64 *stats)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,11,0)
+static struct rtnl_link_stats64 *ipoe_stats64(struct net_device *dev, struct rtnl_link_stats64 *stats)
+#else
+static void ipoe_stats64(struct net_device *dev, struct rtnl_link_stats64 *stats)
+#endif
 {
 	struct ipoe_session *ses = netdev_priv(dev);
 	struct ipoe_stats *st;
@@ -937,9 +940,12 @@ static struct rtnl_link_stats64 *ipoe_stats64(struct net_device *dev,
 	stats->rx_dropped = dev->stats.rx_dropped;
 	stats->tx_dropped = dev->stats.tx_dropped;
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,11,0)
 	return stats;
+#endif
 }
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,12,0)
 static void ipoe_free_netdev(struct net_device *dev)
 {
 	struct ipoe_session *ses = netdev_priv(dev);
@@ -951,6 +957,19 @@ static void ipoe_free_netdev(struct net_device *dev)
 
 	free_netdev(dev);
 }
+#else
+static void ipoe_netdev_uninit(struct net_device *dev)
+{
+	struct ipoe_session *ses = netdev_priv(dev);
+
+	if (ses->rx_stats)
+		free_percpu(ses->rx_stats);
+	if (ses->tx_stats)
+		free_percpu(ses->tx_stats);
+
+	dev_put(dev);
+}
+#endif
 
 static int ipoe_hard_header(struct sk_buff *skb, struct net_device *dev,
 			       unsigned short type, const void *daddr,
@@ -978,7 +997,11 @@ static const struct header_ops ipoe_hard_header_ops = {
 static void ipoe_netdev_setup(struct net_device *dev)
 {
 	dev->netdev_ops = &ipoe_netdev_ops;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,12,0)
 	dev->destructor = ipoe_free_netdev;
+#else
+	dev->needs_free_netdev = true;
+#endif
 
 	dev->type = ARPHRD_ETHER;
 	dev->hard_header_len = 0;
@@ -1070,6 +1093,11 @@ static int ipoe_create(__be32 peer_addr, __be32 addr, __be32 gw, int ifindex, co
 	rtnl_unlock();
 	if (r < 0)
 		goto failed_free;
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,12,0)
+	dev_hold(dev);
+#endif
+
 
 	down(&ipoe_wlock);
 	if (peer_addr)
@@ -1694,14 +1722,6 @@ static struct genl_ops ipoe_nl_ops[] = {
 	},
 };
 
-static struct genl_family ipoe_nl_family = {
-	.id		= GENL_ID_GENERATE,
-	.name		= IPOE_GENL_NAME,
-	.version	= IPOE_GENL_VERSION,
-	.hdrsize	= 0,
-	.maxattr	= IPOE_ATTR_MAX,
-};
-
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0) && RHEL_MAJOR < 7
 static struct genl_multicast_group ipoe_nl_mcg = {
 	.name = IPOE_GENL_MCG_PKT,
@@ -1712,9 +1732,29 @@ static struct genl_multicast_group ipoe_nl_mcgs[] = {
 };
 #endif
 
+static struct genl_family ipoe_nl_family = {
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,10,0)
+	.id		= GENL_ID_GENERATE,
+#endif
+	.name		= IPOE_GENL_NAME,
+	.version	= IPOE_GENL_VERSION,
+	.hdrsize	= 0,
+	.maxattr	= IPOE_ATTR_MAX,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0)
+	.module = THIS_MODULE,
+	.ops = ipoe_nl_ops,
+	.n_ops = ARRAY_SIZE(ipoe_nl_ops),
+	.mcgrps = ipoe_nl_mcgs,
+	.n_mcgrps = ARRAY_SIZE(ipoe_nl_mcgs),
+#endif
+};
+
 static const struct net_device_ops ipoe_netdev_ops = {
 	.ndo_start_xmit	= ipoe_xmit,
 	.ndo_get_stats64 = ipoe_stats64,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,12,0)
+	.ndo_uninit = ipoe_netdev_uninit,
+#endif
 };
 
 /*static struct pernet_operations ipoe_net_ops = {
@@ -1745,8 +1785,10 @@ static int __init ipoe_init(void)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0) && RHEL_MAJOR < 7
 	err = genl_register_family_with_ops(&ipoe_nl_family, ipoe_nl_ops, ARRAY_SIZE(ipoe_nl_ops));
-#else
+#elif LINUX_VERSION_CODE < KERNEL_VERSION(4,10,0)
 	err = genl_register_family_with_ops_groups(&ipoe_nl_family, ipoe_nl_ops, ipoe_nl_mcgs);
+#else
+	err = genl_register_family(&ipoe_nl_family);
 #endif
 	if (err < 0) {
 		printk(KERN_INFO "ipoe: can't register netlink interface\n");
