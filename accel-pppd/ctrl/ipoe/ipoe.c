@@ -145,6 +145,7 @@ static int conf_vlan_timeout;
 static int conf_max_request = 3;
 static int conf_session_timeout;
 static int conf_idle_timeout;
+static int conf_weight;
 
 static const char *conf_relay;
 
@@ -212,6 +213,7 @@ static int ipoe_rad_send_acct_request(struct rad_plugin_t *rad, struct rad_packe
 static void ipoe_session_create_auto(struct ipoe_serv *serv);
 static void ipoe_serv_timeout(struct triton_timer_t *t);
 static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struct ethhdr *eth, struct iphdr *iph, struct _arphdr *arph);
+static void __terminate(struct ap_session *ses);
 
 static void ipoe_ctx_switch(struct triton_context_t *ctx, void *arg)
 {
@@ -1187,6 +1189,7 @@ static void ipoe_session_finished(struct ap_session *s)
 
 	pthread_mutex_lock(&ses->serv->lock);
 	list_del(&ses->entry);
+	ses->serv->sess_cnt--;
 	if  ((ses->serv->vlan_mon || ses->serv->need_close) && list_empty(&ses->serv->sessions))
 		triton_context_call(&ses->serv->ctx, (triton_event_func)ipoe_serv_release, ses->serv);
 	pthread_mutex_unlock(&ses->serv->lock);
@@ -1323,6 +1326,7 @@ static struct ipoe_session *ipoe_session_create_dhcpv4(struct ipoe_serv *serv, s
 
 	//pthread_mutex_lock(&serv->lock);
 	list_add_tail(&ses->entry, &serv->sessions);
+	serv->sess_cnt++;
 	//pthread_mutex_unlock(&serv->lock);
 
 	if (serv->timer.tpd)
@@ -1672,11 +1676,42 @@ static void mac_change_detected(struct dhcpv4_packet *pack)
 	ap_session_terminate(&ses->ses, TERM_USER_REQUEST, 1);
 }
 
+static int check_notify(struct ipoe_serv *serv, struct dhcpv4_packet *pack)
+{
+	struct dhcpv4_option *opt = dhcpv4_packet_find_opt(pack, 43);
+	struct ipoe_session *ses;
+	unsigned int w;
+
+	if (!opt)
+		return 0;
+
+	if (opt->len != 8)
+		return 0;
+
+	if (*(uint32_t *)opt->data != htonl(ACCEL_PPP_MAGIC))
+		return 0;
+
+	w = htonl(*(uint32_t *)(opt->data + 4));
+
+	list_for_each_entry(ses, &serv->sessions, entry) {
+		if (ses->xid == pack->hdr->xid) {
+			if (w < ses->weight || ses->weight == 0) {
+				log_debug("ipoe: terminate %s by weight %u (%u)\n", ses->ses.ifname, w, ses->weight);
+				triton_context_call(&ses->ctx, (triton_event_func)__terminate, &ses->ses);
+			}
+			break;
+		}
+	}
+
+	return 1;
+}
+
 static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *pack, int force)
 {
 	struct ipoe_serv *serv = container_of(dhcpv4->ctx, typeof(*serv), ctx);
 	struct ipoe_session *ses, *opt82_ses;
 	int offer_delay;
+	unsigned int weight = 0;
 	//struct dhcpv4_packet *reply;
 
 	if (serv->timer.tpd)
@@ -1687,6 +1722,9 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 
 	pthread_mutex_lock(&serv->lock);
 	if (pack->msg_type == DHCPDISCOVER) {
+		if (check_notify(serv, pack))
+			goto out;
+
 		ses = ipoe_session_lookup(serv, pack, &opt82_ses);
 		if (!ses) {
 			if (serv->opt_shared == 0)
@@ -1709,6 +1747,8 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 			}
 
 			ses = ipoe_session_create_dhcpv4(serv, pack);
+
+			ses->weight = weight = serv->opt_weight >= 0 ? serv->sess_cnt * serv->opt_weight : (stat_active + 1) * conf_weight;
 		}	else {
 			if (ses->terminate) {
 				triton_context_call(ses->ctrl.ctx, (triton_event_func)ipoe_session_terminated, ses);
@@ -1779,6 +1819,9 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 
 out:
 	pthread_mutex_unlock(&serv->lock);
+
+	if (weight)
+		dhcpv4_send_notify(serv->dhcpv4, pack, weight);
 }
 
 static void ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet *pack)
@@ -1946,6 +1989,7 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 	triton_context_register(&ses->ctx, &ses->ses);
 
 	list_add_tail(&ses->entry, &serv->sessions);
+	serv->sess_cnt++;
 
 	if (serv->timer.tpd)
 		triton_timer_del(&serv->timer);
@@ -1990,6 +2034,7 @@ static void ipoe_session_create_auto(struct ipoe_serv *serv)
 	triton_context_register(&ses->ctx, &ses->ses);
 
 	list_add_tail(&ses->entry, &serv->sessions);
+	serv->sess_cnt++;
 
 	triton_context_call(&ses->ctx, (triton_event_func)ipoe_session_start, ses);
 
@@ -2675,6 +2720,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	int opt_ipv6 = conf_ipv6;
 	int opt_auto = conf_auto;
 	int opt_mtu = 0;
+	int opt_weight = -1;
 #ifdef USE_LUA
 	char *opt_lua_username_func = NULL;
 #endif
@@ -2744,6 +2790,8 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 				opt_ipv6 = atoi(ptr1);
 			} else if (strcmp(str, "mtu") == 0) {
 				opt_mtu = atoi(ptr1);
+			} else if (strcmp(str, "weight") == 0) {
+				opt_weight = atoi(ptr1);
 			} else if (strcmp(str, "username") == 0) {
 				if (strcmp(ptr1, "ifname") == 0)
 					opt_username = USERNAME_IFNAME;
@@ -2849,6 +2897,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 		serv->opt_arp = opt_arp;
 		serv->opt_username = opt_username;
 		serv->opt_ipv6 = opt_ipv6;
+		serv->opt_weight = opt_weight;
 #ifdef USE_LUA
 		if (serv->opt_lua_username_func && (!opt_lua_username_func || strcmp(serv->opt_lua_username_func, opt_lua_username_func))) {
 			_free(serv->opt_lua_username_func);
@@ -2934,6 +2983,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	serv->opt_username = opt_username;
 	serv->opt_ipv6 = opt_ipv6;
 	serv->opt_mtu = opt_mtu;
+	serv->opt_weight = opt_weight;
 #ifdef USE_LUA
 	serv->opt_lua_username_func = opt_lua_username_func;
 #endif
@@ -3755,6 +3805,12 @@ static void load_config(void)
 			log_error("ipoe: failed to parse 'calling-sid=%s'\n", opt);
 	} else
 		conf_calling_sid = SID_MAC;
+
+	opt = conf_get_opt("ipoe", "weight");
+	if (opt)
+		conf_weight = atoi(opt);
+	else
+		conf_weight = 0;
 
 #ifdef RADIUS
 	if (triton_module_loaded("radius"))

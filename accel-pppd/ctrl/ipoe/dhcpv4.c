@@ -45,33 +45,21 @@ static mempool_t opt_pool;
 static LIST_HEAD(relay_list);
 static pthread_mutex_t relay_lock = PTHREAD_MUTEX_INITIALIZER;
 
-static pthread_key_t raw_sock_key;
-static __thread int raw_sock = -1;
+static int raw_sock = -1;
 
 static int dhcpv4_read(struct triton_md_handler_t *h);
 int dhcpv4_packet_add_opt(struct dhcpv4_packet *pack, int type, const void *data, int len);
 
-static int open_raw_sock(void)
+static void open_raw_sock(void)
 {
-	if (raw_sock == -1) {
-		raw_sock = socket(AF_PACKET, SOCK_RAW, 0);
-		if (raw_sock < 0) {
-			log_error("dhcpv4: socket(AF_PACKET, SOCK_RAW): %s\n", strerror(errno));
-			return -1;
-		}
-
-		fcntl(raw_sock, F_SETFL, O_NONBLOCK);
-		fcntl(raw_sock, F_SETFD, fcntl(raw_sock, F_GETFD) | FD_CLOEXEC);
-
-		pthread_setspecific(raw_sock_key, (void *)(long)raw_sock);
+	raw_sock = socket(AF_PACKET, SOCK_RAW, 0);
+	if (raw_sock < 0) {
+		log_error("dhcpv4: socket(AF_PACKET, SOCK_RAW): %s\n", strerror(errno));
+		return;
 	}
 
-	return raw_sock;
-}
-
-static void close_raw_sock(void *arg)
-{
-	close((long)arg);
+	fcntl(raw_sock, F_SETFL, O_NONBLOCK);
+	fcntl(raw_sock, F_SETFD, FD_CLOEXEC);
 }
 
 static struct dhcpv4_iprange *parse_range(const char *str)
@@ -586,7 +574,7 @@ uint16_t ip_csum(uint16_t *buf, int len)
 }
 
 
-static int dhcpv4_send_raw(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack, in_addr_t saddr, in_addr_t daddr)
+static int dhcpv4_send_raw(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack, in_addr_t saddr, in_addr_t daddr, int dport)
 {
 	uint8_t hdr[sizeof(struct ether_header) + sizeof(struct iphdr) + sizeof(struct udphdr)];
 	struct ether_header *eth = (struct ether_header *)hdr;
@@ -597,7 +585,6 @@ static int dhcpv4_send_raw(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack,
 	static uint8_t bc_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
 	struct sockaddr_ll ll_addr;
 	struct msghdr msg;
-	int sock = open_raw_sock();
 
 	memset(&ll_addr, 0, sizeof(ll_addr));
 	ll_addr.sll_family = AF_PACKET;
@@ -626,10 +613,11 @@ static int dhcpv4_send_raw(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack,
 	ip->check = 0;
 	ip->saddr = saddr;
 	ip->daddr = (pack->hdr->flags & DHCP_F_BROADCAST) ? INADDR_BROADCAST : daddr;
+	barrier();
 	ip->check = ip_csum((uint16_t *)ip, 20);
 
 	udp->source = ntohs(DHCP_SERV_PORT);
-	udp->dest = ntohs(DHCP_CLIENT_PORT);
+	udp->dest = ntohs(dport);
 	udp->len = htons(sizeof(*udp) + len);
 	udp->check = 0;
 
@@ -638,13 +626,10 @@ static int dhcpv4_send_raw(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack,
 	iov[1].iov_base = pack->data;
 	iov[1].iov_len = len;
 
-	len = sendmsg(sock, &msg, 0);
+	len = sendmsg(raw_sock, &msg, 0);
 
-	if (len < 0) {
-		perror("sendmsg");
-		printf("%i %i\n", errno, serv->ifindex);
+	if (len < 0)
 		return -1;
-	}
 
 	return 0;
 }
@@ -790,7 +775,7 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 	else if (req->hdr->ciaddr && !(pack->hdr->flags & DHCP_F_BROADCAST))
 		r = dhcpv4_send_udp(serv, pack, req->hdr->ciaddr, DHCP_CLIENT_PORT);
 	else
-		r = dhcpv4_send_raw(serv, pack, siaddr, yiaddr);
+		r = dhcpv4_send_raw(serv, pack, siaddr, yiaddr, DHCP_CLIENT_PORT);
 
 	dhcpv4_packet_free(pack);
 
@@ -835,7 +820,7 @@ int dhcpv4_send_nak(struct dhcpv4_serv *serv, struct dhcpv4_packet *req)
 	if (req->hdr->giaddr)
 		r = dhcpv4_send_udp(serv, pack, req->hdr->giaddr, DHCP_SERV_PORT);
 	else
-		r = dhcpv4_send_raw(serv, pack, 0, 0xffffffff);
+		r = dhcpv4_send_raw(serv, pack, 0, 0xffffffff, DHCP_CLIENT_PORT);
 
 	dhcpv4_packet_free(pack);
 
@@ -846,6 +831,34 @@ out_err:
 	return -1;
 
 	return 0;
+}
+
+void dhcpv4_send_notify(struct dhcpv4_serv *serv, struct dhcpv4_packet *req, unsigned int weight)
+{
+	struct dhcpv4_packet *pack = dhcpv4_packet_alloc();
+	uint8_t opt[8];
+
+	if (!pack) {
+		log_emerg("out of memory\n");
+		return;
+	}
+
+	memcpy(pack->hdr, req->hdr, sizeof(*req->hdr));
+	pack->hdr->flags = DHCP_F_BROADCAST;
+	pack->hdr->ciaddr = 0;
+	pack->hdr->yiaddr = 0;
+	pack->hdr->siaddr = 0;
+	pack->hdr->giaddr = 0;
+
+	*(uint32_t *)opt = htonl(ACCEL_PPP_MAGIC);
+	*(uint32_t *)(opt + 4) = htonl(weight);
+
+	dhcpv4_packet_add_opt_u8(pack, 53, DHCPDISCOVER);
+	dhcpv4_packet_add_opt(pack, 43, opt, sizeof(opt));
+
+	dhcpv4_send_raw(serv, pack, 0, INADDR_BROADCAST, DHCP_SERV_PORT);
+
+	dhcpv4_packet_free(pack);
 }
 
 struct dhcpv4_relay *dhcpv4_relay_create(const char *_addr, in_addr_t giaddr, struct triton_context_t *ctx, triton_event_func recv)
@@ -1190,7 +1203,7 @@ static void init()
 	pack_pool = mempool_create(BUF_SIZE + sizeof(struct dhcpv4_packet));
 	opt_pool = mempool_create(sizeof(struct dhcpv4_option));
 
-	pthread_key_create(&raw_sock_key, close_raw_sock);
+	open_raw_sock();
 
 	load_config();
 

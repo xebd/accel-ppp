@@ -295,6 +295,9 @@ Specifies default value for per-interface
 .B proxy-arp
 parameter.
 .TP
+.BI "weight=" n
+Specifies global weight of this server (used for load balancing)
+.TP
 .BI "interface=" [re:]name[,mode=L2|L3][,shared=0|1][,start=dhcpv4|up|auto]
 .BI "" [,range=x.x.x.x/mask][,ifcfg=0|1]
 .BI "" [,relay=x.x.x.x]
@@ -304,6 +307,7 @@ parameter.
 .BI "" [,username=ifname|lua:function]
 .BI "" [,ipv6=0|1]
 .BI "" [,mtu=N]
+.BI "" [,weight=N]
 .br
 Specifies interface to listen dhcp or unclassified packets. You may specify multiple
 .B interface

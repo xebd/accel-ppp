@@ -37,6 +37,7 @@ struct ipoe_serv {
 	int ifindex;
 	uint8_t hwaddr[ETH_ALEN];
 	struct list_head sessions;
+	unsigned int sess_cnt;
 	struct dhcpv4_serv *dhcpv4;
 	struct dhcpv4_relay *dhcpv4_relay;
 	void *arp;
@@ -57,6 +58,7 @@ struct ipoe_serv {
 #ifdef USE_LUA
 	char *opt_lua_username_func;
 #endif
+	int opt_weight;
 	int opt_shared:1;
 	int opt_dhcpv4:1;
 	int opt_up:1;
@@ -102,6 +104,7 @@ struct ipoe_session {
 	int ifindex;
 	char *username;
 	struct ipv4db_item_t ipv4;
+	unsigned int weight;
 #ifdef RADIUS
 	struct rad_plugin_t radius;
 #endif
