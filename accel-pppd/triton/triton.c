@@ -54,6 +54,7 @@ struct triton_context_t default_ctx;
 static __thread struct triton_context_t *this_ctx;
 static __thread jmp_buf jmp_env;
 static __thread void *thread_frame;
+static volatile void *thread_stack;
 
 #define log_debug2(fmt, ...)
 
@@ -133,7 +134,7 @@ static void* triton_thread(struct _triton_thread_t *thread)
 				if (this_ctx->before_switch)
 					this_ctx->before_switch(this_ctx, thread->ctx->bf_arg);
 
-				alloca(thread->ctx->uc->uc_stack.ss_size + 64);
+				thread_stack = alloca(thread->ctx->uc->uc_stack.ss_size + 64);
 				memcpy(thread_frame - thread->ctx->uc->uc_stack.ss_size, thread->ctx->uc->uc_stack.ss_sp, thread->ctx->uc->uc_stack.ss_size);
 				setcontext(thread->ctx->uc);
 				abort();
