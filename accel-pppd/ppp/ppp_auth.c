@@ -399,6 +399,8 @@ static void load_config(void)
 	opt = conf_get_opt("auth", "noauth");
 	if (opt)
 		conf_noauth = atoi(opt);
+	else
+		conf_noauth = 0;
 }
 
 static void ppp_auth_init()

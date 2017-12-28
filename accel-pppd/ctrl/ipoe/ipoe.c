@@ -675,12 +675,12 @@ static void ipoe_session_start(struct ipoe_session *ses)
 
 	ap_session_starting(&ses->ses);
 
+	if (ses->serv->opt_shared && ipoe_create_interface(ses))
+		return;
+
 	if (conf_noauth)
 		r = PWDB_SUCCESS;
 	else {
-		if (ses->serv->opt_shared && ipoe_create_interface(ses))
-			return;
-
 #ifdef RADIUS
 		if (radius_loaded) {
 			ses->radius.send_access_request = ipoe_rad_send_auth_request;
@@ -3718,6 +3718,8 @@ static void load_config(void)
 		conf_ipv6 = 0;
 
 	opt = conf_get_opt("ipoe", "noauth");
+	if (!opt)
+		opt = conf_get_opt("auth", "noauth");
 	if (opt)
 		conf_noauth = atoi(opt);
 	else
