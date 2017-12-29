@@ -90,6 +90,7 @@ struct ipv6_nd_handler_t
 };
 
 static void *pd_key;
+static struct in6_addr null_addr;
 
 #define BUF_SIZE 1024
 static mempool_t buf_pool;
@@ -382,7 +383,7 @@ static void ev_ses_started(struct ap_session *ses)
 		return;
 
 	list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
-		if (a->prefix_len) {
+		if (a->prefix_len && memcmp(a->addr.s6_addr, null_addr.s6_addr, sizeof(null_addr))) {
 			ipv6_nd_start(ses);
 			break;
 		}

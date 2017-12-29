@@ -52,6 +52,7 @@ struct dhcpv6_pd {
 };
 
 static void *pd_key;
+static struct in6_addr null_addr;
 
 static int dhcpv6_read(struct triton_md_handler_t *h);
 
@@ -68,7 +69,7 @@ static void ev_ses_started(struct ap_session *ses)
 		return;
 
 	a = list_entry(ses->ipv6->addr_list.next, typeof(*a), entry);
-	if (a->prefix_len == 0)
+	if (a->prefix_len == 0 || memcmp(a->addr.s6_addr, null_addr.s6_addr, sizeof(null_addr)) == 0)
 		return;
 
 	sock = net->socket(AF_INET6, SOCK_DGRAM, 0);
