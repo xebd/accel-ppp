@@ -160,7 +160,7 @@ static struct sstp_serv_t {
 static int conf_timeout = SSTP_NEGOTIOATION_TIMEOUT;
 static int conf_hello_interval = SSTP_HELLO_TIMEOUT;
 static int conf_verbose = 0;
-static int conf_ppp_max_mtu = 1456;
+static int conf_ppp_max_mtu = 1452;
 static const char *conf_ip_pool;
 static const char *conf_ifname;
 
