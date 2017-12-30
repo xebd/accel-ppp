@@ -725,11 +725,13 @@ static int ppp_allocate_pty(int *master, int *slave, int flags)
 		goto error;
 	}
 
-//	value = N_HDLC;
-//	if (ioctl(mfd, TIOCSETD, &value) < 0) {
-//		log_ppp_error("sstp: ppp: set pty line discipline: %s\n", strerror(errno));
-//		goto error;
-//	}
+#if PPP_SYNC
+	value = N_HDLC;
+	if (ioctl(mfd, TIOCSETD, &value) < 0) {
+		log_ppp_error("sstp: ppp: set pty line discipline: %s\n", strerror(errno));
+		goto error;
+	}
+#endif
 
 	if ((value = fcntl(mfd, F_GETFL)) < 0 || fcntl(mfd, F_SETFL, value | flags) < 0 ||
 	    (value = fcntl(sfd, F_GETFL)) < 0 || fcntl(sfd, F_SETFL, value | flags) < 0) {
@@ -782,11 +784,10 @@ static int ppp_read(struct triton_md_handler_t *h)
 	struct sstp_conn_t *conn = container_of(h, typeof(*conn), ppp_hnd);
 	struct buffer_t *buf;
 	struct sstp_hdr *hdr;
-	uint8_t pppbuf[PPP_BUF_SIZE];
-	int n;
+	uint8_t pppbuf[PPP_BUF_SIZE], *src;
+	int i, n;
 #if !PPP_SYNC
-	uint8_t *src, byte;
-	int i;
+	uint8_t byte;
 
 	buf = conn->ppp_in;
 #endif
@@ -813,18 +814,30 @@ static int ppp_read(struct triton_md_handler_t *h)
 			continue;
 		}
 
-#if PPP_SYNC
-		buf = alloc_buf(n + sizeof(*hdr));
-		if (!buf) {
-			log_ppp_error("sstp: ppp: no memory\n");
-			goto drop;
-		}
-		hdr = buf_put(buf, sizeof(*hdr));
-		buf_put_data(buf, pppbuf, n);
-		INIT_SSTP_DATA_HDR(hdr, buf->len);
-		sstp_queue(conn, buf);
-#else
 		src = pppbuf;
+#if PPP_SYNC
+		while (n > 0) {
+			if (src[0] == PPP_ALLSTATIONS)
+				i = conn->ppp.mtu + 4 - (src[2] & 1);
+			else
+				i = conn->ppp.mtu + 2 - (src[0] & 1);
+			if (i > n)
+				i = n;
+
+			buf = alloc_buf(i + sizeof(*hdr));
+			if (!buf) {
+				log_ppp_error("sstp: ppp: no memory\n");
+				goto drop;
+			}
+			hdr = buf_put(buf, sizeof(*hdr));
+			buf_put_data(buf, src, i);
+			INIT_SSTP_DATA_HDR(hdr, buf->len);
+			sstp_queue(conn, buf);
+
+			n -= i;
+			src += i;
+		}
+#else
 		if (!buf) {
 		alloc:
 			conn->ppp_in = buf = alloc_buf(SSTP_MAX_PACKET_SIZE + PPP_FCSLEN);
