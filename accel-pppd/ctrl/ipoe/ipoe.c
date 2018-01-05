@@ -214,6 +214,7 @@ static void ipoe_session_create_auto(struct ipoe_serv *serv);
 static void ipoe_serv_timeout(struct triton_timer_t *t);
 static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struct ethhdr *eth, struct iphdr *iph, struct _arphdr *arph);
 static void __terminate(struct ap_session *ses);
+static void ipoe_ipv6_disable(struct ipoe_serv *serv);
 
 static void ipoe_ctx_switch(struct triton_context_t *ctx, void *arg)
 {
@@ -2389,6 +2390,9 @@ static void ipoe_serv_release(struct ipoe_serv *serv)
 	if (serv->arp)
 		arpd_stop(serv->arp);
 
+	if (serv->opt_ipv6)
+		ipoe_ipv6_disable(serv);
+
 	while (!list_empty(&serv->disc_list)) {
 		struct disc_item *d = list_entry(serv->disc_list.next, typeof(*d), entry);
 		list_del(&d->entry);
@@ -2705,6 +2709,39 @@ static void ipoe_serv_timeout(struct triton_timer_t *t)
 	ipoe_serv_release(serv);
 }
 
+static void ipoe_ipv6_enable(struct ipoe_serv *serv)
+{
+	struct ifreq ifr;
+
+	strcpy(ifr.ifr_name, serv->ifname);
+
+	ifr.ifr_hwaddr.sa_family = AF_UNSPEC;
+	ifr.ifr_hwaddr.sa_data[0] = 0x33;
+	ifr.ifr_hwaddr.sa_data[1] = 0x33;
+	*(uint32_t *)(ifr.ifr_hwaddr.sa_data + 2) = htonl(0x02);
+	ioctl(sock_fd, SIOCADDMULTI, &ifr);
+
+	*(uint32_t *)(ifr.ifr_hwaddr.sa_data + 2) = htonl(0x010002);
+	ioctl(sock_fd, SIOCADDMULTI, &ifr);
+}
+
+static void ipoe_ipv6_disable(struct ipoe_serv *serv)
+{
+	struct ifreq ifr;
+
+	strcpy(ifr.ifr_name, serv->ifname);
+
+	ifr.ifr_hwaddr.sa_family = AF_UNSPEC;
+	ifr.ifr_hwaddr.sa_data[0] = 0x33;
+	ifr.ifr_hwaddr.sa_data[1] = 0x33;
+	*(uint32_t *)(ifr.ifr_hwaddr.sa_data + 2) = htonl(0x02);
+	ioctl(sock_fd, SIOCDELMULTI, &ifr);
+
+	*(uint32_t *)(ifr.ifr_hwaddr.sa_data + 2) = htonl(0x010002);
+	ioctl(sock_fd, SIOCDELMULTI, &ifr);
+}
+
+
 static void add_interface(const char *ifname, int ifindex, const char *opt, int parent_ifindex, int vid, int vlan_mon)
 {
 	char *str0 = NULL, *str, *ptr1, *ptr2;
@@ -3011,6 +3048,9 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 
 	if (serv->opt_arp)
 		serv->arp = arpd_start(serv);
+
+	if (serv->opt_ipv6 && serv->opt_shared)
+		ipoe_ipv6_enable(serv);
 
 	if (vlan_mon) {
 		serv->vlan_mon = 1;

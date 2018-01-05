@@ -126,6 +126,8 @@ struct ipoe_session_info {
 	uint32_t peer_addr;
 };
 
+int ipoe_ipv6_nd_start(struct ipoe_serv *serv);
+
 #ifdef USE_LUA
 char *ipoe_lua_get_username(struct ipoe_session *, const char *func);
 int ipoe_lua_make_vlan_name(const char *func, const char *parent, int svid, int cvid, char *name);
