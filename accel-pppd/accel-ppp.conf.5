@@ -42,6 +42,10 @@ PPTP controlling connection handling module.
 .br
 PPPoE discovery stage handling module.
 .TP
+.BI sstp
+.br
+SSTP controlling connection handling module.
+.TP
 .BI auth_pap
 PAP authentication module.
 .TP
@@ -627,6 +631,82 @@ sessions. Default value is 1420.
 If this option is given ppp interface will be renamed using
 .B ifname
 as a template, i.e l2tp%d => l2tp0.
+.SH [sstp]
+.br
+Configuration of SSTP module.
+.TP
+.BI "bind=" x.x.x.x
+If this option is given then sstp server will bind to specified IP address.
+.TP
+.BI "port=" n
+If this option is given then sstp server will bind to specified port.
+Default is 443.
+.TP
+.BI "verbose=" n
+If this option is given and 
+.B n
+is greater of zero then sstp module will produce verbose logging.
+.TP
+.BI "timeout=" n
+Timeout waiting reply from client in seconds.
+Default is 60.
+.TP
+.BI "hello-interval=" n
+If this option is given and greater then zero then sstp will send echo-request every 
+.B n
+seconds and drop connection without a reply.
+Default is 60.
+.TP
+.BI "ssl=" ssl
+If this option is given and 
+.B ssl
+is greater of zero then sstp module will enable builtin TLS support.
+Default is 1.
+.TP
+.BI "ssl-ciphers=" string
+Specifies the enabled ciphers. The ciphers are specified in the format understood by the OpenSSL library.
+.TP
+.BI "ssl-prefer-server-ciphers=" n
+If this option is given and 
+.B n
+is greater of zero then server ciphers should be preferred over client ciphers.
+Default is 0.
+.TP
+.BI "ssl-pemfile=" pemfile
+Specifies a file with the certificate in the PEM format for sstp server.
+Certificate is also used to compute initial SHA1 and SHA256 certificate hash.
+.TP
+.BI "ssl-keyfile=" keyfile
+Specifies a file with the secret key in the PEM format for sstp server.
+If not set, secret key will be loaded from the
+.BI pemfile
+certificate.
+.TP
+.BI "cert-hash-proto=" sha1,sha256
+Specifies hashing methods that can be used to compute the Compound MAC in the Crypto Binding attribute.
+Default is sha1 and sha256 both.
+.TP
+.BI "cert-hash-sha1=" hexstring
+Given hexadecimal value overrides SHA1 hash computed from the
+.BI pemfile
+certificate or used directly for non-ssl mode.
+.TP
+.BI "cert-hash-sha256=" hexstring
+Given hexadecimal value overrides SHA256 hash computed from the
+.BI pemfile
+certificate or used directly for non-ssl mode.
+.TP
+.BI "host-name=" string
+If this option is given, only sstp connection to specified host and with the same TLS SNI will be allowed.
+.TP
+.BI "ifname=" ifname
+If this option is given ppp interface will be renamed using
+.B ifname
+as a template, i.e sstp%d => sstp0.
+.TP
+.BI "ppp-max-mtu=" n
+Set the maximun MTU value that can be negociated for PPP over SSTP sessions.
+Default value is 1452, maximum is 4087.
 .SH [radius]
 .br
 Configuration of RADIUS module.
