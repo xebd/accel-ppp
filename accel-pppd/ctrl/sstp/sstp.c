@@ -39,33 +39,6 @@
 #define min(x,y) ((x) < (y) ? (x) : (y))
 #endif
 
-#define log_sstp(log_func, conn, fmt, ...)				\
-	do {								\
-		log_func("sstp (%s): " fmt,				\
-			 conn->ctrl.calling_station_id,			\
-			 ##__VA_ARGS__);				\
-	} while (0)
-#define log_sstp_error(conn, fmt, ...) log_sstp(log_error, conn, fmt, ####__VA_ARGS__)
-#define log_sstp_warn(conn, fmt, ...) log_sstp(log_warn, conn, fmt, ####__VA_ARGS__)
-#define log_sstp_info1(conn, fmt, ...) log_sstp(log_info1, conn, fmt, ####__VA_ARGS__)
-#define log_sstp_info2(conn, fmt, ...) log_sstp(log_info2, conn, fmt, ####__VA_ARGS__)
-#define log_sstp_debug(conn, fmt, ...) log_sstp(log_debug, conn, fmt, ####__VA_ARGS__)
-#define log_sstp_msg(conn, fmt, ...) log_sstp(log_msg, conn, fmt, ####__VA_ARGS__)
-
-#define log_sstp_ppp(log_func, conn, fmt, ...)				\
-	do {								\
-		log_func("sstp (%s): " fmt,				\
-			 conn->ctrl.ifname[0] ?	conn->ctrl.ifname :	\
-			 conn->ctrl.calling_station_id,			\
-			 ##__VA_ARGS__);				\
-	} while (0)
-#define log_sstp_ppp_error(conn, fmt, ...) log_sstp_ppp(log_ppp_error, conn, fmt, ####__VA_ARGS__)
-#define log_sstp_ppp_warn(conn, fmt, ...) log_sstp_ppp(log_ppp_warn, conn, fmt, ####__VA_ARGS__)
-#define log_sstp_ppp_info1(conn, fmt, ...) log_sstp_ppp(log_ppp_info1, conn, fmt, ####__VA_ARGS__)
-#define log_sstp_ppp_info2(conn, fmt, ...) log_sstp_ppp(log_ppp_info2, conn, fmt, ####__VA_ARGS__)
-#define log_sstp_ppp_debug(conn, fmt, ...) log_sstp_ppp(log_ppp_debug, conn, fmt, ####__VA_ARGS__)
-#define log_sstp_ppp_msg(conn, fmt, ...) log_sstp_ppp(log_ppp_msg, conn, fmt, ####__VA_ARGS__)
-
 #define PPP_SYNC	0 /* buggy yet */
 #define PPP_BUF_SIZE	8192
 #define PPP_F_ESCAPE	1
@@ -564,7 +537,7 @@ static int http_send_response(struct sstp_conn_t *conn, char *proto, char *statu
 	time_t now = time(NULL);
 
 	if (conf_verbose)
-		log_sstp_info2(conn, "send [HTTP <%s %s>]\n", proto, status);
+		log_ppp_info2("send [HTTP <%s %s>]\n", proto, status);
 
 	strftime(datetime, sizeof(datetime), "%a, %d %b %Y %H:%M:%S GMT", gmtime(&now));
 	buf = alloc_buf_printf(
@@ -574,7 +547,7 @@ static int http_send_response(struct sstp_conn_t *conn, char *proto, char *statu
 		"%s"
 		"\r\n", proto, status, /* "accel-ppp",*/ datetime, headers ? : "");
 	if (!buf) {
-		log_sstp_error(conn, "no memory\n");
+		log_error("sstp: no memory\n");
 		return -1;
 	}
 
@@ -596,7 +569,7 @@ static int http_recv_request(struct sstp_conn_t *conn, uint8_t *data, int len)
 	if (!line)
 		return -1;
 	if (conf_verbose)
-		log_sstp_info2(conn, "recv [HTTP <%s>]\n", line);
+		log_ppp_info2("recv [HTTP <%s>]\n", line);
 
 	method = strsep(&line, " ");
 	request = strsep(&line, " ");
@@ -627,7 +600,7 @@ static int http_recv_request(struct sstp_conn_t *conn, uint8_t *data, int len)
 		if (*line == '\0')
 			break;
 		if (conf_verbose)
-			log_sstp_info2(conn, "recv [HTTP <%s>]\n", line);
+			log_ppp_info2("recv [HTTP <%s>]\n", line);
 
 		if (!host && conf_hostname) {
 			host = http_getvalue(line, "Host", sizeof("Host") - 1);
@@ -671,7 +644,7 @@ static int http_handler(struct sstp_conn_t *conn, struct buffer_t *buf)
 	if (!end) {
 		if (buf_tailroom(buf) > 0)
 			return 0;
-		log_sstp_error(conn, "recv [HTTP too long header]\n");
+		log_ppp_error("recv [HTTP too long header]\n");
 		return -1;
 	} else
 		n = end - (char *)buf->head;
@@ -970,10 +943,10 @@ static int sstp_send_msg_call_connect_ack(struct sstp_conn_t *conn)
 	struct buffer_t *buf = alloc_buf(sizeof(*msg));
 
 	if (conf_verbose)
-		log_sstp_ppp_info2(conn, "send [SSTP_MSG_CALL_CONNECT_ACK]\n");
+		log_ppp_info2("send [SSTP SSTP_MSG_CALL_CONNECT_ACK]\n");
 
 	if (!buf) {
-		log_sstp_error(conn, "no memory\n");
+		log_error("sstp: no memory\n");
 		return -1;
 	}
 
@@ -998,10 +971,10 @@ static int sstp_send_msg_call_connect_nak(struct sstp_conn_t *conn)
 	struct buffer_t *buf = alloc_buf(sizeof(*msg));
 
 	if (conf_verbose)
-		log_sstp_ppp_info2(conn, "send [SSTP_MSG_CALL_CONNECT_NAK]\n");
+		log_ppp_info2("send [SSTP SSTP_MSG_CALL_CONNECT_NAK]\n");
 
 	if (!buf) {
-		log_sstp_error(conn, "no memory\n");
+		log_error("sstp: no memory\n");
 		return -1;
 	}
 
@@ -1025,10 +998,10 @@ static int sstp_send_msg_call_abort(struct sstp_conn_t *conn)
 	struct buffer_t *buf = alloc_buf(sizeof(*msg));
 
 	if (conf_verbose)
-		log_sstp_ppp_info2(conn, "send [SSTP_MSG_CALL_ABORT]\n");
+		log_ppp_info2("send [SSTP SSTP_MSG_CALL_ABORT]\n");
 
 	if (!buf) {
-		log_sstp_error(conn, "no memory\n");
+		log_error("sstp: no memory\n");
 		return -1;
 	}
 
@@ -1051,10 +1024,10 @@ static int sstp_send_msg_call_disconnect(struct sstp_conn_t *conn)
 	struct buffer_t *buf = alloc_buf(sizeof(*msg));
 
 	if (conf_verbose)
-		log_sstp_ppp_info2(conn, "send [SSTP_MSG_CALL_DISCONNECT]\n");
+		log_ppp_info2("send [SSTP SSTP_MSG_CALL_DISCONNECT]\n");
 
 	if (!buf) {
-		log_sstp_error(conn, "no memory\n");
+		log_error("sstp: no memory\n");
 		return -1;
 	}
 
@@ -1076,10 +1049,10 @@ static int sstp_send_msg_call_disconnect_ack(struct sstp_conn_t *conn)
 	struct buffer_t *buf = alloc_buf(sizeof(*msg));
 
 	if (conf_verbose)
-		log_sstp_ppp_info2(conn, "send [SSTP_MSG_CALL_DISCONNECT_ACK]\n");
+		log_ppp_info2("send [SSTP SSTP_MSG_CALL_DISCONNECT_ACK]\n");
 
 	if (!buf) {
-		log_sstp_error(conn, "no memory\n");
+		log_error("sstp: no memory\n");
 		return -1;
 	}
 
@@ -1098,10 +1071,10 @@ static int sstp_send_msg_echo_request(struct sstp_conn_t *conn)
 	struct buffer_t *buf = alloc_buf(sizeof(*msg));
 
 	if (conf_verbose)
-		log_sstp_ppp_info2(conn, "send [SSTP_MSG_ECHO_REQUEST]\n");
+		log_ppp_info2("send [SSTP SSTP_MSG_ECHO_REQUEST]\n");
 
 	if (!buf) {
-		log_sstp_error(conn, "no memory\n");
+		log_error("sstp: no memory\n");
 		return -1;
 	}
 
@@ -1120,10 +1093,10 @@ static int sstp_send_msg_echo_response(struct sstp_conn_t *conn)
 	struct buffer_t *buf = alloc_buf(sizeof(*msg));
 
 	if (conf_verbose)
-		log_sstp_ppp_info2(conn, "send [SSTP_MSG_ECHO_RESPONSE]\n");
+		log_ppp_info2("send [SSTP SSTP_MSG_ECHO_RESPONSE]\n");
 
 	if (!buf) {
-		log_sstp_error(conn, "no memory\n");
+		log_error("sstp: no memory\n");
 		return -1;
 	}
 
@@ -1143,7 +1116,7 @@ static int sstp_recv_msg_call_connect_request(struct sstp_conn_t *conn, struct s
 	int master, slave;
 
 	if (conf_verbose)
-		log_sstp_ppp_info2(conn, "recv [SSTP_MSG_CALL_CONNECT_REQUEST]\n");
+		log_ppp_info2("recv [SSTP SSTP_MSG_CALL_CONNECT_REQUEST]\n");
 
 	switch (conn->sstp_state) {
 	case STATE_CALL_ABORT_TIMEOUT_PENDING:
@@ -1165,7 +1138,7 @@ static int sstp_recv_msg_call_connect_request(struct sstp_conn_t *conn, struct s
 	}
 	if (ntohs(msg->attr.protocol_id) != SSTP_ENCAPSULATED_PROTOCOL_PPP) {
 		if (conn->nak_sent++ == 3) {
-			log_sstp_ppp_warn(conn, "nak limit reached\n");
+			log_ppp_error("sstp: nak limit reached\n");
 			return sstp_abort(conn, 0);
 		}
 		return sstp_send_msg_call_connect_nak(conn);
@@ -1217,7 +1190,7 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 	} __attribute__((packed)) *msg = (void *)hdr;
 
 	if (conf_verbose)
-		log_sstp_ppp_info2(conn, "recv [SSTP_MSG_CALL_CONNECTED]\n");
+		log_ppp_info2("recv [SSTP SSTP_MSG_CALL_CONNECTED]\n");
 
 	switch (conn->sstp_state) {
 	case STATE_CALL_ABORT_TIMEOUT_PENDING:
@@ -1275,7 +1248,7 @@ static int sstp_recv_msg_call_abort(struct sstp_conn_t *conn)
 	int ret = 0;
 
 	if (conf_verbose)
-		log_sstp_ppp_info2(conn, "recv [SSTP_MSG_CALL_ABORT]\n");
+		log_ppp_info2("recv [SSTP SSTP_MSG_CALL_ABORT]\n");
 
 	switch (conn->sstp_state) {
 	case STATE_CALL_ABORT_PENDING:
@@ -1305,7 +1278,7 @@ static int sstp_recv_msg_call_disconnect(struct sstp_conn_t *conn)
 	int ret;
 
 	if (conf_verbose)
-		log_sstp_ppp_info2(conn, "recv [SSTP_MSG_CALL_DISCONNECT]\n");
+		log_ppp_info2("recv [SSTP SSTP_MSG_CALL_DISCONNECT]\n");
 
 	switch (conn->sstp_state) {
 	case STATE_CALL_ABORT_TIMEOUT_PENDING:
@@ -1336,7 +1309,7 @@ static int sstp_recv_msg_call_disconnect(struct sstp_conn_t *conn)
 static int sstp_recv_msg_call_disconnect_ack(struct sstp_conn_t *conn)
 {
 	if (conf_verbose)
-		log_sstp_ppp_info2(conn, "recv [SSTP_MSG_CALL_DISCONNECT_ACK]\n");
+		log_ppp_info2("recv [SSTP SSTP_MSG_CALL_DISCONNECT_ACK]\n");
 
 	switch (conn->sstp_state) {
 	case STATE_CALL_DISCONNECT_ACK_PENDING:
@@ -1358,7 +1331,7 @@ static int sstp_recv_msg_call_disconnect_ack(struct sstp_conn_t *conn)
 static int sstp_recv_msg_echo_request(struct sstp_conn_t *conn)
 {
 	if (conf_verbose)
-		log_sstp_ppp_info2(conn, "recv [SSTP_MSG_ECHO_REQUEST]\n");
+		log_ppp_info2("recv [SSTP SSTP_MSG_ECHO_REQUEST]\n");
 
 	switch (conn->sstp_state) {
 	case STATE_SERVER_CALL_CONNECTED:
@@ -1378,7 +1351,7 @@ static int sstp_recv_msg_echo_request(struct sstp_conn_t *conn)
 static int sstp_recv_msg_echo_response(struct sstp_conn_t *conn)
 {
 	if (conf_verbose)
-		log_sstp_ppp_info2(conn, "recv [SSTP_MSG_ECHO_RESPONSE]\n");
+		log_ppp_info2("recv [SSTP SSTP_MSG_ECHO_RESPONSE]\n");
 
 	switch (conn->sstp_state) {
 	case STATE_SERVER_CALL_CONNECTED:
@@ -1418,7 +1391,7 @@ static int sstp_recv_data_packet(struct sstp_conn_t *conn, struct sstp_hdr *hdr)
 #if PPP_SYNC
 	buf = alloc_buf(size);
 	if (!buf) {
-		log_sstp_error(conn, "no memory\n");
+		log_error("sstp: no memory\n");
 		return -1;
 	}
 
@@ -1426,7 +1399,7 @@ static int sstp_recv_data_packet(struct sstp_conn_t *conn, struct sstp_hdr *hdr)
 #else
 	buf = alloc_buf(size*2 + 2 + PPP_FCSLEN);
 	if (!buf) {
-		log_sstp_error(conn, "no memory\n");
+		log_error("sstp: no memory\n");
 		return -1;
 	}
 
@@ -1468,10 +1441,10 @@ static int sstp_recv_packet(struct sstp_conn_t *conn, struct sstp_hdr *hdr)
 	case SSTP_CTRL_PACKET:
 		if (ntohs(hdr->length) >= sizeof(*msg))
 			break;
-		log_sstp_ppp_error(conn, "recv [SSTP too short message]\n");
+		log_ppp_error("recv [SSTP too short message]\n");
 		return -1;
 	default:
-		log_sstp_ppp_warn(conn, "recv [SSTP unknown packet type %02x]\n", hdr->reserved);
+		log_ppp_warn("recv [SSTP unknown packet type %02x]\n", hdr->reserved);
 		return 0;
 	}
 
@@ -1499,7 +1472,7 @@ static int sstp_recv_packet(struct sstp_conn_t *conn, struct sstp_hdr *hdr)
 	case SSTP_MSG_ECHO_RESPONSE:
 		return sstp_recv_msg_echo_response(conn);
 	default:
-		log_sstp_ppp_warn(conn, "recv [SSTP unknown message type %04x]\n", ntohs(msg->message_type));
+		log_ppp_warn("recv [SSTP unknown message type %04x]\n", ntohs(msg->message_type));
 		return 0;
 	}
 }
@@ -1512,13 +1485,13 @@ static int sstp_handler(struct sstp_conn_t *conn, struct buffer_t *buf)
 	while (buf->len >= sizeof(*hdr)) {
 		hdr = (struct sstp_hdr *)buf->head;
 		if (hdr->version != SSTP_VERSION) {
-			log_sstp_ppp_error(conn, "recv [SSTP invalid version]\n");
+			log_ppp_error("recv [SSTP invalid version]\n");
 			return -1;
 		}
 
 		n = ntohs(hdr->length);
 		if (n > SSTP_MAX_PACKET_SIZE) {
-			log_sstp_ppp_error(conn, "recv [SSTP too long packet]\n");
+			log_ppp_error("recv [SSTP too long packet]\n");
 			return -1;
 		} else if (n > buf->len)
 			break;
@@ -1706,7 +1679,7 @@ static void sstp_disconnect(struct sstp_conn_t *conn)
 {
 	struct buffer_t *buf;
 
-	log_sstp_ppp_debug(conn, "disconnecting\n");
+	log_ppp_debug("disconnecting\n");
 
 	if (conn->timeout_timer.tpd)
 		triton_timer_del(&conn->timeout_timer);
@@ -1754,7 +1727,7 @@ static void sstp_disconnect(struct sstp_conn_t *conn)
 
 static void sstp_start(struct sstp_conn_t *conn)
 {
-	log_sstp_debug(conn, "start\n");
+	log_debug("sstp: start\n");
 
 #ifdef CRYPTO_OPENSSL
 	if (serv.ssl_ctx)
@@ -1763,14 +1736,14 @@ static void sstp_start(struct sstp_conn_t *conn)
 #endif
 		conn->stream = stream_init(conn->hnd.fd);
 	if (!conn->stream) {
-		log_sstp_error(conn, "stream open error: %s\n", strerror(errno));
+		log_error("sstp: stream open error: %s\n", strerror(errno));
 		goto error;
 	}
 
 	triton_md_register_handler(&conn->ctx, &conn->hnd);
 	triton_md_enable_handler(&conn->hnd, MD_MODE_READ);
 
-	log_sstp_info2(conn, "started\n");
+	log_info2("sstp: started\n");
 //	triton_event_fire(EV_CTRL_STARTING, &conn->ppp.ses);
 
 	return;
