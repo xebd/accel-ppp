@@ -709,7 +709,7 @@ static struct ipoe_session *ipoe_lookup_hwaddr(__u8 *hwaddr)
 	u.hwaddr_u = 0;
 	memcpy(u.hwaddr, hwaddr, ETH_ALEN);
 
-	head = &ipoe_list3[u.hwaddr_u & IPOE_HASH_BITS];
+	head = &ipoe_list3[hwaddr[ETH_ALEN - 1]];
 
 	rcu_read_lock();
 
@@ -1069,7 +1069,7 @@ static void ipoe_netdev_setup(struct net_device *dev)
 #endif
 	dev->addr_len = ETH_ALEN;
 	dev->features  |= NETIF_F_NETNS_LOCAL;
-	dev->features  &= ~NETIF_F_HW_VLAN_FILTER;
+	dev->features  &= ~(NETIF_F_HW_VLAN_FILTER | NETIF_F_LRO);
 	dev->header_ops	= &ipoe_hard_header_ops;
 	dev->priv_flags &= ~IFF_XMIT_DST_RELEASE;
 }
@@ -1126,7 +1126,7 @@ static int ipoe_create(__be32 peer_addr, __be32 addr, __be32 gw, int ifindex, co
 	}
 
 	if (link_dev) {
-		dev->features = link_dev->features & ~NETIF_F_HW_VLAN_FILTER;
+		dev->features = link_dev->features & ~(NETIF_F_HW_VLAN_FILTER | NETIF_F_LRO);
 		memcpy(dev->dev_addr, link_dev->dev_addr, ETH_ALEN);
 		memcpy(dev->broadcast, link_dev->broadcast, ETH_ALEN);
 	}
@@ -1162,7 +1162,7 @@ static int ipoe_create(__be32 peer_addr, __be32 addr, __be32 gw, int ifindex, co
 		list_add_tail_rcu(&ses->entry, &ipoe_list[h]);
 	list_add_tail(&ses->entry2, &ipoe_list2);
 	if (link_dev)
-		list_add_tail_rcu(&ses->entry3, &ipoe_list3[ses->u.hwaddr_u & IPOE_HASH_BITS]);
+		list_add_tail_rcu(&ses->entry3, &ipoe_list3[ses->u.hwaddr[ETH_ALEN - 1]]);
 	r = dev->ifindex;
 	up(&ipoe_wlock);
 
@@ -1418,7 +1418,7 @@ static int ipoe_nl_cmd_modify(struct sk_buff *skb, struct genl_info *info)
 		}
 
 		if (link_dev) {
-			ses->dev->features = link_dev->features & ~NETIF_F_HW_VLAN_FILTER;
+			ses->dev->features = link_dev->features & ~(NETIF_F_HW_VLAN_FILTER | NETIF_F_LRO);
 			memcpy(dev->dev_addr, link_dev->dev_addr, ETH_ALEN);
 			memcpy(dev->broadcast, link_dev->broadcast, ETH_ALEN);
 		}
@@ -1446,7 +1446,7 @@ static int ipoe_nl_cmd_modify(struct sk_buff *skb, struct genl_info *info)
 	if (info->attrs[IPOE_ATTR_HWADDR]) {
 		nla_memcpy(ses->u.hwaddr, info->attrs[IPOE_ATTR_HWADDR], ETH_ALEN);
 		if (ses->link_dev)
-			list_add_tail_rcu(&ses->entry3, &ipoe_list3[ses->u.hwaddr_u & IPOE_HASH_BITS]);
+			list_add_tail_rcu(&ses->entry3, &ipoe_list3[ses->u.hwaddr[ETH_ALEN - 1]]);
 	}
 
 	//pr_info("ipoe: modify %08x %08x\n", ses->peer_addr, ses->addr);
