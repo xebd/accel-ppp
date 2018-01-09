@@ -547,7 +547,7 @@ static int ipoe_create_interface(struct ipoe_session *ses)
 	} else {
 		pthread_mutex_unlock(&uc_lock);
 
-		ses->ifindex = ipoe_nl_create(ses->serv->ifindex);
+		ses->ifindex = ipoe_nl_create();
 		if (ses->ifindex == -1) {
 			log_ppp_error("ipoe: failed to create interface\n");
 			ap_session_terminate(&ses->ses, TERM_NAS_ERROR, 1);

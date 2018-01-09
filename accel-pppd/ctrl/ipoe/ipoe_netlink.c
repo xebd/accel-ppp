@@ -236,7 +236,7 @@ void ipoe_nl_delete_interfaces(void)
 	ipoe_nl_del_interface(-1);
 }
 
-int ipoe_nl_create(int ifindex)
+int ipoe_nl_create()
 {
 	struct rtnl_handle rth;
 	struct nlmsghdr *nlh;
@@ -262,8 +262,6 @@ int ipoe_nl_create(int ifindex)
 
 	ghdr = NLMSG_DATA(&req.n);
 	ghdr->cmd = IPOE_CMD_CREATE;
-
-	addattr32(nlh, 1024, IPOE_ATTR_IFINDEX, ifindex);
 
 	if (rtnl_talk(&rth, nlh, 0, 0, nlh, NULL, NULL, 0) < 0 ) {
 		log_ppp_error("ipoe: nl_create: %s\n", strerror(errno));
