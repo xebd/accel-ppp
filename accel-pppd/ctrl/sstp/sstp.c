@@ -341,54 +341,6 @@ static struct sstp_stream_t *stream_init(int fd)
 /* ssl stream */
 
 #ifdef CRYPTO_OPENSSL
-#include <pthread.h>
-
-static pthread_mutex_t *lock_cs;
-
-static unsigned long pthreads_thread_id(void)
-{
-    return (unsigned long)pthread_self();
-}
-
-static void pthreads_locking_callback(int mode, int type, const char *file, int line)
-{
-	if (mode & CRYPTO_LOCK)
-		pthread_mutex_lock(&lock_cs[type]);
-	else
-		pthread_mutex_unlock(&lock_cs[type]);
-}
-
-static void CRYPTO_thread_setup(void)
-{
-	int i;
-
-	lock_cs = _malloc(CRYPTO_num_locks() * sizeof(*lock_cs));
-	if (!lock_cs)
-		return;
-
-	for (i = 0; i < CRYPTO_num_locks(); i++)
-		pthread_mutex_init(&lock_cs[i], NULL);
-
-	CRYPTO_set_id_callback(pthreads_thread_id);
-	CRYPTO_set_locking_callback(pthreads_locking_callback);
-}
- 
-static void CRYPTO_thread_cleanup(void)
-{
-	int i;
-
-	if (!lock_cs)
-		return;
-
-	CRYPTO_set_id_callback(NULL);
-	CRYPTO_set_locking_callback(NULL);
-
-	for (i = 0; i < CRYPTO_num_locks(); i++)
-		pthread_mutex_destroy(&lock_cs[i]);
-
-	 _free(lock_cs);
-}
-
 static ssize_t ssl_stream_read(struct sstp_stream_t *stream, void *buf, size_t count)
 {
 	int ret, err;
@@ -1880,8 +1832,6 @@ static void sstp_serv_close(struct triton_context_t *ctx)
 	if (serv->ssl_ctx)
 		SSL_CTX_free(serv->ssl_ctx);
 	serv->ssl_ctx = NULL;
-
-	CRYPTO_thread_cleanup();
 #endif
 }
 
@@ -2161,12 +2111,6 @@ static void sstp_init(void)
 		close(serv.hnd.fd);
 		return;
 	}
-
-#ifdef CRYPTO_OPENSSL
-	CRYPTO_thread_setup();
-	SSL_load_error_strings();
-	SSL_library_init();
-#endif
 
 	conn_pool = mempool_create(sizeof(struct sstp_conn_t));
 
