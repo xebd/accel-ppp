@@ -146,7 +146,7 @@ void ipoe_serv_recv_arp(struct ipoe_serv *s, struct _arphdr *arph);
 void ipoe_nl_add_interface(int ifindex, uint8_t mode);
 void ipoe_nl_del_interface(int ifindex);
 void ipoe_nl_delete_interfaces(void);
-int ipoe_nl_create(int ifindex);
+int ipoe_nl_create();
 void ipoe_nl_delete(int ifindex);
 int ipoe_nl_modify(int ifindex, uint32_t peer_addr, uint32_t addr, uint32_t gw, int link_ifindex, uint8_t *hwaddr);
 void ipoe_nl_get_sessions(struct list_head *list);
