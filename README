@@ -1,8 +1,8 @@
 Overview
 --------
-The ACCEL-PPP v1.0 is completly new implementation of PPTP/PPPoE/L2TP which was written from scratch.
+The ACCEL-PPP v1.0 is completly new implementation of PPTP/PPPoE/L2TP/SSTP which was written from scratch.
 Userspace daemon has its own PPP implementation, so it does not uses pppd and one process (multi-threaded) manages all connections.
-ACCEL-PPP uses only kernel-mode implementations of pptp/l2tp/pppoe.
+ACCEL-PPP uses kernel-mode implementations of pptp/l2tp/pppoe and user-mode of sstp.
 
 
 Features
@@ -24,6 +24,7 @@ Features
 14. Builtin tbf/htb shaper manager
 15. Command line interface via telnet
 16. SNMP support (master or subagent via AgentX)
+17. Supported SSTP
 
 
 Requirment
@@ -35,6 +36,7 @@ Requirment
 6. libcrypto-0.9.8 or probably later (openssl-0.9.8)
 7. libpcre
 8. net-snmp-5.x 
+9. libssl-0.9.8 or probably later (openssl-0.9.8)
 
 
 Compilation and instalation
