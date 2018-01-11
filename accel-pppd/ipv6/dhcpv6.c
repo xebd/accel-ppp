@@ -30,10 +30,15 @@
 #define BUF_SIZE 65536
 #define MAX_DNS_COUNT 3
 
+static struct {
+	struct dhcpv6_opt_serverid hdr;
+	uint64_t u64;
+} __packed serverid;
+
 static int conf_verbose;
 static int conf_pref_lifetime = 604800;
 static int conf_valid_lifetime = 2592000;
-static struct dhcpv6_opt_serverid conf_serverid;
+static struct dhcpv6_opt_serverid *conf_serverid = &serverid.hdr;
 static int conf_route_via_gw = 1;
 
 static struct in6_addr conf_dns[MAX_DNS_COUNT];
@@ -630,7 +635,7 @@ static void dhcpv6_recv_solicit(struct dhcpv6_packet *req)
 		return;
 	}
 
-	req->serverid = &conf_serverid;
+	req->serverid = conf_serverid;
 
 	if (req->rapid_commit) {
 		if (!pd->clientid) {
@@ -684,8 +689,8 @@ static void dhcpv6_recv_renew(struct dhcpv6_packet *req)
 		return;
 	}
 
-	if (req->serverid->hdr.len != conf_serverid.hdr.len ||
-		memcmp(req->serverid, &conf_serverid, ntohs(conf_serverid.hdr.len) + sizeof(struct dhcpv6_opt_hdr))) {
+	if (req->serverid->hdr.len != conf_serverid->hdr.len ||
+		memcmp(req->serverid, conf_serverid, ntohs(conf_serverid->hdr.len) + sizeof(struct dhcpv6_opt_hdr))) {
 		log_ppp_error("dhcpv6: unmatched Server-ID option\n");
 		return;
 	}
@@ -713,7 +718,7 @@ static void dhcpv6_recv_information_request(struct dhcpv6_packet *req)
 		return;
 	}
 
-	req->serverid = &conf_serverid;
+	req->serverid = conf_serverid;
 
 	dhcpv6_send_reply(req, pd, D6_REPLY);
 }
@@ -739,7 +744,7 @@ static void dhcpv6_recv_rebind(struct dhcpv6_packet *req)
 		return;
 	}
 
-	req->serverid = &conf_serverid;
+	req->serverid = conf_serverid;
 
 	dhcpv6_send_reply2(req, pd, D6_REPLY);
 }
@@ -913,7 +918,7 @@ static uint64_t parse_serverid(const char *opt)
 	union {
 		uint64_t u64;
 		uint16_t u16[4];
-	} u;
+	} __packed u;
 
 	int n[4];
 	int i;
@@ -961,12 +966,12 @@ static void load_config(void)
 	else
 		id = htobe64(1);
 
-	conf_serverid.hdr.code = htons(D6_OPTION_SERVERID);
-	conf_serverid.hdr.len = htons(12);
-	conf_serverid.duid.type = htons(DUID_LL);
-	conf_serverid.duid.u.ll.htype = htons(27);
+	conf_serverid->hdr.code = htons(D6_OPTION_SERVERID);
+	conf_serverid->hdr.len = htons(12);
+	conf_serverid->duid.type = htons(DUID_LL);
+	conf_serverid->duid.u.ll.htype = htons(27);
 	//conf_serverid.duid.u.llt.time = htonl(t - t0);
-	*(uint64_t *)conf_serverid.duid.u.ll.addr = id;
+	memcpy(conf_serverid->duid.u.ll.addr, &id, sizeof(id));
 
 	load_dns();
 }
