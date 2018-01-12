@@ -329,14 +329,14 @@ static void print_ia_na(struct dhcpv6_option *opt, void (*print)(const char *fmt
 {
 	struct dhcpv6_opt_ia_na *o = (struct dhcpv6_opt_ia_na *)opt->hdr;
 
-	print(" %x T1=%i T2=%i", o->iaid, ntohl(o->T1), ntohl(o->T2));
+	print(" %x T1=%i T2=%i", ntohl(o->iaid), ntohl(o->T1), ntohl(o->T2));
 }
 
 static void print_ia_ta(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...))
 {
 	struct dhcpv6_opt_ia_ta *o = (struct dhcpv6_opt_ia_ta *)opt->hdr;
 
-	print(" %x", o->iaid);
+	print(" %x", ntohl(o->iaid));
 }
 
 static void print_ia_addr(struct dhcpv6_option *opt, void (*print)(const char *fmt, ...))
