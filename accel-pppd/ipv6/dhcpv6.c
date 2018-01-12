@@ -162,19 +162,6 @@ static void ev_ses_finished(struct ap_session *ses)
 	_free(pd);
 }
 
-static void build_addr(struct ipv6db_addr_t *a, uint64_t intf_id, struct in6_addr *addr)
-{
-	memcpy(addr, &a->addr, sizeof(*addr));
-
-	if (a->prefix_len == 128)
-		return;
-
-	if (a->prefix_len <= 64)
-		*(uint64_t *)(addr->s6_addr + 8) = intf_id;
-	else
-		*(uint64_t *)(addr->s6_addr + 8) |= intf_id & htobe64((1 << (128 - a->prefix_len)) - 1);
-}
-
 static void insert_dp_routes(struct ap_session *ses, struct dhcpv6_pd *pd)
 {
 	struct ipv6db_addr_t *a;
@@ -196,7 +183,7 @@ static void insert_dp_routes(struct ap_session *ses, struct dhcpv6_pd *pd)
 		if (conf_route_via_gw) {
 			rt6.rtmsg_flags |= RTF_GATEWAY;
 			list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
-				build_addr(a, ses->ipv6->peer_intf_id, &rt6.rtmsg_gateway);
+				build_ip6_addr(a, ses->ipv6->peer_intf_id, &rt6.rtmsg_gateway);
 				if (net->sock6_ioctl(SIOCADDRT, &rt6)) {
 					err = errno;
 					inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
@@ -307,7 +294,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 					opt2 = dhcpv6_nested_option_alloc(reply, opt1, D6_OPTION_IAADDR, sizeof(*ia_addr) - sizeof(struct dhcpv6_opt_hdr));
 					ia_addr = (struct dhcpv6_opt_ia_addr *)opt2->hdr;
 
-					build_addr(a, ses->ipv6->peer_intf_id, &ia_addr->addr);
+					build_ip6_addr(a, ses->ipv6->peer_intf_id, &ia_addr->addr);
 
 					ia_addr->pref_lifetime = htonl(conf_pref_lifetime);
 					ia_addr->valid_lifetime = htonl(conf_valid_lifetime);
@@ -321,8 +308,9 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 							memcpy(peer_addr.s6_addr + 8, &ses->ipv6->peer_intf_id, 8);
 							ip6addr_add_peer(ses->ifindex, &addr, &peer_addr);
 						} else {
-							memcpy(addr.s6_addr, &a->addr, 8);
-							memcpy(addr.s6_addr + 8, &ses->ipv6->intf_id, 8);
+							build_ip6_addr(a, ses->ipv6->intf_id, &addr);
+							if (memcmp(&addr, &ia_addr->addr, sizeof(addr)) == 0)
+								build_ip6_addr(a, ~ses->ipv6->intf_id, &addr);
 							ip6addr_add(ses->ifindex, &addr, a->prefix_len);
 						}
 						a->installed = 1;
@@ -339,7 +327,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 
 							f1 = 0;
 							list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
-								build_addr(a, ses->ipv6->peer_intf_id, &addr);
+								build_ip6_addr(a, ses->ipv6->peer_intf_id, &addr);
 								if (memcmp(&addr, &ia_addr->addr, sizeof(addr)))
 									continue;
 								f1 = 1;
@@ -450,10 +438,10 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 			insert_status(reply, opt1, D6_STATUS_NoAddrsAvail);
 
 		// Option Request
-		}	else if (ntohs(opt->hdr->code) == D6_OPTION_ORO) {
+		} else if (ntohs(opt->hdr->code) == D6_OPTION_ORO) {
 			insert_oro(reply, opt);
 
-		}	else if (ntohs(opt->hdr->code) == D6_OPTION_RAPID_COMMIT) {
+		} else if (ntohs(opt->hdr->code) == D6_OPTION_RAPID_COMMIT) {
 			if (req->hdr->type == D6_SOLICIT)
 				dhcpv6_option_alloc(reply, D6_OPTION_RAPID_COMMIT, 0);
 		}
@@ -514,7 +502,7 @@ static void dhcpv6_send_reply2(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, 
 
 					if (!f) {
 						list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
-							build_addr(a, ses->ipv6->peer_intf_id, &addr);
+							build_ip6_addr(a, ses->ipv6->peer_intf_id, &addr);
 							if (memcmp(&addr, &ia_addr->addr, sizeof(addr)))
 								continue;
 							f1 = 1;
@@ -607,7 +595,7 @@ static void dhcpv6_send_reply2(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, 
 				f2 = 1;
 			}
 		// Option Request
-		}	else if (ntohs(opt->hdr->code) == D6_OPTION_ORO)
+		} else if (ntohs(opt->hdr->code) == D6_OPTION_ORO)
 			insert_oro(reply, opt);
 	}
 

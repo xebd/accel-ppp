@@ -578,16 +578,6 @@ static void fill_argv(char **argv, struct pppd_compat_pd *pd, char *path)
 	argv[7] = NULL;
 }
 
-static void build_addr(struct ipv6db_addr_t *a, uint64_t intf_id, struct in6_addr *addr)
-{
-	memcpy(addr, &a->addr, sizeof(*addr));
-
-	if (a->prefix_len <= 64)
-		*(uint64_t *)(addr->s6_addr + 8) = intf_id;
-	else
-		*(uint64_t *)(addr->s6_addr + 8) |= intf_id & htobe64((1 << (128 - a->prefix_len)) - 1);
-}
-
 static void fill_env(char **env, char *mem, struct pppd_compat_pd *pd)
 {
 	struct ap_session *ses = pd->ses;
@@ -628,7 +618,7 @@ static void fill_env(char **env, char *mem, struct pppd_compat_pd *pd)
 		char ip6_buf[INET6_ADDRSTRLEN];
 		struct in6_addr addr;
 
-		build_addr(a, ses->ipv6->peer_intf_id, &addr);
+		build_ip6_addr(a, ses->ipv6->peer_intf_id, &addr);
 
 		env[n] = mem;
 		write_sz = snprintf(mem, mem_sz, "IPV6_PREFIX=%s/%i",

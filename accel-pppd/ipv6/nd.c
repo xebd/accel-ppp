@@ -153,8 +153,10 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ds
 				memcpy(peer_addr.s6_addr + 8, &ses->ipv6->peer_intf_id, 8);
 				ip6addr_add_peer(ses->ifindex, &addr, &peer_addr);
 			} else {
-				memcpy(addr.s6_addr, &a->addr, 8);
-				memcpy(addr.s6_addr + 8, &ses->ipv6->intf_id, 8);
+				build_ip6_addr(a, ses->ipv6->intf_id, &addr);
+				build_ip6_addr(a, ses->ipv6->peer_intf_id, &peer_addr);
+				if (memcmp(&addr, &peer_addr, sizeof(addr)) == 0)
+					build_ip6_addr(a, ~ses->ipv6->intf_id, &addr);
 				ip6addr_add(ses->ifindex, &addr, a->prefix_len);
 			}
 			a->installed = 1;
