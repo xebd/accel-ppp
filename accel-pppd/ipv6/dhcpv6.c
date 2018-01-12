@@ -169,7 +169,6 @@ static void ev_ses_finished(struct ap_session *ses)
 
 static void insert_dp_routes(struct ap_session *ses, struct dhcpv6_pd *pd)
 {
-	struct ipv6db_addr_t *a;
 	struct ipv6db_addr_t *p;
 	struct in6_rtmsg rt6;
 	char str1[INET6_ADDRSTRLEN];
@@ -180,37 +179,27 @@ static void insert_dp_routes(struct ap_session *ses, struct dhcpv6_pd *pd)
 	rt6.rtmsg_ifindex = ses->ifindex;
 	rt6.rtmsg_flags = RTF_UP;
 
+	if (conf_route_via_gw) {
+		rt6.rtmsg_flags |= RTF_GATEWAY;
+		rt6.rtmsg_gateway.s6_addr32[0] = htonl(0xfe800000);
+		memcpy(rt6.rtmsg_gateway.s6_addr + 8, &ses->ipv6->peer_intf_id, 8);
+	}
+
 	list_for_each_entry(p, &ses->ipv6_dp->prefix_list, entry) {
 		memcpy(&rt6.rtmsg_dst, &p->addr, sizeof(p->addr));
 		rt6.rtmsg_dst_len = p->prefix_len;
-		rt6.rtmsg_metric = 1;
 
-		if (conf_route_via_gw) {
-			rt6.rtmsg_flags |= RTF_GATEWAY;
-			list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
-				build_ip6_addr(a, ses->ipv6->peer_intf_id, &rt6.rtmsg_gateway);
-				if (net->sock6_ioctl(SIOCADDRT, &rt6)) {
-					err = errno;
-					inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
-					inet_ntop(AF_INET6, &rt6.rtmsg_gateway, str2, sizeof(str2));
-					log_ppp_error("dhcpv6: route add %s/%i via %s: %s\n", str1, p->prefix_len, str2, strerror(err));
-				} else if (conf_verbose) {
-					inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
-					inet_ntop(AF_INET6, &rt6.rtmsg_gateway, str2, sizeof(str2));
-					log_ppp_info2("dhcpv6: route add %s/%i via %s\n", str1, p->prefix_len, str2);
-				}
-				rt6.rtmsg_metric++;
-			}
-		} else {
-			if (net->sock6_ioctl(SIOCADDRT, &rt6)) {
-				err = errno;
-				inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
-				log_ppp_error("dhcpv6: route add %s/%i: %s\n",
-					      str1, p->prefix_len, strerror(err));
-			} else if (conf_verbose) {
-				inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
-				log_ppp_info2("dhcpv6: route add %s/%i\n", str1, p->prefix_len);
-			}
+		if (net->sock6_ioctl(SIOCADDRT, &rt6)) {
+			err = errno;
+			inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
+			inet_ntop(AF_INET6, &rt6.rtmsg_gateway, str2, sizeof(str2));
+			log_ppp_error("dhcpv6: route add %s/%i%s%s: %s\n", str1, p->prefix_len,
+					conf_route_via_gw ? " via " : "", str2, strerror(err));
+		} else if (conf_verbose) {
+			inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
+			inet_ntop(AF_INET6, &rt6.rtmsg_gateway, str2, sizeof(str2));
+			log_ppp_info2("dhcpv6: route add %s/%i%s%s\n", str1, p->prefix_len,
+					conf_route_via_gw ? " via " : "", str2);
 		}
 	}
 

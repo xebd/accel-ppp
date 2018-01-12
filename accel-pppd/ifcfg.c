@@ -149,7 +149,7 @@ void __export ap_session_accounting_started(struct ap_session *ses)
 
 				if (ses->ctrl->ppp) {
 					ifr6.ifr6_addr.s6_addr32[0] = htonl(0xfe800000);
-					*(uint64_t *)(ifr6.ifr6_addr.s6_addr + 8) = ses->ipv6->intf_id;
+					memcpy(ifr6.ifr6_addr.s6_addr + 8, &ses->ipv6->intf_id, 8);
 					ifr6.ifr6_prefixlen = 64;
 					ifr6.ifr6_ifindex = ses->ifindex;
 
