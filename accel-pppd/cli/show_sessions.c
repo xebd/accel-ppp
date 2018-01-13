@@ -491,6 +491,18 @@ static void print_uptime(struct ap_session *ses, char *buf)
 	sprintf(buf, "%s", time_str);
 }
 
+static void print_uptime_raw(struct ap_session *ses, char *buf)
+{
+	time_t uptime;
+
+	if (ses->stop_time)
+		uptime = ses->stop_time - ses->start_time;
+	else
+		uptime = _time() - ses->start_time;
+
+	sprintf(buf, "%lu", (unsigned long)uptime);
+}
+
 static void print_calling_sid(struct ap_session *ses, char *buf)
 {
 	snprintf(buf, CELL_SIZE, "%s", ses->ctrl->calling_station_id);
@@ -629,6 +641,7 @@ static void init(void)
 	cli_show_ses_register("type", "VPN type", print_type);
 	cli_show_ses_register("state", "state of session", print_state);
 	cli_show_ses_register("uptime", "uptime", print_uptime);
+	cli_show_ses_register("uptime-raw", "uptime", print_uptime_raw);
 	cli_show_ses_register("calling-sid", "calling station id", print_calling_sid);
 	cli_show_ses_register("called-sid", "called station id", print_called_sid);
 	cli_show_ses_register("sid", "session id", print_sid);
