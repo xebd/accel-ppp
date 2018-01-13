@@ -45,16 +45,6 @@ static void devconf(struct ap_session *ses, const char *attr, const char *val)
 	close(fd);
 }
 
-/*static void build_addr(struct ipv6db_addr_t *a, uint64_t intf_id, struct in6_addr *addr)
-{
-	memcpy(addr, &a->addr, sizeof(*addr));
-
-	if (a->prefix_len <= 64)
-		*(uint64_t *)(addr->s6_addr + 8) = intf_id;
-	else
-		*(uint64_t *)(addr->s6_addr + 8) |= intf_id & htobe64((1 << (128 - a->prefix_len)) - 1);
-}*/
-
 void ap_session_ifup(struct ap_session *ses)
 {
 	if (ses->ifname_rename) {
@@ -159,7 +149,7 @@ void __export ap_session_accounting_started(struct ap_session *ses)
 
 				if (ses->ctrl->ppp) {
 					ifr6.ifr6_addr.s6_addr32[0] = htonl(0xfe800000);
-					*(uint64_t *)(ifr6.ifr6_addr.s6_addr + 8) = ses->ipv6->intf_id;
+					memcpy(ifr6.ifr6_addr.s6_addr + 8, &ses->ipv6->intf_id, 8);
 					ifr6.ifr6_prefixlen = 64;
 					ifr6.ifr6_ifindex = ses->ifindex;
 
@@ -170,7 +160,7 @@ void __export ap_session_accounting_started(struct ap_session *ses)
 				list_for_each_entry(a, &ses->ipv6->addr_list, entry) {
 					a->installed = 0;
 					/*if (a->prefix_len < 128) {
-						build_addr(a, ses->ipv6->intf_id, &ifr6.ifr6_addr);
+						build_ip6_addr(a, ses->ipv6->intf_id, &ifr6.ifr6_addr);
 						ifr6.ifr6_prefixlen = a->prefix_len;
 
 						if (ioctl(sock6_fd, SIOCSIFADDR, &ifr6))
