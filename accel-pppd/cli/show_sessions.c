@@ -640,8 +640,8 @@ static void init(void)
 	cli_show_ses_register("ip6-dp", "IPv6 delegated prefix", print_ip6_dp);
 	cli_show_ses_register("type", "VPN type", print_type);
 	cli_show_ses_register("state", "state of session", print_state);
-	cli_show_ses_register("uptime", "uptime", print_uptime);
-	cli_show_ses_register("uptime-raw", "uptime", print_uptime_raw);
+	cli_show_ses_register("uptime", "uptime (human readable)", print_uptime);
+	cli_show_ses_register("uptime-raw", "uptime (in seconds)", print_uptime_raw);
 	cli_show_ses_register("calling-sid", "calling station id", print_calling_sid);
 	cli_show_ses_register("called-sid", "called station id", print_called_sid);
 	cli_show_ses_register("sid", "session id", print_sid);
