@@ -16,14 +16,33 @@ SET(sources
 	exec_cli.c
 )
 
-ADD_LIBRARY(net-snmp SHARED ${sources})
-TARGET_LINK_LIBRARIES(net-snmp netsnmpagent netsnmphelpers netsnmpmibs
-netsnmp)
+find_library(SNMP_LIBRARY netsnmp
+			 HINTS ${CMAKE_SOURCE_DIR}/lib/linux/gcc/${BIT}/lib
+			 PATHS ${CMAKE_SOURCE_DIR}/lib/linux/gcc/${BIT}/lib
+)
 
-IF (NETSNMP_PREFIX)
-	SET_PROPERTY(TARGET net-snmp PROPERTY COMPILE_FLAGS "-I${NETSNMP_PREFIX}/include")
-	SET_PROPERTY(TARGET net-snmp PROPERTY LINK_FLAGS "-L${NETSNMP_PREFIX}/lib")
-ENDIF (NETSNMP_PREFIX)
+find_library(SNMPAGENT_LIBRARY netsnmpagent
+			 HINTS ${CMAKE_SOURCE_DIR}/lib/linux/gcc/${BIT}/lib
+			 PATHS ${CMAKE_SOURCE_DIR}/lib/linux/gcc/${BIT}/lib
+)
+
+find_library(SNMPHELPERS_LIBRARY netsnmphelpers
+			 HINTS ${CMAKE_SOURCE_DIR}/lib/linux/gcc/${BIT}/lib
+			 PATHS ${CMAKE_SOURCE_DIR}/lib/linux/gcc/${BIT}/lib
+)
+
+find_library(SNMPMIBS_LIBRARY netsnmpmibs
+			 HINTS ${CMAKE_SOURCE_DIR}/lib/linux/gcc/${BIT}/lib
+			 PATHS ${CMAKE_SOURCE_DIR}/lib/linux/gcc/${BIT}/lib
+)
+
+IF(NOT SNMP_LIBRARY)
+	message(FATAL_ERROR "${Esc}[31mRequired snmp libraries not found.\n Install libsnmp-dev and run cmake again${Esc}[m")
+ENDIF(NOT SNMP_LIBRARY)
+	
+
+ADD_LIBRARY(net-snmp SHARED ${sources})
+TARGET_LINK_LIBRARIES(net-snmp ${SNMP_LIBRARY} ${SNMPAGENT_LIBRARY} ${SNMPHELPERS_LIBRARY} ${SNMPMIBS_LIBRARY})
 
 INSTALL(TARGETS net-snmp
 	LIBRARY DESTINATION lib${LIB_SUFFIX}/accel-ppp

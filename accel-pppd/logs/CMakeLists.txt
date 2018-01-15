@@ -34,8 +34,16 @@ IF(LOG_SYSLOG)
 ENDIF(LOG_SYSLOG)
 
 IF(LOG_PGSQL)
+	find_library(PGSQL_LIBRARY pq
+					HINTS ${CMAKE_SOURCE_DIR}/lib/linux/gcc/${BIT}/lib
+					PATHS ${CMAKE_SOURCE_DIR}/lib/linux/gcc/${BIT}/lib
+	)
+	IF(NOT PGSQL_LIBRARY)
+					message(FATAL_ERROR "${Esc}[31mRequired libpq not found.\n Install libpq-dev and run cmake again${Esc}[m")
+	ENDIF(NOT PGSQL_LIBRARY)
+
 	ADD_LIBRARY(log_pgsql SHARED log_pgsql.c)
-	TARGET_LINK_LIBRARIES(log_pgsql pq)
+	TARGET_LINK_LIBRARIES(log_pgsql ${PGSQL_LIBRARY})
 	INSTALL(TARGETS log_pgsql
 		LIBRARY DESTINATION lib${LIB_SUFFIX}/accel-ppp
 	)
