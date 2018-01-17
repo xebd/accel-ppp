@@ -16,7 +16,7 @@
 #include "memdebug.h"
 
 #define CELL_SIZE 128
-#define DEF_COLUMNS "ifname,username,calling-sid,ip,rate-limit,type,comp,state,uptime"
+#define DEF_COLUMNS "ifname,username,calling-sid,ip,rate-limit,ip6,ipv6-dp,state,uptime"
 
 struct column_t
 {
