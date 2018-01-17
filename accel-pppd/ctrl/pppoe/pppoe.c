@@ -1450,6 +1450,10 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli,
 		return;
 	}
 
+	if (max_connections > INT32_MAX){
+		max_connections = -1;
+	}
+
 	pthread_rwlock_rdlock(&serv_lock);
 	list_for_each_entry(serv, &serv_list, entry) {
 		if (serv->net == net && !strcmp(serv->ifname, ifname)) {
