@@ -1024,6 +1024,12 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	if (ppp_max_payload > serv->mtu - 8)
 		ppp_max_payload = serv->mtu - 8;
 
+	if (serv->max_connections >= 0 && serv->conn_cnt >= serv->max_connections){
+		if (conf_verbose)
+			log_warn("pppoe: discarding PADI packet (max connections reached on this interface: %s)\n)", serv->ifname);
+		return;
+	}
+
 	if (pado_delay) {
 		list_for_each_entry(pado, &serv->pado_list, entry) {
 			if (memcmp(pado->addr, ethhdr->h_source, ETH_ALEN))
@@ -1290,7 +1296,7 @@ static void pppoe_serv_timeout(struct triton_timer_t *t)
 	pppoe_server_free(serv);
 }
 
-static int parse_server(const char *opt, int *padi_limit, struct ap_net **net)
+static int parse_server(const char *opt, int *padi_limit, struct ap_net **net, int *max_connections)
 {
 	char *ptr, *endptr;
 	char name[64];
@@ -1302,6 +1308,11 @@ static int parse_server(const char *opt, int *padi_limit, struct ap_net **net)
 			goto out_err;
 		if (!strncmp(opt, "padi-limit=", sizeof("padi-limit=") - 1)) {
 			*padi_limit = strtol(ptr + 1, &endptr, 10);
+			if (*endptr != 0 && *endptr != ',')
+				goto out_err;
+			opt = endptr;
+		} else if (!strncmp(opt, "max-connections=", sizeof("max-connections=") - 1)) {
+			*max_connections = strtol(ptr + 1, &endptr, 10);
 			if (*endptr != 0 && *endptr != ',')
 				goto out_err;
 			opt = endptr;
@@ -1398,9 +1409,10 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli,
 	struct pppoe_serv_t *serv;
 	struct ifreq ifr;
 	int padi_limit = conf_padi_limit;
+	int max_connections = -1;
 	struct ap_net *net = def_net;
 
-	if (parse_server(opt, &padi_limit, &net)) {
+	if (parse_server(opt, &padi_limit, &net, &max_connections)) {
 		if (cli)
 			cli_sendv(cli, "failed to parse '%s'\r\n", opt);
 		else
@@ -1496,6 +1508,7 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli,
 	serv->parent_ifindex = parent_ifindex;
 	serv->vid = vid;
 	serv->net = net;
+	serv->max_connections = max_connections;
 	pthread_mutex_init(&serv->lock, NULL);
 
 	INIT_LIST_HEAD(&serv->conn_list);
