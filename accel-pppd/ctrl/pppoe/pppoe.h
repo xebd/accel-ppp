@@ -126,6 +126,7 @@ extern struct list_head serv_list;
 int mac_filter_check(const uint8_t *addr);
 void pppoe_server_start(const char *intf, void *client);
 void pppoe_server_stop(const char *intf);
+int pppoe_server_max_connection(const char *intf, int max_connections);
 void pppoe_serv_read(uint8_t *data);
 void _server_stop(struct pppoe_serv_t *s);
 

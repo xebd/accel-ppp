@@ -1397,6 +1397,35 @@ void pppoe_server_start(const char *opt, void *cli)
 		__pppoe_server_start(opt, opt, cli, -1, 0, 0);
 }
 
+
+int pppoe_server_max_connection(const char *intf, int max_connections) {
+
+	struct pppoe_serv_t *serv;
+	int finded = 0;
+
+	if (max_connections > INT32_MAX){
+		log_warn("The max value is %i, %i given" , INT32_MAX, max_connections);
+		return finded;
+	}
+
+
+  pthread_rwlock_rdlock(&serv_lock);
+  list_for_each_entry(serv, &serv_list, entry) {
+
+          if (strcmp(serv->ifname, intf))
+                  continue;
+
+          log_debug("Ajustando novo limite para a interface: %s\n", serv->ifname);
+          finded = 1;
+          serv->max_connections = max_connections;
+          break;
+  }
+  pthread_rwlock_unlock(&serv_lock);
+
+  return finded;
+
+}
+
 static void pppoe_serv_ctx_switch(struct triton_context_t *ctx, void *arg)
 {
 	struct pppoe_serv_t *serv = arg;
