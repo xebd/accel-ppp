@@ -951,7 +951,8 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 		if (!ses->ses.ipv6)
 			log_ppp_warn("ipoe: no free IPv6 address\n");
 		else {
-			make_ipv6_intfid(&ses->ses.ipv6->peer_intf_id, ses->hwaddr);
+			if (!ses->ses.ipv6->peer_intf_id)
+				make_ipv6_intfid(&ses->ses.ipv6->peer_intf_id, ses->hwaddr);
 			make_ipv6_intfid(&ses->ses.ipv6->intf_id, ses->serv->hwaddr);
 		}
 	}
