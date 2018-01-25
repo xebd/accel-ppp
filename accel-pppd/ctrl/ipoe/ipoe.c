@@ -2195,6 +2195,7 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 	struct ipoe_session *ses = container_of(ev->ses, typeof(*ses), ses);
 	struct rad_attr_t *attr;
 	int lease_time_set = 0, renew_time_set = 0, has_dhcp = 0;
+	in_addr_t server_id = 0;
 
 	if (ev->ses->ctrl->type != CTRL_TYPE_IPOE)
 		return;
@@ -2225,6 +2226,9 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 				case DHCP_Renewal_Time:
 					ses->renew_time = attr->val.integer;
 					renew_time_set = 1;
+					break;
+				case DHCP_DHCP_Server_Identifier:
+					server_id = attr->val.ipaddr;
 					break;
 			}
 
@@ -2270,6 +2274,9 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 		log_ppp_warn("ipoe: overriding renew time\n");
 		ses->renew_time = ses->lease_time / 2;
 	}
+
+	if (!ses->siaddr)
+		ses->siaddr = server_id;
 
 	if (has_dhcp)
 		ses->dhcpv4_relay_reply = dhcpv4_clone_radius(ev->reply);
