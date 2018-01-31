@@ -66,7 +66,7 @@ static struct lcp_option_t *mru_init(struct ppp_lcp_t *lcp)
 	mru_opt->opt.id = CI_MRU;
 	mru_opt->opt.len = 4;
 
-	lcp->ppp->mru = mru_opt->mru;
+	lcp->ppp->mru = PPP_MTU;
 	lcp->ppp->mtu = mru_opt->mtu;
 
 	return &mru_opt->opt;
@@ -127,10 +127,6 @@ static int mru_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, ui
 static int mru_recv_conf_ack(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)
 {
 	struct mru_option_t *mru_opt = container_of(opt, typeof(*mru_opt), opt);
-
-	if (net->ppp_ioctl(lcp->ppp->chan_fd, PPPIOCSMRU, &mru_opt->mru) &&
-	    errno != EIO && errno != ENOTTY)
-		log_ppp_error("lcp:mru: failed to set channel MRU: %s\n", strerror(errno));
 
 	lcp->ppp->mru = mru_opt->mru;
 
