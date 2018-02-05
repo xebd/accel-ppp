@@ -286,12 +286,13 @@ static void ev_ses_started(struct ap_session *ses)
 	char peer_ipaddr[17];
 	struct pppd_compat_pd *pd;
 
-	if (!conf_ip_up)
+	pd = find_pd(ses);
+	if (!pd)
 		return;
 
-	pd = find_pd(ses);
+	pd->started = 1;
 
-	if (!pd)
+	if (!conf_ip_up)
 		return;
 
 	argv[4] = ipaddr;
@@ -320,8 +321,6 @@ static void ev_ses_started(struct ap_session *ses)
 		_exit(EXIT_FAILURE);
 	} else
 		log_error("pppd_compat: fork: %s\n", strerror(errno));
-
-	pd->started = 1;
 }
 
 static void ev_ses_finished(struct ap_session *ses)
