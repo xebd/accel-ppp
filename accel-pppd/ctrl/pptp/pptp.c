@@ -55,6 +55,7 @@ struct pptp_conn_t
 	struct ppp_t ppp;
 };
 
+static int conf_ppp_max_mtu = PPTP_MAX_MTU;
 static int conf_timeout = 5;
 static int conf_echo_interval = 0;
 static int conf_echo_failure = 3;
@@ -688,7 +689,7 @@ static int pptp_connect(struct triton_md_handler_t *h)
 		conn->ctrl.started = ppp_started;
 		conn->ctrl.finished = ppp_finished;
 		conn->ctrl.terminate = ppp_terminate;
-		conn->ctrl.max_mtu = PPTP_MAX_MTU;
+		conn->ctrl.max_mtu = conf_ppp_max_mtu;
 		conn->ctrl.type = CTRL_TYPE_PPTP;
 		conn->ctrl.ppp = 1;
 		conn->ctrl.name = "pptp";
@@ -769,6 +770,12 @@ static void load_config(void)
 	opt = conf_get_opt("pptp", "verbose");
 	if (opt && atoi(opt) >= 0)
 		conf_verbose = atoi(opt) > 0;
+
+	opt = conf_get_opt("pptp", "ppp-max-mtu");
+	if (opt && atoi(opt) > 0)
+		conf_ppp_max_mtu = atoi(opt);
+	else
+		conf_ppp_max_mtu = PPTP_MAX_MTU;
 
 	conf_mppe = MPPE_UNSET;
 	opt = conf_get_opt("pptp", "mppe");
