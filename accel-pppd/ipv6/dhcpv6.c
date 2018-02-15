@@ -167,7 +167,7 @@ static void ev_ses_finished(struct ap_session *ses)
 	_free(pd);
 }
 
-static void insert_dp_routes(struct ap_session *ses, struct dhcpv6_pd *pd)
+static void insert_dp_routes(struct ap_session *ses, struct dhcpv6_pd *pd, struct in6_addr *addr)
 {
 	struct ipv6db_addr_t *p;
 	struct in6_rtmsg rt6;
@@ -179,10 +179,9 @@ static void insert_dp_routes(struct ap_session *ses, struct dhcpv6_pd *pd)
 	rt6.rtmsg_ifindex = ses->ifindex;
 	rt6.rtmsg_flags = RTF_UP;
 
-	if (conf_route_via_gw) {
+	if (conf_route_via_gw && addr && !IN6_IS_ADDR_UNSPECIFIED(addr)) {
 		rt6.rtmsg_flags |= RTF_GATEWAY;
-		rt6.rtmsg_gateway.s6_addr32[0] = htonl(0xfe800000);
-		memcpy(rt6.rtmsg_gateway.s6_addr + 8, &ses->ipv6->peer_intf_id, 8);
+		memcpy(&rt6.rtmsg_gateway, addr, sizeof(rt6.rtmsg_gateway));
 	}
 
 	list_for_each_entry(p, &ses->ipv6_dp->prefix_list, entry) {
@@ -372,7 +371,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 				if (req->hdr->type == D6_REQUEST || req->rapid_commit) {
 					pd->dp_iaid = ia_na->iaid;
 					if (!pd->dp_active)
-						insert_dp_routes(ses, pd);
+						insert_dp_routes(ses, pd, &req->addr.sin6_addr);
 				}
 
 				f2 = 1;
