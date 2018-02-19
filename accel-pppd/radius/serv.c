@@ -227,8 +227,17 @@ int rad_server_req_enter(struct rad_req_t *req)
 
 	if (req->send) {
 		r = req->send(req, 0);
-		if (r)
-			req->active = 0;
+		if (r) {
+			if (r == -2) {
+				req->active = 0;
+				pthread_mutex_lock(&req->serv->lock);
+				req->serv->req_cnt--;
+				pthread_mutex_unlock(&req->serv->lock);
+
+				rad_server_fail(req->serv);
+			} else
+				rad_server_req_exit(req);
+		}
 	}
 
 	return r;
