@@ -313,7 +313,7 @@ int __rad_req_send(struct rad_req_t *req, int async)
 	}
 
 	if (req->hnd.fd == -1 && make_socket(req))
-		return -1;
+		return -2;
 
 	if (req->before_send && req->before_send(req))
 		goto out_err;
