@@ -475,6 +475,10 @@ Timeout waiting reply from client in seconds (default 5).
 If this option is given ppp interface will be renamed using
 .B ifname
 as a template, i.e pptp%d => pptp0.
+.TP
+.BI "ppp-max-mtu=" n
+Set the maximun MTU value that can be negociated for PPP over PPTP
+sessions. Default value is 1436.
 .SH [pppoe]
 .br
 Configuration of PPPoE module.

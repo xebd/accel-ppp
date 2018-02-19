@@ -62,6 +62,7 @@ static int ppp_unit_read(struct triton_md_handler_t*);
 static void init_layers(struct ppp_t *);
 static void _free_layers(struct ppp_t *);
 static void start_first_layer(struct ppp_t *);
+static int setup_ppp_mru(struct ppp_t *ppp);
 
 void __export ppp_init(struct ppp_t *ppp)
 {
@@ -138,8 +139,11 @@ int __export connect_ppp_channel(struct ppp_t *ppp)
 	struct pppunit_cache *uc = NULL;
 	struct ifreq ifr;
 
-	if (ppp->unit_fd != -1)
+	if (ppp->unit_fd != -1) {
+		if (setup_ppp_mru(ppp))
+			goto exit_close_unit;
 		return 0;
+	}
 
 	if (uc_size) {
 		pthread_mutex_lock(&uc_lock);
@@ -184,23 +188,15 @@ int __export connect_ppp_channel(struct ppp_t *ppp)
 
 	log_ppp_info1("connect: %s <--> %s(%s)\n", ppp->ses.ifname, ppp->ses.ctrl->name, ppp->ses.chan_name);
 
-	ifr.ifr_mtu = ppp->mtu;
+	memset(&ifr, 0, sizeof(ifr));
 	strcpy(ifr.ifr_name, ppp->ses.ifname);
-	if (ppp->mtu && net->sock_ioctl(SIOCSIFMTU, &ifr)) {
-		log_ppp_error("failed to set MTU: %s\n", strerror(errno));
-		goto exit_close_unit;
-	}
-
-	if (ppp->mru && net->ppp_ioctl(ppp->unit_fd, PPPIOCSMRU, &ppp->mru)) {
-		log_ppp_error("failed to set MRU: %s\n", strerror(errno));
-		goto exit_close_unit;
-	}
-
 	if (net->sock_ioctl(SIOCGIFINDEX, &ifr)) {
 		log_ppp_error("ioctl(SIOCGIFINDEX): %s\n", strerror(errno));
 		goto exit_close_unit;
 	}
 	ppp->ses.ifindex = ifr.ifr_ifindex;
+
+	setup_ppp_mru(ppp);
 
 	ap_session_set_ifindex(&ppp->ses);
 
@@ -232,6 +228,35 @@ static void destroy_ppp_channel(struct ppp_t *ppp)
 
 	if (ppp->buf)
 		mempool_free(ppp->buf);
+}
+
+static int setup_ppp_mru(struct ppp_t *ppp)
+{
+	struct ifreq ifr;
+
+	if (ppp->mtu) {
+		memset(&ifr, 0, sizeof(ifr));
+		strcpy(ifr.ifr_name, ppp->ses.ifname);
+		ifr.ifr_mtu = ppp->mtu;
+		if (net->sock_ioctl(SIOCSIFMTU, &ifr)) {
+			log_ppp_error("failed to set MTU: %s\n", strerror(errno));
+			return -1;
+		}
+	}
+
+	if (ppp->mru) {
+		if (net->ppp_ioctl(ppp->unit_fd, PPPIOCSMRU, &ppp->mru)) {
+			log_ppp_error("failed to set unit MRU: %s\n", strerror(errno));
+			return -1;
+		}
+		if (net->ppp_ioctl(ppp->chan_fd, PPPIOCSMRU, &ppp->mru) &&
+		    errno != EIO && errno != ENOTTY) {
+			log_ppp_error("lcp:mru: failed to set channel MRU: %s\n", strerror(errno));
+			return -1;
+		}
+	}
+
+	return 0;
 }
 
 static void destablish_ppp(struct ppp_t *ppp)
