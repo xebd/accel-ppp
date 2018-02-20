@@ -62,6 +62,7 @@ static void parse_framed_route(struct radius_pd_t *rpd, const char *attr)
 {
 	char str[32];
 	char *ptr;
+	long int prio = 0;
 	in_addr_t dst;
 	in_addr_t gw;
 	int mask;
@@ -118,6 +119,14 @@ static void parse_framed_route(struct radius_pd_t *rpd, const char *attr)
 			gw = 0;
 		else
 			goto out_err;
+
+		/* Parse priority, if any */
+		if (*ptr) {
+			for (++ptr; *ptr && *ptr != ' '; ptr++);
+			if (*ptr == ' ')
+				if (u_readlong(&prio, ptr + 1, 0, UINT32_MAX) < 0)
+					goto out_err;
+		}
 	} else {
 		mask = 32;
 		gw = 0;
@@ -127,6 +136,7 @@ static void parse_framed_route(struct radius_pd_t *rpd, const char *attr)
 	fr->dst = dst;
 	fr->mask = mask;
 	fr->gw = gw;
+	fr->prio = prio;
 	fr->next = rpd->fr;
 	rpd->fr = fr;
 
@@ -444,11 +454,11 @@ static void ses_started(struct ap_session *ses)
 	}
 
 	for (fr = rpd->fr; fr; fr = fr->next) {
-		if (iproute_add(fr->gw ? 0 : rpd->ses->ifindex, 0, fr->dst, fr->gw, 3, fr->mask)) {
+		if (iproute_add(fr->gw ? 0 : rpd->ses->ifindex, 0, fr->dst, fr->gw, 3, fr->mask, fr->prio)) {
 			char dst[17], gw[17];
 			u_inet_ntoa(fr->dst, dst);
 			u_inet_ntoa(fr->gw, gw);
-			log_ppp_warn("radius: failed to add route %s/%i%s\n", dst, fr->mask, gw);
+			log_ppp_warn("radius: failed to add route %s/%i %s %u\n", dst, fr->mask, gw, fr->prio);
 		}
 	}
 
@@ -472,7 +482,7 @@ static void ses_finishing(struct ap_session *ses)
 
 	for (fr = rpd->fr; fr; fr = fr->next) {
 		if (fr->gw)
-			iproute_del(0, fr->dst, 3, fr->mask);
+			iproute_del(0, fr->dst, 3, fr->mask, fr->prio);
 	}
 
 	if (rpd->acct_started || rpd->acct_req)

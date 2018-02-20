@@ -977,9 +977,9 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 
 	if (ses->ifindex == -1) {
 		if (!conf_ip_unnumbered)
-			iproute_add(serv->ifindex, ses->router, ses->yiaddr, 0, conf_proto, ses->mask);
+			iproute_add(serv->ifindex, ses->router, ses->yiaddr, 0, conf_proto, ses->mask, 0);
 		else if (!serv->opt_ifcfg)
-			iproute_add(serv->ifindex, serv->opt_src ?: ses->router, ses->yiaddr, 0, conf_proto, 32);
+			iproute_add(serv->ifindex, serv->opt_src ?: ses->router, ses->yiaddr, 0, conf_proto, 32, 0);
 	}
 
 	if (ses->l4_redirect)
@@ -1078,7 +1078,7 @@ static void ipoe_session_started(struct ap_session *s)
 
 	if (ses->ses.ipv4->peer_addr != ses->yiaddr)
 		//ipaddr_add_peer(ses->ses.ifindex, ses->router, ses->yiaddr); // breaks quagga
-		iproute_add(ses->ses.ifindex, ses->router, ses->yiaddr, 0, conf_proto, 32);
+		iproute_add(ses->ses.ifindex, ses->router, ses->yiaddr, 0, conf_proto, 32, 0);
 
 	if (ses->ifindex != -1 && ses->xid) {
 		ses->dhcpv4 = dhcpv4_create(ses->ctrl.ctx, ses->ses.ifname, "");
@@ -1163,9 +1163,9 @@ static void ipoe_session_finished(struct ap_session *s)
 		if (serv->opt_ifcfg)
 			ipaddr_del(serv->ifindex, ses->router, conf_ip_unnumbered ? 32 : ses->mask);
 		else if (conf_ip_unnumbered)
-			iproute_del(serv->ifindex, ses->yiaddr, conf_proto, 32);
+			iproute_del(serv->ifindex, ses->yiaddr, conf_proto, 32, 0);
 		else
-			iproute_del(serv->ifindex, ses->yiaddr, conf_proto, ses->mask);
+			iproute_del(serv->ifindex, ses->yiaddr, conf_proto, ses->mask, 0);
 	}
 
 	if (ses->dhcp_addr)
