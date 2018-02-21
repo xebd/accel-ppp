@@ -364,8 +364,8 @@ void __export ppp_auth_failed(struct ppp_t *ppp, char *username)
 			_free(username);
 		ppp->ses.terminate_cause = TERM_AUTH_ERROR;
 		pthread_rwlock_unlock(&ses_lock);
-		log_ppp_info1("%s: authentication failed\n", username);
-		log_info1("%s: authentication failed\n", username);
+		log_ppp_info1("%s: authentication failed\n", ppp->ses.username);
+		log_info1("%s: authentication failed\n", ppp->ses.username);
 		triton_event_fire(EV_SES_AUTH_FAILED, ppp);
 	} else
 		log_ppp_info1("authentication failed\n");
