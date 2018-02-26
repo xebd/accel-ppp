@@ -190,6 +190,39 @@ static const uint16_t fcstab[256] = {
 	0x7bc7,	0x6a4e,	0x58d5,	0x495c,	0x3de3,	0x2c6a,	0x1ef1,	0x0f78
 };
 
+/* utils */
+
+static int strhas(const char *s1, const char *s2, int delim)
+{
+	char *ptr;
+	int n = strlen(s2);
+
+	while ((ptr = strchr(s1, delim))) {
+		if (ptr - s1 == n && !memcmp(s1, s2, n))
+			return 1;
+		s1 = ++ptr;
+	}
+	return !strcmp(s1, s2);
+}
+
+static int hex2bin(const char *src, uint8_t *dst, size_t size)
+{
+	char buf[3], *err;
+	int n;
+
+	memset(buf, 0, sizeof(buf));
+	for (n = 0; n < size && src[0] && src[1]; n++) {
+		buf[0] = *src++;
+		buf[1] = *src++;
+		dst[n] = strtoul(buf, &err, 16);
+		if (err == buf || *err)
+			break;
+		if (*src == ':')
+			src++;
+	}
+	return n;
+}
+
 /* buffer */
 
 static inline void *buf_put(struct buffer_t *buf, int len)
@@ -1833,37 +1866,7 @@ static void sstp_serv_close(struct triton_context_t *ctx)
 		SSL_CTX_free(serv->ssl_ctx);
 	serv->ssl_ctx = NULL;
 #endif
-}
 
-static int strhas(const char *s1, const char *s2, int delim)
-{
-	char *ptr;
-	int n = strlen(s2);
-
-	while ((ptr = strchr(s1, delim))) {
-		if (ptr - s1 == n && memcmp(s1, s2, n) == 0)
-			return 0;
-		s1 = ++ptr;
-	}
-	return strcmp(s1, s2);
-}
-
-static int hex2bin(const char *src, uint8_t *dst, size_t size)
-{
-	char buf[3], *err;
-	int n;
-
-	memset(buf, 0, sizeof(buf));
-	for (n = 0; n < size && src[0] && src[1]; n++) {
-		buf[0] = *src++;
-		buf[1] = *src++;
-		dst[n] = strtoul(buf, &err, 16);
-		if (err == buf || *err)
-			break;
-		if (*src == ':')
-			src++;
-	}
-	return n;
 }
 
 #ifdef CRYPTO_OPENSSL
@@ -1915,8 +1918,9 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 		}
 	}
 
-	opt = conf_get_opt("sstp", "ssl");
-	if (atoi(opt) > 0) {
+	opt = conf_get_opt("sstp", "accept");
+	if (strhas(opt, "ssl", ',')) {
+	legacy_ssl:
 		ssl_ctx = SSL_CTX_new(SSLv23_server_method());
 		if (!ssl_ctx) {
 			log_error("sstp: SSL_CTX error: %s\n", ERR_error_string(ERR_get_error(), NULL));
@@ -1967,6 +1971,11 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 		if (servername && SSL_CTX_set_tlsext_servername_callback(ssl_ctx, ssl_servername) != 1)
 			log_warn("sstp: SSL server name check error: %s\n", ERR_error_string(ERR_get_error(), NULL));
 #endif
+	} else {
+		/* legacy option, to be removed */
+		opt = conf_get_opt("sstp", "ssl");
+		if (opt && atoi(opt) > 0)
+			goto legacy_ssl;
 	}
 
 	if (cert) {
@@ -2003,9 +2012,9 @@ static void load_config(void)
 	opt = conf_get_opt("sstp", "cert-hash-proto");
 	if (opt) {
 		conf_hash_protocol = 0;
-		if (strhas(opt, "sha1", ',') == 0)
+		if (strhas(opt, "sha1", ','))
 			conf_hash_protocol |= CERT_HASH_PROTOCOL_SHA1;
-		if (strhas(opt, "sha256", ',') == 0)
+		if (strhas(opt, "sha256", ','))
 			conf_hash_protocol |= CERT_HASH_PROTOCOL_SHA256;
 	}
 

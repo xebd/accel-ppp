@@ -661,11 +661,11 @@ If this option is given and greater then zero then sstp will send echo-request e
 seconds and drop connection without a reply.
 Default is 60.
 .TP
-.BI "ssl=" ssl
-If this option is given and 
+.BI "accept=" ssl
+Specifies incoming connection acceptance mode.
+.br
 .B ssl
-is greater of zero then sstp module will enable builtin TLS support.
-Default is 1.
+- enable SSL/TLS support.
 .TP
 .BI "ssl-ciphers=" string
 Specifies the enabled ciphers. The ciphers are specified in the format understood by the OpenSSL library.
