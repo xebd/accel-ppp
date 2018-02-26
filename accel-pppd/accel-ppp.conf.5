@@ -639,8 +639,9 @@ as a template, i.e l2tp%d => l2tp0.
 .br
 Configuration of SSTP module.
 .TP
-.BI "bind=" x.x.x.x
-If this option is given then sstp server will bind to specified IP address.
+.BI "bind=" x.x.x.x|ipv6address|unix:pathname|unix:@abstract
+If this option is given then sstp server will bind to specified IP address
+or unix pathname/abstract socket.
 .TP
 .BI "port=" n
 If this option is given then sstp server will bind to specified port.

@@ -11,8 +11,11 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include "linux_ppp.h"
 
 #ifdef CRYPTO_OPENSSL
@@ -51,12 +54,24 @@
 #define SHA256_DIGEST_LENGTH 32
 #endif
 
+#define ADDRSTR_MAXLEN (sizeof("unix:") + sizeof(((struct sockaddr_un *)0)->sun_path))
+
 enum {
 	STATE_INIT = 0,
 	STATE_STARTING,
 	STATE_STARTED,
 	STATE_FINISHED,
 };
+
+struct sockaddr_t {
+	socklen_t len;
+	union {
+		struct sockaddr sa;
+		struct sockaddr_in sin;
+		struct sockaddr_in6 sin6;
+		struct sockaddr_un sun;
+	} u;
+} __attribute__((packed));
 
 struct hash_t {
 	unsigned int len;
@@ -124,6 +139,8 @@ struct sstp_conn_t {
 static struct sstp_serv_t {
 	struct triton_context_t ctx;
 	struct triton_md_handler_t hnd;
+
+	struct sockaddr_t addr;
 
 #ifdef CRYPTO_OPENSSL
 	SSL_CTX *ssl_ctx;
@@ -221,6 +238,52 @@ static int hex2bin(const char *src, uint8_t *dst, size_t size)
 			src++;
 	}
 	return n;
+}
+
+static in_addr_t sockaddr_ipv4(struct sockaddr_t *addr)
+{
+	switch (addr->u.sa.sa_family) {
+	case AF_INET:
+		return addr->u.sin.sin_addr.s_addr;
+	case AF_INET6:
+		if (IN6_IS_ADDR_V4MAPPED(&addr->u.sin6.sin6_addr))
+			return addr->u.sin6.sin6_addr.s6_addr32[3];
+		/* fall through */
+	default:
+		return INADDR_ANY;
+	}
+}
+
+static int sockaddr_ntop(struct sockaddr_t *addr, char *dst, socklen_t size)
+{
+	char ipv6_buf[INET6_ADDRSTRLEN], *path, sign;
+
+	switch (addr->u.sa.sa_family) {
+	case AF_INET:
+		return snprintf(dst, size, "%s:%d",
+				inet_ntoa(addr->u.sin.sin_addr), ntohs(addr->u.sin.sin_port));
+	case AF_INET6:
+		if (IN6_IS_ADDR_V4MAPPED(&addr->u.sin6.sin6_addr)) {
+			inet_ntop(AF_INET, &addr->u.sin6.sin6_addr.s6_addr32[3],
+					ipv6_buf, sizeof(ipv6_buf));
+		} else {
+			inet_ntop(AF_INET6, &addr->u.sin6.sin6_addr,
+					ipv6_buf, sizeof(ipv6_buf));
+		}
+		return snprintf(dst, size, "%s:%d",
+				ipv6_buf, ntohs(addr->u.sin6.sin6_port));
+	case AF_UNIX:
+		if (addr->len <= offsetof(typeof(addr->u.sun), sun_path)) {
+			path = "NULL";
+			sign = path[0];
+		} else {
+			path = addr->u.sun.sun_path;
+			sign = path[0] ? : '@';
+		}
+		return snprintf(dst, size, "unix:%c%s", sign, path + 1);
+	}
+
+	return -1;
 }
 
 /* buffer */
@@ -1740,12 +1803,14 @@ error:
 static int sstp_connect(struct triton_md_handler_t *h)
 {
 	struct sstp_conn_t *conn;
-	struct sockaddr_in addr;
-	socklen_t size = sizeof(addr);
+	struct sockaddr_t addr;
+	char addr_buf[ADDRSTR_MAXLEN];
+	in_addr_t ip;
 	int sock, value;
 
 	while (1) {
-		sock = accept(h->fd, (struct sockaddr *)&addr, &size);
+		addr.len = sizeof(addr.u);
+		sock = accept(h->fd, &addr.u.sa, &addr.len);
 		if (sock < 0) {
 			if (errno == EAGAIN)
 				return 0;
@@ -1758,38 +1823,42 @@ static int sstp_connect(struct triton_md_handler_t *h)
 			continue;
 		}
 
-		if (triton_module_loaded("connlimit") && connlimit_check(cl_key_from_ipv4(addr.sin_addr.s_addr))) {
+		ip = sockaddr_ipv4(&addr);
+		if (ip && triton_module_loaded("connlimit") && connlimit_check(cl_key_from_ipv4(ip))) {
 			close(sock);
 			return 0;
 		}
 
-		
-		log_info2("sstp: new connection from %s:%d\n", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
+		sockaddr_ntop(&addr, addr_buf, sizeof(addr_buf));
+		log_info2("sstp: new connection from %s\n", addr_buf);
 
-		if (iprange_client_check(addr.sin_addr.s_addr)) {
+		if (ip && iprange_client_check(addr.u.sin.sin_addr.s_addr)) {
 			log_warn("sstp: IP is out of client-ip-range, droping connection...\n");
 			close(sock);
 			continue;
 		}
 
-		if (fcntl(sock, F_SETFL, O_NONBLOCK)) {
+		value = fcntl(sock, F_GETFL);
+		if (value < 0 || fcntl(sock, F_SETFL, value | O_NONBLOCK) < 0) {
 			log_error("sstp: failed to set nonblocking mode: %s, closing connection...\n", strerror(errno));
 			close(sock);
 			continue;
 		}
 
-		value = 65536;
-		if (setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &value, sizeof(value)) < 0) {
-			log_error("sstp: failed to set send buffer: %s, closing connection...\n", strerror(errno));
-			close(sock);
-			continue;
-		}
+		if (addr.u.sa.sa_family != AF_UNIX) {
+			value = 65536;
+			if (setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &value, sizeof(value)) < 0) {
+				log_error("sstp: failed to set send buffer: %s, closing connection...\n", strerror(errno));
+				close(sock);
+				continue;
+			}
 
-		value = 1;
-		if (setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &value, sizeof(value)) < 0) {
-			log_error("sstp: failed to disable nagle: %s, closing connection...\n", strerror(errno));
-			close(sock);
-			continue;
+			value = 1;
+			if (setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &value, sizeof(value)) < 0) {
+				log_error("sstp: failed to disable nagle: %s, closing connection...\n", strerror(errno));
+				close(sock);
+				continue;
+			}
 		}
 
 		conn = mempool_alloc(conn_pool);
@@ -1829,12 +1898,12 @@ static int sstp_connect(struct triton_md_handler_t *h)
 		conn->ctrl.name = "sstp";
 		conn->ctrl.ifname = "";
 		conn->ctrl.mppe = MPPE_UNSET;
-		conn->ctrl.calling_station_id = _malloc(sizeof("255.255.255.255:65535"));
-		conn->ctrl.called_station_id = _malloc(sizeof("255.255.255.255"));
-		sprintf(conn->ctrl.calling_station_id, "%s:%d",
-			 inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
-		getsockname(sock, &addr, &size);
-		u_inet_ntoa(addr.sin_addr.s_addr, conn->ctrl.called_station_id);
+
+		conn->ctrl.calling_station_id = strdup(addr_buf);
+		addr.len = sizeof(addr.u);
+		getsockname(sock, &addr.u.sa, &addr.len);
+		sockaddr_ntop(&addr, addr_buf, sizeof(addr_buf));
+		conn->ctrl.called_station_id = strdup(addr_buf);
 
 		ppp_init(&conn->ppp);
 		conn->ppp.ses.ctrl = &conn->ctrl;
@@ -1867,6 +1936,8 @@ static void sstp_serv_close(struct triton_context_t *ctx)
 	serv->ssl_ctx = NULL;
 #endif
 
+	if (serv->addr.u.sa.sa_family == AF_UNIX && serv->addr.u.sun.sun_path[0])
+		unlink(serv->addr.u.sun.sun_path);
 }
 
 #ifdef CRYPTO_OPENSSL
@@ -2001,6 +2072,7 @@ error:
 
 static void load_config(void)
 {
+	int ipmode;
 	char *opt;
 
 	opt = conf_get_opt("sstp", "verbose");
@@ -2054,7 +2126,9 @@ static void load_config(void)
 	conf_ip_pool = conf_get_opt("sstp", "ip-pool");
 	conf_ifname = conf_get_opt("sstp", "ifname");
 
-	switch (iprange_check_activation()) {
+	ipmode = (serv.addr.u.sa.sa_family == AF_INET) ?
+			iprange_check_activation() : -1;
+	switch (ipmode) {
 	case IPRANGE_DISABLED:
 		log_warn("sstp: iprange module disabled, improper IP configuration of PPP interfaces may cause kernel soft lockup\n");
 		break;
@@ -2062,6 +2136,7 @@ static void load_config(void)
 		log_warn("sstp: no IP address range defined in section [%s], incoming sstp connections will be rejected\n",
 			 IPRANGE_CONF_SECTION);
 		break;
+	case -1:
 	default:
 		/* Makes compiler happy */
 		break;
@@ -2076,40 +2151,65 @@ static struct sstp_serv_t serv = {
 
 static void sstp_init(void)
 {
-	struct sockaddr_in addr;
+	struct sockaddr_t *addr = &serv.addr;
+	struct stat st;
+	int port, value;
 	char *opt;
 
-	serv.hnd.fd = socket(PF_INET, SOCK_STREAM, 0);
+	opt = conf_get_opt("sstp", "port");
+	if (opt && atoi(opt) > 0)
+		port = atoi(opt);
+	else
+		port = SSTP_PORT;
+
+	opt = conf_get_opt("sstp", "bind");
+	if (opt && strncmp(opt, "unix:", sizeof("unix:") - 1) == 0) {
+		addr->len = sizeof(addr->u.sun);
+		addr->u.sun.sun_family = AF_UNIX;
+		snprintf(addr->u.sun.sun_path, sizeof(addr->u.sun.sun_path), "%s", opt + sizeof("unix:") - 1);
+		/* abstract socket support */
+		if (addr->u.sun.sun_path[0] == '@')
+			addr->u.sun.sun_path[0] = '\0';
+	} else if (opt && inet_pton(AF_INET6, opt, &addr->u.sin6.sin6_addr) > 0) {
+		addr->len = sizeof(addr->u.sin6);
+		addr->u.sin6.sin6_family = AF_INET6;
+		addr->u.sin6.sin6_port = htons(port);
+	} else {
+		addr->len = sizeof(addr->u.sin);		
+		addr->u.sin.sin_family = AF_INET;
+		if (!opt || inet_pton(AF_INET, opt, &addr->u.sin.sin_addr) <= 0)
+			addr->u.sin.sin_addr.s_addr = htonl(INADDR_ANY);
+		addr->u.sin.sin_port = htons(port);
+	}
+
+	serv.hnd.fd = socket(addr->u.sa.sa_family, SOCK_STREAM, 0);
 	if (serv.hnd.fd < 0) {
 		log_emerg("sstp: failed to create server socket: %s\n", strerror(errno));
 		return;
 	}
 
-	fcntl(serv.hnd.fd, F_SETFD, fcntl(serv.hnd.fd, F_GETFD) | FD_CLOEXEC);
+	value = fcntl(serv.hnd.fd, F_GETFD);
+	if (value < 0 || fcntl(serv.hnd.fd, F_SETFD, value | FD_CLOEXEC) < 0) {
+		log_emerg("sstp: failed to set socket flags: %s\n", strerror(errno));
+		close(serv.hnd.fd);
+		return;
+	}
 
-	addr.sin_family = AF_INET;
+	if (addr->u.sa.sa_family == AF_UNIX) {
+		if (addr->u.sun.sun_path[0] &&
+		    stat(addr->u.sun.sun_path, &st) == 0 && S_ISSOCK(st.st_mode)) {
+			unlink(addr->u.sun.sun_path);
+		}
+	} else
+		setsockopt(serv.hnd.fd, SOL_SOCKET, SO_REUSEADDR, &serv.hnd.fd, 4);
 
-	opt = conf_get_opt("sstp", "bind");
-	if (opt)
-		addr.sin_addr.s_addr = inet_addr(opt);
-	else
-		addr.sin_addr.s_addr = htonl(INADDR_ANY);
-
-	opt = conf_get_opt("sstp", "port");
-	if (opt && atoi(opt) > 0)
-		addr.sin_port = htons(atoi(opt));
-	else
-		addr.sin_port = htons(SSTP_PORT);
-
-	setsockopt(serv.hnd.fd, SOL_SOCKET, SO_REUSEADDR, &serv.hnd.fd, 4);
-
-	if (bind(serv.hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
+	if (bind(serv.hnd.fd, &addr->u.sa, addr->len) < 0) {
 		log_emerg("sstp: failed to bind socket: %s\n", strerror(errno));
 		close(serv.hnd.fd);
 		return;
 	}
 
-	if (listen(serv.hnd.fd, 100) < 0) {
+	if (listen(serv.hnd.fd, 10) < 0) {
 		log_emerg("sstp: failed to listen socket: %s\n", strerror(errno));
 		close(serv.hnd.fd);
 		return;
