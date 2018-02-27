@@ -2206,7 +2206,7 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 	}
 
 	opt = conf_get_opt("sstp", "accept");
-	if (strhas(opt, "ssl", ',')) {
+	if (opt && strhas(opt, "ssl", ',')) {
 	legacy_ssl:
 		ssl_ctx = SSL_CTX_new(SSLv23_server_method());
 		if (!ssl_ctx) {
@@ -2307,7 +2307,7 @@ static void load_config(void)
 	}
 
 	opt = conf_get_opt("sstp", "accept");
-	conf_proxyproto = strhas(opt, "proxy", ',');
+	conf_proxyproto = opt && strhas(opt, "proxy", ',');
 
 #ifdef CRYPTO_OPENSSL
 	ssl_load_config(&serv, conf_hostname);
