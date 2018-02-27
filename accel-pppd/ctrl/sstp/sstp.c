@@ -2430,6 +2430,12 @@ static void sstp_init(void)
 		goto error_close;
 	}
 
+	if (addr->u.sa.sa_family == AF_UNIX && addr->u.sun.sun_path[0] &&
+	    chmod(addr->u.sun.sun_path,
+			S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH) < 0) {
+		log_warn("sstp: failed to set socket permissions: %s\n", strerror(errno));
+	}
+
 	if (listen(serv.hnd.fd, 10) < 0) {
 		log_emerg("sstp: failed to listen socket: %s\n", strerror(errno));
 		goto error_unlink;
