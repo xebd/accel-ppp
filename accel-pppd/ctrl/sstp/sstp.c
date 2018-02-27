@@ -36,10 +36,14 @@
 
 #include "memdebug.h"
 
+#include "proxy_prot.h"
 #include "sstp_prot.h"
 
 #ifndef min
 #define min(x,y) ((x) < (y) ? (x) : (y))
+#endif
+#ifndef max
+#define max(x,y) ((x) > (y) ? (x) : (y))
 #endif
 
 #define PPP_SYNC	0 /* buggy yet */
@@ -132,6 +136,7 @@ struct sstp_conn_t {
 	struct buffer_t *ppp_in;
 	struct list_head ppp_queue;
 
+	struct sockaddr_t addr;
 	struct ppp_t ppp;
 	struct ap_ctrl ctrl;
 };
@@ -153,6 +158,7 @@ static int conf_verbose = 0;
 static int conf_ppp_max_mtu = 1452;
 static const char *conf_ip_pool;
 static const char *conf_ifname;
+static int conf_proxyproto = 0;
 
 static int conf_hash_protocol = CERT_HASH_PROTOCOL_SHA1 | CERT_HASH_PROTOCOL_SHA256;
 static struct hash_t conf_hash_sha1 = { .len = 0 };
@@ -168,6 +174,7 @@ static int sstp_send(struct sstp_conn_t *conn, struct buffer_t *buf);
 static int sstp_abort(struct sstp_conn_t *conn, int disconnect);
 static void sstp_disconnect(struct sstp_conn_t *conn);
 static int sstp_handler(struct sstp_conn_t *conn, struct buffer_t *buf);
+static int http_handler(struct sstp_conn_t *conn, struct buffer_t *buf);
 
 /*
  * FCS lookup table as calculated by genfcstab.
@@ -237,6 +244,27 @@ static int hex2bin(const char *src, uint8_t *dst, size_t size)
 		if (*src == ':')
 			src++;
 	}
+	return n;
+}
+
+#define vstrsep(buf, sep, args...) _vstrsep(buf, sep, args, (void*)-1)
+static int _vstrsep(char *buf, const char *sep, ...)
+{
+	va_list ap;
+	char **arg, *val, *ptr;
+	int n = 0;
+
+	va_start(ap, sep);
+	while ((arg = va_arg(ap, char **)) != (void *)-1) {
+		val = strtok_r(buf, sep, &ptr);
+		buf = NULL;
+		if (!val)
+			break;
+		if (arg)
+			*arg = val;
+		n++;
+	}
+	va_end(ap);
 	return n;
 }
 
@@ -526,6 +554,194 @@ error:
 }
 #endif
 
+/* proxy */
+
+static int proxy_parse(struct buffer_t *buf, struct sockaddr_t *peer, struct sockaddr_t *addr)
+{
+	static const uint8_t proxy_sig[] = PROXY_SIG;
+	struct proxy_hdr *hdr;
+	char *ptr, *src_addr, *dst_addr, *src_port, *dst_port;
+	int n, count;
+
+	if (buf->len < PROXY_MINLEN || memcmp(buf->head, proxy_sig, sizeof(proxy_sig)) != 0)
+		return 0;
+
+	ptr = memmem(buf->head, buf->len, "\r\n", 2);
+	if (!ptr) {
+		if (buf_tailroom(buf) > 0)
+			return 0;
+		log_error("sstp: proxy: %s\n", "too long header");
+		return -1;
+	} else
+		*ptr = '\0';
+
+	hdr = (void *)buf->head;
+	n = ptr + 2 - hdr->line;
+
+	if (conf_verbose)
+		log_ppp_info2("recv [PROXY <%s>]\n", hdr->line);
+
+	count = vstrsep(hdr->line, " ", NULL, &ptr, &src_addr, &dst_addr, &src_port, &dst_port);
+	if (count < 2)
+		goto error;
+
+	if (strcasecmp(ptr, PROXY_TCP4) == 0) {
+		if (count < 6 ||
+		    inet_pton(AF_INET, src_addr, &peer->u.sin.sin_addr) <= 0 ||
+		    inet_pton(AF_INET, dst_addr, &addr->u.sin.sin_addr) <= 0) {
+			goto error;
+		}
+		peer->len = addr->len = sizeof(addr->u.sin);
+		peer->u.sin.sin_family = addr->u.sin.sin_family = AF_INET;
+		peer->u.sin.sin_port = htons(atoi(src_port));
+		addr->u.sin.sin_port = htons(atoi(dst_port));
+	} else if (strcasecmp(ptr, PROXY_TCP6) == 0) {
+		if (count < 6 ||
+		    inet_pton(AF_INET6, src_addr, &peer->u.sin6.sin6_addr) <= 0 ||
+		    inet_pton(AF_INET6, dst_addr, &addr->u.sin6.sin6_addr) <= 0) {
+			goto error;
+		}
+		peer->len = addr->len = sizeof(addr->u.sin6);
+		peer->u.sin6.sin6_family = addr->u.sin6.sin6_family = AF_INET;
+		peer->u.sin6.sin6_port = htons(atoi(src_port));
+		addr->u.sin6.sin6_port = htons(atoi(dst_port));
+	} else if (strcasecmp(ptr, PROXY_UNKNOWN) != 0)
+		goto error;
+
+	return n;
+
+error:
+	log_error("sstp: proxy: %s\n", "invalid header");
+	return -1;
+}
+
+static int proxy_parse_v2(struct buffer_t *buf, struct sockaddr_t *peer, struct sockaddr_t *addr)
+{
+	static const uint8_t proxy2_sig[] = PROXY2_SIG;
+	struct proxy2_hdr *hdr;
+	int n;
+
+	if (buf->len < PROXY2_MINLEN || memcmp(buf->head, proxy2_sig, sizeof(proxy2_sig)) != 0)
+		return 0;
+
+	hdr = (void *)buf->head;
+
+	if (conf_verbose) {
+		log_ppp_info2("recv [PROXY ver/cmd=0x%02x fam/addr=0x%02x len=%d]\n",
+				hdr->ver_cmd, hdr->fam, ntohs(hdr->len));
+	}
+
+	if ((hdr->ver_cmd & 0xf0) != 0x20)
+		goto error;
+
+	n = sizeof(*hdr) + ntohs(hdr->len);
+	if (n > buf->len) {
+		if (buf_tailroom(buf) > 0)
+			return 0;
+		log_error("sstp: proxy2: %s\n", "too long header");
+		return -1;
+	}
+
+	switch (hdr->ver_cmd & 0x0f) {
+	case PROXY2_PROXY:
+		switch (hdr->fam >> 4) {
+		case PROXY2_AF_INET:
+			if (n < sizeof(hdr) + sizeof(hdr->ipv4_addr))
+				goto error;
+			peer->len = addr->len = sizeof(addr->u.sin);
+			peer->u.sin.sin_family = addr->u.sin.sin_family = AF_INET;
+			peer->u.sin.sin_addr.s_addr = hdr->ipv4_addr.src_addr.s_addr;
+			peer->u.sin.sin_port = hdr->ipv4_addr.src_port;
+			addr->u.sin.sin_addr.s_addr = hdr->ipv4_addr.dst_addr.s_addr;
+			addr->u.sin.sin_port = hdr->ipv4_addr.dst_port;
+			break;
+		case PROXY2_AF_INET6:
+			if (n < sizeof(hdr) + sizeof(hdr->ipv6_addr))
+				goto error;
+			peer->len = addr->len = sizeof(addr->u.sin6);
+			peer->u.sin6.sin6_family = addr->u.sin6.sin6_family = AF_INET6;
+			memcpy(&peer->u.sin6.sin6_addr, &hdr->ipv6_addr.src_addr, sizeof(peer->u.sin6.sin6_addr));
+			peer->u.sin6.sin6_port = hdr->ipv6_addr.src_port;
+			memcpy(&addr->u.sin6.sin6_addr, &hdr->ipv6_addr.dst_addr, sizeof(addr->u.sin6.sin6_addr));
+			addr->u.sin6.sin6_port = hdr->ipv6_addr.dst_port;
+			break;
+		case PROXY2_AF_UNIX:
+			if (n < sizeof(hdr) + sizeof(hdr->unix_addr))
+				goto error;
+			peer->len = addr->len = sizeof(addr->u.sun);
+			peer->u.sun.sun_family = addr->u.sun.sun_family = AF_UNIX;
+			memcpy(peer->u.sun.sun_path, hdr->unix_addr.src_addr, sizeof(peer->u.sun.sun_path));
+			memcpy(addr->u.sun.sun_path, hdr->unix_addr.dst_addr, sizeof(addr->u.sun.sun_path));
+			break;
+		case PROXY2_AF_UNSPEC:
+			break;
+		default:
+			goto error;
+		}
+		/* fall through */
+	case PROXY2_LOCAL:
+		break;
+	default:
+		goto error;
+	}
+
+	return n;
+
+error:
+	log_error("sstp: proxy2: %s\n", "invalid header");
+	return -1;
+}
+
+static int proxy_handler(struct sstp_conn_t *conn, struct buffer_t *buf)
+{
+	struct sockaddr_t addr;
+	char addr_buf[ADDRSTR_MAXLEN];
+	in_addr_t ip;
+	int n;
+
+	if (conn->sstp_state != STATE_SERVER_CALL_DISCONNECTED)
+		return -1;
+
+	memset(&addr, 0, sizeof(addr));
+
+	n = proxy_parse_v2(buf, &conn->addr, &addr);
+	if (n == 0)
+		n = proxy_parse(buf, &conn->addr, &addr);
+
+	if (n == 0 && buf->len >= max(PROXY2_MINLEN, PROXY_MINLEN)) {
+		log_error("sstp: proxy: %s\n", "no header found");
+		return -1;
+	} else if (n <= 0)
+		return n;
+
+	ip = sockaddr_ipv4(&conn->addr);
+	if (ip && triton_module_loaded("connlimit") && connlimit_check(cl_key_from_ipv4(ip)))
+		return -1;
+
+	sockaddr_ntop(&conn->addr, addr_buf, sizeof(addr_buf));
+	log_info2("sstp: proxy: connection from %s\n", addr_buf);
+
+	if (ip && iprange_client_check(ip)) {
+		log_warn("sstp: proxy: IP is out of client-ip-range, droping connection...\n");
+		return -1;
+	}
+
+	if (addr.u.sa.sa_family != AF_UNSPEC) {
+		_free(conn->ctrl.calling_station_id);
+		conn->ctrl.calling_station_id = _strdup(addr_buf);
+		conn->ppp.ses.chan_name = conn->ctrl.calling_station_id;
+
+		sockaddr_ntop(&addr, addr_buf, sizeof(addr_buf));
+		_free(conn->ctrl.called_station_id);
+		conn->ctrl.called_station_id = _strdup(addr_buf);
+	}
+
+	buf_pull(buf, n);
+
+	conn->handler = http_handler;
+	return buf->len;
+}
+
 /* http */
 
 static char *http_getline(struct buffer_t *buf, char *line, size_t size)
@@ -619,12 +835,9 @@ static int http_recv_request(struct sstp_conn_t *conn, uint8_t *data, int len)
 	if (conf_verbose)
 		log_ppp_info2("recv [HTTP <%s>]\n", line);
 
-	method = strsep(&line, " ");
-	request = strsep(&line, " ");
-	proto = strsep(&line, " ");
 	host = NULL;
 
-	if (!method || !request || !proto) {
+	if (vstrsep(line, " ", &method, &request, &proto) < 3) {
 		http_send_response(conn, "HTTP/1.1", "400 Bad Request", NULL);
 		goto error;
 	}
@@ -703,7 +916,7 @@ static int http_handler(struct sstp_conn_t *conn, struct buffer_t *buf)
 
 	conn->sstp_state = STATE_SERVER_CONNECT_REQUEST_PENDING;
 	conn->handler = sstp_handler;
-	return 0;
+	return buf->len;
 }
 
 /* ppp */
@@ -1574,9 +1787,11 @@ static int sstp_read(struct triton_md_handler_t *h)
 		}
 		buf_put(buf, n);
 
-		n = conn->handler(conn, buf);
-		if (n < 0)
-			goto drop;
+		do {
+			n = conn->handler(conn, buf);
+			if (n < 0)
+				goto drop;
+		} while (n > 0);
 
 		buf_expand_tail(buf, SSTP_MAX_PACKET_SIZE);
 	}
@@ -1823,7 +2038,7 @@ static int sstp_connect(struct triton_md_handler_t *h)
 			continue;
 		}
 
-		ip = sockaddr_ipv4(&addr);
+		ip = conf_proxyproto ? INADDR_ANY : sockaddr_ipv4(&addr);
 		if (ip && triton_module_loaded("connlimit") && connlimit_check(cl_key_from_ipv4(ip))) {
 			close(sock);
 			return 0;
@@ -1877,7 +2092,7 @@ static int sstp_connect(struct triton_md_handler_t *h)
 
 		conn->sstp_state = STATE_SERVER_CALL_DISCONNECTED;
 		conn->ppp_state = STATE_INIT;
-		conn->handler = http_handler;
+		conn->handler = conf_proxyproto ? proxy_handler : http_handler;
 
 		//conn->bypass_auth = conf_bypass_auth;
 		//conn->http_cookie = NULL:
@@ -1887,6 +2102,7 @@ static int sstp_connect(struct triton_md_handler_t *h)
 		conn->in = alloc_buf(SSTP_MAX_PACKET_SIZE*2);
 		INIT_LIST_HEAD(&conn->out_queue);
 		INIT_LIST_HEAD(&conn->ppp_queue);
+		memcpy(&conn->addr, &addr, sizeof(conn->addr));
 
 		conn->ctrl.ctx = &conn->ctx;
 		conn->ctrl.started = ppp_started;
@@ -2090,14 +2306,19 @@ static void load_config(void)
 			conf_hash_protocol |= CERT_HASH_PROTOCOL_SHA256;
 	}
 
+	opt = conf_get_opt("sstp", "accept");
+	conf_proxyproto = strhas(opt, "proxy", ',');
+
 #ifdef CRYPTO_OPENSSL
 	ssl_load_config(&serv, conf_hostname);
 	opt = serv.ssl_ctx ? "enabled" : "disabled";
 #else
 	opt = "not available";
 #endif
-	if (conf_verbose)
-		log_info2("sstp: SSL support %s\n", opt);
+	if (conf_verbose) {
+		log_info2("sstp: SSL/TLS support %s, PROXY support %s\n",
+				opt, conf_proxyproto ? "enabled" : "disabled");
+	}
 
 	opt = conf_get_opt("sstp", "cert-hash-sha1");
 	if (opt) {
@@ -2126,7 +2347,7 @@ static void load_config(void)
 	conf_ip_pool = conf_get_opt("sstp", "ip-pool");
 	conf_ifname = conf_get_opt("sstp", "ifname");
 
-	ipmode = (serv.addr.u.sa.sa_family == AF_INET) ?
+	ipmode = (serv.addr.u.sa.sa_family == AF_INET && !conf_proxyproto) ?
 			iprange_check_activation() : -1;
 	switch (ipmode) {
 	case IPRANGE_DISABLED:

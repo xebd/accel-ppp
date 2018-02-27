@@ -662,11 +662,14 @@ If this option is given and greater then zero then sstp will send echo-request e
 seconds and drop connection without a reply.
 Default is 60.
 .TP
-.BI "accept=" ssl
+.BI "accept=" ssl,proxy
 Specifies incoming connection acceptance mode.
 .br
 .B ssl
 - enable SSL/TLS support.
+.br
+.B proxy
+- enable PROXY protocol 1 & 2 support.
 .TP
 .BI "ssl-ciphers=" string
 Specifies the enabled ciphers. The ciphers are specified in the format understood by the OpenSSL library.
