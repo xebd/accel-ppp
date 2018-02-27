@@ -2412,8 +2412,7 @@ static void sstp_init(void)
 	value = fcntl(serv.hnd.fd, F_GETFD);
 	if (value < 0 || fcntl(serv.hnd.fd, F_SETFD, value | FD_CLOEXEC) < 0) {
 		log_emerg("sstp: failed to set socket flags: %s\n", strerror(errno));
-		close(serv.hnd.fd);
-		return;
+		goto error_close;
 	}
 
 	if (addr->u.sa.sa_family == AF_UNIX) {
@@ -2421,25 +2420,25 @@ static void sstp_init(void)
 		    stat(addr->u.sun.sun_path, &st) == 0 && S_ISSOCK(st.st_mode)) {
 			unlink(addr->u.sun.sun_path);
 		}
-	} else
-		setsockopt(serv.hnd.fd, SOL_SOCKET, SO_REUSEADDR, &serv.hnd.fd, 4);
+	} else {
+		value = 1;
+		setsockopt(serv.hnd.fd, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value));
+	}
 
 	if (bind(serv.hnd.fd, &addr->u.sa, addr->len) < 0) {
 		log_emerg("sstp: failed to bind socket: %s\n", strerror(errno));
-		close(serv.hnd.fd);
-		return;
+		goto error_close;
 	}
 
 	if (listen(serv.hnd.fd, 10) < 0) {
 		log_emerg("sstp: failed to listen socket: %s\n", strerror(errno));
-		close(serv.hnd.fd);
-		return;
+		goto error_unlink;
 	}
 
-	if (fcntl(serv.hnd.fd, F_SETFL, O_NONBLOCK)) {
+	value = fcntl(serv.hnd.fd, F_GETFL);
+	if (fcntl(serv.hnd.fd, F_SETFL, value | O_NONBLOCK)) {
 		log_emerg("sstp: failed to set nonblocking mode: %s\n", strerror(errno));
-		close(serv.hnd.fd);
-		return;
+		goto error_unlink;
 	}
 
 	conn_pool = mempool_create(sizeof(struct sstp_conn_t));
@@ -2452,6 +2451,13 @@ static void sstp_init(void)
 	triton_context_wakeup(&serv.ctx);
 
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
+	return;
+
+error_unlink:
+	if (addr->u.sa.sa_family == AF_UNIX && addr->u.sun.sun_path[0])
+		unlink(addr->u.sun.sun_path);
+error_close:
+	close(serv.hnd.fd);
 }
 
 DEFINE_INIT(20, sstp_init);
