@@ -103,6 +103,7 @@ struct sstp_stream_t {
 #endif
 	};
 	ssize_t (*read)(struct sstp_stream_t *stream, void *buf, size_t count);
+	ssize_t (*recv)(struct sstp_stream_t *stream, void *buf, size_t count, int flags);
 	ssize_t (*write)(struct sstp_stream_t *stream, const void *buf, size_t count);
 	int (*close)(struct sstp_stream_t *stream);
 	void (*free)(struct sstp_stream_t *stream);
@@ -431,6 +432,11 @@ static ssize_t stream_read(struct sstp_stream_t *stream, void *buf, size_t count
 	return read(stream->fd, buf, count);
 }
 
+static ssize_t stream_recv(struct sstp_stream_t *stream, void *buf, size_t count, int flags)
+{
+	return recv(stream->fd, buf, count, flags);
+}
+
 static ssize_t stream_write(struct sstp_stream_t *stream, const void *buf, size_t count)
 {
 	return write(stream->fd, buf, count);
@@ -455,6 +461,7 @@ static struct sstp_stream_t *stream_init(int fd)
 
 	stream->fd = fd;
 	stream->read = stream_read;
+	stream->recv = stream_recv;
 	stream->write = stream_write;
 	stream->close = stream_close;
 	stream->free = stream_free;
@@ -487,6 +494,11 @@ static ssize_t ssl_stream_read(struct sstp_stream_t *stream, void *buf, size_t c
 		errno = EIO;
 		return ret;
 	}
+}
+
+static ssize_t ssl_stream_recv(struct sstp_stream_t *stream, void *buf, size_t count, int flags)
+{
+	return recv(SSL_get_fd(stream->ssl), buf, count, flags);
 }
 
 static ssize_t ssl_stream_write(struct sstp_stream_t *stream, const void *buf, size_t count)
@@ -542,6 +554,7 @@ static struct sstp_stream_t *ssl_stream_init(int fd, SSL_CTX *ssl_ctx)
 	SSL_set_fd(stream->ssl, fd);
 
 	stream->read = ssl_stream_read;
+	stream->recv = ssl_stream_recv;
 	stream->write = ssl_stream_write;
 	stream->close = ssl_stream_close;
 	stream->free = ssl_stream_free;
@@ -739,7 +752,7 @@ static int proxy_handler(struct sstp_conn_t *conn, struct buffer_t *buf)
 	buf_pull(buf, n);
 
 	conn->handler = http_handler;
-	return buf->len;
+	return n;
 }
 
 /* http */
@@ -916,7 +929,7 @@ static int http_handler(struct sstp_conn_t *conn, struct buffer_t *buf)
 
 	conn->sstp_state = STATE_SERVER_CONNECT_REQUEST_PENDING;
 	conn->handler = sstp_handler;
-	return buf->len;
+	return sstp_handler(conn, buf);
 }
 
 /* ppp */
@@ -1787,14 +1800,74 @@ static int sstp_read(struct triton_md_handler_t *h)
 		}
 		buf_put(buf, n);
 
-		do {
-			n = conn->handler(conn, buf);
-			if (n < 0)
-				goto drop;
-		} while (n > 0);
+		n = conn->handler(conn, buf);
+		if (n < 0)
+			goto drop;
 
 		buf_expand_tail(buf, SSTP_MAX_PACKET_SIZE);
 	}
+	return 0;
+
+drop:
+	sstp_disconnect(conn);
+	return 1;
+}
+
+static int sstp_recv(struct triton_md_handler_t *h)
+{
+	struct sstp_conn_t *conn = container_of(h, typeof(*conn), hnd);
+	struct buffer_t *buf = conn->in;
+	int n, len;
+
+	while ((n = buf_tailroom(buf)) > 0) {
+		n = conn->stream->recv(conn->stream, buf->tail, n, MSG_PEEK);
+		if (n < 0) {
+			if (errno == EINTR)
+				continue;
+			if (errno == EAGAIN)
+				return 0;
+			log_ppp_error("sstp: recv: %s\n", strerror(errno));
+			goto drop;
+		} else if (n == 0) {
+			if (conf_verbose)
+				log_ppp_info2("sstp: disconnect by peer\n");
+			goto drop;
+		}
+		len = buf->len;
+		buf_put(buf, n);
+
+		n = conn->handler(conn, buf);
+		if (n < 0)
+			goto drop;
+		else if (n == 0) {
+			buf_set_length(buf, len);
+			buf_expand_tail(buf, buf_tailroom(buf) + 1);
+			return 0;
+		}
+
+		buf_set_length(buf, 0);
+		buf_pull(buf, -n);
+		while (buf->len > 0) {
+			n = conn->stream->recv(conn->stream, buf->head, buf->len, 0);
+			if (n < 0) {
+				if (errno == EINTR)
+					continue;
+				log_ppp_error("sstp: recv: %s\n", strerror(errno));
+					goto drop;
+			} else if (n == 0) {
+				if (conf_verbose)
+					log_ppp_info2("sstp: disconnect by peer\n");
+				goto drop;
+			}
+			buf_pull(buf, n);
+		}
+
+		buf_expand_tail(buf, SSTP_MAX_PACKET_SIZE);
+
+		conn->hnd.read = sstp_read;
+		return sstp_read(h);
+	}
+
 	return 0;
 
 drop:
@@ -2082,7 +2155,7 @@ static int sstp_connect(struct triton_md_handler_t *h)
 		conn->ctx.close = sstp_close;
 		conn->ctx.before_switch = sstp_ctx_switch;
 		conn->hnd.fd = sock;
-		conn->hnd.read = sstp_read;
+		conn->hnd.read = conf_proxyproto ? sstp_recv : sstp_read;
 		conn->hnd.write = sstp_write;
 
 		conn->timeout_timer.expire = sstp_timeout;
