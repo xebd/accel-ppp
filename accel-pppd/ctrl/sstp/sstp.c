@@ -901,16 +901,23 @@ error:
 
 static int http_handler(struct sstp_conn_t *conn, struct buffer_t *buf)
 {
-	static const char *table[] = { "\r\n\r\n", "\n\n", NULL };
+	static const char *table[] = { "\n\r\n", "\r\r\n", NULL };
 	const char **pptr;
-	char *ptr, *end;
+	uint8_t *ptr, *end = NULL;
 	int n;
 
 	if (conn->sstp_state != STATE_SERVER_CALL_DISCONNECTED)
 		return -1;
 
-	end = NULL;
-	for (pptr = table; *pptr; pptr++) {
+	ptr = buf->head;
+	while (ptr < buf->tail && *ptr == ' ')
+		ptr++;
+	if (ptr == buf->tail)
+		return 0;
+	else if (strncasecmp((char *)ptr, SSTP_HTTP_METHOD,
+			min(buf->tail - ptr, sizeof(SSTP_HTTP_METHOD) - 1)) != 0)
+		end = buf->tail;
+	else for (pptr = table; *pptr; pptr++) {
 		ptr = memmem(buf->head, buf->len, *pptr, strlen(*pptr));
 		if (ptr && (!end || ptr < end))
 			end = ptr + strlen(*pptr);
@@ -921,7 +928,7 @@ static int http_handler(struct sstp_conn_t *conn, struct buffer_t *buf)
 		log_ppp_error("recv [HTTP too long header]\n");
 		return -1;
 	} else
-		n = end - (char *)buf->head;
+		n = end - buf->head;
 
 	if (http_recv_request(conn, buf->head, n) < 0)
 		return -1;
