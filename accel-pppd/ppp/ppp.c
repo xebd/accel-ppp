@@ -558,8 +558,10 @@ int __export ppp_terminate(struct ap_session *ses, int hard)
 		}
 	}
 
-	if (!s)
+	if (!s) {
 		destablish_ppp(ppp);
+		return 0;
+	}
 
 	return 1;
 }
