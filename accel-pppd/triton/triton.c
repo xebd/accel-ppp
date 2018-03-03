@@ -54,7 +54,6 @@ struct triton_context_t default_ctx;
 static __thread struct triton_context_t *this_ctx;
 static __thread jmp_buf jmp_env;
 static __thread void *thread_frame;
-static volatile void *thread_stack;
 
 #define log_debug2(fmt, ...)
 
@@ -134,7 +133,9 @@ static void* triton_thread(struct _triton_thread_t *thread)
 				if (this_ctx->before_switch)
 					this_ctx->before_switch(this_ctx, thread->ctx->bf_arg);
 
-				thread_stack = alloca(thread->ctx->uc->uc_stack.ss_size + 64);
+				*(void *volatile *)alloca(thread->ctx->uc->uc_stack.ss_size + 64);
+				barrier();
+
 				memcpy(thread_frame - thread->ctx->uc->uc_stack.ss_size, thread->ctx->uc->uc_stack.ss_sp, thread->ctx->uc->uc_stack.ss_size);
 				setcontext(thread->ctx->uc);
 				abort();
@@ -478,7 +479,7 @@ static ucontext_t *alloc_context()
 	void *frame = __builtin_frame_address(0);
 	size_t stack_size = thread_frame - frame;
 
-	uc = malloc(sizeof(*uc) + stack_size);
+	uc = _malloc(sizeof(*uc) + stack_size);
 	uc->uc_stack.ss_sp = (void *)(uc + 1);
 	uc->uc_stack.ss_size = stack_size;
 	memcpy(uc->uc_stack.ss_sp, frame, stack_size);
@@ -505,7 +506,7 @@ void __export triton_context_schedule()
 	if (ctx->wakeup) {
 		ctx->wakeup = 0;
 		spin_unlock(&threads_lock);
-		free(ctx->uc);
+		_free(ctx->uc);
 		ctx->uc = NULL;
 		__sync_sub_and_fetch(&triton_stat.context_sleeping, 1);
 		log_debug2("ctx %p: exit schedule\n", ctx);
@@ -630,7 +631,7 @@ static void ru_update(struct triton_timer_t *t)
 
 void __export triton_register_init(int order, void (*func)(void))
 {
-	struct _triton_init_t *i1, *i = malloc(sizeof(*i));
+	struct _triton_init_t *i1, *i = _malloc(sizeof(*i));
 	struct list_head *p = init_list.next;
 
 
@@ -690,7 +691,7 @@ int __export triton_load_modules(const char *mod_sect)
 		i = list_entry(init_list.next, typeof(*i), entry);
 		i->func();
 		list_del(&i->entry);
-		free(i);
+		_free(i);
 	}
 
 	return 0;
