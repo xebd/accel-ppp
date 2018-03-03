@@ -1041,7 +1041,8 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 		pado->ppp_max_payload = ppp_max_payload;
 
 		pado->timer.expire = pado_timer;
-		pado->timer.period = pado_delay;
+		pado->timer.expire_tv.tv_sec = pado_delay / 1000;
+		pado->timer.expire_tv.tv_usec = (pado_delay % 1000) * 1000;
 
 		triton_timer_add(&serv->ctx, &pado->timer, 0);
 
