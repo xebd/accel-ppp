@@ -1145,7 +1145,7 @@ void dhcpv4_reserve_ip(struct dhcpv4_serv *serv, uint32_t ip)
 struct dhcpv4_packet *dhcpv4_clone_radius(struct rad_packet_t *rad)
 {
 	struct dhcpv4_packet *pkt = dhcpv4_packet_alloc();
-	uint8_t *ptr = pkt->data, *endptr = ptr + BUF_SIZE;
+	uint8_t *ptr, *endptr;
 	struct dhcpv4_option *opt;
 	struct rad_attr_t *attr;
 
@@ -1153,6 +1153,8 @@ struct dhcpv4_packet *dhcpv4_clone_radius(struct rad_packet_t *rad)
 		return NULL;
 
 	pkt->refs = 1;
+	ptr = pkt->data;
+	endptr = ptr + BUF_SIZE;
 
 	list_for_each_entry(attr, &rad->attrs, entry) {
 		if (attr->vendor && attr->vendor->id == VENDOR_DHCP && attr->attr->id < 256) {
