@@ -125,21 +125,25 @@ int dpado_parse(const char *str)
 		_free(r);
 	}
 
+	list_splice(&range_list, &dpado_range_list);
+
 	dpado_range_next = NULL;
 	dpado_range_prev = NULL;
 
-	while (!list_empty(&range_list)) {
-		r = list_entry(range_list.next, typeof(*r), entry);
-		list_del(&r->entry);
-		list_add_tail(&r->entry, &dpado_range_list);
-
-		if (!dpado_range_prev || stat_active >= r->conn_cnt)
+	list_for_each_entry(r, &dpado_range_list, entry) {
+		if (!dpado_range_prev || stat_active >= r->conn_cnt) {
 			dpado_range_prev = r;
-		else if (!dpado_range_next)
-			dpado_range_next = r;
+			if (r->entry.next != &dpado_range_list)
+				dpado_range_next = list_entry(r->entry.next, typeof(*r), entry);
+			else
+				dpado_range_next = NULL;
+		}
 	}
 
-	pado_delay = dpado_range_prev->pado_delay;
+	if (dpado_range_prev)
+		pado_delay = dpado_range_prev->pado_delay;
+	else
+		pado_delay = 0;
 
 	if (conf_pado_delay)
 		_free(conf_pado_delay);
