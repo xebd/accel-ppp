@@ -217,11 +217,12 @@ static int session_rx_bytes(lua_State *L)
 {
 	struct ap_session *ses = luaL_checkudata(L, 1, LUA_AP_SESSION);
 	uint64_t gword_sz = (uint64_t)UINT32_MAX + 1;
-	uint64_t bytes = gword_sz*ses->acct_input_gigawords + ses->acct_rx_bytes;
+	uint64_t bytes;
 
 	if (!ses)
 		return 0;
 
+	bytes = gword_sz*ses->acct_input_gigawords + ses->acct_rx_bytes;
 	lua_pushnumber(L, bytes);
 
 	return 1;
@@ -231,11 +232,12 @@ static int session_tx_bytes(lua_State *L)
 {
 	struct ap_session *ses = luaL_checkudata(L, 1, LUA_AP_SESSION);
 	uint64_t gword_sz = (uint64_t)UINT32_MAX + 1;
-	uint64_t bytes = gword_sz*ses->acct_output_gigawords + ses->acct_tx_bytes;
+	uint64_t bytes;
 
 	if (!ses)
 		return 0;
 
+	bytes = gword_sz*ses->acct_output_gigawords + ses->acct_tx_bytes;
 	lua_pushnumber(L, bytes);
 
 	return 1;

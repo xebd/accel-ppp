@@ -30,14 +30,17 @@
 static int session_save(struct ap_session *ses, struct backup_mod *m)
 {
 	struct radius_pd_t *rpd = find_pd(ses);
-	uint64_t session_timeout = ses->start_time + rpd->session_timeout.expire_tv.tv_sec;
-	uint32_t idle_timeout = rpd->idle_timeout.period / 1000;
+	uint64_t session_timeout;
+	uint32_t idle_timeout;
 
 	if (!rpd)
 		return 0;
 
 	if (!rpd->authenticated)
 		return -2;
+
+	session_timeout = ses->start_time + rpd->session_timeout.expire_tv.tv_sec;
+	idle_timeout = rpd->idle_timeout.period / 1000;
 
 	add_tag(RAD_TAG_INTERIM_INTERVAL, &rpd->acct_interim_interval, 4);
 

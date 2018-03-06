@@ -3119,7 +3119,7 @@ static int rescode_get_data(const struct l2tp_attr_t *result_attr,
 		return 2;
 
 	*err_msg = _malloc(msglen + 1);
-	if (err_msg) {
+	if (*err_msg) {
 		memcpy(*err_msg, resavp->error_msg, msglen);
 		(*err_msg)[msglen] = '\0';
 	}

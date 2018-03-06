@@ -29,6 +29,7 @@ struct framed_route {
 	in_addr_t dst;
 	int mask;
 	in_addr_t gw;
+	uint32_t prio;
 	struct framed_route *next;
 };
 
