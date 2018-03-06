@@ -242,6 +242,7 @@ int main(int _argc, char **_argv)
 	struct sigaction sa;
 	int pagesize = sysconf(_SC_PAGE_SIZE);
 	int internal = 0;
+	int no_sigint = 0;
 
 	argc = _argc;
 	argv = _argv;
@@ -269,6 +270,8 @@ int main(int _argc, char **_argv)
 			mprotect(conf_dump, len, PROT_READ);
 		} else if (!strcmp(argv[i], "--internal"))
 			internal = 1;
+		else if (!strcmp(argv[i], "--no-sigint"))
+			no_sigint = 1;
 	}
 
 	if (!conf_file)
@@ -344,19 +347,21 @@ int main(int _argc, char **_argv)
 	sigdelset(&set, SIGBUS);
 	sigdelset(&set, SIGHUP);
 	sigdelset(&set, SIGIO);
-	sigdelset(&set, SIGINT);
 	sigdelset(&set, SIGUSR1);
 	sigdelset(&set, 35);
 	sigdelset(&set, 36);
+	if (no_sigint)
+		sigdelset(&set, SIGINT);
 	pthread_sigmask(SIG_SETMASK, &set, &orig_set);
 
 	sigemptyset(&set);
-	//sigaddset(&set, SIGINT);
 	sigaddset(&set, SIGTERM);
 	sigaddset(&set, SIGSEGV);
 	sigaddset(&set, SIGILL);
 	sigaddset(&set, SIGFPE);
 	sigaddset(&set, SIGBUS);
+	if (!no_sigint)
+		sigaddset(&set, SIGINT);
 
 #ifdef USE_BACKUP
 	backup_restore(internal);
