@@ -11,8 +11,11 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 #include "linux_ppp.h"
 
 #ifdef CRYPTO_OPENSSL
@@ -33,10 +36,14 @@
 
 #include "memdebug.h"
 
+#include "proxy_prot.h"
 #include "sstp_prot.h"
 
 #ifndef min
 #define min(x,y) ((x) < (y) ? (x) : (y))
+#endif
+#ifndef max
+#define max(x,y) ((x) > (y) ? (x) : (y))
 #endif
 
 #define PPP_SYNC	0 /* buggy yet */
@@ -51,12 +58,24 @@
 #define SHA256_DIGEST_LENGTH 32
 #endif
 
+#define ADDRSTR_MAXLEN (sizeof("unix:") + sizeof(((struct sockaddr_un *)0)->sun_path))
+
 enum {
 	STATE_INIT = 0,
 	STATE_STARTING,
 	STATE_STARTED,
 	STATE_FINISHED,
 };
+
+struct sockaddr_t {
+	socklen_t len;
+	union {
+		struct sockaddr sa;
+		struct sockaddr_in sin;
+		struct sockaddr_in6 sin6;
+		struct sockaddr_un sun;
+	} u;
+} __attribute__((packed));
 
 struct hash_t {
 	unsigned int len;
@@ -84,6 +103,7 @@ struct sstp_stream_t {
 #endif
 	};
 	ssize_t (*read)(struct sstp_stream_t *stream, void *buf, size_t count);
+	ssize_t (*recv)(struct sstp_stream_t *stream, void *buf, size_t count, int flags);
 	ssize_t (*write)(struct sstp_stream_t *stream, const void *buf, size_t count);
 	int (*close)(struct sstp_stream_t *stream);
 	void (*free)(struct sstp_stream_t *stream);
@@ -117,6 +137,7 @@ struct sstp_conn_t {
 	struct buffer_t *ppp_in;
 	struct list_head ppp_queue;
 
+	struct sockaddr_t addr;
 	struct ppp_t ppp;
 	struct ap_ctrl ctrl;
 };
@@ -124,6 +145,8 @@ struct sstp_conn_t {
 static struct sstp_serv_t {
 	struct triton_context_t ctx;
 	struct triton_md_handler_t hnd;
+
+	struct sockaddr_t addr;
 
 #ifdef CRYPTO_OPENSSL
 	SSL_CTX *ssl_ctx;
@@ -136,6 +159,7 @@ static int conf_verbose = 0;
 static int conf_ppp_max_mtu = 1452;
 static const char *conf_ip_pool;
 static const char *conf_ifname;
+static int conf_proxyproto = 0;
 
 static int conf_hash_protocol = CERT_HASH_PROTOCOL_SHA1 | CERT_HASH_PROTOCOL_SHA256;
 static struct hash_t conf_hash_sha1 = { .len = 0 };
@@ -151,6 +175,7 @@ static int sstp_send(struct sstp_conn_t *conn, struct buffer_t *buf);
 static int sstp_abort(struct sstp_conn_t *conn, int disconnect);
 static void sstp_disconnect(struct sstp_conn_t *conn);
 static int sstp_handler(struct sstp_conn_t *conn, struct buffer_t *buf);
+static int http_handler(struct sstp_conn_t *conn, struct buffer_t *buf);
 
 /*
  * FCS lookup table as calculated by genfcstab.
@@ -189,6 +214,106 @@ static const uint16_t fcstab[256] = {
 	0xf78f,	0xe606,	0xd49d,	0xc514,	0xb1ab,	0xa022,	0x92b9,	0x8330,
 	0x7bc7,	0x6a4e,	0x58d5,	0x495c,	0x3de3,	0x2c6a,	0x1ef1,	0x0f78
 };
+
+/* utils */
+
+static int strhas(const char *s1, const char *s2, int delim)
+{
+	char *ptr;
+	int n = strlen(s2);
+
+	while ((ptr = strchr(s1, delim))) {
+		if (ptr - s1 == n && !memcmp(s1, s2, n))
+			return 1;
+		s1 = ++ptr;
+	}
+	return !strcmp(s1, s2);
+}
+
+static int hex2bin(const char *src, uint8_t *dst, size_t size)
+{
+	char buf[3], *err;
+	int n;
+
+	memset(buf, 0, sizeof(buf));
+	for (n = 0; n < size && src[0] && src[1]; n++) {
+		buf[0] = *src++;
+		buf[1] = *src++;
+		dst[n] = strtoul(buf, &err, 16);
+		if (err == buf || *err)
+			break;
+		if (*src == ':')
+			src++;
+	}
+	return n;
+}
+
+#define vstrsep(buf, sep, args...) _vstrsep(buf, sep, args, (void*)-1)
+static int _vstrsep(char *buf, const char *sep, ...)
+{
+	va_list ap;
+	char **arg, *val, *ptr;
+	int n = 0;
+
+	va_start(ap, sep);
+	while ((arg = va_arg(ap, char **)) != (void *)-1) {
+		val = strtok_r(buf, sep, &ptr);
+		buf = NULL;
+		if (!val)
+			break;
+		if (arg)
+			*arg = val;
+		n++;
+	}
+	va_end(ap);
+	return n;
+}
+
+static in_addr_t sockaddr_ipv4(struct sockaddr_t *addr)
+{
+	switch (addr->u.sa.sa_family) {
+	case AF_INET:
+		return addr->u.sin.sin_addr.s_addr;
+	case AF_INET6:
+		if (IN6_IS_ADDR_V4MAPPED(&addr->u.sin6.sin6_addr))
+			return addr->u.sin6.sin6_addr.s6_addr32[3];
+		/* fall through */
+	default:
+		return INADDR_ANY;
+	}
+}
+
+static int sockaddr_ntop(struct sockaddr_t *addr, char *dst, socklen_t size)
+{
+	char ipv6_buf[INET6_ADDRSTRLEN], *path, sign;
+
+	switch (addr->u.sa.sa_family) {
+	case AF_INET:
+		return snprintf(dst, size, "%s:%d",
+				inet_ntoa(addr->u.sin.sin_addr), ntohs(addr->u.sin.sin_port));
+	case AF_INET6:
+		if (IN6_IS_ADDR_V4MAPPED(&addr->u.sin6.sin6_addr)) {
+			inet_ntop(AF_INET, &addr->u.sin6.sin6_addr.s6_addr32[3],
+					ipv6_buf, sizeof(ipv6_buf));
+		} else {
+			inet_ntop(AF_INET6, &addr->u.sin6.sin6_addr,
+					ipv6_buf, sizeof(ipv6_buf));
+		}
+		return snprintf(dst, size, "%s:%d",
+				ipv6_buf, ntohs(addr->u.sin6.sin6_port));
+	case AF_UNIX:
+		if (addr->len <= offsetof(typeof(addr->u.sun), sun_path)) {
+			path = "NULL";
+			sign = path[0];
+		} else {
+			path = addr->u.sun.sun_path;
+			sign = path[0] ? : '@';
+		}
+		return snprintf(dst, size, "unix:%c%s", sign, path + 1);
+	}
+
+	return -1;
+}
 
 /* buffer */
 
@@ -307,6 +432,11 @@ static ssize_t stream_read(struct sstp_stream_t *stream, void *buf, size_t count
 	return read(stream->fd, buf, count);
 }
 
+static ssize_t stream_recv(struct sstp_stream_t *stream, void *buf, size_t count, int flags)
+{
+	return recv(stream->fd, buf, count, flags);
+}
+
 static ssize_t stream_write(struct sstp_stream_t *stream, const void *buf, size_t count)
 {
 	return write(stream->fd, buf, count);
@@ -331,6 +461,7 @@ static struct sstp_stream_t *stream_init(int fd)
 
 	stream->fd = fd;
 	stream->read = stream_read;
+	stream->recv = stream_recv;
 	stream->write = stream_write;
 	stream->close = stream_close;
 	stream->free = stream_free;
@@ -363,6 +494,11 @@ static ssize_t ssl_stream_read(struct sstp_stream_t *stream, void *buf, size_t c
 		errno = EIO;
 		return ret;
 	}
+}
+
+static ssize_t ssl_stream_recv(struct sstp_stream_t *stream, void *buf, size_t count, int flags)
+{
+	return recv(SSL_get_fd(stream->ssl), buf, count, flags);
 }
 
 static ssize_t ssl_stream_write(struct sstp_stream_t *stream, const void *buf, size_t count)
@@ -418,6 +554,7 @@ static struct sstp_stream_t *ssl_stream_init(int fd, SSL_CTX *ssl_ctx)
 	SSL_set_fd(stream->ssl, fd);
 
 	stream->read = ssl_stream_read;
+	stream->recv = ssl_stream_recv;
 	stream->write = ssl_stream_write;
 	stream->close = ssl_stream_close;
 	stream->free = ssl_stream_free;
@@ -429,6 +566,194 @@ error:
 	return NULL;
 }
 #endif
+
+/* proxy */
+
+static int proxy_parse(struct buffer_t *buf, struct sockaddr_t *peer, struct sockaddr_t *addr)
+{
+	static const uint8_t proxy_sig[] = PROXY_SIG;
+	struct proxy_hdr *hdr;
+	char *ptr, *src_addr, *dst_addr, *src_port, *dst_port;
+	int n, count;
+
+	if (buf->len < PROXY_MINLEN || memcmp(buf->head, proxy_sig, sizeof(proxy_sig)) != 0)
+		return 0;
+
+	ptr = memmem(buf->head, buf->len, "\r\n", 2);
+	if (!ptr) {
+		if (buf_tailroom(buf) > 0)
+			return 0;
+		log_error("sstp: proxy: %s\n", "too long header");
+		return -1;
+	} else
+		*ptr = '\0';
+
+	hdr = (void *)buf->head;
+	n = ptr + 2 - hdr->line;
+
+	if (conf_verbose)
+		log_ppp_info2("recv [PROXY <%s>]\n", hdr->line);
+
+	count = vstrsep(hdr->line, " ", NULL, &ptr, &src_addr, &dst_addr, &src_port, &dst_port);
+	if (count < 2)
+		goto error;
+
+	if (strcasecmp(ptr, PROXY_TCP4) == 0) {
+		if (count < 6 ||
+		    inet_pton(AF_INET, src_addr, &peer->u.sin.sin_addr) <= 0 ||
+		    inet_pton(AF_INET, dst_addr, &addr->u.sin.sin_addr) <= 0) {
+			goto error;
+		}
+		peer->len = addr->len = sizeof(addr->u.sin);
+		peer->u.sin.sin_family = addr->u.sin.sin_family = AF_INET;
+		peer->u.sin.sin_port = htons(atoi(src_port));
+		addr->u.sin.sin_port = htons(atoi(dst_port));
+	} else if (strcasecmp(ptr, PROXY_TCP6) == 0) {
+		if (count < 6 ||
+		    inet_pton(AF_INET6, src_addr, &peer->u.sin6.sin6_addr) <= 0 ||
+		    inet_pton(AF_INET6, dst_addr, &addr->u.sin6.sin6_addr) <= 0) {
+			goto error;
+		}
+		peer->len = addr->len = sizeof(addr->u.sin6);
+		peer->u.sin6.sin6_family = addr->u.sin6.sin6_family = AF_INET;
+		peer->u.sin6.sin6_port = htons(atoi(src_port));
+		addr->u.sin6.sin6_port = htons(atoi(dst_port));
+	} else if (strcasecmp(ptr, PROXY_UNKNOWN) != 0)
+		goto error;
+
+	return n;
+
+error:
+	log_error("sstp: proxy: %s\n", "invalid header");
+	return -1;
+}
+
+static int proxy_parse_v2(struct buffer_t *buf, struct sockaddr_t *peer, struct sockaddr_t *addr)
+{
+	static const uint8_t proxy2_sig[] = PROXY2_SIG;
+	struct proxy2_hdr *hdr;
+	int n;
+
+	if (buf->len < PROXY2_MINLEN || memcmp(buf->head, proxy2_sig, sizeof(proxy2_sig)) != 0)
+		return 0;
+
+	hdr = (void *)buf->head;
+
+	if (conf_verbose) {
+		log_ppp_info2("recv [PROXY ver/cmd=0x%02x fam/addr=0x%02x len=%d]\n",
+				hdr->ver_cmd, hdr->fam, ntohs(hdr->len));
+	}
+
+	if ((hdr->ver_cmd & 0xf0) != 0x20)
+		goto error;
+
+	n = sizeof(*hdr) + ntohs(hdr->len);
+	if (n > buf->len) {
+		if (buf_tailroom(buf) > 0)
+			return 0;
+		log_error("sstp: proxy2: %s\n", "too long header");
+		return -1;
+	}
+
+	switch (hdr->ver_cmd & 0x0f) {
+	case PROXY2_PROXY:
+		switch (hdr->fam >> 4) {
+		case PROXY2_AF_INET:
+			if (n < sizeof(hdr) + sizeof(hdr->ipv4_addr))
+				goto error;
+			peer->len = addr->len = sizeof(addr->u.sin);
+			peer->u.sin.sin_family = addr->u.sin.sin_family = AF_INET;
+			peer->u.sin.sin_addr.s_addr = hdr->ipv4_addr.src_addr.s_addr;
+			peer->u.sin.sin_port = hdr->ipv4_addr.src_port;
+			addr->u.sin.sin_addr.s_addr = hdr->ipv4_addr.dst_addr.s_addr;
+			addr->u.sin.sin_port = hdr->ipv4_addr.dst_port;
+			break;
+		case PROXY2_AF_INET6:
+			if (n < sizeof(hdr) + sizeof(hdr->ipv6_addr))
+				goto error;
+			peer->len = addr->len = sizeof(addr->u.sin6);
+			peer->u.sin6.sin6_family = addr->u.sin6.sin6_family = AF_INET6;
+			memcpy(&peer->u.sin6.sin6_addr, &hdr->ipv6_addr.src_addr, sizeof(peer->u.sin6.sin6_addr));
+			peer->u.sin6.sin6_port = hdr->ipv6_addr.src_port;
+			memcpy(&addr->u.sin6.sin6_addr, &hdr->ipv6_addr.dst_addr, sizeof(addr->u.sin6.sin6_addr));
+			addr->u.sin6.sin6_port = hdr->ipv6_addr.dst_port;
+			break;
+		case PROXY2_AF_UNIX:
+			if (n < sizeof(hdr) + sizeof(hdr->unix_addr))
+				goto error;
+			peer->len = addr->len = sizeof(addr->u.sun);
+			peer->u.sun.sun_family = addr->u.sun.sun_family = AF_UNIX;
+			memcpy(peer->u.sun.sun_path, hdr->unix_addr.src_addr, sizeof(peer->u.sun.sun_path));
+			memcpy(addr->u.sun.sun_path, hdr->unix_addr.dst_addr, sizeof(addr->u.sun.sun_path));
+			break;
+		case PROXY2_AF_UNSPEC:
+			break;
+		default:
+			goto error;
+		}
+		/* fall through */
+	case PROXY2_LOCAL:
+		break;
+	default:
+		goto error;
+	}
+
+	return n;
+
+error:
+	log_error("sstp: proxy2: %s\n", "invalid header");
+	return -1;
+}
+
+static int proxy_handler(struct sstp_conn_t *conn, struct buffer_t *buf)
+{
+	struct sockaddr_t addr;
+	char addr_buf[ADDRSTR_MAXLEN];
+	in_addr_t ip;
+	int n;
+
+	if (conn->sstp_state != STATE_SERVER_CALL_DISCONNECTED)
+		return -1;
+
+	memset(&addr, 0, sizeof(addr));
+
+	n = proxy_parse_v2(buf, &conn->addr, &addr);
+	if (n == 0)
+		n = proxy_parse(buf, &conn->addr, &addr);
+
+	if (n == 0 && buf->len >= max(PROXY2_MINLEN, PROXY_MINLEN)) {
+		log_error("sstp: proxy: %s\n", "no header found");
+		return -1;
+	} else if (n <= 0)
+		return n;
+
+	ip = sockaddr_ipv4(&conn->addr);
+	if (ip && triton_module_loaded("connlimit") && connlimit_check(cl_key_from_ipv4(ip)))
+		return -1;
+
+	sockaddr_ntop(&conn->addr, addr_buf, sizeof(addr_buf));
+	log_info2("sstp: proxy: connection from %s\n", addr_buf);
+
+	if (ip && iprange_client_check(ip)) {
+		log_warn("sstp: proxy: IP is out of client-ip-range, droping connection...\n");
+		return -1;
+	}
+
+	if (addr.u.sa.sa_family != AF_UNSPEC) {
+		_free(conn->ctrl.calling_station_id);
+		conn->ctrl.calling_station_id = _strdup(addr_buf);
+		conn->ppp.ses.chan_name = conn->ctrl.calling_station_id;
+
+		sockaddr_ntop(&addr, addr_buf, sizeof(addr_buf));
+		_free(conn->ctrl.called_station_id);
+		conn->ctrl.called_station_id = _strdup(addr_buf);
+	}
+
+	buf_pull(buf, n);
+
+	conn->handler = http_handler;
+	return n;
+}
 
 /* http */
 
@@ -523,12 +848,9 @@ static int http_recv_request(struct sstp_conn_t *conn, uint8_t *data, int len)
 	if (conf_verbose)
 		log_ppp_info2("recv [HTTP <%s>]\n", line);
 
-	method = strsep(&line, " ");
-	request = strsep(&line, " ");
-	proto = strsep(&line, " ");
 	host = NULL;
 
-	if (!method || !request || !proto) {
+	if (vstrsep(line, " ", &method, &request, &proto) < 3) {
 		http_send_response(conn, "HTTP/1.1", "400 Bad Request", NULL);
 		goto error;
 	}
@@ -537,7 +859,7 @@ static int http_recv_request(struct sstp_conn_t *conn, uint8_t *data, int len)
 		goto error;
 	}
 	if (strcasecmp(method, SSTP_HTTP_METHOD) != 0) {
-		http_send_response(conn, proto, "501 Not Implemented", NULL);
+		http_send_response(conn, proto, "405 Method Not Allowed", NULL);
 		goto error;
 	}
 	if (strcasecmp(request, SSTP_HTTP_URI) != 0) {
@@ -579,16 +901,23 @@ error:
 
 static int http_handler(struct sstp_conn_t *conn, struct buffer_t *buf)
 {
-	static const char *table[] = { "\r\n\r\n", "\n\n", NULL };
+	static const char *table[] = { "\n\r\n", "\r\r\n", NULL };
 	const char **pptr;
-	char *ptr, *end;
+	uint8_t *ptr, *end = NULL;
 	int n;
 
 	if (conn->sstp_state != STATE_SERVER_CALL_DISCONNECTED)
 		return -1;
 
-	end = NULL;
-	for (pptr = table; *pptr; pptr++) {
+	ptr = buf->head;
+	while (ptr < buf->tail && *ptr == ' ')
+		ptr++;
+	if (ptr == buf->tail)
+		return 0;
+	else if (strncasecmp((char *)ptr, SSTP_HTTP_METHOD,
+			min(buf->tail - ptr, sizeof(SSTP_HTTP_METHOD) - 1)) != 0)
+		end = buf->tail;
+	else for (pptr = table; *pptr; pptr++) {
 		ptr = memmem(buf->head, buf->len, *pptr, strlen(*pptr));
 		if (ptr && (!end || ptr < end))
 			end = ptr + strlen(*pptr);
@@ -599,7 +928,7 @@ static int http_handler(struct sstp_conn_t *conn, struct buffer_t *buf)
 		log_ppp_error("recv [HTTP too long header]\n");
 		return -1;
 	} else
-		n = end - (char *)buf->head;
+		n = end - buf->head;
 
 	if (http_recv_request(conn, buf->head, n) < 0)
 		return -1;
@@ -607,7 +936,7 @@ static int http_handler(struct sstp_conn_t *conn, struct buffer_t *buf)
 
 	conn->sstp_state = STATE_SERVER_CONNECT_REQUEST_PENDING;
 	conn->handler = sstp_handler;
-	return 0;
+	return sstp_handler(conn, buf);
 }
 
 /* ppp */
@@ -1491,6 +1820,68 @@ drop:
 	return 1;
 }
 
+static int sstp_recv(struct triton_md_handler_t *h)
+{
+	struct sstp_conn_t *conn = container_of(h, typeof(*conn), hnd);
+	struct buffer_t *buf = conn->in;
+	int n, len;
+
+	while ((n = buf_tailroom(buf)) > 0) {
+		n = conn->stream->recv(conn->stream, buf->tail, n, MSG_PEEK);
+		if (n < 0) {
+			if (errno == EINTR)
+				continue;
+			if (errno == EAGAIN)
+				return 0;
+			log_ppp_error("sstp: recv: %s\n", strerror(errno));
+			goto drop;
+		} else if (n == 0) {
+			if (conf_verbose)
+				log_ppp_info2("sstp: disconnect by peer\n");
+			goto drop;
+		}
+		len = buf->len;
+		buf_put(buf, n);
+
+		n = conn->handler(conn, buf);
+		if (n < 0)
+			goto drop;
+		else if (n == 0) {
+			buf_set_length(buf, len);
+			buf_expand_tail(buf, buf_tailroom(buf) + 1);
+			return 0;
+		}
+
+		buf_set_length(buf, 0);
+		buf_pull(buf, -n);
+		while (buf->len > 0) {
+			n = conn->stream->recv(conn->stream, buf->head, buf->len, 0);
+			if (n < 0) {
+				if (errno == EINTR)
+					continue;
+				log_ppp_error("sstp: recv: %s\n", strerror(errno));
+					goto drop;
+			} else if (n == 0) {
+				if (conf_verbose)
+					log_ppp_info2("sstp: disconnect by peer\n");
+				goto drop;
+			}
+			buf_pull(buf, n);
+		}
+
+		buf_expand_tail(buf, SSTP_MAX_PACKET_SIZE);
+
+		conn->hnd.read = sstp_read;
+		return sstp_read(h);
+	}
+
+	return 0;
+
+drop:
+	sstp_disconnect(conn);
+	return 1;
+}
+
 static int sstp_write(struct triton_md_handler_t *h)
 {
 	struct sstp_conn_t *conn = container_of(h, typeof(*conn), hnd);
@@ -1707,12 +2098,14 @@ error:
 static int sstp_connect(struct triton_md_handler_t *h)
 {
 	struct sstp_conn_t *conn;
-	struct sockaddr_in addr;
-	socklen_t size = sizeof(addr);
+	struct sockaddr_t addr;
+	char addr_buf[ADDRSTR_MAXLEN];
+	in_addr_t ip;
 	int sock, value;
 
 	while (1) {
-		sock = accept(h->fd, (struct sockaddr *)&addr, &size);
+		addr.len = sizeof(addr.u);
+		sock = accept(h->fd, &addr.u.sa, &addr.len);
 		if (sock < 0) {
 			if (errno == EAGAIN)
 				return 0;
@@ -1725,38 +2118,42 @@ static int sstp_connect(struct triton_md_handler_t *h)
 			continue;
 		}
 
-		if (triton_module_loaded("connlimit") && connlimit_check(cl_key_from_ipv4(addr.sin_addr.s_addr))) {
+		ip = conf_proxyproto ? INADDR_ANY : sockaddr_ipv4(&addr);
+		if (ip && triton_module_loaded("connlimit") && connlimit_check(cl_key_from_ipv4(ip))) {
 			close(sock);
 			return 0;
 		}
 
-		
-		log_info2("sstp: new connection from %s:%d\n", inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
+		sockaddr_ntop(&addr, addr_buf, sizeof(addr_buf));
+		log_info2("sstp: new connection from %s\n", addr_buf);
 
-		if (iprange_client_check(addr.sin_addr.s_addr)) {
+		if (ip && iprange_client_check(addr.u.sin.sin_addr.s_addr)) {
 			log_warn("sstp: IP is out of client-ip-range, droping connection...\n");
 			close(sock);
 			continue;
 		}
 
-		if (fcntl(sock, F_SETFL, O_NONBLOCK)) {
+		value = fcntl(sock, F_GETFL);
+		if (value < 0 || fcntl(sock, F_SETFL, value | O_NONBLOCK) < 0) {
 			log_error("sstp: failed to set nonblocking mode: %s, closing connection...\n", strerror(errno));
 			close(sock);
 			continue;
 		}
 
-		value = 65536;
-		if (setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &value, sizeof(value)) < 0) {
-			log_error("sstp: failed to set send buffer: %s, closing connection...\n", strerror(errno));
-			close(sock);
-			continue;
-		}
+		if (addr.u.sa.sa_family != AF_UNIX) {
+			value = 65536;
+			if (setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &value, sizeof(value)) < 0) {
+				log_error("sstp: failed to set send buffer: %s, closing connection...\n", strerror(errno));
+				close(sock);
+				continue;
+			}
 
-		value = 1;
-		if (setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &value, sizeof(value)) < 0) {
-			log_error("sstp: failed to disable nagle: %s, closing connection...\n", strerror(errno));
-			close(sock);
-			continue;
+			value = 1;
+			if (setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &value, sizeof(value)) < 0) {
+				log_error("sstp: failed to disable nagle: %s, closing connection...\n", strerror(errno));
+				close(sock);
+				continue;
+			}
 		}
 
 		conn = mempool_alloc(conn_pool);
@@ -1765,7 +2162,7 @@ static int sstp_connect(struct triton_md_handler_t *h)
 		conn->ctx.close = sstp_close;
 		conn->ctx.before_switch = sstp_ctx_switch;
 		conn->hnd.fd = sock;
-		conn->hnd.read = sstp_read;
+		conn->hnd.read = conf_proxyproto ? sstp_recv : sstp_read;
 		conn->hnd.write = sstp_write;
 
 		conn->timeout_timer.expire = sstp_timeout;
@@ -1775,7 +2172,7 @@ static int sstp_connect(struct triton_md_handler_t *h)
 
 		conn->sstp_state = STATE_SERVER_CALL_DISCONNECTED;
 		conn->ppp_state = STATE_INIT;
-		conn->handler = http_handler;
+		conn->handler = conf_proxyproto ? proxy_handler : http_handler;
 
 		//conn->bypass_auth = conf_bypass_auth;
 		//conn->http_cookie = NULL:
@@ -1785,6 +2182,7 @@ static int sstp_connect(struct triton_md_handler_t *h)
 		conn->in = alloc_buf(SSTP_MAX_PACKET_SIZE*2);
 		INIT_LIST_HEAD(&conn->out_queue);
 		INIT_LIST_HEAD(&conn->ppp_queue);
+		memcpy(&conn->addr, &addr, sizeof(conn->addr));
 
 		conn->ctrl.ctx = &conn->ctx;
 		conn->ctrl.started = ppp_started;
@@ -1796,12 +2194,12 @@ static int sstp_connect(struct triton_md_handler_t *h)
 		conn->ctrl.name = "sstp";
 		conn->ctrl.ifname = "";
 		conn->ctrl.mppe = MPPE_UNSET;
-		conn->ctrl.calling_station_id = _malloc(sizeof("255.255.255.255:65535"));
-		conn->ctrl.called_station_id = _malloc(sizeof("255.255.255.255"));
-		sprintf(conn->ctrl.calling_station_id, "%s:%d",
-			 inet_ntoa(addr.sin_addr), ntohs(addr.sin_port));
-		getsockname(sock, &addr, &size);
-		u_inet_ntoa(addr.sin_addr.s_addr, conn->ctrl.called_station_id);
+
+		conn->ctrl.calling_station_id = strdup(addr_buf);
+		addr.len = sizeof(addr.u);
+		getsockname(sock, &addr.u.sa, &addr.len);
+		sockaddr_ntop(&addr, addr_buf, sizeof(addr_buf));
+		conn->ctrl.called_station_id = strdup(addr_buf);
 
 		ppp_init(&conn->ppp);
 		conn->ppp.ses.ctrl = &conn->ctrl;
@@ -1833,37 +2231,9 @@ static void sstp_serv_close(struct triton_context_t *ctx)
 		SSL_CTX_free(serv->ssl_ctx);
 	serv->ssl_ctx = NULL;
 #endif
-}
 
-static int strhas(const char *s1, const char *s2, int delim)
-{
-	char *ptr;
-	int n = strlen(s2);
-
-	while ((ptr = strchr(s1, delim))) {
-		if (ptr - s1 == n && memcmp(s1, s2, n) == 0)
-			return 0;
-		s1 = ++ptr;
-	}
-	return strcmp(s1, s2);
-}
-
-static int hex2bin(const char *src, uint8_t *dst, size_t size)
-{
-	char buf[3], *err;
-	int n;
-
-	memset(buf, 0, sizeof(buf));
-	for (n = 0; n < size && src[0] && src[1]; n++) {
-		buf[0] = *src++;
-		buf[1] = *src++;
-		dst[n] = strtoul(buf, &err, 16);
-		if (err == buf || *err)
-			break;
-		if (*src == ':')
-			src++;
-	}
-	return n;
+	if (serv->addr.u.sa.sa_family == AF_UNIX && serv->addr.u.sun.sun_path[0])
+		unlink(serv->addr.u.sun.sun_path);
 }
 
 #ifdef CRYPTO_OPENSSL
@@ -1915,8 +2285,9 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 		}
 	}
 
-	opt = conf_get_opt("sstp", "ssl");
-	if (atoi(opt) > 0) {
+	opt = conf_get_opt("sstp", "accept");
+	if (opt && strhas(opt, "ssl", ',')) {
+	legacy_ssl:
 		ssl_ctx = SSL_CTX_new(SSLv23_server_method());
 		if (!ssl_ctx) {
 			log_error("sstp: SSL_CTX error: %s\n", ERR_error_string(ERR_get_error(), NULL));
@@ -1967,6 +2338,11 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 		if (servername && SSL_CTX_set_tlsext_servername_callback(ssl_ctx, ssl_servername) != 1)
 			log_warn("sstp: SSL server name check error: %s\n", ERR_error_string(ERR_get_error(), NULL));
 #endif
+	} else {
+		/* legacy option, to be removed */
+		opt = conf_get_opt("sstp", "ssl");
+		if (opt && atoi(opt) > 0)
+			goto legacy_ssl;
 	}
 
 	if (cert) {
@@ -1992,6 +2368,7 @@ error:
 
 static void load_config(void)
 {
+	int ipmode;
 	char *opt;
 
 	opt = conf_get_opt("sstp", "verbose");
@@ -2003,11 +2380,14 @@ static void load_config(void)
 	opt = conf_get_opt("sstp", "cert-hash-proto");
 	if (opt) {
 		conf_hash_protocol = 0;
-		if (strhas(opt, "sha1", ',') == 0)
+		if (strhas(opt, "sha1", ','))
 			conf_hash_protocol |= CERT_HASH_PROTOCOL_SHA1;
-		if (strhas(opt, "sha256", ',') == 0)
+		if (strhas(opt, "sha256", ','))
 			conf_hash_protocol |= CERT_HASH_PROTOCOL_SHA256;
 	}
+
+	opt = conf_get_opt("sstp", "accept");
+	conf_proxyproto = opt && strhas(opt, "proxy", ',');
 
 #ifdef CRYPTO_OPENSSL
 	ssl_load_config(&serv, conf_hostname);
@@ -2015,8 +2395,10 @@ static void load_config(void)
 #else
 	opt = "not available";
 #endif
-	if (conf_verbose)
-		log_info2("sstp: SSL support %s\n", opt);
+	if (conf_verbose) {
+		log_info2("sstp: SSL/TLS support %s, PROXY support %s\n",
+				opt, conf_proxyproto ? "enabled" : "disabled");
+	}
 
 	opt = conf_get_opt("sstp", "cert-hash-sha1");
 	if (opt) {
@@ -2045,7 +2427,9 @@ static void load_config(void)
 	conf_ip_pool = conf_get_opt("sstp", "ip-pool");
 	conf_ifname = conf_get_opt("sstp", "ifname");
 
-	switch (iprange_check_activation()) {
+	ipmode = (serv.addr.u.sa.sa_family == AF_INET && !conf_proxyproto) ?
+			iprange_check_activation() : -1;
+	switch (ipmode) {
 	case IPRANGE_DISABLED:
 		log_warn("sstp: iprange module disabled, improper IP configuration of PPP interfaces may cause kernel soft lockup\n");
 		break;
@@ -2053,6 +2437,7 @@ static void load_config(void)
 		log_warn("sstp: no IP address range defined in section [%s], incoming sstp connections will be rejected\n",
 			 IPRANGE_CONF_SECTION);
 		break;
+	case -1:
 	default:
 		/* Makes compiler happy */
 		break;
@@ -2067,49 +2452,79 @@ static struct sstp_serv_t serv = {
 
 static void sstp_init(void)
 {
-	struct sockaddr_in addr;
+	struct sockaddr_t *addr = &serv.addr;
+	struct stat st;
+	int port, value;
 	char *opt;
 
-	serv.hnd.fd = socket(PF_INET, SOCK_STREAM, 0);
+	opt = conf_get_opt("sstp", "port");
+	if (opt && atoi(opt) > 0)
+		port = atoi(opt);
+	else
+		port = SSTP_PORT;
+
+	opt = conf_get_opt("sstp", "bind");
+	if (opt && strncmp(opt, "unix:", sizeof("unix:") - 1) == 0) {
+		addr->len = sizeof(addr->u.sun);
+		addr->u.sun.sun_family = AF_UNIX;
+		snprintf(addr->u.sun.sun_path, sizeof(addr->u.sun.sun_path), "%s", opt + sizeof("unix:") - 1);
+		/* abstract socket support */
+		if (addr->u.sun.sun_path[0] == '@')
+			addr->u.sun.sun_path[0] = '\0';
+	} else if (opt && inet_pton(AF_INET6, opt, &addr->u.sin6.sin6_addr) > 0) {
+		addr->len = sizeof(addr->u.sin6);
+		addr->u.sin6.sin6_family = AF_INET6;
+		addr->u.sin6.sin6_port = htons(port);
+	} else {
+		addr->len = sizeof(addr->u.sin);		
+		addr->u.sin.sin_family = AF_INET;
+		if (!opt || inet_pton(AF_INET, opt, &addr->u.sin.sin_addr) <= 0)
+			addr->u.sin.sin_addr.s_addr = htonl(INADDR_ANY);
+		addr->u.sin.sin_port = htons(port);
+	}
+
+	serv.hnd.fd = socket(addr->u.sa.sa_family, SOCK_STREAM, 0);
 	if (serv.hnd.fd < 0) {
 		log_emerg("sstp: failed to create server socket: %s\n", strerror(errno));
 		return;
 	}
 
-	fcntl(serv.hnd.fd, F_SETFD, fcntl(serv.hnd.fd, F_GETFD) | FD_CLOEXEC);
+	value = fcntl(serv.hnd.fd, F_GETFD);
+	if (value < 0 || fcntl(serv.hnd.fd, F_SETFD, value | FD_CLOEXEC) < 0) {
+		log_emerg("sstp: failed to set socket flags: %s\n", strerror(errno));
+		goto error_close;
+	}
 
-	addr.sin_family = AF_INET;
+	if (addr->u.sa.sa_family == AF_UNIX) {
+		if (addr->u.sun.sun_path[0] &&
+		    stat(addr->u.sun.sun_path, &st) == 0 && S_ISSOCK(st.st_mode)) {
+			unlink(addr->u.sun.sun_path);
+		}
+	} else {
+		value = 1;
+		setsockopt(serv.hnd.fd, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value));
+	}
 
-	opt = conf_get_opt("sstp", "bind");
-	if (opt)
-		addr.sin_addr.s_addr = inet_addr(opt);
-	else
-		addr.sin_addr.s_addr = htonl(INADDR_ANY);
-
-	opt = conf_get_opt("sstp", "port");
-	if (opt && atoi(opt) > 0)
-		addr.sin_port = htons(atoi(opt));
-	else
-		addr.sin_port = htons(SSTP_PORT);
-
-	setsockopt(serv.hnd.fd, SOL_SOCKET, SO_REUSEADDR, &serv.hnd.fd, 4);
-
-	if (bind(serv.hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
+	if (bind(serv.hnd.fd, &addr->u.sa, addr->len) < 0) {
 		log_emerg("sstp: failed to bind socket: %s\n", strerror(errno));
-		close(serv.hnd.fd);
-		return;
+		goto error_close;
 	}
 
-	if (listen(serv.hnd.fd, 100) < 0) {
+	if (addr->u.sa.sa_family == AF_UNIX && addr->u.sun.sun_path[0] &&
+	    chmod(addr->u.sun.sun_path,
+			S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH) < 0) {
+		log_warn("sstp: failed to set socket permissions: %s\n", strerror(errno));
+	}
+
+	if (listen(serv.hnd.fd, 10) < 0) {
 		log_emerg("sstp: failed to listen socket: %s\n", strerror(errno));
-		close(serv.hnd.fd);
-		return;
+		goto error_unlink;
 	}
 
-	if (fcntl(serv.hnd.fd, F_SETFL, O_NONBLOCK)) {
+	value = fcntl(serv.hnd.fd, F_GETFL);
+	if (fcntl(serv.hnd.fd, F_SETFL, value | O_NONBLOCK)) {
 		log_emerg("sstp: failed to set nonblocking mode: %s\n", strerror(errno));
-		close(serv.hnd.fd);
-		return;
+		goto error_unlink;
 	}
 
 	conn_pool = mempool_create(sizeof(struct sstp_conn_t));
@@ -2122,6 +2537,13 @@ static void sstp_init(void)
 	triton_context_wakeup(&serv.ctx);
 
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
+	return;
+
+error_unlink:
+	if (addr->u.sa.sa_family == AF_UNIX && addr->u.sun.sun_path[0])
+		unlink(addr->u.sun.sun_path);
+error_close:
+	close(serv.hnd.fd);
 }
 
 DEFINE_INIT(20, sstp_init);
