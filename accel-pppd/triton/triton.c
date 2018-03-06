@@ -105,6 +105,7 @@ static void* triton_thread(struct _triton_thread_t *thread)
 {
 	sigset_t set;
 	int sig, need_free;
+	void *stack;
 
 	sigfillset(&set);
 	sigdelset(&set, SIGKILL);
@@ -133,8 +134,8 @@ static void* triton_thread(struct _triton_thread_t *thread)
 				if (this_ctx->before_switch)
 					this_ctx->before_switch(this_ctx, thread->ctx->bf_arg);
 
-				*(void *volatile *)alloca(thread->ctx->uc->uc_stack.ss_size + 64);
-				barrier();
+				stack = alloca(thread->ctx->uc->uc_stack.ss_size + 64);
+				asm volatile("" :: "m" (stack));
 
 				memcpy(thread_frame - thread->ctx->uc->uc_stack.ss_size, thread->ctx->uc->uc_stack.ss_sp, thread->ctx->uc->uc_stack.ss_size);
 				setcontext(thread->ctx->uc);
@@ -473,7 +474,7 @@ void triton_context_print(void)
 		printf("%p\n", ctx);
 }
 
-static ucontext_t *alloc_context()
+static ucontext_t * __attribute__((noinline)) alloc_context()
 {
 	ucontext_t *uc;
 	void *frame = __builtin_frame_address(0);
