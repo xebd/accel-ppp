@@ -836,11 +836,11 @@ static rx_handler_result_t ipoe_recv(struct sk_buff **pskb)
 			if (ipoe_check_exclude(saddr))
 				return RX_HANDLER_PASS;
 
-			if (ipoe_check_network(saddr)) {
-				if (ipoe_queue_u(skb, saddr))
-					kfree_skb(skb);
-			} else
+			if (ipoe_check_network(saddr) == 0)
 				return RX_HANDLER_PASS;
+
+			if (ipoe_queue_u(skb, saddr))
+				kfree_skb(skb);
 
 			return RX_HANDLER_CONSUMED;
 		}
@@ -850,14 +850,16 @@ static rx_handler_result_t ipoe_recv(struct sk_buff **pskb)
 
 		ip6h = ipv6_hdr(skb);
 
-		if (ip6h->saddr.s6_addr16[0] == htons(0xfe80))
+		if (ip6h->saddr.s6_addr16[0] == htons(0xfe80)) {
 			ses = ipoe_lookup_hwaddr(eth->h_source);
-		else
+			if (!ses)
+				return RX_HANDLER_PASS;
+		} else {
 			ses = ipoe_lookup_rt6(skb, &ip6h->saddr, &out);
-
-		if (!ses) {
-			kfree_skb(skb);
-			return RX_HANDLER_CONSUMED;
+			if (!ses) {
+				kfree_skb(skb);
+				return RX_HANDLER_CONSUMED;
+			}
 		}
 	} else
 		return RX_HANDLER_PASS;
