@@ -857,6 +857,12 @@ static rx_handler_result_t ipoe_recv(struct sk_buff **pskb)
 		} else {
 			ses = ipoe_lookup_rt6(skb, &ip6h->saddr, &out);
 			if (!ses) {
+				if (i->mode == 0)
+					return RX_HANDLER_PASS;
+
+				if (out == dev && i->mode == 2)
+					return RX_HANDLER_PASS;
+
 				kfree_skb(skb);
 				return RX_HANDLER_CONSUMED;
 			}
