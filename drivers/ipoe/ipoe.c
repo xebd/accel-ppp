@@ -141,8 +141,15 @@ static LIST_HEAD(ipoe_networks);
 static struct work_struct ipoe_queue_work;
 static struct sk_buff_head ipoe_queue;
 
+
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,15,0)
+static void ipoe_start_queue_work(struct timer_list *unused);
+static DEFINE_TIMER(ipoe_timer_u, ipoe_start_queue_work);
+#else
 static void ipoe_start_queue_work(unsigned long);
 static DEFINE_TIMER(ipoe_timer_u, ipoe_start_queue_work, 0, 0);
+#endif
 
 static struct ipoe_session *ipoe_lookup(__be32 addr);
 static int ipoe_do_nat(struct sk_buff *skb, __be32 new_addr, int to_peer);
@@ -545,7 +552,11 @@ static int ipoe_queue_u(struct sk_buff *skb, __u32 addr)
 	return 0;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,15,0)
+static void ipoe_start_queue_work(struct timer_list *unused)
+#else
 static void ipoe_start_queue_work(unsigned long dummy)
+#endif
 {
 	schedule_work(&ipoe_queue_work);
 }
