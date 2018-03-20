@@ -784,13 +784,12 @@ static struct ipoe_session *ipoe_lookup_rt6(struct sk_buff *skb, const struct in
 	if (!dst)
 		return NULL;
 
+	*dev = dst->dev;
+
 	if (dst->error || dst->dev->netdev_ops != &ipoe_netdev_ops) {
 		dst_release(dst);
 		return NULL;
 	}
-
-	*dev = dst->dev;
-
 	ses = netdev_priv(*dev);
 	atomic_inc(&ses->refs);
 
