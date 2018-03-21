@@ -382,8 +382,10 @@ static void chap_recv_response(struct chap_auth_data *ad, struct chap_hdr *hdr)
 					if (conf_interval)
 						triton_timer_add(ad->ppp->ses.ctrl->ctx, &ad->interval, 0);
 				}
-			} else
+			} else {
+				chap_send_success(ad, ad->id);
 				_free(name);
+			}
 
 			ad->id++;
 		}
