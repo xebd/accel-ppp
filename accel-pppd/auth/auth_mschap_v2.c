@@ -521,7 +521,6 @@ static int chap_check_response(struct chap_auth_data *ad, struct chap_response *
 	if (!passwd) {
 		if (conf_ppp_verbose)
 			log_ppp_warn("mschap-v2: user not found\n");
-		chap_send_failure(ad, conf_msg_failure, conf_msg_failure2);
 		return -1;
 	}
 
