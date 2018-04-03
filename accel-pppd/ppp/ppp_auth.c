@@ -84,11 +84,8 @@ static struct lcp_option_t *auth_init(struct ppp_lcp_t *lcp)
 
 	INIT_LIST_HEAD(&ad->auth_opt.auth_list);
 
-	if (conf_noauth) {
-		if (connect_ppp_channel(lcp->ppp))
-			return NULL;
+	if (conf_noauth)
 		return &ad->auth_opt.opt;
-	}
 
 	list_for_each_entry(h, &auth_handlers, entry) {
 		d = h->init(lcp->ppp);
@@ -285,6 +282,9 @@ static int auth_layer_start(struct ppp_layer_data_t *ld)
 	struct auth_layer_data_t *ad = container_of(ld,typeof(*ad),ld);
 
 	log_ppp_debug("auth_layer_start\n");
+
+	if (conf_noauth && connect_ppp_channel(ad->ppp))
+		return -1;
 
 	if (ad->auth_opt.auth) {
 		ad->auth_opt.started = 1;
