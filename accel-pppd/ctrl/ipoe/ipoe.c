@@ -3672,6 +3672,8 @@ static void load_config(void)
 	opt = conf_get_opt("ipoe", "verbose");
 	if (opt)
 		conf_verbose = atoi(opt);
+	else
+		conf_verbose = 0;
 
 	opt = conf_get_opt("ipoe", "lease-time");
 	if (opt)
@@ -3694,6 +3696,8 @@ static void load_config(void)
 	opt = conf_get_opt("ipoe", "unit-cache");
 	if (opt)
 		conf_unit_cache = atoi(opt);
+	else
+		conf_unit_cache = 0;
 
 	opt = conf_get_opt("ipoe", "l4-redirect-table");
 	if (opt && atoi(opt) > 0)
