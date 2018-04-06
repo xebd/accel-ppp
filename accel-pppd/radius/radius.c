@@ -660,9 +660,6 @@ struct radius_pd_t *rad_find_session_pack(struct rad_packet_t *pack)
 	if (!sessionid && !username && !port_id && port == -1 && ipaddr == 0 && !csid)
 		return NULL;
 
-	if (username && !sessionid && port == -1 && ipaddr == 0 && !port_id)
-		return NULL;
-
 	return rad_find_session(sessionid, username, port_id, port, ipaddr, csid);
 }
 

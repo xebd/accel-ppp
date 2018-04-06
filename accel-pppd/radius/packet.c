@@ -294,6 +294,13 @@ void rad_packet_free(struct rad_packet_t *pack)
 	mempool_free(pack);
 }
 
+static void print_octets(uint8_t *raw, int len, void (*print)(const char *fmt, ...))
+{
+	print(" 0x");
+	while (len--)
+		print("%02x", *raw++);
+}
+
 void rad_packet_print(struct rad_packet_t *pack, struct rad_server_t *s, void (*print)(const char *fmt, ...))
 {
 	struct rad_attr_t *attr;
@@ -356,7 +363,9 @@ void rad_packet_print(struct rad_packet_t *pack, struct rad_server_t *s, void (*
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		print(" <%s", attr->attr->name);
 
-		if (!attr->attr->array) {
+		if (attr->attr->array)
+			print_octets(attr->raw, attr->len, print);
+		else {
 			switch (attr->attr->type) {
 				case ATTR_TYPE_INTEGER:
 					val = rad_dict_find_val(attr->attr, attr->val);
@@ -384,6 +393,8 @@ void rad_packet_print(struct rad_packet_t *pack, struct rad_server_t *s, void (*
 					inet_ntop(AF_INET6, &attr->val.ipv6prefix.prefix, ip_str, sizeof(ip_str));
 					print(" %s/%i", ip_str, attr->val.ipv6prefix.len);
 					break;
+				default:
+					print_octets(attr->raw, attr->len, print);
 			}
 		}
 
