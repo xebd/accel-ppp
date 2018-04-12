@@ -435,6 +435,7 @@ int __export rad_packet_add_int(struct rad_packet_t *pack, const char *vendor_na
 	ra->attr = attr;
 	ra->len = 4;
 	ra->val.integer = val;
+	ra->raw = &ra->val;
 	list_add_tail(&ra->entry, &pack->attrs);
 	pack->len += (vendor_name ? 8 : 2) + 4;
 
@@ -498,6 +499,8 @@ int __export rad_packet_add_octets(struct rad_packet_t *pack, const char *vendor
 		memcpy(ra->val.octets, val, len);
 	}
 
+	ra->raw = ra->val.octets;
+
 	list_add_tail(&ra->entry, &pack->attrs);
 	pack->len += (vendor_name ? 8 : 2) + len;
 
@@ -521,6 +524,8 @@ int __export rad_packet_change_octets(struct rad_packet_t *pack, const char *ven
 			log_emerg("radius: out of memory\n");
 			return -1;
 		}
+
+		ra->raw = ra->val.octets;
 
 		pack->len += len - ra->len;
 		ra->len = len;
@@ -575,6 +580,7 @@ int __export rad_packet_add_str(struct rad_packet_t *pack, const char *vendor_na
 	}
 	memcpy(ra->val.string, val, len);
 	ra->val.string[len] = 0;
+	ra->raw = ra->val.string;
 	list_add_tail(&ra->entry, &pack->attrs);
 	pack->len += (vendor_name ? 8 : 2) + len;
 
@@ -598,6 +604,8 @@ int __export rad_packet_change_str(struct rad_packet_t *pack, const char *vendor
 			log_emerg("radius: out of memory\n");
 			return -1;
 		}
+
+		ra->raw = ra->val.string;
 
 		pack->len += len - ra->len;
 		ra->len = len;
@@ -645,6 +653,7 @@ int __export rad_packet_add_val(struct rad_packet_t *pack, const char *vendor_na
 	ra->attr = attr;
 	ra->len = 4;
 	ra->val = v->val;
+	ra->raw = &ra->val;
 	list_add_tail(&ra->entry, &pack->attrs);
 	pack->len += (vendor_name ? 8 : 2) + 4;
 
@@ -705,6 +714,7 @@ int rad_packet_add_ifid(struct rad_packet_t *pack, const char *vendor_name, cons
 	ra->attr = attr;
 	ra->len = 8;
 	ra->val.ifid = ifid;
+	ra->raw = &ra->val;
 	list_add_tail(&ra->entry, &pack->attrs);
 	pack->len += (vendor_name ? 8 : 2) + 8;
 
@@ -743,6 +753,7 @@ int rad_packet_add_ipv6prefix(struct rad_packet_t *pack, const char *vendor_name
 	ra->len = 18;
 	ra->val.ipv6prefix.len = len;
 	ra->val.ipv6prefix.prefix = *prefix;
+	ra->raw = &ra->val;
 	list_add_tail(&ra->entry, &pack->attrs);
 	pack->len += (vendor_name ? 8 : 2) + 18;
 
