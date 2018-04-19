@@ -834,7 +834,7 @@ static int http_send_response(struct sstp_conn_t *conn, char *proto, char *statu
 static int http_recv_request(struct sstp_conn_t *conn, uint8_t *data, int len)
 {
 	char linebuf[1024], protobuf[sizeof("HTTP/1.x")];
-	char *line, *method, *request, *proto, *host;
+	char *line, *method, *request, *proto, *host, *ptr;
 	struct buffer_t buf;
 	int ret = -1;
 
@@ -878,8 +878,10 @@ static int http_recv_request(struct sstp_conn_t *conn, uint8_t *data, int len)
 
 		if (!host && conf_hostname) {
 			host = http_getvalue(line, "Host", sizeof("Host") - 1);
-			if (host)
-				host = _strdup(host);
+			if (host) {
+				ptr = _strdup(host);
+				host = strsep(&ptr, ":");
+			}
 		}
 	}
 
@@ -2195,11 +2197,11 @@ static int sstp_connect(struct triton_md_handler_t *h)
 		conn->ctrl.ifname = "";
 		conn->ctrl.mppe = MPPE_UNSET;
 
-		conn->ctrl.calling_station_id = strdup(addr_buf);
+		conn->ctrl.calling_station_id = _strdup(addr_buf);
 		addr.len = sizeof(addr.u);
 		getsockname(sock, &addr.u.sa, &addr.len);
 		sockaddr_ntop(&addr, addr_buf, sizeof(addr_buf));
-		conn->ctrl.called_station_id = strdup(addr_buf);
+		conn->ctrl.called_station_id = _strdup(addr_buf);
 
 		ppp_init(&conn->ppp);
 		conn->ppp.ses.ctrl = &conn->ctrl;
