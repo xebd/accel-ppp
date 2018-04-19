@@ -2195,7 +2195,7 @@ static int sstp_connect(struct triton_md_handler_t *h)
 		conn->ctrl.ppp = 1;
 		conn->ctrl.name = "sstp";
 		conn->ctrl.ifname = "";
-		conn->ctrl.mppe = MPPE_UNSET;
+		conn->ctrl.mppe = MPPE_DENY;
 
 		conn->ctrl.calling_station_id = _strdup(addr_buf);
 		addr.len = sizeof(addr.u);
