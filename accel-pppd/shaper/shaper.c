@@ -189,9 +189,35 @@ static struct shaper_pd_t *find_pd(struct ap_session *ses, int create)
 	return NULL;
 }
 
-static void parse_string(const char *str, int dir, int *speed, int *burst, int *tr_id)
+static void parse_string_simple(const char *str, int dir, int *speed, int *burst, int *tr_id)
 {
 	char *endptr;
+	long int val;
+
+	val = strtol(str, &endptr, 10);
+	if (*endptr == 0) {
+		*speed = conf_multiplier * val;
+		return;
+	}
+	if (*endptr == ',') {
+		*tr_id = val;
+		val = strtol(endptr + 1, &endptr, 10);
+	}
+	if (*endptr == 0) {
+		*speed = conf_multiplier * val;
+		return;
+	} else {
+		if (*endptr == '/' || *endptr == '\\' || *endptr == ':') {
+			if (dir == ATTR_DOWN)
+				*speed = conf_multiplier * val;
+			else
+				*speed = conf_multiplier * strtol(endptr + 1, &endptr, 10);
+		}
+	}
+}
+
+static void parse_string(const char *str, int dir, int *speed, int *burst, int *tr_id)
+{
 	long int val;
 	unsigned int n1, n2, n3;
 	char *str1;
@@ -243,26 +269,7 @@ static void parse_string(const char *str, int dir, int *speed, int *burst, int *
 		return;
 #endif
 
-	val = strtol(str, &endptr, 10);
-	if (*endptr == 0) {
-		*speed = conf_multiplier * val;
-		return;
-	}
-	if (*endptr == ',') {
-		*tr_id = val;
-		val = strtol(endptr + 1, &endptr, 10);
-	}
-	if (*endptr == 0) {
-		*speed = conf_multiplier * val;
-		return;
-	} else {
-		if (*endptr == '/' || *endptr == '\\' || *endptr == ':') {
-			if (dir == ATTR_DOWN)
-				*speed = conf_multiplier * val;
-			else
-				*speed = conf_multiplier * strtol(endptr + 1, &endptr, 10);
-		}
-	}
+	parse_string_simple(str, dir, speed, burst, tr_id);
 }
 
 static struct time_range_pd_t *get_tr_pd(struct shaper_pd_t *pd, int id)
@@ -563,8 +570,8 @@ static int shaper_change_exec(const char *cmd, char * const *f, int f_cnt, void 
 	if (f_cnt < 4)
 		return CLI_CMD_SYNTAX;
 
-	parse_string(f[3], ATTR_DOWN, &down_speed, &down_burst, &tr_id);
-	parse_string(f[3], ATTR_UP, &up_speed, &up_burst, &tr_id);
+	parse_string_simple(f[3], ATTR_DOWN, &down_speed, &down_burst, &tr_id);
+	parse_string_simple(f[3], ATTR_UP, &up_speed, &up_burst, &tr_id);
 
 	//if (down_speed == 0 || up_speed == 0)
 	//	return CLI_CMD_INVAL;
