@@ -725,7 +725,8 @@ static void find_gw_addr(struct ipoe_session *ses)
 	list_for_each_entry(a, &conf_gw_addr, entry) {
 		if ((ntohl(ses->yiaddr) & (a->mask1)) == (ntohl(a->addr) & (a->mask1))) {
 			ses->router = a->addr;
-			ses->mask = a->mask;
+			if (!ses->mask)
+				ses->mask = a->mask;
 			return;
 		}
 	}
@@ -878,11 +879,15 @@ static void __ipoe_session_start(struct ipoe_session *ses)
 		ses->siaddr = ses->router;
 
 		if (ses->arph) {
-			ses->wait_start = 1;
+			if (ses->serv->opt_shared)
+				ses->wait_start = 1;
+
 			send_arp_reply(ses->serv, ses->arph);
 			_free(ses->arph);
 			ses->arph = NULL;
-		} else {
+		}
+
+		if (!ses->wait_start) {
 			__ipoe_session_activate(ses);
 			return;
 		}
@@ -952,10 +957,9 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 		ses->ipv4.addr = ses->siaddr;
 	}
 
-	if (ses->ifindex == -1) {
-		if (serv->opt_ifcfg)
-			ipaddr_add_peer(serv->ifindex, ses->router, ses->yiaddr);
-	} else
+	ses->ses.ipv4->mask = conf_ip_unnumbered ? 32 : ses->mask;
+
+	if (ses->ifindex != -1 || serv->opt_ifcfg)
 		ses->ctrl.dont_ifcfg = 0;
 
 	if (ses->serv->opt_mode == MODE_L2 && ses->serv->opt_ipv6 && sock6_fd != -1) {
@@ -975,7 +979,7 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 
 	ap_session_activate(&ses->ses);
 
-	if (ses->ifindex == -1) {
+	if (ses->ifindex == -1 && !serv->opt_ifcfg) {
 		if (!conf_ip_unnumbered)
 			iproute_add(serv->ifindex, ses->router, ses->yiaddr, 0, conf_proto, ses->mask, 0);
 		else if (!serv->opt_ifcfg)
