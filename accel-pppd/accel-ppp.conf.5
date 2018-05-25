@@ -302,6 +302,15 @@ parameter.
 .BI "weight=" n
 Specifies global weight of this server (used for load balancing)
 .TP
+.BI "ip-unnumbered=" 0|1
+Specifies default value for per-interface
+.B ip-unnumbered
+parameter.
+.br
+If ip-unnumbered=1 accel-ppp will always assign /32 mask.
+.br
+Default value is 1.
+.TP
 .BI "interface=" [re:]name[,mode=L2|L3][,shared=0|1][,start=dhcpv4|up|auto]
 .BI "" [,range=x.x.x.x/mask][,ifcfg=0|1]
 .BI "" [,relay=x.x.x.x]
@@ -312,6 +321,7 @@ Specifies global weight of this server (used for load balancing)
 .BI "" [,ipv6=0|1]
 .BI "" [,mtu=N]
 .BI "" [,weight=N]
+.BI "" [,ip-unnumbered=0|1]
 .br
 Specifies interface to listen dhcp or unclassified packets. You may specify multiple
 .B interface

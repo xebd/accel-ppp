@@ -66,6 +66,7 @@ struct ipoe_serv {
 	int opt_ifcfg:1;
 	int opt_nat:1;
 	int opt_ipv6:1;
+	int opt_ip_unnumbered:1;
 	int need_close:1;
 	int active:1;
 	int vlan_mon:1;

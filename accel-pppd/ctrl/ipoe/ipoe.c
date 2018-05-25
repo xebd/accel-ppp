@@ -957,7 +957,7 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 		ses->ipv4.addr = ses->siaddr;
 	}
 
-	ses->ses.ipv4->mask = conf_ip_unnumbered ? 32 : ses->mask;
+	ses->ses.ipv4->mask = serv->opt_ip_unnumbered ? 32 : ses->mask;
 
 	if (ses->ifindex != -1 || serv->opt_ifcfg)
 		ses->ctrl.dont_ifcfg = 0;
@@ -980,7 +980,7 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 	ap_session_activate(&ses->ses);
 
 	if (ses->ifindex == -1 && !serv->opt_ifcfg) {
-		if (!conf_ip_unnumbered)
+		if (serv->opt_ip_unnumbered == 0)
 			iproute_add(serv->ifindex, ses->router, ses->yiaddr, 0, conf_proto, ses->mask, 0);
 		else if (!serv->opt_ifcfg)
 			iproute_add(serv->ifindex, serv->opt_src ?: ses->router, ses->yiaddr, 0, conf_proto, 32, 0);
@@ -1165,7 +1165,7 @@ static void ipoe_session_finished(struct ap_session *s)
 			ipoe_nl_delete(ses->ifindex);
 	} else if (ses->started) {
 		if (!serv->opt_ifcfg) {
-			if (conf_ip_unnumbered)
+			if (serv->opt_ip_unnumbered)
 				iproute_del(serv->ifindex, ses->yiaddr, conf_proto, 32, 0);
 			else
 				iproute_del(serv->ifindex, ses->yiaddr, conf_proto, ses->mask, 0);
@@ -2808,6 +2808,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	int opt_auto = conf_auto;
 	int opt_mtu = 0;
 	int opt_weight = -1;
+	int opt_ip_unnumbered = conf_ip_unnumbered;
 #ifdef USE_LUA
 	char *opt_lua_username_func = NULL;
 #endif
@@ -2879,6 +2880,8 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 				opt_mtu = atoi(ptr1);
 			} else if (strcmp(str, "weight") == 0) {
 				opt_weight = atoi(ptr1);
+			} else if (strcmp(str, "ip-unnumbered") == 0) {
+				opt_ip_unnumbered = atoi(ptr1);
 			} else if (strcmp(str, "username") == 0) {
 				if (strcmp(ptr1, "ifname") == 0)
 					opt_username = USERNAME_IFNAME;
@@ -2985,6 +2988,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 		serv->opt_username = opt_username;
 		serv->opt_ipv6 = opt_ipv6;
 		serv->opt_weight = opt_weight;
+		serv->opt_ip_unnumbered = opt_ip_unnumbered;
 #ifdef USE_LUA
 		if (serv->opt_lua_username_func && (!opt_lua_username_func || strcmp(serv->opt_lua_username_func, opt_lua_username_func))) {
 			_free(serv->opt_lua_username_func);
@@ -3071,6 +3075,7 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 	serv->opt_ipv6 = opt_ipv6;
 	serv->opt_mtu = opt_mtu;
 	serv->opt_weight = opt_weight;
+	serv->opt_ip_unnumbered = opt_ip_unnumbered;
 #ifdef USE_LUA
 	serv->opt_lua_username_func = opt_lua_username_func;
 #endif
