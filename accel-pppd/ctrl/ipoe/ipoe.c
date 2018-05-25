@@ -1784,7 +1784,7 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 
 				if (memcmp(ses->hwaddr, pack->hdr->chaddr, ETH_ALEN)) {
 					dhcpv4_packet_ref(pack);
-					triton_context_call(&opt82_ses->ctx, (triton_event_func)mac_change_detected, pack);
+					triton_context_call(&ses->ctx, (triton_event_func)mac_change_detected, pack);
 					goto out;
 				}
 			}
@@ -1841,7 +1841,7 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 
 				if (memcmp(ses->hwaddr, pack->hdr->chaddr, ETH_ALEN)) {
 					dhcpv4_packet_ref(pack);
-					triton_context_call(&opt82_ses->ctx, (triton_event_func)mac_change_detected, pack);
+					triton_context_call(&ses->ctx, (triton_event_func)mac_change_detected, pack);
 					goto out;
 				}
 			}
