@@ -1675,7 +1675,7 @@ static void port_change_detected(struct dhcpv4_packet *pack)
 
 	log_ppp_warn("port change detected\n");
 
-	ap_session_terminate(&ses->ses, TERM_USER_REQUEST, 1);
+	ap_session_terminate(&ses->ses, TERM_NAS_REQUEST, 1);
 }
 
 static void mac_change_detected(struct dhcpv4_packet *pack)
@@ -1691,7 +1691,7 @@ static void mac_change_detected(struct dhcpv4_packet *pack)
 
 	log_ppp_warn("mac change detected\n");
 
-	ap_session_terminate(&ses->ses, TERM_USER_REQUEST, 1);
+	ap_session_terminate(&ses->ses, TERM_NAS_REQUEST, 1);
 }
 
 static int check_notify(struct ipoe_serv *serv, struct dhcpv4_packet *pack)
@@ -1773,12 +1773,20 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 				goto out;
 			}
 
-			if (conf_check_mac_change && ((opt82_ses && ses != opt82_ses) || (!opt82_ses && pack->relay_agent))) {
-				dhcpv4_packet_ref(pack);
-				triton_context_call(&ses->ctx, (triton_event_func)port_change_detected, pack);
-				if (opt82_ses)
-					triton_context_call(&opt82_ses->ctx, (triton_event_func)__ipoe_session_terminate, &opt82_ses->ses);
-				goto out;
+			if (conf_check_mac_change) {
+				if ((opt82_ses && ses != opt82_ses) || (!opt82_ses && pack->relay_agent)) {
+					dhcpv4_packet_ref(pack);
+					triton_context_call(&ses->ctx, (triton_event_func)port_change_detected, pack);
+					if (opt82_ses)
+						triton_context_call(&opt82_ses->ctx, (triton_event_func)__ipoe_session_terminate, &opt82_ses->ses);
+					goto out;
+				}
+
+				if (memcmp(ses->hwaddr, pack->hdr->chaddr, ETH_ALEN)) {
+					dhcpv4_packet_ref(pack);
+					triton_context_call(&opt82_ses->ctx, (triton_event_func)mac_change_detected, pack);
+					goto out;
+				}
 			}
 
 			dhcpv4_packet_ref(pack);
@@ -1822,12 +1830,20 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 				goto out;
 			}
 
-			if (conf_check_mac_change && ((opt82_ses && ses != opt82_ses) || (!opt82_ses && pack->relay_agent))) {
-				dhcpv4_packet_ref(pack);
-				triton_context_call(&ses->ctx, (triton_event_func)port_change_detected, pack);
-				if (opt82_ses)
-					triton_context_call(&opt82_ses->ctx, (triton_event_func)__ipoe_session_terminate, &opt82_ses->ses);
-				goto out;
+			if (conf_check_mac_change) {
+				if ((opt82_ses && ses != opt82_ses) || (!opt82_ses && pack->relay_agent)) {
+					dhcpv4_packet_ref(pack);
+					triton_context_call(&ses->ctx, (triton_event_func)port_change_detected, pack);
+					if (opt82_ses)
+						triton_context_call(&opt82_ses->ctx, (triton_event_func)__ipoe_session_terminate, &opt82_ses->ses);
+					goto out;
+				}
+
+				if (memcmp(ses->hwaddr, pack->hdr->chaddr, ETH_ALEN)) {
+					dhcpv4_packet_ref(pack);
+					triton_context_call(&opt82_ses->ctx, (triton_event_func)mac_change_detected, pack);
+					goto out;
+				}
 			}
 
 			if (serv->opt_shared == 0)
