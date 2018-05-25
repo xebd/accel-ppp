@@ -359,7 +359,7 @@ int __export ipaddr_add(int ifindex, in_addr_t addr, int mask)
 	return r;
 }
 
-int __export ipaddr_add_peer(int ifindex, in_addr_t addr, in_addr_t peer_addr)
+int __export ipaddr_add_peer(int ifindex, in_addr_t addr, in_addr_t peer_addr, int mask)
 {
 	struct ipaddr_req {
 		struct nlmsghdr n;
@@ -379,7 +379,7 @@ int __export ipaddr_add_peer(int ifindex, in_addr_t addr, in_addr_t peer_addr)
 	req.n.nlmsg_type = RTM_NEWADDR;
 	req.i.ifa_family = AF_INET;
 	req.i.ifa_index = ifindex;
-	req.i.ifa_prefixlen = 32;
+	req.i.ifa_prefixlen = mask;
 
 	addattr32(&req.n, sizeof(req), IFA_LOCAL, addr);
 	addattr32(&req.n, sizeof(req), IFA_ADDRESS, peer_addr);
