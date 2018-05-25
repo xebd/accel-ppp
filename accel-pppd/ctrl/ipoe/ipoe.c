@@ -1164,12 +1164,12 @@ static void ipoe_session_finished(struct ap_session *s)
 		} else
 			ipoe_nl_delete(ses->ifindex);
 	} else if (ses->started) {
-		if (serv->opt_ifcfg)
-			ipaddr_del(serv->ifindex, ses->router, conf_ip_unnumbered ? 32 : ses->mask);
-		else if (conf_ip_unnumbered)
-			iproute_del(serv->ifindex, ses->yiaddr, conf_proto, 32, 0);
-		else
-			iproute_del(serv->ifindex, ses->yiaddr, conf_proto, ses->mask, 0);
+		if (!serv->opt_ifcfg) {
+			if (conf_ip_unnumbered)
+				iproute_del(serv->ifindex, ses->yiaddr, conf_proto, 32, 0);
+			else
+				iproute_del(serv->ifindex, ses->yiaddr, conf_proto, ses->mask, 0);
+		}
 	}
 
 	if (ses->dhcp_addr)
