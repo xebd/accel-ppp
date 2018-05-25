@@ -104,8 +104,13 @@ void __export ap_session_accounting_started(struct ap_session *ses)
 		if (!ses->backup || !ses->backup->internal) {
 #endif
 			if (ses->ipv4) {
-				if (ipaddr_add_peer(ses->ifindex, ses->ipv4->addr, ses->ipv4->peer_addr, ses->ipv4->mask ?: 32))
-					log_ppp_error("failed to set IPv4 address: %s\n", strerror(errno));
+				if (ses->ipv4->mask == 0 || ses->ipv4->mask == 32) {
+					if (ipaddr_add_peer(ses->ifindex, ses->ipv4->addr, ses->ipv4->peer_addr))
+						log_ppp_error("failed to set IPv4 address: %s\n", strerror(errno));
+				} else {
+					if (ipaddr_add(ses->ifindex, ses->ipv4->addr, ses->ipv4->mask))
+						log_ppp_error("failed to set IPv4 address: %s\n", strerror(errno));
+				}
 			}
 
 			if (ses->ipv6) {
