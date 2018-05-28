@@ -1244,6 +1244,9 @@ static int ipoe_session_terminate(struct ap_session *s, int hard)
 {
 	struct ipoe_session *ses = container_of(s, typeof(*ses), ses);
 
+	if (ses->ifindex == -1)
+		ses->ctrl.dont_ifcfg = 1;
+
 	if (hard || !conf_soft_terminate || ses->UP || ap_shutdown)
 		ipoe_session_terminated(ses);
 	else

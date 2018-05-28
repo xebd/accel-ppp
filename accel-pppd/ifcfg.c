@@ -193,8 +193,9 @@ void __export ap_session_ifdown(struct ap_session *ses)
 	if (ses->ifindex == -1)
 		return;
 
+	strcpy(ifr.ifr_name, ses->ifname);
+
 	if (!ses->ctrl->dont_ifcfg) {
-		strcpy(ifr.ifr_name, ses->ifname);
 		ifr.ifr_flags = 0;
 		net->sock_ioctl(SIOCSIFFLAGS, &ifr);
 	}
