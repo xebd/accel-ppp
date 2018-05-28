@@ -143,11 +143,9 @@ static void* triton_thread(struct _triton_thread_t *thread)
 			} else {
 				log_debug2("thread: %p: dequeued ctx %p\n", thread, thread->ctx);
 				list_del(&thread->ctx->entry2);
-				spin_unlock(&threads_lock);
-				spin_lock(&thread->ctx->lock);
 				thread->ctx->thread = thread;
 				thread->ctx->queued = 0;
-				spin_unlock(&thread->ctx->lock);
+				spin_unlock(&threads_lock);
 				__sync_sub_and_fetch(&triton_stat.context_pending, 1);
 			}
 		} else {
