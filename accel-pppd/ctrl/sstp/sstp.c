@@ -166,6 +166,8 @@ static struct hash_t conf_hash_sha1 = { .len = 0 };
 static struct hash_t conf_hash_sha256 = { .len = 0 };
 //static int conf_bypass_auth = 0;
 static const char *conf_hostname = NULL;
+static int conf_http_mode = -1;
+static const char *conf_http_url = NULL;
 
 static mempool_t conn_pool;
 
@@ -840,72 +842,73 @@ static int http_send_response(struct sstp_conn_t *conn, char *proto, char *statu
 
 static int http_recv_request(struct sstp_conn_t *conn, uint8_t *data, int len)
 {
-	char linebuf[1024], protobuf[sizeof("HTTP/1.x")];
-	char *line, *method, *request, *proto, *host, *ptr;
+	char httpbuf[1024], linebuf[1024];
+	char *line, *method, *request, *proto, *host;
 	struct buffer_t buf;
-	int ret = -1;
+	int host_error;
 
 	buf.head = data;
 	buf.end = data + len;
 	buf_set_length(&buf, len);
 
-	line = http_getline(&buf, linebuf, sizeof(linebuf));
+	line = http_getline(&buf, httpbuf, sizeof(httpbuf));
 	if (!line)
 		return -1;
 	if (conf_verbose)
 		log_ppp_info2("recv [HTTP <%s>]\n", line);
 
-	host = NULL;
-
 	if (vstrsep(line, " ", &method, &request, &proto) < 3) {
-		http_send_response(conn, "HTTP/1.1", "400 Bad Request", NULL);
-		goto error;
+		if (conf_http_mode)
+			http_send_response(conn, "HTTP/1.1", "400 Bad Request", NULL);
+		return -1;
 	}
 	if (strncasecmp(proto, "HTTP/1", sizeof("HTTP/1") - 1) != 0) {
-		http_send_response(conn, "HTTP/1.1", "505 HTTP Version Not Supported", NULL);
-		goto error;
+		if (conf_http_mode)
+			http_send_response(conn, "HTTP/1.1", "505 HTTP Version Not Supported", NULL);
+		return -1;
 	}
-	if (strcasecmp(method, SSTP_HTTP_METHOD) != 0) {
-		http_send_response(conn, proto, "405 Method Not Allowed", NULL);
-		goto error;
-	}
-	if (strcasecmp(request, SSTP_HTTP_URI) != 0) {
-		http_send_response(conn, proto, "404 Not Found", NULL);
-		goto error;
+	if (strcasecmp(method, SSTP_HTTP_METHOD) != 0 && strcasecmp(method, "GET") != 0) {
+		if (conf_http_mode)
+			http_send_response(conn, proto, "405 Method Not Allowed", NULL);
+		return -1;
 	}
 
-	snprintf(protobuf, sizeof(protobuf), "%s", proto);
-	proto = protobuf;
-
+	host_error = conf_hostname ? -1 : 0;
 	while ((line = http_getline(&buf, linebuf, sizeof(linebuf))) != NULL) {
 		if (*line == '\0')
 			break;
 		if (conf_verbose)
 			log_ppp_info2("recv [HTTP <%s>]\n", line);
 
-		if (!host && conf_hostname) {
+		if (host_error < 0) {
 			host = http_getvalue(line, "Host", sizeof("Host") - 1);
 			if (host) {
-				ptr = _strdup(host);
-				host = strsep(&ptr, ":");
+				host = strsep(&host, ":");
+				host_error = (strcasecmp(host, conf_hostname) != 0);
 			}
 		}
 	}
 
-	if (conf_hostname && strcasecmp(host ? : "", conf_hostname) != 0) {
-		http_send_response(conn, proto, "434 Requested host unavailable", NULL);
-		goto error;
+	if (host_error) {
+		if (conf_http_mode)
+			http_send_response(conn, proto, "404 Not Found", NULL);
+		return -1;
 	}
 
-	if (http_send_response(conn, proto, "200 OK",
-			"Content-Length: 18446744073709551615\r\n")) {
-		goto error;
+	if (strcasecmp(method, SSTP_HTTP_METHOD) != 0 || strcasecmp(request, SSTP_HTTP_URI) != 0) {
+		if (conf_http_mode > 0) {
+			if (_asprintf(&line, "Location: %s%s\r\n",
+			    conf_http_url, (conf_http_mode == 2) ? request : "") < 0)
+				return -1;
+			http_send_response(conn, proto, "301 Moved Permanently", line);
+			_free(line);
+		} else if (conf_http_mode < 0)
+			http_send_response(conn, proto, "404 Not Found", NULL);
+		return -1;
 	}
-	ret = 0;
 
-error:
-	_free(host);
-	return ret;
+	return http_send_response(conn, proto, "200 OK",
+			"Content-Length: 18446744073709551615\r\n");
 }
 
 static int http_handler(struct sstp_conn_t *conn, struct buffer_t *buf)
@@ -2385,6 +2388,21 @@ static void load_config(void)
 		conf_verbose = atoi(opt) > 0;
 
 	conf_hostname = conf_get_opt("sstp", "host-name");
+
+	opt = conf_get_opt("sstp", "http-error");
+	if (opt) {
+		if (strcmp(opt, "deny") == 0)
+			conf_http_mode = 0;
+		else if (strcmp(opt, "allow") == 0)
+			conf_http_mode = -1;
+		else if (strstr(opt, "://") != NULL) {
+			conf_http_url = opt;
+			opt = strstr(opt, "://") + 3;
+			while (*opt == '/')
+				opt++;
+			conf_http_mode = strchr(opt, '/') ? 1 : 2;
+		}
+	}
 
 	opt = conf_get_opt("sstp", "cert-hash-proto");
 	if (opt) {
