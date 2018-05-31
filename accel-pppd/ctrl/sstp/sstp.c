@@ -810,11 +810,9 @@ static char *http_getvalue(char *line, const char *name, int len)
 static int http_send_response(struct sstp_conn_t *conn, char *proto, char *status, char *headers)
 {
 	char datetime[sizeof("aaa, dd bbb yyyy HH:MM:SS GMT")];
-	struct buffer_t *buf;
+	char linebuf[1024], *line;
+	struct buffer_t *buf, tmp;
 	time_t now = time(NULL);
-
-	if (conf_verbose)
-		log_ppp_info2("send [HTTP <%s %s>]\n", proto, status);
 
 	strftime(datetime, sizeof(datetime), "%a, %d %b %Y %H:%M:%S GMT", gmtime(&now));
 	buf = alloc_buf_printf(
@@ -826,6 +824,15 @@ static int http_send_response(struct sstp_conn_t *conn, char *proto, char *statu
 	if (!buf) {
 		log_error("sstp: no memory\n");
 		return -1;
+	}
+
+	if (conf_verbose) {
+		tmp = *buf;
+		while ((line = http_getline(&tmp, linebuf, sizeof(linebuf))) != NULL) {
+			if (*line == '\0')
+				break;
+			log_ppp_info2("send [HTTP <%s>]\n", line);
+		}
 	}
 
 	return sstp_send(conn, buf);
