@@ -2021,6 +2021,10 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 
 	if (ses->serv->opt_username == USERNAME_IFNAME)
 		ses->username = _strdup(serv->ifname);
+#ifdef USE_LUA
+	else if (ses->serv->opt_username == USERNAME_LUA)
+		ses->username = ipoe_lua_get_username(ses, ses->serv->opt_lua_username_func ? : conf_lua_username_func);
+#endif
 	else {
 		ses->username = _malloc(17);
 		u_inet_ntoa(saddr, ses->username);
