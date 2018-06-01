@@ -35,7 +35,7 @@ static int packet4_agent_circuit_id(lua_State *L);
 static int packet4_agent_remote_id(lua_State *L);
 static int packet4_vlan(lua_State *L);
 static int packet4_hwaddr(lua_State *L);
-
+static int packet4_ipaddr(lua_State *L);
 
 static const struct luaL_Reg packet4_lib [] = {
 	{"hdr", packet4_hdr},
@@ -46,6 +46,7 @@ static const struct luaL_Reg packet4_lib [] = {
 	{"agent_remote_id", packet4_agent_remote_id},
 	{"vlan", packet4_vlan},
 	{"hwaddr", packet4_hwaddr},
+	{"ipaddr", packet4_ipaddr},
 	{NULL, NULL}
 };
 
@@ -196,6 +197,20 @@ static int packet4_hwaddr(lua_State *L)
 
 	sprintf(str, "%02x:%02x:%02x:%02x:%02x:%02x",
 			ses->hwaddr[0], ses->hwaddr[1], ses->hwaddr[2], ses->hwaddr[3], ses->hwaddr[4], ses->hwaddr[5]);
+	lua_pushstring(L, str);
+
+	return 1;
+}
+
+static int packet4_ipaddr(lua_State *L)
+{
+	struct ipoe_session *ses = luaL_checkudata(L, 1, IPOE_PACKET4);
+	char str[20];
+
+	if (!ses)
+		return 0;
+
+	u_inet_ntoa(ses->yiaddr, str);
 	lua_pushstring(L, str);
 
 	return 1;
