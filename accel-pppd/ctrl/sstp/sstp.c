@@ -617,7 +617,7 @@ static int proxy_parse(struct buffer_t *buf, struct sockaddr_t *peer, struct soc
 			goto error;
 		}
 		peer->len = addr->len = sizeof(addr->u.sin6);
-		peer->u.sin6.sin6_family = addr->u.sin6.sin6_family = AF_INET;
+		peer->u.sin6.sin6_family = addr->u.sin6.sin6_family = AF_INET6;
 		peer->u.sin6.sin6_port = htons(atoi(src_port));
 		addr->u.sin6.sin6_port = htons(atoi(dst_port));
 	} else if (strcasecmp(ptr, PROXY_UNKNOWN) != 0)
