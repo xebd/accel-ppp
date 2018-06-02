@@ -2409,6 +2409,12 @@ static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt,
 	return CLI_CMD_OK;
 }
 
+void __export sstp_get_stat(unsigned int **starting, unsigned int **active)
+{
+	*starting = &stat_starting;
+	*active = &stat_active;
+}
+
 static void load_config(void)
 {
 	int ipmode;
