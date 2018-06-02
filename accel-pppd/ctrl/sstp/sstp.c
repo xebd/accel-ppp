@@ -59,6 +59,7 @@
 #endif
 
 #define ADDRSTR_MAXLEN (sizeof("unix:") + sizeof(((struct sockaddr_un *)0)->sun_path))
+#define FLAG_NOPORT 1
 
 enum {
 	STATE_INIT = 0,
@@ -285,24 +286,26 @@ static in_addr_t sockaddr_ipv4(struct sockaddr_t *addr)
 	}
 }
 
-static int sockaddr_ntop(struct sockaddr_t *addr, char *dst, socklen_t size)
+static int sockaddr_ntop(struct sockaddr_t *addr, char *dst, socklen_t size, int flags)
 {
 	char ipv6_buf[INET6_ADDRSTRLEN], *path, sign;
 
 	switch (addr->u.sa.sa_family) {
 	case AF_INET:
-		return snprintf(dst, size, "%s:%d",
+		return snprintf(dst, size, (flags & FLAG_NOPORT) ? "%s" : "%s:%d",
 				inet_ntoa(addr->u.sin.sin_addr), ntohs(addr->u.sin.sin_port));
 	case AF_INET6:
 		if (IN6_IS_ADDR_V4MAPPED(&addr->u.sin6.sin6_addr)) {
 			inet_ntop(AF_INET, &addr->u.sin6.sin6_addr.s6_addr32[3],
 					ipv6_buf, sizeof(ipv6_buf));
+			return snprintf(dst, size, (flags & FLAG_NOPORT) ? "%s" : "%s:%d",
+					ipv6_buf, ntohs(addr->u.sin6.sin6_port));
 		} else {
 			inet_ntop(AF_INET6, &addr->u.sin6.sin6_addr,
 					ipv6_buf, sizeof(ipv6_buf));
+			return snprintf(dst, size, (flags & FLAG_NOPORT) ? "%s" : "[%s]:%d",
+					ipv6_buf, ntohs(addr->u.sin6.sin6_port));
 		}
-		return snprintf(dst, size, "%s:%d",
-				ipv6_buf, ntohs(addr->u.sin6.sin6_port));
 	case AF_UNIX:
 		if (addr->len <= offsetof(typeof(addr->u.sun), sun_path)) {
 			path = "NULL";
@@ -733,7 +736,7 @@ static int proxy_handler(struct sstp_conn_t *conn, struct buffer_t *buf)
 	if (ip && triton_module_loaded("connlimit") && connlimit_check(cl_key_from_ipv4(ip)))
 		return -1;
 
-	sockaddr_ntop(&conn->addr, addr_buf, sizeof(addr_buf));
+	sockaddr_ntop(&conn->addr, addr_buf, sizeof(addr_buf), 0);
 	log_info2("sstp: proxy: connection from %s\n", addr_buf);
 
 	if (ip && iprange_client_check(ip)) {
@@ -742,11 +745,14 @@ static int proxy_handler(struct sstp_conn_t *conn, struct buffer_t *buf)
 	}
 
 	if (addr.u.sa.sa_family != AF_UNSPEC) {
+		_free(conn->ppp.ses.chan_name);
+		conn->ppp.ses.chan_name = _strdup(addr_buf);
+
+		sockaddr_ntop(&conn->addr, addr_buf, sizeof(addr_buf), FLAG_NOPORT);
 		_free(conn->ctrl.calling_station_id);
 		conn->ctrl.calling_station_id = _strdup(addr_buf);
-		conn->ppp.ses.chan_name = conn->ctrl.calling_station_id;
 
-		sockaddr_ntop(&addr, addr_buf, sizeof(addr_buf));
+		sockaddr_ntop(&addr, addr_buf, sizeof(addr_buf), FLAG_NOPORT);
 		_free(conn->ctrl.called_station_id);
 		conn->ctrl.called_station_id = _strdup(addr_buf);
 	}
@@ -2072,6 +2078,7 @@ static void sstp_disconnect(struct sstp_conn_t *conn)
 		free_buf(buf);
 	}
 
+	_free(conn->ppp.ses.chan_name);
 	_free(conn->ctrl.calling_station_id);
 	_free(conn->ctrl.called_station_id);
 
@@ -2136,7 +2143,7 @@ static int sstp_connect(struct triton_md_handler_t *h)
 			return 0;
 		}
 
-		sockaddr_ntop(&addr, addr_buf, sizeof(addr_buf));
+		sockaddr_ntop(&addr, addr_buf, sizeof(addr_buf), 0);
 		log_info2("sstp: new connection from %s\n", addr_buf);
 
 		if (ip && iprange_client_check(addr.u.sin.sin_addr.s_addr)) {
@@ -2207,19 +2214,21 @@ static int sstp_connect(struct triton_md_handler_t *h)
 		conn->ctrl.ifname = "";
 		conn->ctrl.mppe = MPPE_DENY;
 
-		conn->ctrl.calling_station_id = _strdup(addr_buf);
-		addr.len = sizeof(addr.u);
-		getsockname(sock, &addr.u.sa, &addr.len);
-		sockaddr_ntop(&addr, addr_buf, sizeof(addr_buf));
-		conn->ctrl.called_station_id = _strdup(addr_buf);
-
 		ppp_init(&conn->ppp);
 		conn->ppp.ses.ctrl = &conn->ctrl;
-		conn->ppp.ses.chan_name = conn->ctrl.calling_station_id;
+		conn->ppp.ses.chan_name = _strdup(addr_buf);
 		if (conf_ip_pool)
 			conn->ppp.ses.ipv4_pool_name = _strdup(conf_ip_pool);
 		if (conf_ifname)
 			conn->ppp.ses.ifname_rename = _strdup(conf_ifname);
+
+		sockaddr_ntop(&addr, addr_buf, sizeof(addr_buf), FLAG_NOPORT);
+		conn->ctrl.calling_station_id = _strdup(addr_buf);
+
+		addr.len = sizeof(addr.u);
+		getsockname(sock, &addr.u.sa, &addr.len);
+		sockaddr_ntop(&addr, addr_buf, sizeof(addr_buf), FLAG_NOPORT);
+		conn->ctrl.called_station_id = _strdup(addr_buf);
 
 		triton_context_register(&conn->ctx, &conn->ppp.ses);
 		triton_context_call(&conn->ctx, (triton_event_func)sstp_start, conn);
