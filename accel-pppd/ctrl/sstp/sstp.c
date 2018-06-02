@@ -172,6 +172,9 @@ static const char *conf_http_url = NULL;
 
 static mempool_t conn_pool;
 
+static unsigned int stat_starting;
+static unsigned int stat_active;
+
 static int sstp_write(struct triton_md_handler_t *h);
 static inline void sstp_queue(struct sstp_conn_t *conn, struct buffer_t *buf);
 static int sstp_send(struct sstp_conn_t *conn, struct buffer_t *buf);
@@ -1453,16 +1456,17 @@ static int sstp_recv_msg_call_connect_request(struct sstp_conn_t *conn, struct s
 	triton_md_register_handler(&conn->ctx, &conn->ppp_hnd);
 	triton_md_enable_handler(&conn->ppp_hnd, MD_MODE_READ);
 
-//	triton_event_fire(EV_CTRL_STARTED, &conn->ppp.ses);
-
 	if (conn->nonce)
 		read(urandom_fd, conn->nonce, SSTP_NONCE_SIZE);
 	if (sstp_send_msg_call_connect_ack(conn))
 		goto error;
 
 	conn->sstp_state = STATE_SERVER_CALL_CONNECTED_PENDING;
-	conn->ppp_state = STATE_STARTING;
+	__sync_sub_and_fetch(&stat_starting, 1);
+	__sync_add_and_fetch(&stat_active, 1);
+	triton_event_fire(EV_CTRL_STARTED, &conn->ppp.ses);
 
+	conn->ppp_state = STATE_STARTING;
 	conn->ppp.fd = slave;
 	if (establish_ppp(&conn->ppp)) {
 		conn->ppp_state = STATE_FINISHED;
@@ -1591,7 +1595,6 @@ static int sstp_recv_msg_call_disconnect(struct sstp_conn_t *conn)
 	}
 
 	conn->sstp_state = STATE_CALL_DISCONNECT_IN_PROGRESS_2;
-
 	ret = sstp_send_msg_call_disconnect_ack(conn);
 
 	conn->timeout_timer.period = SSTP_DISCONNECT_TIMEOUT_2 * 1000;
@@ -2055,12 +2058,20 @@ static void sstp_disconnect(struct sstp_conn_t *conn)
 		triton_md_unregister_handler(&conn->ppp_hnd, 1);
 
 	switch (conn->ppp_state) {
+	case STATE_INIT:
+		__sync_sub_and_fetch(&stat_starting, 1);
+		break;
 	case STATE_STARTING:
 	case STATE_STARTED:
 		conn->ppp_state = STATE_FINISHED;
+		__sync_sub_and_fetch(&stat_active, 1);
 		ap_session_terminate(&conn->ppp.ses, TERM_LOST_CARRIER, 1);
+		break;
+	case STATE_FINISHED:
+		__sync_sub_and_fetch(&stat_active, 1);
+		break;
 	}
-//	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp.ses);
+	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp.ses);
 
 	triton_context_unregister(&conn->ctx);
 
@@ -2089,7 +2100,7 @@ static void sstp_disconnect(struct sstp_conn_t *conn)
 
 static void sstp_start(struct sstp_conn_t *conn)
 {
-	log_debug("sstp: start\n");
+	log_debug("sstp: starting\n");
 
 #ifdef CRYPTO_OPENSSL
 	if (serv.ssl_ctx)
@@ -2106,7 +2117,6 @@ static void sstp_start(struct sstp_conn_t *conn)
 	triton_md_enable_handler(&conn->hnd, MD_MODE_READ);
 
 	log_info2("sstp: started\n");
-//	triton_event_fire(EV_CTRL_STARTING, &conn->ppp.ses);
 
 	return;
 
@@ -2233,6 +2243,9 @@ static int sstp_connect(struct triton_md_handler_t *h)
 		triton_context_register(&conn->ctx, &conn->ppp.ses);
 		triton_context_call(&conn->ctx, (triton_event_func)sstp_start, conn);
 		triton_context_wakeup(&conn->ctx);
+
+		__sync_add_and_fetch(&stat_starting, 1);
+		triton_event_fire(EV_CTRL_STARTING, &conn->ppp.ses);
 
 		triton_timer_add(&conn->ctx, &conn->timeout_timer, 0);
 	}
@@ -2386,6 +2399,15 @@ error:
 		BIO_free(in);
 }
 #endif
+
+static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
+{
+	cli_send(client, "sstp:\r\n");
+	cli_sendv(client,"  starting: %u\r\n", stat_starting);
+	cli_sendv(client,"  active: %u\r\n", stat_active);
+
+	return CLI_CMD_OK;
+}
 
 static void load_config(void)
 {
@@ -2571,6 +2593,8 @@ static void sstp_init(void)
 	triton_md_register_handler(&serv.ctx, &serv.hnd);
 	triton_md_enable_handler(&serv.hnd, MD_MODE_READ);
 	triton_context_wakeup(&serv.ctx);
+
+	cli_register_simple_cmd2(show_stat_exec, NULL, 2, "show", "stat");
 
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 	return;
