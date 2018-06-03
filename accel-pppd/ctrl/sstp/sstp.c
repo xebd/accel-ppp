@@ -873,12 +873,12 @@ static int http_recv_request(struct sstp_conn_t *conn, uint8_t *data, int len)
 	}
 	if (strncasecmp(proto, "HTTP/1", sizeof("HTTP/1") - 1) != 0) {
 		if (conf_http_mode)
-			http_send_response(conn, "HTTP/1.1", "505 HTTP Version Not Supported", NULL);
+			http_send_response(conn, "HTTP/1.1", "400 Bad Request", NULL);
 		return -1;
 	}
 	if (strcasecmp(method, SSTP_HTTP_METHOD) != 0 && strcasecmp(method, "GET") != 0) {
 		if (conf_http_mode)
-			http_send_response(conn, proto, "405 Method Not Allowed", NULL);
+			http_send_response(conn, proto, "501 Not Implemented", NULL);
 		return -1;
 	}
 
