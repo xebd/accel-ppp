@@ -127,8 +127,8 @@ struct sstp_conn_t {
 
 //	int bypass_auth:1;
 //	char *http_cookie;
-//	uint8_t auth_key[32];
 	uint8_t *nonce;
+	uint8_t *hlak_key;
 
 	struct buffer_t *in;
 	struct list_head out_queue;
@@ -1458,6 +1458,8 @@ static int sstp_recv_msg_call_connect_request(struct sstp_conn_t *conn, struct s
 
 	if (conn->nonce)
 		read(urandom_fd, conn->nonce, SSTP_NONCE_SIZE);
+	if (conn->hlak_key)
+		memset(conn->hlak_key, 0, SSTP_HLAK_SIZE);
 	if (sstp_send_msg_call_connect_ack(conn))
 		goto error;
 
@@ -1490,7 +1492,10 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 	struct {
 		struct sstp_ctrl_hdr hdr;
 		struct sstp_attrib_crypto_binding attr;
-	} __attribute__((packed)) *msg = (void *)hdr;
+	} __attribute__((packed)) buf, *msg = (void *)hdr;
+	uint8_t md[EVP_MAX_MD_SIZE], hash, *ptr;
+	const EVP_MD *evp;
+	unsigned int len, mdlen;
 
 	if (conf_verbose)
 		log_ppp_info2("recv [SSTP SSTP_MSG_CALL_CONNECTED]\n");
@@ -1518,25 +1523,44 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 	if (conn->nonce && memcmp(msg->attr.nonce, conn->nonce, SSTP_NONCE_SIZE) != 0)
 		return sstp_abort(conn, 0);
 
-	switch (msg->attr.hash_protocol_bitmask & conf_hash_protocol) {
-	case CERT_HASH_PROTOCOL_SHA1:
-		if (conf_hash_sha1.len == SHA_DIGEST_LENGTH &&
-		    memcmp(msg->attr.cert_hash, conf_hash_sha1.hash, SHA_DIGEST_LENGTH) != 0)
+	hash = msg->attr.hash_protocol_bitmask & conf_hash_protocol;
+	if (hash & CERT_HASH_PROTOCOL_SHA256) {
+		len = SHA256_DIGEST_LENGTH;
+		if (conf_hash_sha256.len == len &&
+		    memcmp(msg->attr.cert_hash, conf_hash_sha256.hash, len) != 0)
 			return sstp_abort(conn, 0);
-		break;
-	case CERT_HASH_PROTOCOL_SHA256:
-		if (conf_hash_sha256.len == SHA256_DIGEST_LENGTH &&
-		    memcmp(msg->attr.cert_hash, conf_hash_sha256.hash, SHA256_DIGEST_LENGTH) != 0)
+		evp = EVP_sha256();
+	} else if (hash & CERT_HASH_PROTOCOL_SHA1) {
+		len = SHA_DIGEST_LENGTH;
+		if (conf_hash_sha1.len == len &&
+		    memcmp(msg->attr.cert_hash, conf_hash_sha1.hash, len) != 0)
 			return sstp_abort(conn, 0);
-		break;
-	default:
+		evp = EVP_sha1();
+	} else
 		return sstp_abort(conn, 0);
+
+	if (conn->hlak_key) {
+		ptr = mempcpy(md, SSTP_CMK_SEED, SSTP_CMK_SEED_SIZE);
+		*ptr++ = len;
+		*ptr++ = 0;
+		*ptr++ = 1;
+		mdlen = sizeof(md);
+		HMAC(evp, conn->hlak_key, SSTP_HLAK_SIZE, md, ptr - md, md, &mdlen);
+
+		memcpy(&buf, msg, sizeof(buf));
+		memset(buf.attr.compound_mac, 0, sizeof(buf.attr.compound_mac));
+		HMAC(evp, md, mdlen, (void *)&buf, sizeof(buf), buf.attr.compound_mac, &len);
+
+		if (memcmp(msg->attr.compound_mac, buf.attr.compound_mac, len) != 0)
+			return sstp_abort(conn, 0);
 	}
 
 	conn->sstp_state = STATE_SERVER_CALL_CONNECTED;
 
 	_free(conn->nonce);
 	conn->nonce = NULL;
+	_free(conn->hlak_key);
+	conn->hlak_key = NULL;
 
 	if (conn->hello_interval) {
 		conn->hello_timer.period = conn->hello_interval * 1000;
@@ -2076,6 +2100,7 @@ static void sstp_disconnect(struct sstp_conn_t *conn)
 	triton_context_unregister(&conn->ctx);
 
 	_free(conn->nonce);
+	_free(conn->hlak_key);
 
 	if (conn->stream)
 		conn->stream->free(conn->stream);
@@ -2205,8 +2230,8 @@ static int sstp_connect(struct triton_md_handler_t *h)
 
 		//conn->bypass_auth = conf_bypass_auth;
 		//conn->http_cookie = NULL:
-		//conn->auth_key...
 		conn->nonce = _malloc(SSTP_NONCE_SIZE);
+		conn->hlak_key = _malloc(SSTP_HLAK_SIZE);
 
 		conn->in = alloc_buf(SSTP_MAX_PACKET_SIZE*2);
 		INIT_LIST_HEAD(&conn->out_queue);
@@ -2399,6 +2424,20 @@ error:
 		BIO_free(in);
 }
 #endif
+
+static void ev_mppe_keys(struct ev_mppe_keys_t *ev)
+{
+	struct ppp_t *ppp = ev->ppp;
+	struct sstp_conn_t *conn = container_of(ppp, typeof(*conn), ppp);
+
+	if (ppp->ses.ctrl->type != CTRL_TYPE_SSTP)
+		return;
+
+	if (conn->hlak_key) {
+		memcpy(conn->hlak_key, ev->recv_key, 16);
+		memcpy(conn->hlak_key + 16, ev->send_key, 16);
+	}
+}
 
 static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
 {
@@ -2602,6 +2641,7 @@ static void sstp_init(void)
 
 	cli_register_simple_cmd2(show_stat_exec, NULL, 2, "show", "stat");
 
+	triton_event_register_handler(EV_MPPE_KEYS, (triton_event_func)ev_mppe_keys);
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 	return;
 
