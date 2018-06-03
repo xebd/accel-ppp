@@ -1520,24 +1520,33 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 		return sstp_abort(conn, 0);
 	}
 
-	if (conn->nonce && memcmp(msg->attr.nonce, conn->nonce, SSTP_NONCE_SIZE) != 0)
+	if (conn->nonce && memcmp(msg->attr.nonce, conn->nonce, SSTP_NONCE_SIZE) != 0) {
+		log_ppp_error("sstp: invalid Nonce");
 		return sstp_abort(conn, 0);
+	}
 
 	hash = msg->attr.hash_protocol_bitmask & conf_hash_protocol;
 	if (hash & CERT_HASH_PROTOCOL_SHA256) {
 		len = SHA256_DIGEST_LENGTH;
 		if (conf_hash_sha256.len == len &&
-		    memcmp(msg->attr.cert_hash, conf_hash_sha256.hash, len) != 0)
+		    memcmp(msg->attr.cert_hash, conf_hash_sha256.hash, len) != 0) {
+			log_ppp_error("sstp: invalid SHA256 Cert Hash");
 			return sstp_abort(conn, 0);
+		}
 		evp = EVP_sha256();
 	} else if (hash & CERT_HASH_PROTOCOL_SHA1) {
 		len = SHA_DIGEST_LENGTH;
 		if (conf_hash_sha1.len == len &&
-		    memcmp(msg->attr.cert_hash, conf_hash_sha1.hash, len) != 0)
+		    memcmp(msg->attr.cert_hash, conf_hash_sha1.hash, len) != 0) {
+			log_ppp_error("sstp: invalid SHA1 Cert Hash");
 			return sstp_abort(conn, 0);
+		}
 		evp = EVP_sha1();
-	} else
+	} else {
+		log_ppp_error("sstp: invalid Hash Protocol 0x%02x\n",
+				msg->attr.hash_protocol_bitmask);
 		return sstp_abort(conn, 0);
+	}
 
 	if (conn->hlak_key) {
 		ptr = mempcpy(md, SSTP_CMK_SEED, SSTP_CMK_SEED_SIZE);
@@ -1551,8 +1560,10 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 		memset(buf.attr.compound_mac, 0, sizeof(buf.attr.compound_mac));
 		HMAC(evp, md, mdlen, (void *)&buf, sizeof(buf), buf.attr.compound_mac, &len);
 
-		if (memcmp(msg->attr.compound_mac, buf.attr.compound_mac, len) != 0)
+		if (memcmp(msg->attr.compound_mac, buf.attr.compound_mac, len) != 0) {
+			log_ppp_error("sstp: invalid Compound MAC");
 			return sstp_abort(conn, 0);
+		}
 	}
 
 	conn->sstp_state = STATE_SERVER_CALL_CONNECTED;
@@ -1798,7 +1809,7 @@ static int sstp_recv_packet(struct sstp_conn_t *conn, struct sstp_hdr *hdr)
 	case SSTP_MSG_ECHO_RESPONSE:
 		return sstp_recv_msg_echo_response(conn);
 	default:
-		log_ppp_warn("recv [SSTP unknown message type %04x]\n", ntohs(msg->message_type));
+		log_ppp_warn("recv [SSTP unknown message type 0x%04x]\n", ntohs(msg->message_type));
 		return 0;
 	}
 }
@@ -1811,7 +1822,7 @@ static int sstp_handler(struct sstp_conn_t *conn, struct buffer_t *buf)
 	while (buf->len >= sizeof(*hdr)) {
 		hdr = (struct sstp_hdr *)buf->head;
 		if (hdr->version != SSTP_VERSION) {
-			log_ppp_error("recv [SSTP invalid version]\n");
+			log_ppp_error("recv [SSTP invalid version 0x%02x]\n", hdr->version);
 			return -1;
 		}
 
