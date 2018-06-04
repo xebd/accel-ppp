@@ -717,6 +717,23 @@ certificate or used directly for non-ssl mode.
 .BI "host-name=" string
 If this option is given, only sstp connection to specified host and with the same TLS SNI will be allowed.
 .TP
+.BI "http-error=" deny|allow|http[s]://host.tld[/path]
+Specify http layer error behavior for non-sstp requests.
+.br
+.B deny
+- reset connection without any error response.
+.br
+.B allow
+- respond with http-specific status codes.
+.br
+.B http[s]://host.tld[/path]
+- respond with http redirect to the specified location.
+If
+.B /path
+is not specified, requested uri will be appended automatically
+.br
+Default value is allow.
+.TP
 .BI "ifname=" ifname
 If this option is given ppp interface will be renamed using
 .B ifname
