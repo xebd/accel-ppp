@@ -684,6 +684,9 @@ Specifies incoming connection acceptance mode.
 .BI "ssl-dhparam=" pemfile
 Specifies a file with DH parameters for DHE ciphers.
 .TP
+.BI "ssl-ecdh-curve=" string
+Specifies a curves for ECDHE ciphers. Value is specified in the format understood by the OpenSSL library.
+.TP
 .BI "ssl-ciphers=" string
 Specifies the enabled ciphers. The ciphers are specified in the format understood by the OpenSSL library.
 .TP
