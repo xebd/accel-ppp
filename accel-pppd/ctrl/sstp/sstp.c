@@ -2368,6 +2368,12 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 #ifdef SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS
 				SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS |
 #endif
+#ifndef OPENSSL_NO_DH
+				SSL_OP_SINGLE_DH_USE |
+#endif
+#ifndef OPENSSL_NO_ECDH
+			        SSL_OP_SINGLE_ECDH_USE |
+#endif
 				SSL_OP_NO_SSLv2 |
 				SSL_OP_NO_SSLv3 |
 				SSL_OP_NO_COMPRESSION);
@@ -2375,6 +2381,61 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 				SSL_MODE_ENABLE_PARTIAL_WRITE |
 				SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 		SSL_CTX_set_read_ahead(ssl_ctx, 1);
+
+#ifndef OPENSSL_NO_DH
+		opt = conf_get_opt("sstp", "ssl-dhparam");
+		if (opt) {
+			DH *dh;
+
+			if (BIO_read_filename(in, opt) <= 0) {
+				log_error("sstp: SSL dhparam error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+				goto error;
+			}
+
+			dh = PEM_read_bio_DHparams(in, NULL, NULL, NULL);
+			if (dh == NULL) {
+				log_error("sstp: SSL dhparam error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+				goto error;
+			}
+
+			SSL_CTX_set_tmp_dh(ssl_ctx, dh);
+			DH_free(dh);
+		}
+#endif
+
+#ifndef OPENSSL_NO_ECDH
+		opt = conf_get_opt("sstp", "ssl-ecdh-curve");
+		{
+#if defined(SSL_CTX_set1_curves_list) || defined(SSL_CTRL_SET_CURVES_LIST)
+#ifdef SSL_CTRL_SET_ECDH_AUTO
+			/* not needed in OpenSSL 1.1.0+ */
+			SSL_CTX_set_ecdh_auto(ssl_ctx, 1);
+#endif
+			if (opt && SSL_CTX_set1_curves_list(ssl_ctx, opt) == 0) {
+				log_error("sstp: SSL ecdh-curve error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+				goto error;
+			}
+#else
+			EC_KEY *ecdh;
+			int nid;
+
+			nid = OBJ_sn2nid(opt ? : "prime256v1");
+			if (nid == 0) {
+				log_error("sstp: SSL ecdh-curve error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+				goto error;
+			}
+
+			ecdh = EC_KEY_new_by_curve_name(nid);
+			if (ecdh == NULL) {
+				log_error("sstp: SSL ecdh-curve error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+				goto error;
+			}
+
+			SSL_CTX_set_tmp_ecdh(ssl_ctx, ecdh);
+			EC_KEY_free(ecdh);
+#endif
+		}
+#endif
 
 		opt = conf_get_opt("sstp", "ssl-ciphers");
 		if (opt && SSL_CTX_set_cipher_list(ssl_ctx, opt) != 1) {
