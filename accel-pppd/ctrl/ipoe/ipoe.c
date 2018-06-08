@@ -126,6 +126,7 @@ static int conf_unit_cache;
 static int conf_noauth;
 #ifdef RADIUS
 static int conf_vendor;
+static const char *conf_vendor_str;
 static int conf_attr_dhcp_client_ip;
 static int conf_attr_dhcp_router_ip;
 static int conf_attr_dhcp_mask;
@@ -2386,15 +2387,15 @@ static int ipoe_rad_send_acct_request(struct rad_plugin_t *rad, struct rad_packe
 		return 0;
 
 	if (conf_attr_dhcp_opt82 &&
-		rad_packet_add_octets(pack, NULL, conf_attr_dhcp_opt82, ses->relay_agent->data, ses->relay_agent->len))
+		rad_packet_add_octets(pack, conf_vendor_str, conf_attr_dhcp_opt82, ses->relay_agent->data, ses->relay_agent->len))
 		return -1;
 
 	if (conf_attr_dhcp_opt82_remote_id && ses->agent_remote_id &&
-		rad_packet_add_octets(pack, NULL, conf_attr_dhcp_opt82_remote_id, ses->agent_remote_id + 1, *ses->agent_remote_id))
+		rad_packet_add_octets(pack, conf_vendor_str, conf_attr_dhcp_opt82_remote_id, ses->agent_remote_id + 1, *ses->agent_remote_id))
 		return -1;
 
 	if (conf_attr_dhcp_opt82_circuit_id && ses->agent_circuit_id &&
-		rad_packet_add_octets(pack, NULL, conf_attr_dhcp_opt82_circuit_id, ses->agent_circuit_id + 1, *ses->agent_circuit_id))
+		rad_packet_add_octets(pack, conf_vendor_str, conf_attr_dhcp_opt82_circuit_id, ses->agent_circuit_id + 1, *ses->agent_circuit_id))
 		return -1;
 
 	return 0;
@@ -3329,11 +3330,13 @@ static void load_radius_attrs(void)
 {
 	const char *vendor = conf_get_opt("ipoe", "vendor");
 
+	conf_vendor_str = NULL;
 	if (vendor) {
 		struct rad_dict_vendor_t *v = rad_dict_find_vendor_name(vendor);
-		if (v)
+		if (v) {
 			conf_vendor = v->id;
-		else {
+			conf_vendor_str = vendor;
+		} else {
 			conf_vendor = atoi(vendor);
 			if (!rad_dict_find_vendor_id(conf_vendor)) {
 				conf_vendor = 0;
