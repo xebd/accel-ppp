@@ -238,7 +238,7 @@ static void ev_ses_pre_up(struct ap_session *ses)
 
 	argv[4] = ipaddr;
 	argv[5] = peer_ipaddr;
-	fill_argv(argv, pd, conf_ip_up);
+	fill_argv(argv, pd, conf_ip_pre_up);
 
 	fill_env(env, env_mem, pd);
 
