@@ -454,8 +454,8 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 		check_fork_limit(pd, &queue1);
 
 		sigchld_lock();
-	  pid = fork();
-	  if (pid > 0) {
+		pid = fork();
+		if (pid > 0) {
 			pd->hnd.pid = pid;
 			pd->hnd.handler = ip_change_handler;
 			sigchld_register_handler(&pd->hnd);
