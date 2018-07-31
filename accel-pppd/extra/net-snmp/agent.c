@@ -17,6 +17,7 @@
 #include "statL2TP.h"
 #include "statPPPOE.h"
 #include "statIPOE.h"
+#include "statSSTP.h"
 #include "terminate.h"
 #include "shutdown.h"
 #include "sessionTable.h"
@@ -108,6 +109,7 @@ static void *snmp_thread(void *a)
 	init_statL2TP();
 	init_statPPPOE();
 	init_statIPOE();
+	init_statSSTP();
 	init_terminate();
 	init_shutdown();
 	init_sessionTable();

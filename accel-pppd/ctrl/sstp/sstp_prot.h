@@ -10,6 +10,9 @@
 #define SSTP_VERSION			0x10
 #define SSTP_MAX_PACKET_SIZE		4095
 #define SSTP_NONCE_SIZE			32
+#define SSTP_HLAK_SIZE			32
+#define SSTP_CMK_SEED			"SSTP inner method derived CMK"
+#define SSTP_CMK_SEED_SIZE		29
 #define SSTP_NEGOTIOATION_TIMEOUT	60
 #define SSTP_HELLO_TIMEOUT		60
 #define SSTP_ABORT_TIMEOUT_1		3

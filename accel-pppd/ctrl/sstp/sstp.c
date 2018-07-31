@@ -59,6 +59,7 @@
 #endif
 
 #define ADDRSTR_MAXLEN (sizeof("unix:") + sizeof(((struct sockaddr_un *)0)->sun_path))
+#define FLAG_NOPORT 1
 
 enum {
 	STATE_INIT = 0,
@@ -126,8 +127,8 @@ struct sstp_conn_t {
 
 //	int bypass_auth:1;
 //	char *http_cookie;
-//	uint8_t auth_key[32];
 	uint8_t *nonce;
+	uint8_t *hlak_key;
 
 	struct buffer_t *in;
 	struct list_head out_queue;
@@ -170,6 +171,9 @@ static int conf_http_mode = -1;
 static const char *conf_http_url = NULL;
 
 static mempool_t conn_pool;
+
+static unsigned int stat_starting;
+static unsigned int stat_active;
 
 static int sstp_write(struct triton_md_handler_t *h);
 static inline void sstp_queue(struct sstp_conn_t *conn, struct buffer_t *buf);
@@ -285,24 +289,26 @@ static in_addr_t sockaddr_ipv4(struct sockaddr_t *addr)
 	}
 }
 
-static int sockaddr_ntop(struct sockaddr_t *addr, char *dst, socklen_t size)
+static int sockaddr_ntop(struct sockaddr_t *addr, char *dst, socklen_t size, int flags)
 {
 	char ipv6_buf[INET6_ADDRSTRLEN], *path, sign;
 
 	switch (addr->u.sa.sa_family) {
 	case AF_INET:
-		return snprintf(dst, size, "%s:%d",
+		return snprintf(dst, size, (flags & FLAG_NOPORT) ? "%s" : "%s:%d",
 				inet_ntoa(addr->u.sin.sin_addr), ntohs(addr->u.sin.sin_port));
 	case AF_INET6:
 		if (IN6_IS_ADDR_V4MAPPED(&addr->u.sin6.sin6_addr)) {
 			inet_ntop(AF_INET, &addr->u.sin6.sin6_addr.s6_addr32[3],
 					ipv6_buf, sizeof(ipv6_buf));
+			return snprintf(dst, size, (flags & FLAG_NOPORT) ? "%s" : "%s:%d",
+					ipv6_buf, ntohs(addr->u.sin6.sin6_port));
 		} else {
 			inet_ntop(AF_INET6, &addr->u.sin6.sin6_addr,
 					ipv6_buf, sizeof(ipv6_buf));
+			return snprintf(dst, size, (flags & FLAG_NOPORT) ? "%s" : "[%s]:%d",
+					ipv6_buf, ntohs(addr->u.sin6.sin6_port));
 		}
-		return snprintf(dst, size, "%s:%d",
-				ipv6_buf, ntohs(addr->u.sin6.sin6_port));
 	case AF_UNIX:
 		if (addr->len <= offsetof(typeof(addr->u.sun), sun_path)) {
 			path = "NULL";
@@ -733,7 +739,7 @@ static int proxy_handler(struct sstp_conn_t *conn, struct buffer_t *buf)
 	if (ip && triton_module_loaded("connlimit") && connlimit_check(cl_key_from_ipv4(ip)))
 		return -1;
 
-	sockaddr_ntop(&conn->addr, addr_buf, sizeof(addr_buf));
+	sockaddr_ntop(&conn->addr, addr_buf, sizeof(addr_buf), 0);
 	log_info2("sstp: proxy: connection from %s\n", addr_buf);
 
 	if (ip && iprange_client_check(ip)) {
@@ -742,11 +748,14 @@ static int proxy_handler(struct sstp_conn_t *conn, struct buffer_t *buf)
 	}
 
 	if (addr.u.sa.sa_family != AF_UNSPEC) {
+		_free(conn->ppp.ses.chan_name);
+		conn->ppp.ses.chan_name = _strdup(addr_buf);
+
+		sockaddr_ntop(&conn->addr, addr_buf, sizeof(addr_buf), FLAG_NOPORT);
 		_free(conn->ctrl.calling_station_id);
 		conn->ctrl.calling_station_id = _strdup(addr_buf);
-		conn->ppp.ses.chan_name = conn->ctrl.calling_station_id;
 
-		sockaddr_ntop(&addr, addr_buf, sizeof(addr_buf));
+		sockaddr_ntop(&addr, addr_buf, sizeof(addr_buf), FLAG_NOPORT);
 		_free(conn->ctrl.called_station_id);
 		conn->ctrl.called_station_id = _strdup(addr_buf);
 	}
@@ -864,12 +873,12 @@ static int http_recv_request(struct sstp_conn_t *conn, uint8_t *data, int len)
 	}
 	if (strncasecmp(proto, "HTTP/1", sizeof("HTTP/1") - 1) != 0) {
 		if (conf_http_mode)
-			http_send_response(conn, "HTTP/1.1", "505 HTTP Version Not Supported", NULL);
+			http_send_response(conn, "HTTP/1.1", "400 Bad Request", NULL);
 		return -1;
 	}
 	if (strcasecmp(method, SSTP_HTTP_METHOD) != 0 && strcasecmp(method, "GET") != 0) {
 		if (conf_http_mode)
-			http_send_response(conn, proto, "405 Method Not Allowed", NULL);
+			http_send_response(conn, proto, "501 Not Implemented", NULL);
 		return -1;
 	}
 
@@ -1447,16 +1456,19 @@ static int sstp_recv_msg_call_connect_request(struct sstp_conn_t *conn, struct s
 	triton_md_register_handler(&conn->ctx, &conn->ppp_hnd);
 	triton_md_enable_handler(&conn->ppp_hnd, MD_MODE_READ);
 
-//	triton_event_fire(EV_CTRL_STARTED, &conn->ppp.ses);
-
 	if (conn->nonce)
 		read(urandom_fd, conn->nonce, SSTP_NONCE_SIZE);
+	if (conn->hlak_key)
+		memset(conn->hlak_key, 0, SSTP_HLAK_SIZE);
 	if (sstp_send_msg_call_connect_ack(conn))
 		goto error;
 
 	conn->sstp_state = STATE_SERVER_CALL_CONNECTED_PENDING;
-	conn->ppp_state = STATE_STARTING;
+	__sync_sub_and_fetch(&stat_starting, 1);
+	__sync_add_and_fetch(&stat_active, 1);
+	triton_event_fire(EV_CTRL_STARTED, &conn->ppp.ses);
 
+	conn->ppp_state = STATE_STARTING;
 	conn->ppp.fd = slave;
 	if (establish_ppp(&conn->ppp)) {
 		conn->ppp_state = STATE_FINISHED;
@@ -1480,7 +1492,10 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 	struct {
 		struct sstp_ctrl_hdr hdr;
 		struct sstp_attrib_crypto_binding attr;
-	} __attribute__((packed)) *msg = (void *)hdr;
+	} __attribute__((packed)) buf, *msg = (void *)hdr;
+	uint8_t md[EVP_MAX_MD_SIZE], hash, *ptr;
+	const EVP_MD *evp;
+	unsigned int len, mdlen;
 
 	if (conf_verbose)
 		log_ppp_info2("recv [SSTP SSTP_MSG_CALL_CONNECTED]\n");
@@ -1505,28 +1520,58 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 		return sstp_abort(conn, 0);
 	}
 
-	if (conn->nonce && memcmp(msg->attr.nonce, conn->nonce, SSTP_NONCE_SIZE) != 0)
+	if (conn->nonce && memcmp(msg->attr.nonce, conn->nonce, SSTP_NONCE_SIZE) != 0) {
+		log_ppp_error("sstp: invalid Nonce");
 		return sstp_abort(conn, 0);
+	}
 
-	switch (msg->attr.hash_protocol_bitmask & conf_hash_protocol) {
-	case CERT_HASH_PROTOCOL_SHA1:
-		if (conf_hash_sha1.len == SHA_DIGEST_LENGTH &&
-		    memcmp(msg->attr.cert_hash, conf_hash_sha1.hash, SHA_DIGEST_LENGTH) != 0)
+	hash = msg->attr.hash_protocol_bitmask & conf_hash_protocol;
+	if (hash & CERT_HASH_PROTOCOL_SHA256) {
+		len = SHA256_DIGEST_LENGTH;
+		if (conf_hash_sha256.len == len &&
+		    memcmp(msg->attr.cert_hash, conf_hash_sha256.hash, len) != 0) {
+			log_ppp_error("sstp: invalid SHA256 Cert Hash");
 			return sstp_abort(conn, 0);
-		break;
-	case CERT_HASH_PROTOCOL_SHA256:
-		if (conf_hash_sha256.len == SHA256_DIGEST_LENGTH &&
-		    memcmp(msg->attr.cert_hash, conf_hash_sha256.hash, SHA256_DIGEST_LENGTH) != 0)
+		}
+		evp = EVP_sha256();
+	} else if (hash & CERT_HASH_PROTOCOL_SHA1) {
+		len = SHA_DIGEST_LENGTH;
+		if (conf_hash_sha1.len == len &&
+		    memcmp(msg->attr.cert_hash, conf_hash_sha1.hash, len) != 0) {
+			log_ppp_error("sstp: invalid SHA1 Cert Hash");
 			return sstp_abort(conn, 0);
-		break;
-	default:
+		}
+		evp = EVP_sha1();
+	} else {
+		log_ppp_error("sstp: invalid Hash Protocol 0x%02x\n",
+				msg->attr.hash_protocol_bitmask);
 		return sstp_abort(conn, 0);
+	}
+
+	if (conn->hlak_key) {
+		ptr = mempcpy(md, SSTP_CMK_SEED, SSTP_CMK_SEED_SIZE);
+		*ptr++ = len;
+		*ptr++ = 0;
+		*ptr++ = 1;
+		mdlen = sizeof(md);
+		HMAC(evp, conn->hlak_key, SSTP_HLAK_SIZE, md, ptr - md, md, &mdlen);
+
+		memcpy(&buf, msg, sizeof(buf));
+		memset(buf.attr.compound_mac, 0, sizeof(buf.attr.compound_mac));
+		HMAC(evp, md, mdlen, (void *)&buf, sizeof(buf), buf.attr.compound_mac, &len);
+
+		if (memcmp(msg->attr.compound_mac, buf.attr.compound_mac, len) != 0) {
+			log_ppp_error("sstp: invalid Compound MAC");
+			return sstp_abort(conn, 0);
+		}
 	}
 
 	conn->sstp_state = STATE_SERVER_CALL_CONNECTED;
 
 	_free(conn->nonce);
 	conn->nonce = NULL;
+	_free(conn->hlak_key);
+	conn->hlak_key = NULL;
 
 	if (conn->hello_interval) {
 		conn->hello_timer.period = conn->hello_interval * 1000;
@@ -1585,7 +1630,6 @@ static int sstp_recv_msg_call_disconnect(struct sstp_conn_t *conn)
 	}
 
 	conn->sstp_state = STATE_CALL_DISCONNECT_IN_PROGRESS_2;
-
 	ret = sstp_send_msg_call_disconnect_ack(conn);
 
 	conn->timeout_timer.period = SSTP_DISCONNECT_TIMEOUT_2 * 1000;
@@ -1765,7 +1809,7 @@ static int sstp_recv_packet(struct sstp_conn_t *conn, struct sstp_hdr *hdr)
 	case SSTP_MSG_ECHO_RESPONSE:
 		return sstp_recv_msg_echo_response(conn);
 	default:
-		log_ppp_warn("recv [SSTP unknown message type %04x]\n", ntohs(msg->message_type));
+		log_ppp_warn("recv [SSTP unknown message type 0x%04x]\n", ntohs(msg->message_type));
 		return 0;
 	}
 }
@@ -1778,7 +1822,7 @@ static int sstp_handler(struct sstp_conn_t *conn, struct buffer_t *buf)
 	while (buf->len >= sizeof(*hdr)) {
 		hdr = (struct sstp_hdr *)buf->head;
 		if (hdr->version != SSTP_VERSION) {
-			log_ppp_error("recv [SSTP invalid version]\n");
+			log_ppp_error("recv [SSTP invalid version 0x%02x]\n", hdr->version);
 			return -1;
 		}
 
@@ -2049,16 +2093,25 @@ static void sstp_disconnect(struct sstp_conn_t *conn)
 		triton_md_unregister_handler(&conn->ppp_hnd, 1);
 
 	switch (conn->ppp_state) {
+	case STATE_INIT:
+		__sync_sub_and_fetch(&stat_starting, 1);
+		break;
 	case STATE_STARTING:
 	case STATE_STARTED:
 		conn->ppp_state = STATE_FINISHED;
+		__sync_sub_and_fetch(&stat_active, 1);
 		ap_session_terminate(&conn->ppp.ses, TERM_LOST_CARRIER, 1);
+		break;
+	case STATE_FINISHED:
+		__sync_sub_and_fetch(&stat_active, 1);
+		break;
 	}
-//	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp.ses);
+	triton_event_fire(EV_CTRL_FINISHED, &conn->ppp.ses);
 
 	triton_context_unregister(&conn->ctx);
 
 	_free(conn->nonce);
+	_free(conn->hlak_key);
 
 	if (conn->stream)
 		conn->stream->free(conn->stream);
@@ -2072,6 +2125,7 @@ static void sstp_disconnect(struct sstp_conn_t *conn)
 		free_buf(buf);
 	}
 
+	_free(conn->ppp.ses.chan_name);
 	_free(conn->ctrl.calling_station_id);
 	_free(conn->ctrl.called_station_id);
 
@@ -2082,7 +2136,7 @@ static void sstp_disconnect(struct sstp_conn_t *conn)
 
 static void sstp_start(struct sstp_conn_t *conn)
 {
-	log_debug("sstp: start\n");
+	log_debug("sstp: starting\n");
 
 #ifdef CRYPTO_OPENSSL
 	if (serv.ssl_ctx)
@@ -2099,7 +2153,6 @@ static void sstp_start(struct sstp_conn_t *conn)
 	triton_md_enable_handler(&conn->hnd, MD_MODE_READ);
 
 	log_info2("sstp: started\n");
-//	triton_event_fire(EV_CTRL_STARTING, &conn->ppp.ses);
 
 	return;
 
@@ -2136,7 +2189,7 @@ static int sstp_connect(struct triton_md_handler_t *h)
 			return 0;
 		}
 
-		sockaddr_ntop(&addr, addr_buf, sizeof(addr_buf));
+		sockaddr_ntop(&addr, addr_buf, sizeof(addr_buf), 0);
 		log_info2("sstp: new connection from %s\n", addr_buf);
 
 		if (ip && iprange_client_check(addr.u.sin.sin_addr.s_addr)) {
@@ -2188,8 +2241,8 @@ static int sstp_connect(struct triton_md_handler_t *h)
 
 		//conn->bypass_auth = conf_bypass_auth;
 		//conn->http_cookie = NULL:
-		//conn->auth_key...
 		conn->nonce = _malloc(SSTP_NONCE_SIZE);
+		conn->hlak_key = _malloc(SSTP_HLAK_SIZE);
 
 		conn->in = alloc_buf(SSTP_MAX_PACKET_SIZE*2);
 		INIT_LIST_HEAD(&conn->out_queue);
@@ -2207,23 +2260,28 @@ static int sstp_connect(struct triton_md_handler_t *h)
 		conn->ctrl.ifname = "";
 		conn->ctrl.mppe = MPPE_DENY;
 
-		conn->ctrl.calling_station_id = _strdup(addr_buf);
-		addr.len = sizeof(addr.u);
-		getsockname(sock, &addr.u.sa, &addr.len);
-		sockaddr_ntop(&addr, addr_buf, sizeof(addr_buf));
-		conn->ctrl.called_station_id = _strdup(addr_buf);
-
 		ppp_init(&conn->ppp);
 		conn->ppp.ses.ctrl = &conn->ctrl;
-		conn->ppp.ses.chan_name = conn->ctrl.calling_station_id;
+		conn->ppp.ses.chan_name = _strdup(addr_buf);
 		if (conf_ip_pool)
 			conn->ppp.ses.ipv4_pool_name = _strdup(conf_ip_pool);
 		if (conf_ifname)
 			conn->ppp.ses.ifname_rename = _strdup(conf_ifname);
 
+		sockaddr_ntop(&addr, addr_buf, sizeof(addr_buf), FLAG_NOPORT);
+		conn->ctrl.calling_station_id = _strdup(addr_buf);
+
+		addr.len = sizeof(addr.u);
+		getsockname(sock, &addr.u.sa, &addr.len);
+		sockaddr_ntop(&addr, addr_buf, sizeof(addr_buf), FLAG_NOPORT);
+		conn->ctrl.called_station_id = _strdup(addr_buf);
+
 		triton_context_register(&conn->ctx, &conn->ppp.ses);
 		triton_context_call(&conn->ctx, (triton_event_func)sstp_start, conn);
 		triton_context_wakeup(&conn->ctx);
+
+		__sync_add_and_fetch(&stat_starting, 1);
+		triton_event_fire(EV_CTRL_STARTING, &conn->ppp.ses);
 
 		triton_timer_add(&conn->ctx, &conn->timeout_timer, 0);
 	}
@@ -2310,6 +2368,12 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 #ifdef SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS
 				SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS |
 #endif
+#ifndef OPENSSL_NO_DH
+				SSL_OP_SINGLE_DH_USE |
+#endif
+#ifndef OPENSSL_NO_ECDH
+			        SSL_OP_SINGLE_ECDH_USE |
+#endif
 				SSL_OP_NO_SSLv2 |
 				SSL_OP_NO_SSLv3 |
 				SSL_OP_NO_COMPRESSION);
@@ -2317,6 +2381,61 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 				SSL_MODE_ENABLE_PARTIAL_WRITE |
 				SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 		SSL_CTX_set_read_ahead(ssl_ctx, 1);
+
+#ifndef OPENSSL_NO_DH
+		opt = conf_get_opt("sstp", "ssl-dhparam");
+		if (opt) {
+			DH *dh;
+
+			if (BIO_read_filename(in, opt) <= 0) {
+				log_error("sstp: SSL dhparam error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+				goto error;
+			}
+
+			dh = PEM_read_bio_DHparams(in, NULL, NULL, NULL);
+			if (dh == NULL) {
+				log_error("sstp: SSL dhparam error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+				goto error;
+			}
+
+			SSL_CTX_set_tmp_dh(ssl_ctx, dh);
+			DH_free(dh);
+		}
+#endif
+
+#ifndef OPENSSL_NO_ECDH
+		opt = conf_get_opt("sstp", "ssl-ecdh-curve");
+		{
+#if defined(SSL_CTX_set1_curves_list) || defined(SSL_CTRL_SET_CURVES_LIST)
+#ifdef SSL_CTRL_SET_ECDH_AUTO
+			/* not needed in OpenSSL 1.1.0+ */
+			SSL_CTX_set_ecdh_auto(ssl_ctx, 1);
+#endif
+			if (opt && SSL_CTX_set1_curves_list(ssl_ctx, opt) == 0) {
+				log_error("sstp: SSL ecdh-curve error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+				goto error;
+			}
+#else
+			EC_KEY *ecdh;
+			int nid;
+
+			nid = OBJ_sn2nid(opt ? : "prime256v1");
+			if (nid == 0) {
+				log_error("sstp: SSL ecdh-curve error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+				goto error;
+			}
+
+			ecdh = EC_KEY_new_by_curve_name(nid);
+			if (ecdh == NULL) {
+				log_error("sstp: SSL ecdh-curve error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+				goto error;
+			}
+
+			SSL_CTX_set_tmp_ecdh(ssl_ctx, ecdh);
+			EC_KEY_free(ecdh);
+#endif
+		}
+#endif
 
 		opt = conf_get_opt("sstp", "ssl-ciphers");
 		if (opt && SSL_CTX_set_cipher_list(ssl_ctx, opt) != 1) {
@@ -2377,6 +2496,35 @@ error:
 		BIO_free(in);
 }
 #endif
+
+static void ev_mppe_keys(struct ev_mppe_keys_t *ev)
+{
+	struct ppp_t *ppp = ev->ppp;
+	struct sstp_conn_t *conn = container_of(ppp, typeof(*conn), ppp);
+
+	if (ppp->ses.ctrl->type != CTRL_TYPE_SSTP)
+		return;
+
+	if (conn->hlak_key) {
+		memcpy(conn->hlak_key, ev->recv_key, 16);
+		memcpy(conn->hlak_key + 16, ev->send_key, 16);
+	}
+}
+
+static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
+{
+	cli_send(client, "sstp:\r\n");
+	cli_sendv(client,"  starting: %u\r\n", stat_starting);
+	cli_sendv(client,"  active: %u\r\n", stat_active);
+
+	return CLI_CMD_OK;
+}
+
+void __export sstp_get_stat(unsigned int **starting, unsigned int **active)
+{
+	*starting = &stat_starting;
+	*active = &stat_active;
+}
 
 static void load_config(void)
 {
@@ -2563,6 +2711,9 @@ static void sstp_init(void)
 	triton_md_enable_handler(&serv.hnd, MD_MODE_READ);
 	triton_context_wakeup(&serv.ctx);
 
+	cli_register_simple_cmd2(show_stat_exec, NULL, 2, "show", "stat");
+
+	triton_event_register_handler(EV_MPPE_KEYS, (triton_event_func)ev_mppe_keys);
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 	return;
 
