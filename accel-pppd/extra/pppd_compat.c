@@ -238,7 +238,7 @@ static void ev_ses_pre_up(struct ap_session *ses)
 
 	argv[4] = ipaddr;
 	argv[5] = peer_ipaddr;
-	fill_argv(argv, pd, conf_ip_up);
+	fill_argv(argv, pd, conf_ip_pre_up);
 
 	fill_env(env, env_mem, pd);
 
@@ -269,7 +269,10 @@ static void ev_ses_pre_up(struct ap_session *ses)
 		sigfillset(&set);
 		pthread_sigmask(SIG_UNBLOCK, &set, NULL);
 
+		net->enter_ns();
 		execve(conf_ip_pre_up, argv, env);
+		net->exit_ns();
+
 		log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_pre_up, strerror(errno));
 		_exit(EXIT_FAILURE);
 	} else
@@ -316,7 +319,10 @@ static void ev_ses_started(struct ap_session *ses)
 		sigfillset(&set);
 		pthread_sigmask(SIG_UNBLOCK, &set, NULL);
 
+		net->enter_ns();
 		execve(conf_ip_up, argv, env);
+		net->exit_ns();
+
 		log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_up, strerror(errno));
 		_exit(EXIT_FAILURE);
 	} else
@@ -373,7 +379,10 @@ static void ev_ses_finished(struct ap_session *ses)
 			sigfillset(&set);
 			pthread_sigmask(SIG_UNBLOCK, &set, NULL);
 
+			net->enter_ns();
 			execve(conf_ip_down, argv, env);
+			net->exit_ns();
+
 			log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_down, strerror(errno));
 			_exit(EXIT_FAILURE);
 		} else
@@ -445,8 +454,8 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 		check_fork_limit(pd, &queue1);
 
 		sigchld_lock();
-	  pid = fork();
-	  if (pid > 0) {
+		pid = fork();
+		if (pid > 0) {
 			pd->hnd.pid = pid;
 			pd->hnd.handler = ip_change_handler;
 			sigchld_register_handler(&pd->hnd);
@@ -459,7 +468,10 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 			if (!ev->res)
 				ev->res = pd->res;
 		} else if (pid == 0) {
+			net->enter_ns();
 			execve(conf_ip_change, argv, env);
+			net->exit_ns();
+
 			log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_change, strerror(errno));
 			_exit(EXIT_FAILURE);
 		} else
