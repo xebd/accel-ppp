@@ -624,7 +624,12 @@ static struct triton_md_handler_t mc_hnd = {
 
 static void init(void)
 {
-	int mcg_id = genl_resolve_mcg(IPOE_GENL_NAME, IPOE_GENL_MCG_PKT, &ipoe_genl_id);
+	int mcg_id;
+
+	if (system("modprobe -q ipoe"))
+		log_warn("failed to load ipoe module\n");
+
+	mcg_id = genl_resolve_mcg(IPOE_GENL_NAME, IPOE_GENL_MCG_PKT, &ipoe_genl_id);
 	if (mcg_id == -1) {
 		log_warn("ipoe: unclassified packet handling is disabled\n");
 		rth.fd = -1;
