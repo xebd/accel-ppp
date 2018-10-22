@@ -275,8 +275,12 @@ static void ev_ses_pre_up(struct ap_session *ses)
 
 		log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_pre_up, strerror(errno));
 		_exit(EXIT_FAILURE);
-	} else
+	} else {
+		sigchld_unlock();
+		fork_queue_wakeup();
 		log_error("pppd_compat: fork: %s\n", strerror(errno));
+		ap_session_terminate(ses, TERM_NAS_ERROR, 0);
+	}
 }
 
 static void ev_ses_started(struct ap_session *ses)
@@ -325,8 +329,11 @@ static void ev_ses_started(struct ap_session *ses)
 
 		log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_up, strerror(errno));
 		_exit(EXIT_FAILURE);
-	} else
+	} else {
+		sigchld_unlock();
+		fork_queue_wakeup();
 		log_error("pppd_compat: fork: %s\n", strerror(errno));
+	}
 }
 
 static void ev_ses_finished(struct ap_session *ses)
@@ -385,8 +392,11 @@ static void ev_ses_finished(struct ap_session *ses)
 
 			log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_down, strerror(errno));
 			_exit(EXIT_FAILURE);
-		} else
+		} else {
+			sigchld_unlock();
+			fork_queue_wakeup();
 			log_error("pppd_compat: fork: %s\n", strerror(errno));
+		}
 	}
 
 	if (pd->ip_up_hnd.pid) {
@@ -474,8 +484,11 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 
 			log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_change, strerror(errno));
 			_exit(EXIT_FAILURE);
-		} else
+		} else {
+			sigchld_unlock();
+			fork_queue_wakeup();
 			log_error("pppd_compat: fork: %s\n", strerror(errno));
+		}
 	}
 }
 
