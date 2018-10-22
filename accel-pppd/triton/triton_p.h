@@ -40,6 +40,7 @@ struct _triton_context_t
 	int init;
 	int queued;
 	int wakeup;
+	int asleep;
 	int need_close;
 	int need_free;
 	int pending;

@@ -125,7 +125,7 @@ static void* triton_thread(struct _triton_thread_t *thread)
 	while (1) {
 		spin_lock(&threads_lock);
 		if (!need_config_reload && check_ctx_queue_empty(thread)) {
-			if (thread->ctx->wakeup) {
+			if (thread->ctx->asleep && thread->ctx->wakeup) {
 				log_debug2("thread: %p: wakeup ctx %p\n", thread, thread->ctx);
 				list_del(&thread->ctx->entry2);
 				spin_unlock(&threads_lock);
@@ -503,6 +503,7 @@ void __export triton_context_schedule()
 
 	spin_lock(&threads_lock);
 	if (ctx->wakeup) {
+		ctx->asleep = 0;
 		ctx->wakeup = 0;
 		spin_unlock(&threads_lock);
 		_free(ctx->uc);
@@ -510,6 +511,7 @@ void __export triton_context_schedule()
 		__sync_sub_and_fetch(&triton_stat.context_sleeping, 1);
 		log_debug2("ctx %p: exit schedule\n", ctx);
 	} else {
+		ctx->asleep = 1;
 		ctx->thread->ctx = NULL;
 		spin_unlock(&threads_lock);
 		longjmp(jmp_env, 1);
@@ -532,9 +534,19 @@ void __export triton_context_wakeup(struct triton_context_t *ud)
 		spin_unlock(&ctx->lock);
 	} else {
 		spin_lock(&threads_lock);
+		/* In some cases (pppd_compat.c), triton_context_wakeup() might
+		 * be called before triton_context_schedule(). When that
+		 * happens, we must not add 'ctx' to the wakeup_list as it is
+		 * still awake. However we need to set the 'wakeup' flag. This
+		 * way, when triton_context_schedule() will run, it will
+		 * realise that triton_context_wakeup() was already executed
+		 * and will avoid putting 'ctx' in sleep mode.
+		 */
 		ctx->wakeup = 1;
-		list_add_tail(&ctx->entry2, &ctx->thread->wakeup_list[ctx->priority]);
-		r = ctx->thread->ctx == NULL;
+		if (ctx->asleep) {
+			list_add_tail(&ctx->entry2, &ctx->thread->wakeup_list[ctx->priority]);
+			r = ctx->thread->ctx == NULL;
+		}
 		spin_unlock(&threads_lock);
 	}
 
