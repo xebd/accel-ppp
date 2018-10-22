@@ -69,7 +69,7 @@ static void ev_ses_started(struct ap_session *ses)
 	int sock;
 	int f = 1;
 
-	if (!ses->ipv6)
+	if (!ses->ipv6 || list_empty(&ses->ipv6->addr_list))
 		return;
 
 	a = list_entry(ses->ipv6->addr_list.next, typeof(*a), entry);

@@ -414,7 +414,7 @@ static void print_ip6(struct ap_session *ses, char *buf)
 	struct in6_addr addr;
 	char *ptr;
 
-	if (!ses->ipv6) {
+	if (!ses->ipv6 || list_empty(&ses->ipv6->addr_list)) {
 		*buf = 0;
 		return;
 	}

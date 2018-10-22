@@ -622,7 +622,7 @@ static void fill_env(char **env, char *mem, struct pppd_compat_pd *pd)
 	mem += write_sz + 1;
 	++n;
 
-	if (ses->ipv6) {
+	if (ses->ipv6 && !list_empty(&ses->ipv6->addr_list)) {
 		///FIXME only first address is passed to env
 		struct ipv6db_addr_t *a = list_first_entry(&ses->ipv6->addr_list,
 							   typeof(*a), entry);

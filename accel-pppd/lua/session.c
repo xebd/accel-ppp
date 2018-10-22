@@ -197,7 +197,7 @@ static int session_ipv6(lua_State *L)
 	if (!ses)
 		return 0;
 
-	if (ses->ipv6) {
+	if (ses->ipv6 && !list_empty(&ses->ipv6->addr_list)) {
 		a = list_entry(ses->ipv6->addr_list.next, typeof(*a), entry);
 		if (a->prefix_len) {
 			build_ip6_addr(a, ses->ipv6->peer_intf_id, &addr);
