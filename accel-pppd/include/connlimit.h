@@ -1,6 +1,9 @@
 #ifndef __CONNLIMIT_H
 #define __CONNLIMIT_H
 
+#include <stdint.h>
+#include <string.h>
+
 static inline uint64_t cl_key_from_ipv4(uint32_t ip)
 {
 	return ip;
