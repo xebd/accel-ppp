@@ -1,6 +1,11 @@
 #ifndef PPP_FSM_H
 #define PPP_FSM_H
 
+#include <stdint.h>
+
+#include "ppp.h"
+#include "triton.h"
+
 typedef enum {FSM_Initial=0,FSM_Starting,FSM_Closed,FSM_Stopped,FSM_Closing,FSM_Stopping,FSM_Req_Sent,FSM_Ack_Rcvd,FSM_Ack_Sent,FSM_Opened} FSM_STATE;
 /*
  *  CP (LCP, IPCP, etc.) codes.
@@ -17,8 +22,6 @@ typedef enum {FSM_Initial=0,FSM_Starting,FSM_Closed,FSM_Stopped,FSM_Closing,FSM_
 #define ECHOREP		10	/* Echo Reply */
 #define DISCARDREQ	11	/* Discard Request */
 #define	IDENT		  12	/* Identification */
-
-struct ppp_t;
 
 struct ppp_fsm_t
 {
