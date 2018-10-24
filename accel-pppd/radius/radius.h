@@ -1,8 +1,12 @@
 #ifndef __RADIUS_H
 #define __RADIUS_H
 
+#include <netinet/in.h>
 #include <stdint.h>
 #include <sys/time.h>
+
+#include "ap_session.h"
+#include "list.h"
 
 #define REQ_LENGTH_MAX 4096
 
@@ -111,8 +115,6 @@ struct rad_plugin_t
 	int (*send_access_request)(struct rad_plugin_t *, struct rad_packet_t *pack);
 	int (*send_accounting_request)(struct rad_plugin_t *, struct rad_packet_t *pack);
 };
-
-struct ap_session;
 
 void rad_register_plugin(struct ap_session *, struct rad_plugin_t *);
 
