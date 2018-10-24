@@ -1,6 +1,8 @@
 #ifndef __VLAN_MON_H
 #define __VLAN_MON_H
 
+#include <stdint.h>
+
 typedef void (*vlan_mon_notify)(int ifindex, int vid, int vlan_ifindex);
 
 void vlan_mon_register_proto(uint16_t proto, vlan_mon_notify cb);
