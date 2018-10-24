@@ -1,7 +1,11 @@
 #ifndef __AP_NET_H
 #define __AP_NET_H
 
-struct rtnl_handle;
+#include <sys/socket.h>
+#include <sys/types.h>
+
+#include "libnetlink.h"
+#include "list.h"
 
 struct ap_net {
 	struct list_head entry;
