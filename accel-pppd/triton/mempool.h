@@ -15,6 +15,8 @@ mempool_t *mempool_create2(int size);
 struct mempool_stat_t mempool_get_stat(void);
 
 #ifdef MEMDEBUG
+#include "memdebug.h"
+
 void *md_mempool_alloc(mempool_t*, const char *fname, int line);
 #define mempool_alloc(pool) md_mempool_alloc(pool, __FILE__, __LINE__)
 #define mempool_free(ptr) md_free(ptr, __FILE__, __LINE__)
