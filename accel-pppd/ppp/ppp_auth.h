@@ -1,7 +1,10 @@
 #ifndef PPP_AUTH_H
 #define PPP_AUTH_H
 
+#include <stdint.h>
+
 #include "list.h"
+#include "ppp.h"
 
 struct ppp_auth_handler_t;
 
