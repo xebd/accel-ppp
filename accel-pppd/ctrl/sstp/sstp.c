@@ -2358,7 +2358,11 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 	opt = conf_get_opt("sstp", "accept");
 	if (opt && strhas(opt, "ssl", ',')) {
 	legacy_ssl:
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+		ssl_ctx = SSL_CTX_new(TLS_server_method());
+#else
 		ssl_ctx = SSL_CTX_new(SSLv23_server_method());
+#endif
 		if (!ssl_ctx) {
 			log_error("sstp: SSL_CTX error: %s\n", ERR_error_string(ERR_get_error(), NULL));
 			goto error;
@@ -2372,7 +2376,7 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 				SSL_OP_SINGLE_DH_USE |
 #endif
 #ifndef OPENSSL_NO_ECDH
-			        SSL_OP_SINGLE_ECDH_USE |
+				SSL_OP_SINGLE_ECDH_USE |
 #endif
 				SSL_OP_NO_SSLv2 |
 				SSL_OP_NO_SSLv3 |
