@@ -1,6 +1,9 @@
 #ifndef __AP_SESSION_BACKUP_H
 #define __AP_SESSION_BACKUP_H
 
+#include <netinet/in.h>
+#include <stdint.h>
+
 #define SES_TAG_USERNAME           1
 #define SES_TAG_SESSIONID          2
 #define SES_TAG_START_TIME         3
