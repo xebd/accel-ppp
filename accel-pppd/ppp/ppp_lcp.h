@@ -4,7 +4,9 @@
 #include <stdint.h>
 
 #include "triton.h"
+#include "ppp.h"
 #include "ppp_fsm.h"
+
 /*
  * Options.
  */
