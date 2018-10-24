@@ -2,7 +2,8 @@
 #define __CLI_H
 
 #include <pcre.h>
-#include <list.h>
+
+#include "list.h"
 
 #define CLI_CMD_OK 0
 #define CLI_CMD_FAILED -1
