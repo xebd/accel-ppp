@@ -2,6 +2,8 @@
 #define __IPLINK_H
 
 #include <linux/if_link.h>
+#include <netinet/in.h>
+#include <stdint.h>
 
 typedef int (*iplink_list_func)(int index, int flags, const char *name, int iflink, int vid, void *arg);
 
