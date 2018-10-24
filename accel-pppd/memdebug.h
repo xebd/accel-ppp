@@ -21,6 +21,11 @@ int md_asprintf(const char *fname, int line, char **strp, const char *fmt, ...) 
 void md_check(void *ptr);
 
 #else
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 #define _malloc(size) malloc(size)
 #define _realloc(ptr, size) realloc(ptr, size)
 #define _free(ptr) free(ptr)
