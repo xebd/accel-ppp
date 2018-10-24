@@ -7,6 +7,7 @@
 #include <linux/if_link.h>
 #include <linux/if_addr.h>
 #include <linux/neighbour.h>
+#include <sys/types.h>
 
 #define TCA_BUF_MAX 64*1024
 #define MAX_MSG 16384
