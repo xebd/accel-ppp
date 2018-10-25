@@ -83,6 +83,7 @@ static void generate_ippool(struct in6_addr *addr, int mask, int prefix_len)
 
 	while (in6_addr_cmp(&ip, &end) <= 0) {
 		it = malloc(sizeof(*it));
+		memset(it, 0, sizeof(*it));
 		it->it.owner = &ipdb;
 		INIT_LIST_HEAD(&it->it.addr_list);
 		a = malloc(sizeof(*a));
@@ -119,6 +120,7 @@ static void generate_dppool(struct in6_addr *addr, int mask, int prefix_len)
 
 	while (in6_addr_cmp(&ip, &end) <= 0) {
 		it = malloc(sizeof(*it));
+		memset(it, 0, sizeof(*it));
 		it->it.owner = &ipdb;
 		INIT_LIST_HEAD(&it->it.prefix_list);
 		a = malloc(sizeof(*a));

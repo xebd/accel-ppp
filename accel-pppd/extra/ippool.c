@@ -264,6 +264,7 @@ static void generate_pool_p2p(struct ippool_t *p)
 			break;
 		}
 
+		memset(it, 0, sizeof(*it));
 		it->pool = p;
 		it->it.owner = &ipdb;
 		if (conf_gw_ip_address)
@@ -304,6 +305,7 @@ static void generate_pool_net30(struct ippool_t *p)
 			break;
 		}
 
+		memset(it, 0, sizeof(*it));
 		it->pool = p;
 		it->it.owner = &ipdb;
 		it->it.addr = addr[1]->addr;
@@ -443,6 +445,7 @@ static int session_restore(struct ap_session *ses, struct backup_mod *m)
 		ses->ipv4 = &it0->it;
 	else {
 		ses->ipv4 = _malloc(sizeof(*ses->ipv4));
+		memset(ses->ipv4, 0, sizeof(*ses->ipv4));
 		ses->ipv4->addr = addr;
 		ses->ipv4->peer_addr = peer_addr;
 		ses->ipv4->owner = &ipdb_b;
