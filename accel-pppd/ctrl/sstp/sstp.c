@@ -2328,14 +2328,16 @@ static int ssl_servername(SSL *ssl, int *al, void *arg)
 }
 #endif
 
-#if !defined(SSL_OP_NO_RENGOTIATION) && defined(SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS)
+#ifndef SSL_OP_NO_RENEGOTIATION
+#if OPENSSL_VERSION_NUMBER < 0x10100000L && defined(SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS)
 static void ssl_info_cb(const SSL *ssl, int where, int ret)
 {
-	if ((where & SSL_CB_HANDSHAKE_DONE) != 0) {
+	if (where & SSL_CB_HANDSHAKE_DONE) {
 		/* disable renegotiation (CVE-2009-3555) */
 		ssl->s3->flags |= SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS;
 	}
 }
+#endif
 #endif
 
 static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
@@ -2487,8 +2489,10 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 			log_warn("sstp: SSL server name check error: %s\n", ERR_error_string(ERR_get_error(), NULL));
 #endif
 
-#if !defined(SSL_OP_NO_RENGOTIATION) && defined(SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS)
+#ifndef SSL_OP_NO_RENEGOTIATION
+#if OPENSSL_VERSION_NUMBER < 0x10100000L && defined(SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS)
 		SSL_CTX_set_info_callback(ssl_ctx, ssl_info_cb);
+#endif
 #endif
 	} else {
 		/* legacy option, to be removed */
