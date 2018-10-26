@@ -24,7 +24,7 @@ static char *def_chap_secrets = "/etc/ppp/chap-secrets";
 static char *conf_chap_secrets;
 static int conf_encrypted;
 static in_addr_t conf_gw_ip_address = 0;
-static int conf_netmask;
+static int conf_netmask = 0;
 
 static void *pd_key;
 static struct ipdb_t ipdb;
@@ -762,6 +762,7 @@ static void load_config(void)
 		parse_gw_ip_address(opt);
 	else {
 		conf_gw_ip_address = 0;
+		conf_netmask = 0;
 	}
 
 	opt = conf_get_opt("chap-secrets", "encrypted");
