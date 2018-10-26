@@ -2328,6 +2328,16 @@ static int ssl_servername(SSL *ssl, int *al, void *arg)
 }
 #endif
 
+#if !defined(SSL_OP_NO_RENGOTIATION) && defined(SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS)
+static void ssl_info_cb(const SSL *ssl, int where, int ret)
+{
+	if ((where & SSL_CB_HANDSHAKE_DONE) != 0) {
+		/* disable renegotiation (CVE-2009-3555) */
+		ssl->s3->flags |= SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS;
+	}
+}
+#endif
+
 static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 {
 	SSL_CTX *old_ctx, *ssl_ctx = NULL;
@@ -2358,7 +2368,11 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 	opt = conf_get_opt("sstp", "accept");
 	if (opt && strhas(opt, "ssl", ',')) {
 	legacy_ssl:
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+		ssl_ctx = SSL_CTX_new(TLS_server_method());
+#else
 		ssl_ctx = SSL_CTX_new(SSLv23_server_method());
+#endif
 		if (!ssl_ctx) {
 			log_error("sstp: SSL_CTX error: %s\n", ERR_error_string(ERR_get_error(), NULL));
 			goto error;
@@ -2368,11 +2382,14 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 #ifdef SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS
 				SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS |
 #endif
+#ifdef SSL_OP_NO_RENGOTIATION
+				SSL_OP_NO_RENGOTIATION |
+#endif
 #ifndef OPENSSL_NO_DH
 				SSL_OP_SINGLE_DH_USE |
 #endif
 #ifndef OPENSSL_NO_ECDH
-			        SSL_OP_SINGLE_ECDH_USE |
+				SSL_OP_SINGLE_ECDH_USE |
 #endif
 				SSL_OP_NO_SSLv2 |
 				SSL_OP_NO_SSLv3 |
@@ -2468,6 +2485,10 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
 		if (servername && SSL_CTX_set_tlsext_servername_callback(ssl_ctx, ssl_servername) != 1)
 			log_warn("sstp: SSL server name check error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+#endif
+
+#if !defined(SSL_OP_NO_RENGOTIATION) && defined(SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS)
+		SSL_CTX_set_info_callback(ssl_ctx, ssl_info_cb);
 #endif
 	} else {
 		/* legacy option, to be removed */
