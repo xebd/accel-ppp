@@ -1492,10 +1492,15 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 	struct {
 		struct sstp_ctrl_hdr hdr;
 		struct sstp_attrib_crypto_binding attr;
-	} __attribute__((packed)) buf, *msg = (void *)hdr;
-	uint8_t md[EVP_MAX_MD_SIZE], hash, *ptr;
+	} __attribute__((packed)) *msg = (void *)hdr;
+	uint8_t hash;
+	unsigned int len;
+#ifdef CRYPTO_OPENSSL
+	typeof(*msg) buf;
+	uint8_t md[EVP_MAX_MD_SIZE], *ptr;
 	const EVP_MD *evp;
-	unsigned int len, mdlen;
+	unsigned int mdlen;
+#endif
 
 	if (conf_verbose)
 		log_ppp_info2("recv [SSTP SSTP_MSG_CALL_CONNECTED]\n");
@@ -1533,7 +1538,9 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 			log_ppp_error("sstp: invalid SHA256 Cert Hash");
 			return sstp_abort(conn, 0);
 		}
+#ifdef CRYPTO_OPENSSL
 		evp = EVP_sha256();
+#endif
 	} else if (hash & CERT_HASH_PROTOCOL_SHA1) {
 		len = SHA_DIGEST_LENGTH;
 		if (conf_hash_sha1.len == len &&
@@ -1541,13 +1548,16 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 			log_ppp_error("sstp: invalid SHA1 Cert Hash");
 			return sstp_abort(conn, 0);
 		}
+#ifdef CRYPTO_OPENSSL
 		evp = EVP_sha1();
+#endif
 	} else {
 		log_ppp_error("sstp: invalid Hash Protocol 0x%02x\n",
 				msg->attr.hash_protocol_bitmask);
 		return sstp_abort(conn, 0);
 	}
 
+#ifdef CRYPTO_OPENSSL
 	if (conn->hlak_key) {
 		ptr = mempcpy(md, SSTP_CMK_SEED, SSTP_CMK_SEED_SIZE);
 		*ptr++ = len;
@@ -1565,6 +1575,7 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 			return sstp_abort(conn, 0);
 		}
 	}
+#endif
 
 	conn->sstp_state = STATE_SERVER_CALL_CONNECTED;
 
@@ -2328,14 +2339,16 @@ static int ssl_servername(SSL *ssl, int *al, void *arg)
 }
 #endif
 
-#if !defined(SSL_OP_NO_RENGOTIATION) && defined(SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS)
+#ifndef SSL_OP_NO_RENEGOTIATION
+#if OPENSSL_VERSION_NUMBER < 0x10100000L && defined(SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS)
 static void ssl_info_cb(const SSL *ssl, int where, int ret)
 {
-	if ((where & SSL_CB_HANDSHAKE_DONE) != 0) {
+	if (where & SSL_CB_HANDSHAKE_DONE) {
 		/* disable renegotiation (CVE-2009-3555) */
 		ssl->s3->flags |= SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS;
 	}
 }
+#endif
 #endif
 
 static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
@@ -2487,8 +2500,10 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 			log_warn("sstp: SSL server name check error: %s\n", ERR_error_string(ERR_get_error(), NULL));
 #endif
 
-#if !defined(SSL_OP_NO_RENGOTIATION) && defined(SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS)
+#ifndef SSL_OP_NO_RENEGOTIATION
+#if OPENSSL_VERSION_NUMBER < 0x10100000L && defined(SSL3_FLAGS_NO_RENEGOTIATE_CIPHERS)
 		SSL_CTX_set_info_callback(ssl_ctx, ssl_info_cb);
+#endif
 #endif
 	} else {
 		/* legacy option, to be removed */
