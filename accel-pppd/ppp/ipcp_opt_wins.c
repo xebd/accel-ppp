@@ -151,11 +151,15 @@ static void ev_wins(struct ev_wins_t *ev)
 
 	ppp = container_of(ev->ses, typeof(*ppp), ses);
 
-	wins_opt = container_of(ipcp_find_option(ppp, &wins1_opt_hnd), typeof(*wins_opt), opt);
-	wins_opt->addr = ev->wins1;
+	if (ev->wins1) {
+		wins_opt = container_of(ipcp_find_option(ppp, &wins1_opt_hnd), typeof(*wins_opt), opt);
+		wins_opt->addr = ev->wins1;
+	}
 
-	wins_opt = container_of(ipcp_find_option(ppp, &wins2_opt_hnd), typeof(*wins_opt), opt);
-	wins_opt->addr = ev->wins2;
+	if (ev->wins2) {
+		wins_opt = container_of(ipcp_find_option(ppp, &wins2_opt_hnd), typeof(*wins_opt), opt);
+		wins_opt->addr = ev->wins2;
+	}
 }
 
 static void load_config(void)
