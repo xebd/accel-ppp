@@ -148,14 +148,13 @@ out_err:
 
 int rad_proc_attrs(struct rad_req_t *req)
 {
+	struct ev_dns_t dns = {};
 	struct rad_attr_t *attr;
 	struct ipv6db_addr_t *a;
-	struct ev_dns_t dns;
 	struct ev_wins_t wins;
 	int res = 0;
 	struct radius_pd_t *rpd = req->rpd;
 
-	dns.ses = NULL;
 	wins.ses = NULL;
 	req->rpd->acct_interim_interval = conf_acct_interim_interval;
 
