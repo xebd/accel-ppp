@@ -102,10 +102,8 @@ static int wins_recv_conf_req(struct ppp_ipcp_t *ipcp, struct ipcp_option_t *opt
 	if (opt32->hdr.len != 6)
 		return IPCP_OPT_REJ;
 
-	if (!wins_opt->addr) {
-		wins_opt->addr = opt32->val;
-		return IPCP_OPT_ACK;
-	}
+	if (!wins_opt->addr)
+		return IPCP_OPT_REJ;
 
 	if (wins_opt->addr == opt32->val)
 		return IPCP_OPT_ACK;
