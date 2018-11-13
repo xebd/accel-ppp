@@ -243,6 +243,7 @@ int main(int _argc, char **_argv)
 	int pagesize = sysconf(_SC_PAGE_SIZE);
 	int internal = 0;
 	int no_sigint = 0;
+	int no_sigsegv = 0;
 
 	argc = _argc;
 	argv = _argv;
@@ -270,6 +271,8 @@ int main(int _argc, char **_argv)
 			mprotect(conf_dump, len, PROT_READ);
 		} else if (!strcmp(argv[i], "--internal"))
 			internal = 1;
+		else if (!strcmp(argv[i], "--no-sigsegv"))
+			no_sigsegv = 1;
 		else if (!strcmp(argv[i], "--no-sigint"))
 			no_sigint = 1;
 	}
@@ -334,9 +337,11 @@ int main(int _argc, char **_argv)
 	sa.sa_mask = set;
 	sigaction(SIGUSR1, &sa, NULL);
 
-	sa.sa_handler = sigsegv;
-	sa.sa_mask = set;
-	sigaction(SIGSEGV, &sa, NULL);
+	if (!no_sigsegv) {
+		sa.sa_handler = sigsegv;
+		sa.sa_mask = set;
+		sigaction(SIGSEGV, &sa, NULL);
+	}
 
 
 	sigdelset(&set, SIGKILL);
