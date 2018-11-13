@@ -43,8 +43,6 @@ static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
 #ifdef CRYPTO_OPENSSL
-#include <openssl/ssl.h>
-
 static pthread_mutex_t *ssl_lock_cs;
 
 static unsigned long ssl_thread_id(void)
