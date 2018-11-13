@@ -356,10 +356,6 @@ int main(int _argc, char **_argv)
 
 	sigemptyset(&set);
 	sigaddset(&set, SIGTERM);
-	sigaddset(&set, SIGSEGV);
-	sigaddset(&set, SIGILL);
-	sigaddset(&set, SIGFPE);
-	sigaddset(&set, SIGBUS);
 	if (!no_sigint)
 		sigaddset(&set, SIGINT);
 
