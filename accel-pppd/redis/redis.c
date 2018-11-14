@@ -83,6 +83,7 @@ struct ap_redis_msg_t {
 	char* username;
 	char* ip_addr;
 	char* sessionid;
+	int pppoe_sessionid;
 };
 
 struct ap_redis_t {
@@ -205,6 +206,10 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext* ctx)
 		/* ip_addr */
 		if (msg->ip_addr)
 			json_object_object_add(jobj, "ip_addr", json_object_new_string(msg->ip_addr));
+
+          /* pppoe_sessionid */
+		if (msg->pppoe_sessionid)
+			json_object_object_add(jobj, "pppoe_sessionid", json_object_new_int(msg->pppoe_sessionid));
 
 		// TODO: send msg to redis instance
 		redisReply* reply;
@@ -463,6 +468,8 @@ static void ap_redis_enqueue(struct ap_session *ses, const int event)
             msg->name = _strdup(ses->ctrl->name);
         if (ses->username)
             msg->username = _strdup(ses->username);
+        if (ses->conn_pppoe_sid)
+            msg->pppoe_sessionid = ses->conn_pppoe_sid;
 
         msg->ip_addr = _strdup(tmp_addr);
 
