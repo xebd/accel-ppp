@@ -39,7 +39,6 @@ struct auth_option_t
 	struct lcp_option_t opt;
 	struct list_head auth_list;
 	struct auth_data_t *auth;
-	struct auth_data_t *peer_auth;
 	int started:1;
 };
 
@@ -142,57 +141,11 @@ static int auth_send_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, u
 
 static int auth_recv_conf_req(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)
 {
-	struct auth_option_t *auth_opt = container_of(opt,typeof(*auth_opt),opt);
-	struct lcp_opt16_t *opt16 = (struct lcp_opt16_t*)ptr;
-	struct auth_data_t *d;
-	int r;
-
-	if (auth_opt->started) {
-		if (!auth_opt->auth)
-			return LCP_OPT_REJ;
-
-		if (!ptr || ntohs(opt16->val) != auth_opt->auth->proto)
-			return LCP_OPT_NAK;
-
-		return LCP_OPT_ACK;
-	}
-
-	if (list_empty(&auth_opt->auth_list))
-		return LCP_OPT_REJ;
-
-	if (!ptr)
-		return LCP_OPT_ACK;
-
-
-	list_for_each_entry(d, &auth_opt->auth_list, entry) {
-		if (d->proto == ntohs(opt16->val)) {
-			r = d->h->recv_conf_req(lcp->ppp, d, (uint8_t*)(opt16 + 1));
-			if (r == LCP_OPT_FAIL)
-				return LCP_OPT_FAIL;
-			if (r == LCP_OPT_REJ)
-				break;
-			auth_opt->peer_auth = d;
-			return r;
-		}
-	}
-
-	list_for_each_entry(d, &auth_opt->auth_list, entry) {
-		if (d->state != LCP_OPT_NAK) {
-			auth_opt->peer_auth = d;
-			return LCP_OPT_NAK;
-		}
-	}
-
-	log_ppp_error("cann't negotiate authentication type\n");
-	return LCP_OPT_FAIL;
+	return LCP_OPT_REJ;
 }
 
 static int auth_recv_conf_ack(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, uint8_t *ptr)
 {
-	struct auth_option_t *auth_opt = container_of(opt, typeof(*auth_opt), opt);
-
-	auth_opt->peer_auth = NULL;
-
 	return 0;
 }
 
@@ -206,8 +159,6 @@ static int auth_recv_conf_nak(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, u
 		return -1;
 	}
 	auth_opt->auth->state = LCP_OPT_NAK;
-	if (auth_opt->peer_auth)
-		auth_opt->auth = auth_opt->peer_auth;
 
 	list_for_each_entry(d, &auth_opt->auth_list, entry) {
 		if (d->state != LCP_OPT_NAK)
@@ -229,8 +180,6 @@ static int auth_recv_conf_rej(struct ppp_lcp_t *lcp, struct lcp_option_t *opt, u
 	}
 
 	auth_opt->auth->state = LCP_OPT_NAK;
-	if (auth_opt->peer_auth)
-		auth_opt->auth = auth_opt->peer_auth;
 
 	list_for_each_entry(d, &auth_opt->auth_list, entry) {
 		if (d->state != LCP_OPT_NAK)
