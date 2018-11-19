@@ -22,7 +22,6 @@ struct ppp_auth_handler_t
 	const char *name;
 	struct auth_data_t* (*init)(struct ppp_t*);
 	int (*send_conf_req)(struct ppp_t*, struct auth_data_t*, uint8_t*);
-	int (*recv_conf_req)(struct ppp_t*, struct auth_data_t*, uint8_t*);
 	int (*start)(struct ppp_t*, struct auth_data_t*);
 	int (*finish)(struct ppp_t*, struct auth_data_t*);
 	void (*free)(struct ppp_t*,struct auth_data_t*);

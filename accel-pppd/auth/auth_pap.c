@@ -29,7 +29,6 @@ static int conf_any_login = 0;
 static struct auth_data_t* auth_data_init(struct ppp_t *ppp);
 static void auth_data_free(struct ppp_t*, struct auth_data_t*);
 static int lcp_send_conf_req(struct ppp_t*, struct auth_data_t*, uint8_t*);
-static int lcp_recv_conf_req(struct ppp_t*, struct auth_data_t*, uint8_t*);
 static int pap_start(struct ppp_t*, struct auth_data_t*);
 static int pap_finish(struct ppp_t*, struct auth_data_t*);
 static void pap_recv(struct ppp_handler_t*h);
@@ -64,7 +63,6 @@ static struct ppp_auth_handler_t pap= {
 	.init          = auth_data_init,
 	.free          = auth_data_free,
 	.send_conf_req = lcp_send_conf_req,
-	.recv_conf_req = lcp_recv_conf_req,
 	.start         = pap_start,
 	.finish        = pap_finish,
 };
@@ -130,11 +128,6 @@ static void pap_timeout(struct triton_timer_t *t)
 static int lcp_send_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *ptr)
 {
 	return 0;
-}
-
-static int lcp_recv_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *ptr)
-{
-	return LCP_OPT_ACK;
 }
 
 static void pap_send_ack(struct pap_auth_data *p, int id)

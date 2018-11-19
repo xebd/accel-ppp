@@ -186,13 +186,6 @@ static int lcp_send_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *
 	return 1;
 }
 
-static int lcp_recv_conf_req(struct ppp_t *ppp, struct auth_data_t *d, uint8_t *ptr)
-{
-	if (*ptr == MSCHAP_V1)
-		return LCP_OPT_ACK;
-	return LCP_OPT_NAK;
-}
-
 static void chap_send_failure(struct chap_auth_data *ad, char *mschap_error)
 {
 	struct chap_hdr *hdr = _malloc(sizeof(*hdr) + strlen(mschap_error) + 1);
@@ -514,7 +507,6 @@ static struct ppp_auth_handler_t chap = {
 	.init          = auth_data_init,
 	.free          = auth_data_free,
 	.send_conf_req = lcp_send_conf_req,
-	.recv_conf_req = lcp_recv_conf_req,
 	.start         = chap_start,
 	.finish        = chap_finish,
 	.check         = chap_check,
