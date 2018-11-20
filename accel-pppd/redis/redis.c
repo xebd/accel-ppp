@@ -84,6 +84,7 @@ struct ap_redis_msg_t {
 	char* ip_addr;
 	char* sessionid;
 	int pppoe_sessionid;
+	char* ctrl_ifname;
 };
 
 struct ap_redis_t {
@@ -211,7 +212,11 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext* ctx)
 		if (msg->pppoe_sessionid)
 			json_object_object_add(jobj, "pppoe_sessionid", json_object_new_int(msg->pppoe_sessionid));
 
-		// TODO: send msg to redis instance
+		/* ctrl_ifname */
+		if (msg->ip_addr)
+			json_object_object_add(jobj, "ctrl_ifname", json_object_new_string(msg->ctrl_ifname));
+
+          // TODO: send msg to redis instance
 		redisReply* reply;
 		reply = redisCommand(ctx, "PUBLISH %s %s", ap_redis->pubchan, json_object_to_json_string(jobj));
 
@@ -230,6 +235,7 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext* ctx)
 		free(msg->name);
 		free(msg->username);
 		free(msg->ip_addr);
+		free(msg->ctrl_ifname);
 
 		mempool_free(msg);
 	}
@@ -470,6 +476,8 @@ static void ap_redis_enqueue(struct ap_session *ses, const int event)
             msg->username = _strdup(ses->username);
         if (ses->conn_pppoe_sid)
             msg->pppoe_sessionid = ses->conn_pppoe_sid;
+        if (ses->ctrl->ifname)
+            msg->ctrl_ifname = ses->ctrl->ifname;
 
         msg->ip_addr = _strdup(tmp_addr);
 
