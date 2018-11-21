@@ -289,7 +289,7 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 		int bit = ffsl(*sid_ptr) - 1;
 
 		if (bit != -1) {
-			conn->sid = sid_idx*8*sizeof(long) + bit;
+			conn->sid = sid_idx + bit;
 			*sid_ptr &= ~(1lu << bit);
 		}
 
