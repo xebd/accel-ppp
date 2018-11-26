@@ -283,6 +283,8 @@ int main(int _argc, char **_argv)
 			sleep(1);
 	}
 
+	srandom(time(NULL));
+
 	if (triton_init(conf_file))
 		_exit(EXIT_FAILURE);
 

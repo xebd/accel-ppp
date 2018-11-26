@@ -36,7 +36,7 @@ void ppp_fsm_init(struct ppp_fsm_t *layer)
 	layer->max_configure = conf_max_configure;
 	layer->max_failure = conf_max_failure;
 
-	layer->id = 1;
+	layer->id = random();
 }
 void ppp_fsm_free(struct ppp_fsm_t *layer)
 {

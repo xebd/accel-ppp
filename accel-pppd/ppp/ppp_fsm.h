@@ -36,8 +36,8 @@ struct ppp_fsm_t
 	int max_failure;
 	int conf_failure;
 
-	int id;
-	int recv_id;
+	uint8_t id;
+	uint8_t recv_id;
 
 	//fsm handling
 	void (*layer_up)(struct ppp_fsm_t*);
