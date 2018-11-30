@@ -33,6 +33,14 @@ struct framed_route {
 	struct framed_route *next;
 };
 
+struct framed_ip6_route {
+	struct in6_addr prefix;
+	struct in6_addr gw;
+	uint32_t prio;
+	uint8_t plen;
+	struct framed_ip6_route *next;
+};
+
 struct radius_pd_t {
 	struct list_head entry;
 	struct ap_private pd;
@@ -66,6 +74,7 @@ struct radius_pd_t {
 	int termination_action;
 
 	struct framed_route *fr;
+	struct framed_ip6_route *fr6;
 
 	struct radius_auth_ctx *auth_ctx;
 

@@ -1,5 +1,7 @@
+#include <netinet/in.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -146,6 +148,125 @@ out_err:
 	log_ppp_warn("radius: failed to parse Framed-Route=%s\n", attr);
 }
 
+/* Parse a RADIUS Framed-IPv6-Route string.
+ *
+ * Full format is like: "2001:db8::/32 fc00::1 2000"
+ *
+ *   * "2001:db8::/32" is the network prefix
+ *   * "fc00::1" is the gateway address
+ *   * "2000" is the route metric (priority)
+ *
+ * The route metric can be omitted, in which case it is set to 0. This let the
+ * kernel use its own default route metric.
+ * If the route metric is not set, the gateway address can be omitted too. In
+ * this case, it's set to the unspecified address ('::'). This makes the route
+ * use the session's network interface directly rather than an IP gateway.
+ */
+static int parse_framed_ipv6_route(const char *str,
+				   struct framed_ip6_route *fr6)
+{
+	const char *ptr;
+	size_t len;
+
+	/* Skip leading spaces */
+	ptr = str + u_parse_spaces(str);
+
+	/* Get network prefix and prefix length */
+	len = u_parse_ip6cidr(ptr, &fr6->prefix, &fr6->plen);
+	if (!len) {
+		log_ppp_warn("radius: parsing Framed-IPv6-Route attribute \"%s\" failed at \"%s\":"
+			     " expecting an IPv6 network prefix in CIDR notation\n",
+			     str, ptr);
+		return -1;
+	}
+	ptr += len;
+
+	/* Check separator, unless string ends here */
+	len = u_parse_spaces(ptr);
+	if (!len && *ptr != '\0') {
+		log_ppp_warn("radius: parsing Framed-IPv6-Route attribute \"%s\" failed at \"%s\":"
+			     " missing space after network prefix\n",
+			     str, ptr);
+		return -1;
+	}
+	ptr += len;
+
+	/* If end of string, use no gateway and default metric */
+	if (*ptr == '\0') {
+		fr6->gw = in6addr_any;
+		fr6->prio = 0;
+		return 0;
+	}
+
+	/* Get the gateway address */
+	len = u_parse_ip6addr(ptr, &fr6->gw);
+	if (!len) {
+		log_ppp_warn("radius: parsing Framed-IPv6-Route attribute \"%s\" failed at \"%s\":"
+			     " expecting a gateway IPv6 address\n",
+			     str, ptr);
+		return -1;
+	}
+	ptr += len;
+
+	/* Again, separator or end of string required */
+	len = u_parse_spaces(ptr);
+	if (!len && *ptr != '\0') {
+		log_ppp_warn("radius: parsing Framed-IPv6-Route attribute \"%s\" failed at \"%s\":"
+			     " missing space after gateway address\n",
+			     str, ptr);
+		return -1;
+	}
+	ptr += len;
+
+	/* If end of string, use default metric */
+	if (*ptr == '\0') {
+		fr6->prio = 0;
+		return 0;
+	}
+
+	/* Get route metric */
+	len = u_parse_u32(ptr, &fr6->prio);
+	if (!len) {
+		log_ppp_warn("radius: parsing Framed-IPv6-Route attribute \"%s\" failed at \"%s\":"
+			     " expecting a route metric between 0 and %u\n",
+			     str, ptr, UINT32_MAX);
+		return -1;
+	}
+	ptr += len;
+
+	/* Now this must be the end of the string */
+	if (!u_parse_endstr(ptr)) {
+		log_ppp_warn("radius: parsing Framed-IPv6-Route attribute \"%s\" failed at \"%s\":"
+			     " unexpected data after route metric\n",
+			     str, ptr + u_parse_spaces(ptr));
+		return -1;
+	}
+
+	return 0;
+}
+
+static int rad_add_framed_ipv6_route(const char *str, struct radius_pd_t *rpd)
+{
+	struct framed_ip6_route *fr6;
+
+	fr6 = _malloc(sizeof(*fr6));
+	if (!fr6)
+		goto err;
+
+	if (parse_framed_ipv6_route(str, fr6) < 0)
+		goto err_fr6;
+
+	fr6->next = rpd->fr6;
+	rpd->fr6 = fr6;
+
+	return 0;
+
+err_fr6:
+	_free(fr6);
+err:
+	return -1;
+}
+
 int rad_proc_attrs(struct rad_req_t *req)
 {
 	struct ev_wins_t wins = {};
@@ -248,6 +369,9 @@ int rad_proc_attrs(struct rad_req_t *req)
 				break;
 			case Framed_Route:
 				parse_framed_route(rpd, attr->val.string);
+				break;
+			case Framed_IPv6_Route:
+				rad_add_framed_ipv6_route(attr->val.string, rpd);
 				break;
 		}
 	}
@@ -444,11 +568,24 @@ static void ses_acct_start(struct ap_session *ses)
 static void ses_started(struct ap_session *ses)
 {
 	struct radius_pd_t *rpd = find_pd(ses);
+	struct framed_ip6_route *fr6;
 	struct framed_route *fr;
 
 	if (rpd->session_timeout.expire_tv.tv_sec) {
 		rpd->session_timeout.expire = session_timeout;
 		triton_timer_add(ses->ctrl->ctx, &rpd->session_timeout, 0);
+	}
+
+	for (fr6 = rpd->fr6; fr6; fr6 = fr6->next) {
+		bool gw_spec = !IN6_IS_ADDR_UNSPECIFIED(&fr6->gw);
+		char nbuf[INET6_ADDRSTRLEN];
+		char gwbuf[INET6_ADDRSTRLEN];
+
+		if (ip6route_add(gw_spec ? 0 : rpd->ses->ifindex, &fr6->prefix, fr6->plen, gw_spec ? &fr6->gw : NULL, 3, fr6->prio)) {
+			log_ppp_warn("radius: failed to add route %s/%hhu %s %u\n",
+				     u_ip6str(&fr6->prefix, nbuf), fr6->plen,
+				     u_ip6str(&fr6->gw, gwbuf), fr6->prio);
+		}
 	}
 
 	for (fr = rpd->fr; fr; fr = fr->next) {
@@ -469,6 +606,7 @@ static void ses_started(struct ap_session *ses)
 static void ses_finishing(struct ap_session *ses)
 {
 	struct radius_pd_t *rpd = find_pd(ses);
+	struct framed_ip6_route *fr6;
 	struct framed_route *fr;
 
 	if (rpd->auth_ctx) {
@@ -476,6 +614,16 @@ static void ses_finishing(struct ap_session *ses)
 		rad_req_free(rpd->auth_ctx->req);
 		mempool_free(rpd->auth_ctx);
 		rpd->auth_ctx = NULL;
+	}
+
+	for (fr6 = rpd->fr6; fr6; fr6 = fr6->next) {
+		/* Routes that have an unspecified gateway have been defined
+		 * using the session's virtual network interface. No need to
+		 * delete those routes here: kernel automatically drops them
+		 * when the interface is removed.
+		 */
+		if (!IN6_IS_ADDR_UNSPECIFIED(&fr6->gw))
+			ip6route_del(0, &fr6->prefix, fr6->plen, &fr6->gw, 3, fr6->prio);
 	}
 
 	for (fr = rpd->fr; fr; fr = fr->next) {
@@ -492,6 +640,7 @@ static void ses_finished(struct ap_session *ses)
 	struct radius_pd_t *rpd = find_pd(ses);
 	struct ipv6db_addr_t *a;
 	struct framed_route *fr = rpd->fr;
+	struct framed_ip6_route *fr6;
 
 	pthread_rwlock_wrlock(&sessions_lock);
 	pthread_mutex_lock(&rpd->lock);
@@ -540,6 +689,14 @@ static void ses_finished(struct ap_session *ses)
 		a = list_entry(rpd->ipv6_dp.prefix_list.next, typeof(*a), entry);
 		list_del(&a->entry);
 		_free(a);
+	}
+
+	fr6 = rpd->fr6;
+	while (fr6) {
+		struct framed_ip6_route *next = fr6->next;
+
+		_free(fr6);
+		fr6 = next;
 	}
 
 	while (fr) {
