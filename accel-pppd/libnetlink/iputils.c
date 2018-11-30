@@ -540,7 +540,7 @@ int __export iproute_del(int ifindex, in_addr_t dst, int proto, int mask, uint32
 	return r;
 }
 
-int __export ip6route_add(int ifindex, struct in6_addr *dst, int pref_len, int proto)
+int __export ip6route_add(int ifindex, const struct in6_addr *dst, int pref_len, const struct in6_addr *gw, int proto, uint32_t prio)
 {
 	struct ipaddr_req {
 		struct nlmsghdr n;
@@ -566,7 +566,12 @@ int __export ip6route_add(int ifindex, struct in6_addr *dst, int pref_len, int p
 	req.i.rtm_dst_len = pref_len;
 
 	addattr_l(&req.n, sizeof(req), RTA_DST, dst, sizeof(*dst));
-	addattr32(&req.n, sizeof(req), RTA_OIF, ifindex);
+	if (ifindex)
+		addattr32(&req.n, sizeof(req), RTA_OIF, ifindex);
+	if (gw)
+		addattr_l(&req.n, sizeof(req), RTA_GATEWAY, gw, sizeof(*gw));
+	if (prio)
+		addattr32(&req.n, sizeof(req), RTA_PRIORITY, prio);
 
 	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
 		r = -1;
@@ -576,7 +581,7 @@ int __export ip6route_add(int ifindex, struct in6_addr *dst, int pref_len, int p
 	return r;
 }
 
-int __export ip6route_del(int ifindex, struct in6_addr *dst, int pref_len)
+int __export ip6route_del(int ifindex, const struct in6_addr *dst, int pref_len, const struct in6_addr *gw, int proto, uint32_t prio)
 {
 	struct ipaddr_req {
 		struct nlmsghdr n;
@@ -597,10 +602,17 @@ int __export ip6route_del(int ifindex, struct in6_addr *dst, int pref_len)
 	req.i.rtm_family = AF_INET6;
 	req.i.rtm_table = RT_TABLE_MAIN;
 	req.i.rtm_scope = (pref_len == 128) ? RT_SCOPE_HOST : RT_SCOPE_LINK;
+	req.i.rtm_protocol = proto;
 	req.i.rtm_type = RTN_UNICAST;
 	req.i.rtm_dst_len = pref_len;
 
 	addattr_l(&req.n, sizeof(req), RTA_DST, dst, sizeof(*dst));
+	if (ifindex)
+		addattr32(&req.n, sizeof(req), RTA_OIF, ifindex);
+	if (gw)
+		addattr_l(&req.n, sizeof(req), RTA_GATEWAY, gw, sizeof(*gw));
+	if (prio)
+		addattr32(&req.n, sizeof(req), RTA_PRIORITY, prio);
 
 	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
 		r = -1;

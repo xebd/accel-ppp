@@ -156,7 +156,7 @@ static void ev_ses_finished(struct ap_session *ses)
 		if (pd->dp_active) {
 			struct ipv6db_addr_t *p;
 			list_for_each_entry(p, &ses->ipv6_dp->prefix_list, entry)
-				ip6route_del(0, &p->addr, p->prefix_len);
+				ip6route_del(0, &p->addr, p->prefix_len, NULL, 0, 0);
 		}
 
 		ipdb_put_ipv6_prefix(ses, ses->ipv6_dp);
