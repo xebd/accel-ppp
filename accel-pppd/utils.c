@@ -70,7 +70,7 @@ size_t __export u_parse_spaces(const char *str)
  * Reads a sequence of space characters, followed by the end-of-string
  * mark ('\0').
  * Returns the number of characters parsed on success (that is, the number of
- * space characters plus one for '\0'). Beware that 'str + u_parse_eos(str)'
+ * space characters plus one for '\0'). Beware that 'str + u_parse_endstr(str)'
  * points to the next byte after the end of the string in this case.
  * Returns 0 if parsing fails (that is, if unexpected characers are found
  * before the end of the string).
