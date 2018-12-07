@@ -51,7 +51,6 @@ static int parse_iprange(const char *str, struct iprange_t **range)
 	char ipstr[CIDR_MAXLEN + 1] = { 0 };
 	struct iprange_t *_range;
 	struct in_addr addr;
-	const char *errmsg;
 	char *suffix_str;
 	uint32_t ipmin;
 	uint32_t ipmax;
@@ -88,7 +87,7 @@ static int parse_iprange(const char *str, struct iprange_t **range)
 	*suffix_str = '\0';
 	++suffix_str;
 
-	if (u_parse_ip4addr(ipstr, &addr, &errmsg)) {
+	if (!u_parse_ip4addr(ipstr, &addr)) {
 		log_error("iprange: impossible to parse range \"%s\":"
 			  " invalid IPv4 address \"%s\"\n",
 			  str, ipstr);

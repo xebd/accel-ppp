@@ -1,7 +1,6 @@
 #include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
-#include <netdb.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -167,31 +166,6 @@ size_t __export u_parse_u32(const char *str, uint32_t *val)
 	return endptr - str;
 }
 
-int __export u_parse_ip4addr(const char *src, struct in_addr *addr,
-			     const char **err_msg)
-{
-	struct addrinfo hint = {
-		.ai_flags = AI_NUMERICHOST,
-		.ai_family = AF_INET,
-		.ai_socktype = 0,
-		.ai_protocol = 0,
-	};
-	struct addrinfo *ainfo;
-	int err;
-
-	err = getaddrinfo(src, NULL, &hint, &ainfo);
-	if (err) {
-		*err_msg = gai_strerror(err);
-		return err;
-	}
-
-	*addr = ((struct sockaddr_in *)ainfo->ai_addr)->sin_addr;
-
-	freeaddrinfo(ainfo);
-
-	return 0;
-}
-
 /* Parse an IPv6 address (for example "2001:db8::1").
  * Returns the number of bytes parsed, or 0 if str doesn't start with an IPv6
  * address.
@@ -209,6 +183,31 @@ size_t __export u_parse_ip6addr(const char *str, struct in6_addr *addr)
 	buf[len] = '\0';
 
 	if (inet_pton(AF_INET6, buf, addr) != 1)
+		return 0;
+
+	return len;
+}
+
+/* Parse an IPv4 address in dotted-decimal format (for example "198.51.100.1").
+ * Other formats (hex "0xc6.0x33.0x64.0x1", octal "0306.063.0144.01", mixed
+ * "0xc6.51.0144.1", non dotted-quad "198.51.25601"...) are rejected.
+ *
+ * Returns the number of bytes parsed, or 0 if str doesn't start with an IPv4
+ * address.
+ */
+size_t __export u_parse_ip4addr(const char *str, struct in_addr *addr)
+{
+	char buf[INET_ADDRSTRLEN];
+	size_t len;
+
+	len = strspn(str, ".0123456789");
+	if (!len || len >= sizeof(buf))
+		return 0;
+
+	memcpy(buf, str, len);
+	buf[len] = '\0';
+
+	if (inet_pton(AF_INET, buf, addr) != 1)
 		return 0;
 
 	return len;
