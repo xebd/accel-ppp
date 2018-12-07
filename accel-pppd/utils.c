@@ -30,6 +30,21 @@ char __export *u_ip6str(const struct in6_addr *addr, char *buf)
 	return buf;
 }
 
+/* Convenient wrapper around inet_ntop() to print IPv4 addresses.
+ * It stores a string representation of addr into buf, which must be at
+ * least INET_ADDRSTRLEN bytes long.
+ *
+ * Returns buf, which is guaranteed to contain a valid string even if an error
+ * occured.
+ */
+char __export *u_ip4str(const struct in_addr *addr, char *buf)
+{
+	if (!inet_ntop(AF_INET, addr, buf, INET_ADDRSTRLEN))
+		snprintf(buf, INET_ADDRSTRLEN, "< ERROR! >");
+
+	return buf;
+}
+
 void __export u_inet_ntoa(in_addr_t addr, char *str)
 {
 	addr = ntohl(addr);
@@ -235,6 +250,70 @@ size_t __export u_parse_ip6cidr(const char *str, struct in6_addr *netp, uint8_t 
 		return 0;
 
 	if (*plen > 128)
+		return 0;
+
+	ptr += len;
+
+	return ptr - str;
+}
+
+/* Parse an IPv4 network prefix in CIDR notation (for example "192.0.2.0/24").
+ * The IP address must be in dotted-decimal format.
+ * Returns the number of bytes parsed, or 0 if str doesn't start with an IPv4
+ * network prefix.
+ */
+size_t __export u_parse_ip4cidr(const char *str, struct in_addr *netp, uint8_t *plen)
+{
+	const char *ptr = str;
+	size_t len;
+
+	len = u_parse_ip4addr(ptr, netp);
+	if (!len)
+		return 0;
+
+	ptr += len;
+	if (*ptr != '/')
+		return 0;
+
+	len = u_parse_u8(++ptr, plen);
+	if (!len)
+		return 0;
+
+	if (*plen > 32)
+		return 0;
+
+	ptr += len;
+
+	return ptr - str;
+}
+
+/* Parse an IPv4 address range (for example "192.0.2.0-255").
+ * The IP address must be in dotted-decimal format. The number following '-'
+ * is the upper bound of the address' least significant byte (the lower bound
+ * is given by the address itself). The upper bound must be bigger or equal
+ * than the lower bound.
+ *
+ * Returns the number of bytes parsed, or 0 if str doesn't start with an IPv4
+ * address range.
+ */
+size_t __export u_parse_ip4range(const char *str, struct in_addr *base_ip, uint8_t *max)
+{
+	const char *ptr = str;
+	size_t len;
+
+	len = u_parse_ip4addr(ptr, base_ip);
+	if (!len)
+		return 0;
+
+	ptr += len;
+	if (*ptr != '-')
+		return 0;
+
+	len = u_parse_u8(++ptr, max);
+	if (!len)
+		return 0;
+
+	if (*max < (ntohl(base_ip->s_addr) & 0xff))
 		return 0;
 
 	ptr += len;

@@ -5,6 +5,7 @@
 #include <stdint.h>
 
 char *u_ip6str(const struct in6_addr *addr, char *buf);
+char *u_ip4str(const struct in_addr *addr, char *buf);
 
 void u_inet_ntoa(in_addr_t, char *str);
 int u_readlong(long int *dst, const char *src, long int min, long int max);
@@ -20,6 +21,8 @@ size_t u_parse_ip6addr(const char *str, struct in6_addr *addr);
 size_t u_parse_ip4addr(const char *str, struct in_addr *addr);
 
 size_t u_parse_ip6cidr(const char *str, struct in6_addr *netp, uint8_t *plen);
+size_t u_parse_ip4cidr(const char *str, struct in_addr *netp, uint8_t *plen);
+size_t u_parse_ip4range(const char *str, struct in_addr *base_ip, uint8_t *max);
 
 int u_randbuf(void *buf, size_t buf_len, int *err);
 
