@@ -500,7 +500,7 @@ int __export iproute_add(int ifindex, in_addr_t src, in_addr_t dst, in_addr_t gw
 	return r;
 }
 
-int __export iproute_del(int ifindex, in_addr_t dst, int proto, int mask, uint32_t prio)
+int __export iproute_del(int ifindex, in_addr_t src, in_addr_t dst, in_addr_t gw, int proto, int mask, uint32_t prio)
 {
 	struct ipaddr_req {
 		struct nlmsghdr n;
@@ -525,12 +525,15 @@ int __export iproute_del(int ifindex, in_addr_t dst, int proto, int mask, uint32
 	req.i.rtm_type = RTN_UNICAST;
 	req.i.rtm_dst_len = mask;
 
-	addattr32(&req.n, sizeof(req), RTA_DST, dst);
-
 	if (ifindex)
 		addattr32(&req.n, sizeof(req), RTA_OIF, ifindex);
+	if (src)
+		addattr32(&req.n, sizeof(req), RTA_PREFSRC, src);
+	if (gw)
+		addattr32(&req.n, sizeof(req), RTA_GATEWAY, gw);
 	if (prio)
 		addattr32(&req.n, sizeof(req), RTA_PRIORITY, prio);
+	addattr32(&req.n, sizeof(req), RTA_DST, dst);
 
 	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0)
 		r = -1;

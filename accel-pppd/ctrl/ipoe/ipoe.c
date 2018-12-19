@@ -1167,9 +1167,9 @@ static void ipoe_session_finished(struct ap_session *s)
 	} else if (ses->started) {
 		if (!serv->opt_ifcfg) {
 			if (serv->opt_ip_unnumbered)
-				iproute_del(serv->ifindex, ses->yiaddr, conf_proto, 32, 0);
+				iproute_del(serv->ifindex, 0, ses->yiaddr, 0, conf_proto, 32, 0);
 			else
-				iproute_del(serv->ifindex, ses->yiaddr, conf_proto, ses->mask, 0);
+				iproute_del(serv->ifindex, 0, ses->yiaddr, 0, conf_proto, ses->mask, 0);
 		}
 	}
 

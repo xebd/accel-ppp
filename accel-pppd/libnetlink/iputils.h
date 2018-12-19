@@ -21,7 +21,7 @@ int ipaddr_del(int ifindex, in_addr_t addr, int mask);
 int ipaddr_del_peer(int ifindex, in_addr_t addr, in_addr_t peer);
 
 int iproute_add(int ifindex, in_addr_t src, in_addr_t dst, in_addr_t gw, int proto, int mask, uint32_t prio);
-int iproute_del(int ifindex, in_addr_t dst, int proto, int mask, uint32_t prio);
+int iproute_del(int ifindex, in_addr_t src, in_addr_t dst, in_addr_t gw, int proto, int mask, uint32_t prio);
 in_addr_t iproute_get(in_addr_t dst, in_addr_t *gw);
 
 int ip6route_add(int ifindex, const struct in6_addr *dst, int pref_len, const struct in6_addr *gw, int proto, uint32_t prio);
