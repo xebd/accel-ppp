@@ -563,7 +563,7 @@ int __export ip6route_add(int ifindex, const struct in6_addr *dst, int pref_len,
 	req.n.nlmsg_type = RTM_NEWROUTE;
 	req.i.rtm_family = AF_INET6;
 	req.i.rtm_table = RT_TABLE_MAIN;
-	req.i.rtm_scope = (pref_len == 128) ? RT_SCOPE_HOST : RT_SCOPE_LINK;
+	req.i.rtm_scope = RT_SCOPE_UNIVERSE;
 	req.i.rtm_protocol = proto;
 	req.i.rtm_type = RTN_UNICAST;
 	req.i.rtm_dst_len = pref_len;
@@ -604,7 +604,7 @@ int __export ip6route_del(int ifindex, const struct in6_addr *dst, int pref_len,
 	req.n.nlmsg_type = RTM_DELROUTE;
 	req.i.rtm_family = AF_INET6;
 	req.i.rtm_table = RT_TABLE_MAIN;
-	req.i.rtm_scope = (pref_len == 128) ? RT_SCOPE_HOST : RT_SCOPE_LINK;
+	req.i.rtm_scope = RT_SCOPE_UNIVERSE;
 	req.i.rtm_protocol = proto;
 	req.i.rtm_type = RTN_UNICAST;
 	req.i.rtm_dst_len = pref_len;
