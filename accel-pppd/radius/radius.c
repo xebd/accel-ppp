@@ -628,7 +628,7 @@ static void ses_finishing(struct ap_session *ses)
 
 	for (fr = rpd->fr; fr; fr = fr->next) {
 		if (fr->gw)
-			iproute_del(0, 0, fr->dst, 0, 3, fr->mask, fr->prio);
+			iproute_del(0, 0, fr->dst, fr->gw, 3, fr->mask, fr->prio);
 	}
 
 	if (rpd->acct_started || rpd->acct_req)
