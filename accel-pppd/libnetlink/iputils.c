@@ -600,7 +600,7 @@ int __export ip6route_del(int ifindex, const struct in6_addr *dst, int pref_len,
 	memset(&req, 0, sizeof(req) - 4096);
 
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
-	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE;
+	req.n.nlmsg_flags = NLM_F_REQUEST;
 	req.n.nlmsg_type = RTM_DELROUTE;
 	req.i.rtm_family = AF_INET6;
 	req.i.rtm_table = RT_TABLE_MAIN;
@@ -708,7 +708,7 @@ int __export ip6addr_del(int ifindex, struct in6_addr *addr, int prefix_len)
 	memset(&req, 0, sizeof(req) - 4096);
 
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
-	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE;
+	req.n.nlmsg_flags = NLM_F_REQUEST;
 	req.n.nlmsg_type = RTM_DELADDR;
 	req.i.ifa_family = AF_INET6;
 	req.i.ifa_index = ifindex;
