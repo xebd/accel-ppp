@@ -169,7 +169,7 @@ int __export iplink_set_mtu(int ifindex, int mtu)
 	memset(&req, 0, sizeof(req) - 1024);
 
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
-	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+	req.n.nlmsg_flags = NLM_F_REQUEST;
 	req.n.nlmsg_type = RTM_SETLINK;
 	req.i.ifi_family = AF_UNSPEC;
 	req.i.ifi_index = ifindex;
@@ -200,7 +200,7 @@ int __export iplink_vlan_add(const char *ifname, int ifindex, int vid)
 	memset(&req, 0, sizeof(req) - 4096);
 
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
-	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK | NLM_F_CREATE | NLM_F_EXCL;
+	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_CREATE | NLM_F_EXCL;
 	req.n.nlmsg_type = RTM_NEWLINK;
 	req.i.ifi_family = AF_UNSPEC;
 
@@ -243,7 +243,7 @@ int __export iplink_vlan_del(int ifindex)
 	memset(&req, 0, sizeof(req) - 4096);
 
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
-	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+	req.n.nlmsg_flags = NLM_F_REQUEST;
 	req.n.nlmsg_type = RTM_DELLINK;
 	req.i.ifi_family = AF_UNSPEC;
 	req.i.ifi_index = ifindex;
@@ -516,7 +516,7 @@ int __export iproute_del(int ifindex, in_addr_t src, in_addr_t dst, in_addr_t gw
 	memset(&req, 0, sizeof(req) - 4096);
 
 	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct rtmsg));
-	req.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK;
+	req.n.nlmsg_flags = NLM_F_REQUEST;
 	req.n.nlmsg_type = RTM_DELROUTE;
 	req.i.rtm_family = AF_INET;
 	req.i.rtm_table = RT_TABLE_MAIN;
