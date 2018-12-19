@@ -477,7 +477,7 @@ int __export iproute_add(int ifindex, in_addr_t src, in_addr_t dst, in_addr_t gw
 	req.n.nlmsg_type = RTM_NEWROUTE;
 	req.i.rtm_family = AF_INET;
 	req.i.rtm_table = RT_TABLE_MAIN;
-	req.i.rtm_scope = ifindex ? RT_SCOPE_LINK : RT_SCOPE_UNIVERSE;
+	req.i.rtm_scope = gw ? RT_SCOPE_UNIVERSE : RT_SCOPE_LINK;
 	req.i.rtm_protocol = proto;
 	req.i.rtm_type = RTN_UNICAST;
 	req.i.rtm_dst_len = mask;
@@ -520,7 +520,7 @@ int __export iproute_del(int ifindex, in_addr_t src, in_addr_t dst, in_addr_t gw
 	req.n.nlmsg_type = RTM_DELROUTE;
 	req.i.rtm_family = AF_INET;
 	req.i.rtm_table = RT_TABLE_MAIN;
-	req.i.rtm_scope = ifindex ? RT_SCOPE_LINK : RT_SCOPE_UNIVERSE;
+	req.i.rtm_scope = gw ? RT_SCOPE_UNIVERSE : RT_SCOPE_LINK;
 	req.i.rtm_protocol = proto;
 	req.i.rtm_type = RTN_UNICAST;
 	req.i.rtm_dst_len = mask;
