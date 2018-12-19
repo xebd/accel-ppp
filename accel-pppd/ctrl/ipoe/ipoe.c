@@ -981,9 +981,9 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 	ap_session_activate(&ses->ses);
 
 	if (ses->ifindex == -1 && !serv->opt_ifcfg) {
-		if (serv->opt_ip_unnumbered == 0)
+		if (!serv->opt_ip_unnumbered)
 			iproute_add(serv->ifindex, ses->router, ses->yiaddr, 0, conf_proto, ses->mask, 0);
-		else if (!serv->opt_ifcfg)
+		else
 			iproute_add(serv->ifindex, serv->opt_src ?: ses->router, ses->yiaddr, 0, conf_proto, 32, 0);
 	}
 
@@ -1166,10 +1166,10 @@ static void ipoe_session_finished(struct ap_session *s)
 			ipoe_nl_delete(ses->ifindex);
 	} else if (ses->started) {
 		if (!serv->opt_ifcfg) {
-			if (serv->opt_ip_unnumbered)
-				iproute_del(serv->ifindex, 0, ses->yiaddr, 0, conf_proto, 32, 0);
+			if (!serv->opt_ip_unnumbered)
+				iproute_del(serv->ifindex, ses->router, ses->yiaddr, 0, conf_proto, ses->mask, 0);
 			else
-				iproute_del(serv->ifindex, 0, ses->yiaddr, 0, conf_proto, ses->mask, 0);
+				iproute_del(serv->ifindex, serv->opt_src ?: ses->router, ses->yiaddr, 0, conf_proto, 32, 0);
 		}
 	}
 
