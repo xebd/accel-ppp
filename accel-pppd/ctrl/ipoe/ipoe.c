@@ -1514,7 +1514,7 @@ static void ipoe_serv_disc_timer(struct triton_timer_t *t)
 {
 	struct ipoe_serv *serv = container_of(t, typeof(*serv), disc_timer);
 	struct timespec ts;
-	int delay, delay1 = INT_MAX, delay2 = INT_MAX, offer_delay;
+	int delay, delay1 = INT_MAX, delay2 = INT_MAX, offer_delay = 0;
 
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 
