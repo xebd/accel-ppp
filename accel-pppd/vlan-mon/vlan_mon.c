@@ -522,7 +522,7 @@ static void init(void)
 {
 	int mcg_id;
 
-	if (system("modprobe -q vlan_mon"))
+	if (access("/sys/module/vlan_mon", F_OK) && system("modprobe -q vlan_mon"))
 		log_warn("failed to load vlan_mon module\n");
 
 	mcg_id = genl_resolve_mcg(VLAN_MON_GENL_NAME, VLAN_MON_GENL_MCG, &vlan_mon_genl_id);
