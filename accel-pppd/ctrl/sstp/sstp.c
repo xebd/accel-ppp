@@ -667,7 +667,7 @@ static int proxy_parse_v2(struct buffer_t *buf, struct sockaddr_t *peer, struct 
 	case PROXY2_PROXY:
 		switch (hdr->fam >> 4) {
 		case PROXY2_AF_INET:
-			if (n < sizeof(hdr) + sizeof(hdr->ipv4_addr))
+			if (n < sizeof(*hdr) + sizeof(hdr->ipv4_addr))
 				goto error;
 			peer->len = addr->len = sizeof(addr->u.sin);
 			peer->u.sin.sin_family = addr->u.sin.sin_family = AF_INET;
@@ -677,7 +677,7 @@ static int proxy_parse_v2(struct buffer_t *buf, struct sockaddr_t *peer, struct 
 			addr->u.sin.sin_port = hdr->ipv4_addr.dst_port;
 			break;
 		case PROXY2_AF_INET6:
-			if (n < sizeof(hdr) + sizeof(hdr->ipv6_addr))
+			if (n < sizeof(*hdr) + sizeof(hdr->ipv6_addr))
 				goto error;
 			peer->len = addr->len = sizeof(addr->u.sin6);
 			peer->u.sin6.sin6_family = addr->u.sin6.sin6_family = AF_INET6;
@@ -687,7 +687,7 @@ static int proxy_parse_v2(struct buffer_t *buf, struct sockaddr_t *peer, struct 
 			addr->u.sin6.sin6_port = hdr->ipv6_addr.dst_port;
 			break;
 		case PROXY2_AF_UNIX:
-			if (n < sizeof(hdr) + sizeof(hdr->unix_addr))
+			if (n < sizeof(*hdr) + sizeof(hdr->unix_addr))
 				goto error;
 			peer->len = addr->len = sizeof(addr->u.sun);
 			peer->u.sun.sun_family = addr->u.sun.sun_family = AF_UNIX;
