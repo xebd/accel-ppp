@@ -626,7 +626,7 @@ static void init(void)
 {
 	int mcg_id;
 
-	if (system("modprobe -q ipoe"))
+	if (access("/sys/module/ipoe", F_OK) && system("modprobe -q ipoe"))
 		log_warn("failed to load ipoe module\n");
 
 	mcg_id = genl_resolve_mcg(IPOE_GENL_NAME, IPOE_GENL_MCG_PKT, &ipoe_genl_id);

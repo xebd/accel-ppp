@@ -475,7 +475,7 @@ static void print_uptime(struct ap_session *ses, char *buf)
 {
 	time_t uptime;
 	int day,hour,min,sec;
-	char time_str[14];
+	char time_str[24];
 
 	if (ses->stop_time)
 		uptime = ses->stop_time - ses->start_time;
@@ -489,9 +489,9 @@ static void print_uptime(struct ap_session *ses, char *buf)
 	min = uptime / 60;
 	sec = uptime % 60;
 	if (day)
-		snprintf(time_str, 13, "%i.%02i:%02i:%02i", day, hour, min, sec);
+		snprintf(time_str, sizeof(time_str), "%i.%02i:%02i:%02i", day, hour, min, sec);
 	else
-		snprintf(time_str, 13, "%02i:%02i:%02i", hour, min, sec);
+		snprintf(time_str, sizeof(time_str), "%02i:%02i:%02i", hour, min, sec);
 
 	sprintf(buf, "%s", time_str);
 }
