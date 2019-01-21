@@ -89,6 +89,7 @@ struct time_range_pd_t {
 	int down_burst;
 	int up_speed;
 	int up_burst;
+	int act;
 };
 
 struct time_range_t {
@@ -277,15 +278,20 @@ static struct time_range_pd_t *get_tr_pd(struct shaper_pd_t *pd, int id)
 	struct time_range_pd_t *tr_pd;
 
 	list_for_each_entry(tr_pd, &pd->tr_list, entry) {
-		if (tr_pd->id == id)
+		if (tr_pd->id == id) {
+			tr_pd->act = 1;
+			if (id == time_range_id)
+				pd->cur_tr = tr_pd;
 			return tr_pd;
+		}
 	}
 
 	tr_pd = _malloc(sizeof(*tr_pd));
 	memset(tr_pd, 0, sizeof(*tr_pd));
 	tr_pd->id = id;
+	tr_pd->act = 1;
 
-	if (id == time_range_id || id == 0)
+	if (id == time_range_id)
 		pd->cur_tr = tr_pd;
 
 	list_add_tail(&tr_pd->entry, &pd->tr_list);
@@ -304,6 +310,20 @@ static void clear_tr_pd(struct shaper_pd_t *pd)
 	}
 }
 
+static void clear_old_tr_pd(struct shaper_pd_t *pd)
+{
+	struct time_range_pd_t *tr_pd;
+	struct list_head *pos, *n;
+
+	list_for_each_safe(pos, n, &pd->tr_list) {
+		tr_pd = list_entry(pos, typeof(*tr_pd), entry);
+		if (!tr_pd->act) {
+			list_del(&tr_pd->entry);
+			_free(tr_pd);
+		}
+	}
+}
+
 #ifdef RADIUS
 static void parse_attr(struct rad_attr_t *attr, int dir, int *speed, int *burst, int *tr_id)
 {
@@ -313,13 +333,19 @@ static void parse_attr(struct rad_attr_t *attr, int dir, int *speed, int *burst,
 		*speed = conf_multiplier * attr->val.integer;
 }
 
-static void check_radius_attrs(struct shaper_pd_t *pd, struct rad_packet_t *pack)
+static int check_radius_attrs(struct shaper_pd_t *pd, struct rad_packet_t *pack)
 {
 	struct rad_attr_t *attr;
 	int down_speed, down_burst;
 	int up_speed, up_burst;
 	int tr_id;
 	struct time_range_pd_t *tr_pd;
+	int r = 0;
+
+	list_for_each_entry(tr_pd, &pd->tr_list, entry)
+		tr_pd->act = 0;
+
+	pd->cur_tr = NULL;
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		if (attr->vendor && attr->vendor->id != conf_vendor)
@@ -328,6 +354,7 @@ static void check_radius_attrs(struct shaper_pd_t *pd, struct rad_packet_t *pack
 			continue;
 		if (attr->attr->id != conf_attr_down && attr->attr->id != conf_attr_up)
 			continue;
+		r = 1;
 		tr_id = 0;
 		down_speed = 0;
 		down_burst = 0;
@@ -347,6 +374,13 @@ static void check_radius_attrs(struct shaper_pd_t *pd, struct rad_packet_t *pack
 		if (up_burst)
 			tr_pd->up_burst = up_burst;
 	}
+
+	if (!pd->cur_tr)
+		pd->cur_tr = get_tr_pd(pd, 0);
+
+	clear_old_tr_pd(pd);
+
+	return r;
 }
 
 static void ev_radius_access_accept(struct ev_radius_t *ev)
@@ -368,8 +402,8 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 		return;
 	}
 
-	clear_tr_pd(pd);
-	check_radius_attrs(pd, ev->request);
+	if (!check_radius_attrs(pd, ev->request))
+		return;
 
 	if (pd->temp_down_speed || pd->temp_up_speed)
 		return;
