@@ -375,12 +375,15 @@ static int check_radius_attrs(struct shaper_pd_t *pd, struct rad_packet_t *pack)
 			tr_pd->up_burst = up_burst;
 	}
 
+	if (!r)
+		return 0;
+
 	if (!pd->cur_tr)
 		pd->cur_tr = get_tr_pd(pd, 0);
 
 	clear_old_tr_pd(pd);
 
-	return r;
+	return 1;
 }
 
 static void ev_radius_access_accept(struct ev_radius_t *ev)
