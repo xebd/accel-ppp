@@ -3846,6 +3846,8 @@ static void load_config(void)
 			conf_up = 1;
 		else if (!strcmp(opt1->val, "auto"))
 			conf_auto = 1;
+		else
+			log_error("ipoe: failed to parse 'start=%s'\n", opt1->val);
 	}
 
 	if (!conf_dhcpv4 && !conf_up)
