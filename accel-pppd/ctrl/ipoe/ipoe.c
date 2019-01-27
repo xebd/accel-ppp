@@ -2910,14 +2910,14 @@ static void add_interface(const char *ifname, int ifindex, const char *opt, int 
 		}
 	}
 
-	if (!opt_arp && opt_up && opt_mode == MODE_L2)
-		opt_arp = 1;
-
 	if (!opt_up && !opt_dhcpv4 && !opt_auto) {
 		opt_up = conf_up;
 		opt_dhcpv4 = conf_dhcpv4;
 		opt_auto = conf_auto;
 	}
+
+	 if (!opt_arp && opt_up && opt_mode == MODE_L2)
+                opt_arp = 1;
 
 	opt_auto &= !opt_shared;
 
