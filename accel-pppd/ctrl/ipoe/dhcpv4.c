@@ -693,13 +693,10 @@ static inline int dhcpv4_packet_add_opt_u32(struct dhcpv4_packet *pack, int type
 int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_packet *req, uint32_t yiaddr, uint32_t siaddr, uint32_t router, uint32_t mask, int lease_time, int renew_time, struct dhcpv4_packet *relay)
 {
 	struct dhcpv4_packet *pack;
-	int val, r;
-	struct dns {
-		in_addr_t dns1;
-		in_addr_t dns2;
-	} dns;
-	int dns_avail = 0;
 	struct dhcpv4_option *opt;
+	in_addr_t addr[2];
+	int dns_avail = 0;
+	int val, r;
 
 	pack = dhcpv4_packet_alloc();
 	if (!pack) {
@@ -743,7 +740,7 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 		list_for_each_entry(opt, &relay->options, entry) {
 			if (opt->type == 53 || opt->type == 54 || opt->type == 51 || opt->type == 58 || opt->type == 1 || (opt->type == 3 && router))
 				continue;
-			if (opt->type == 6)
+			else if (opt->type == 6)
 				dns_avail = 1;
 			if (dhcpv4_packet_add_opt(pack, opt->type, opt->data, opt->len))
 				goto out_err;
@@ -751,15 +748,12 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 	}
 
 	if (!dns_avail) {
-		if (conf_dns1 && conf_dns2) {
-			dns.dns1 = conf_dns1;
-			dns.dns2 = conf_dns2;
-			if (dhcpv4_packet_add_opt(pack, 6, &dns, 8))
-				goto out_err;
-		} else if (conf_dns1) {
-			if (dhcpv4_packet_add_opt(pack, 6, &conf_dns1, 4))
-				goto out_err;
-		}
+		if (conf_dns1)
+			addr[dns_avail++] = conf_dns1;
+		if (conf_dns2)
+			addr[dns_avail++] = conf_dns2;
+		if (dns_avail && dhcpv4_packet_add_opt(pack, 6, addr, dns_avail * sizeof(addr[0])))
+			goto out_err;
 	}
 
 	*pack->ptr++ = 255;
