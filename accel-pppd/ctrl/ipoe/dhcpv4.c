@@ -38,6 +38,8 @@ struct dhcpv4_relay_ctx {
 static int conf_verbose;
 static in_addr_t conf_dns1;
 static in_addr_t conf_dns2;
+static in_addr_t conf_wins1;
+static in_addr_t conf_wins2;
 
 static mempool_t pack_pool;
 static mempool_t opt_pool;
@@ -696,6 +698,7 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 	struct dhcpv4_option *opt;
 	in_addr_t addr[2];
 	int dns_avail = 0;
+	int wins_avail = 0;
 	int val, r;
 
 	pack = dhcpv4_packet_alloc();
@@ -742,6 +745,8 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 				continue;
 			else if (opt->type == 6)
 				dns_avail = 1;
+			else if (opt->type == 44)
+				wins_avail = 1;
 			if (dhcpv4_packet_add_opt(pack, opt->type, opt->data, opt->len))
 				goto out_err;
 		}
@@ -753,6 +758,15 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 		if (conf_dns2)
 			addr[dns_avail++] = conf_dns2;
 		if (dns_avail && dhcpv4_packet_add_opt(pack, 6, addr, dns_avail * sizeof(addr[0])))
+			goto out_err;
+	}
+
+	if (!wins_avail) {
+		if (conf_wins1)
+			addr[wins_avail++] = conf_wins1;
+		if (conf_wins2)
+			addr[wins_avail++] = conf_wins2;
+		if (wins_avail && dhcpv4_packet_add_opt(pack, 44, addr, wins_avail * sizeof(addr[0])))
 			goto out_err;
 	}
 
@@ -1231,6 +1245,14 @@ static void load_config()
 	opt = conf_get_opt("dns", "dns2");
 	if (opt)
 		conf_dns2 = inet_addr(opt);
+
+	opt = conf_get_opt("wins", "wins1");
+	if (opt)
+		conf_wins1 = inet_addr(opt);
+
+	opt = conf_get_opt("wins", "wins2");
+	if (opt)
+		conf_wins2 = inet_addr(opt);
 }
 
 static void init()
