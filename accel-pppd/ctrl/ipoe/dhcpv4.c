@@ -1146,8 +1146,9 @@ struct dhcpv4_packet *dhcpv4_clone_radius(struct rad_packet_t *rad)
 {
 	struct dhcpv4_packet *pkt = dhcpv4_packet_alloc();
 	uint8_t *ptr, *endptr;
-	struct dhcpv4_option *opt;
+	struct dhcpv4_option *opt, *next;
 	struct rad_attr_t *attr;
+	struct list_head *list;
 
 	if (!pkt)
 		return NULL;
@@ -1166,20 +1167,57 @@ struct dhcpv4_packet *dhcpv4_clone_radius(struct rad_packet_t *rad)
 				log_emerg("out of memory\n");
 				goto out;
 			}
+
 			memset(opt, 0, sizeof(*opt));
+			INIT_LIST_HEAD(&opt->list);
 			opt->type = attr->attr->id;
 			opt->len = attr->len;
-			opt->data = ptr;
-			memcpy(ptr, attr->raw, attr->len);
+			opt->data = attr->raw;
 			ptr += attr->len;
 
-			list_add_tail(&opt->entry, &pkt->options);
+			list = &pkt->options;
+			if (attr->attr->array) {
+				list_for_each_entry(next, &pkt->options, entry) {
+					if (next->type == opt->type) {
+						list = &next->list;
+						break;
+					}
+				}
+			}
+
+			list_add_tail(&opt->entry, list);
+		}
+	}
+
+	ptr = pkt->data;
+
+	list_for_each_entry(opt, &pkt->options, entry) {
+		memcpy(ptr, opt->data, opt->len);
+		opt->data = ptr;
+		ptr += opt->len;
+
+		while (!list_empty(&opt->list)) {
+			next = list_entry(opt->list.next, typeof(*next), entry);
+			memcpy(ptr, next->data, next->len);
+			opt->len += next->len;
+			ptr += next->len;
+
+			list_del(&next->entry);
+			mempool_free(next);
 		}
 	}
 
 	return pkt;
 
 out:
+	list_for_each_entry(opt, &pkt->options, entry) {
+		while (!list_empty(&opt->list)) {
+			next = list_entry(opt->list.next, typeof(*next), entry);
+			list_del(&next->entry);
+			mempool_free(next);
+		}
+	}
+
 	dhcpv4_packet_free(pkt);
 	return NULL;
 }
