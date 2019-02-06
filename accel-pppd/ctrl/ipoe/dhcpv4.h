@@ -54,6 +54,7 @@ struct dhcpv4_hdr {
 
 struct dhcpv4_option {
 	struct list_head entry;
+	struct list_head list;
 	uint8_t type;
 	uint8_t len;
 	uint8_t *data;

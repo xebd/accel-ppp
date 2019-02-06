@@ -38,6 +38,8 @@ struct dhcpv4_relay_ctx {
 static int conf_verbose;
 static in_addr_t conf_dns1;
 static in_addr_t conf_dns2;
+static in_addr_t conf_wins1;
+static in_addr_t conf_wins2;
 
 static mempool_t pack_pool;
 static mempool_t opt_pool;
@@ -693,13 +695,11 @@ static inline int dhcpv4_packet_add_opt_u32(struct dhcpv4_packet *pack, int type
 int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_packet *req, uint32_t yiaddr, uint32_t siaddr, uint32_t router, uint32_t mask, int lease_time, int renew_time, struct dhcpv4_packet *relay)
 {
 	struct dhcpv4_packet *pack;
-	int val, r;
-	struct dns {
-		in_addr_t dns1;
-		in_addr_t dns2;
-	} dns;
-	int dns_avail = 0;
 	struct dhcpv4_option *opt;
+	in_addr_t addr[2];
+	int dns_avail = 0;
+	int wins_avail = 0;
+	int val, r;
 
 	pack = dhcpv4_packet_alloc();
 	if (!pack) {
@@ -743,23 +743,31 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 		list_for_each_entry(opt, &relay->options, entry) {
 			if (opt->type == 53 || opt->type == 54 || opt->type == 51 || opt->type == 58 || opt->type == 1 || (opt->type == 3 && router))
 				continue;
-			if (opt->type == 6)
+			else if (opt->type == 6)
 				dns_avail = 1;
+			else if (opt->type == 44)
+				wins_avail = 1;
 			if (dhcpv4_packet_add_opt(pack, opt->type, opt->data, opt->len))
 				goto out_err;
 		}
 	}
 
 	if (!dns_avail) {
-		if (conf_dns1 && conf_dns2) {
-			dns.dns1 = conf_dns1;
-			dns.dns2 = conf_dns2;
-			if (dhcpv4_packet_add_opt(pack, 6, &dns, 8))
-				goto out_err;
-		} else if (conf_dns1) {
-			if (dhcpv4_packet_add_opt(pack, 6, &conf_dns1, 4))
-				goto out_err;
-		}
+		if (conf_dns1)
+			addr[dns_avail++] = conf_dns1;
+		if (conf_dns2)
+			addr[dns_avail++] = conf_dns2;
+		if (dns_avail && dhcpv4_packet_add_opt(pack, 6, addr, dns_avail * sizeof(addr[0])))
+			goto out_err;
+	}
+
+	if (!wins_avail) {
+		if (conf_wins1)
+			addr[wins_avail++] = conf_wins1;
+		if (conf_wins2)
+			addr[wins_avail++] = conf_wins2;
+		if (wins_avail && dhcpv4_packet_add_opt(pack, 44, addr, wins_avail * sizeof(addr[0])))
+			goto out_err;
 	}
 
 	*pack->ptr++ = 255;
@@ -1146,8 +1154,9 @@ struct dhcpv4_packet *dhcpv4_clone_radius(struct rad_packet_t *rad)
 {
 	struct dhcpv4_packet *pkt = dhcpv4_packet_alloc();
 	uint8_t *ptr, *endptr;
-	struct dhcpv4_option *opt;
+	struct dhcpv4_option *opt, *next;
 	struct rad_attr_t *attr;
+	struct list_head *list;
 
 	if (!pkt)
 		return NULL;
@@ -1166,20 +1175,57 @@ struct dhcpv4_packet *dhcpv4_clone_radius(struct rad_packet_t *rad)
 				log_emerg("out of memory\n");
 				goto out;
 			}
+
 			memset(opt, 0, sizeof(*opt));
+			INIT_LIST_HEAD(&opt->list);
 			opt->type = attr->attr->id;
 			opt->len = attr->len;
-			opt->data = ptr;
-			memcpy(ptr, attr->raw, attr->len);
+			opt->data = attr->raw;
 			ptr += attr->len;
 
-			list_add_tail(&opt->entry, &pkt->options);
+			list = &pkt->options;
+			if (attr->attr->array) {
+				list_for_each_entry(next, &pkt->options, entry) {
+					if (next->type == opt->type) {
+						list = &next->list;
+						break;
+					}
+				}
+			}
+
+			list_add_tail(&opt->entry, list);
+		}
+	}
+
+	ptr = pkt->data;
+
+	list_for_each_entry(opt, &pkt->options, entry) {
+		memcpy(ptr, opt->data, opt->len);
+		opt->data = ptr;
+		ptr += opt->len;
+
+		while (!list_empty(&opt->list)) {
+			next = list_entry(opt->list.next, typeof(*next), entry);
+			memcpy(ptr, next->data, next->len);
+			opt->len += next->len;
+			ptr += next->len;
+
+			list_del(&next->entry);
+			mempool_free(next);
 		}
 	}
 
 	return pkt;
 
 out:
+	list_for_each_entry(opt, &pkt->options, entry) {
+		while (!list_empty(&opt->list)) {
+			next = list_entry(opt->list.next, typeof(*next), entry);
+			list_del(&next->entry);
+			mempool_free(next);
+		}
+	}
+
 	dhcpv4_packet_free(pkt);
 	return NULL;
 }
@@ -1199,6 +1245,14 @@ static void load_config()
 	opt = conf_get_opt("dns", "dns2");
 	if (opt)
 		conf_dns2 = inet_addr(opt);
+
+	opt = conf_get_opt("wins", "wins1");
+	if (opt)
+		conf_wins1 = inet_addr(opt);
+
+	opt = conf_get_opt("wins", "wins2");
+	if (opt)
+		conf_wins2 = inet_addr(opt);
 }
 
 static void init()
