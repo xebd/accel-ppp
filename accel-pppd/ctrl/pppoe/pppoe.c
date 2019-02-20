@@ -748,6 +748,7 @@ static void pppoe_send(struct pppoe_serv_t *serv, const uint8_t *pack)
 		.sll_family = AF_PACKET,
 		.sll_protocol = htons(ETH_P_PPP_DISC),
 		.sll_ifindex = serv->ifindex,
+		.sll_halen = ETH_ALEN,
 	};
 
 	struct pppoe_hdr *hdr = (struct pppoe_hdr *)(pack + ETH_HLEN);
