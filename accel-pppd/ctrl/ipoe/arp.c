@@ -59,6 +59,7 @@ static void arp_ctx_read(struct _arphdr *ah)
 	memset(&dst, 0, sizeof(dst));
 	dst.sll_family = AF_PACKET;
 	dst.sll_ifindex = ipoe->ifindex;
+	dst.sll_halen = ETH_ALEN;
 	dst.sll_protocol = htons(ETH_P_ARP);
 
 	ah2.ar_hrd = htons(ARPHRD_ETHER);
@@ -136,6 +137,7 @@ void arp_send(int ifindex, struct _arphdr *arph, int broadcast)
 	memset(&dst, 0, sizeof(dst));
 	dst.sll_family = AF_PACKET;
 	dst.sll_ifindex = ifindex;
+	dst.sll_halen = ETH_ALEN;
 	dst.sll_protocol = htons(ETH_P_ARP);
 	if (broadcast)
 		memcpy(dst.sll_addr, bc_addr, ETH_ALEN);
