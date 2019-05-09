@@ -86,6 +86,39 @@ Path to file for core module error logging.
 .TP
 .BI "thread-count=" n
 number of working threads, optimal - number of processors/cores
+.SH [common]
+Containes common params for all connection types
+.TP
+.BI "single-session=" replace|deny
+Specifies whether accel-ppp should control sessions count.
+.br
+If this option is absent session count control is turned off.
+.br
+If this option is 
+.B replace
+then accel-ppp will terminate first session when second is authorized.
+.br
+If this option is 
+.B deny
+then accel-ppp will deny second session authorization.
+.TP
+.BI "sid-case=" upper|lower
+Specifies in which case generate session identifier (default lower).
+.TP
+.BI "sid-source=" urandom|seq
+Specifies method assign session id (default urandom).
+.br
+.B urandom
+Assign session id by random method
+.br
+.B seq
+Assign session id by sequence method
+.TP
+.BI "seq-file=" path
+Path to file for sessions sequence number. Start sequence number may be set there (default /var/lib/accel-ppp/seq).
+.TP
+.BI "max-sessions=" n
+Specifies maximum sessions which server may processed (default 0, disabled)
 .SH [ppp]
 .br
 PPP module configuration.
@@ -123,22 +156,8 @@ Protocol field compression negotiation.
 .BI "ccp=" n
 Disable CCP negotiation if this parameter is zero.
 .TP
-.BI "sid-case=" upper|lower
-Specifies in which case generate session identifier (default lower).
-.TP
 .BI "check-ip=" 0|1
 Specifies whether accel-ppp should check if IP already assigned to other ppp interface (default 0).
-.TP
-.BI "single-session=" replace|deny
-Specifies whether accel-ppp should control sessions count.
-.br
-If this option is absent session count control is turned off.
-If this option is 
-.B replace
-then accel-ppp will terminate first session when second is authorized.
-If this option is 
-.B deny
-then accel-ppp will deny second session authorization.
 .TP
 .BI "mppe=" require|prefer|deny
 Specifies mppe negotioation preference.
