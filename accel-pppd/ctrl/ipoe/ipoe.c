@@ -1646,7 +1646,7 @@ static int ipoe_serv_request_check(struct ipoe_serv *serv, uint32_t xid)
 			list_del(&r->entry);
 			mempool_free(r);
 		} else if (r->xid == xid) {
-			if (++r->cnt == conf_max_request) {
+			if (++r->cnt >= conf_max_request) {
 				list_del(&r->entry);
 				mempool_free(r);
 				return 1;
@@ -1660,7 +1660,7 @@ static int ipoe_serv_request_check(struct ipoe_serv *serv, uint32_t xid)
 	r = mempool_alloc(req_item_pool);
 	r->xid = xid;
 	r->expire = ts.tv_sec + 30;
-	r->cnt = 0;
+	r->cnt = 1;
 	list_add_tail(&r->entry, &serv->req_list);
 
 	return 0;
@@ -1825,7 +1825,12 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 			else if (opt82_ses) {
 				dhcpv4_packet_ref(pack);
 				triton_context_call(&opt82_ses->ctx, (triton_event_func)mac_change_detected, pack);
-			} else if (ipoe_serv_request_check(serv, pack->hdr->xid))
+			}
+
+			if (ap_shutdown)
+				goto out;
+
+			if (ipoe_serv_request_check(serv, pack->hdr->xid))
 				dhcpv4_send_nak(dhcpv4, pack);
 		} else {
 			if (ses->terminate) {
