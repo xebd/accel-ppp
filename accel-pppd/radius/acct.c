@@ -88,7 +88,8 @@ static void rad_acct_recv(struct rad_req_t *req)
 	stat_accm_add(req->serv->stat_interim_query_1m, dt);
 	stat_accm_add(req->serv->stat_interim_query_5m, dt);
 
-	triton_timer_del(&req->timeout);
+	if (req->timeout.tpd)
+		triton_timer_del(&req->timeout);
 
 	triton_md_unregister_handler(&req->hnd, 1);
 
