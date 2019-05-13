@@ -1002,7 +1002,7 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 
 	ses->timer.expire = ipoe_session_timeout;
 	ses->timer.period = 0;
-	ses->timer.expire_tv.tv_sec = ses->lease_time;
+	ses->timer.expire_tv.tv_sec = conf_lease_timeout > ses->lease_time ? conf_lease_timeout : ses->lease_time;
 	if (ses->timer.tpd)
 		triton_timer_mod(&ses->timer, 0);
 }
