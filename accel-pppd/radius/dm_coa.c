@@ -173,13 +173,13 @@ static void coa_request(struct radius_pd_t *rpd)
 
 			memcpy(rpd->attr_class, class->val.octets, class->len);
 			rpd->attr_class_len = class->len;
-		}
 
-		if (rpd->acct_req && rpd->acct_req->pack) {
-			if (prev_class)
-				rad_packet_change_octets(rpd->acct_req->pack, NULL, "Class", rpd->attr_class, rpd->attr_class_len);
-			else
-				rad_packet_add_octets(rpd->acct_req->pack, NULL, "Class", rpd->attr_class, rpd->attr_class_len);
+			if (rpd->acct_req && rpd->acct_req->pack) {
+				if (prev_class)
+					rad_packet_change_octets(rpd->acct_req->pack, NULL, "Class", rpd->attr_class, rpd->attr_class_len);
+				else
+					rad_packet_add_octets(rpd->acct_req->pack, NULL, "Class", rpd->attr_class, rpd->attr_class_len);
+			}
 		}
 
 		attr = rad_packet_find_attr(rpd->dm_coa_req, NULL, "Session-Timeout");

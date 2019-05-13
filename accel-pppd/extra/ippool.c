@@ -354,6 +354,8 @@ again:
 		else
 			it->it.addr = 0;
 
+		it->it.mask = 0;
+
 		return &it->it;
 	} else if (p->next) {
 		p = p->next;
