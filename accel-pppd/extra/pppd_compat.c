@@ -517,6 +517,7 @@ static void write_radattr(struct pppd_compat_pd *pd, struct rad_packet_t *pack)
 	char fname1[PATH_MAX], fname2[PATH_MAX];
 	int fd, i;
 	in_addr_t addr;
+	char ip_str[50];
 
 	if (ses->state == AP_STATE_ACTIVE) {
 		sprintf(fname1, "%s.%s", conf_radattr_prefix, ses->ifname);
@@ -562,6 +563,14 @@ static void write_radattr(struct pppd_compat_pd *pd, struct rad_packet_t *pack)
 					break;
 				case ATTR_TYPE_DATE:
 					fprintf(f, "%lu\n", (unsigned long) attr->val.date);
+					break;
+				case ATTR_TYPE_IPV6PREFIX:
+					inet_ntop(AF_INET6, &attr->val.ipv6prefix.prefix, ip_str, sizeof(ip_str));
+					fprintf(f, "%s/%i\n", ip_str, attr->val.ipv6prefix.len);
+					break;
+				case ATTR_TYPE_IPV6ADDR:
+					inet_ntop(AF_INET6, &attr->val.ipv6addr, ip_str, sizeof(ip_str));
+					fprintf(f, "%s\n", ip_str);
 					break;
 			}
 		}
