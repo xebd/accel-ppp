@@ -256,7 +256,8 @@ static void generate_pool_p2p(struct ippool_t *p)
 				addr = list_entry(p->gw_list.next, typeof(*addr), entry);
 				list_del(&addr->entry);
 			}
-		}
+		} else if (conf_gw_ip_address == peer_addr->addr)
+			continue;
 
 		it = malloc(sizeof(*it));
 		if (!it) {
