@@ -213,7 +213,7 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext* ctx)
 			json_object_object_add(jobj, "pppoe_sessionid", json_object_new_int(msg->pppoe_sessionid));
 
 		/* ctrl_ifname */
-		if (msg->ip_addr)
+		if (msg->ctrl_ifname)
 			json_object_object_add(jobj, "ctrl_ifname", json_object_new_string(msg->ctrl_ifname));
 
           // TODO: send msg to redis instance
