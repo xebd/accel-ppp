@@ -228,14 +228,22 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext* ctx)
 		json_object_put(jobj);
 
 		/* release strings pointed to by message */
-		free(msg->chan_name);
-		free(msg->sessionid);
-		free(msg->called_station_id);
-		free(msg->calling_station_id);
-		free(msg->name);
-		free(msg->username);
-		free(msg->ip_addr);
-		free(msg->ctrl_ifname);
+		if (msg->chan_name)
+			free(msg->chan_name);
+		if (msg->sessionid)
+			free(msg->sessionid);
+		if (msg->called_station_id)
+			free(msg->called_station_id);
+		if (msg->calling_station_id)
+			free(msg->calling_station_id);
+		if (msg->name)
+			free(msg->name);
+		if (msg->username)
+			free(msg->username);
+		if (msg->ip_addr)
+			free(msg->ip_addr);
+		if (msg->ctrl_ifname)
+			free(msg->ctrl_ifname);
 
 		mempool_free(msg);
 	}
