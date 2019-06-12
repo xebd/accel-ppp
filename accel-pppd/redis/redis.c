@@ -484,10 +484,10 @@ static void ap_redis_enqueue(struct ap_session *ses, const int event)
             msg->username = _strdup(ses->username);
         if (ses->conn_pppoe_sid)
             msg->pppoe_sessionid = ses->conn_pppoe_sid;
-        if (ses->ctrl->ifname)
-            msg->ctrl_ifname = ses->ctrl->ifname;
 
         msg->ip_addr = _strdup(tmp_addr);
+	if (ses->ctrl->ifname)
+		msg->ctrl_ifname = _strdup(ses->ctrl->ifname);
 
 	switch(ses->ctrl->type) {
 	case CTRL_TYPE_PPTP:    msg->ses_ctrl_type = REDIS_SES_CTRL_TYPE_PPTP;    break;
