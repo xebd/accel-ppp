@@ -470,24 +470,24 @@ static void ap_redis_enqueue(struct ap_session *ses, const int event)
 	}
 
 	msg->event = event;
-        if (ses->chan_name)
-            msg->chan_name = _strdup(ses->chan_name);
-        if (ses->sessionid)
-            msg->sessionid = _strdup(ses->sessionid);
-        if (ses->ctrl->called_station_id)
-            msg->called_station_id = _strdup(ses->ctrl->called_station_id);
-        if (ses->ctrl->calling_station_id)
-            msg->calling_station_id = _strdup(ses->ctrl->calling_station_id);
-        if (ses->ctrl->name)
-            msg->name = _strdup(ses->ctrl->name);
-        if (ses->username)
-            msg->username = _strdup(ses->username);
-        if (ses->conn_pppoe_sid)
-            msg->pppoe_sessionid = ses->conn_pppoe_sid;
-
-        msg->ip_addr = _strdup(tmp_addr);
+	if (ses->chan_name)
+		msg->chan_name = _strdup(ses->chan_name);
+	if (ses->sessionid)
+		msg->sessionid = _strdup(ses->sessionid);
+	if (ses->ctrl->called_station_id)
+		msg->called_station_id = _strdup(ses->ctrl->called_station_id);
+	if (ses->ctrl->calling_station_id)
+		msg->calling_station_id = _strdup(ses->ctrl->calling_station_id);
+	if (ses->ctrl->name)
+		msg->name = _strdup(ses->ctrl->name);
+	if (ses->username)
+		msg->username = _strdup(ses->username);
+	if (ses->conn_pppoe_sid)
+		msg->pppoe_sessionid = ses->conn_pppoe_sid;
 	if (ses->ctrl->ifname)
 		msg->ctrl_ifname = _strdup(ses->ctrl->ifname);
+
+    msg->ip_addr = _strdup(tmp_addr);
 
 	switch(ses->ctrl->type) {
 	case CTRL_TYPE_PPTP:    msg->ses_ctrl_type = REDIS_SES_CTRL_TYPE_PPTP;    break;
