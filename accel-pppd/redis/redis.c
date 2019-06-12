@@ -213,7 +213,7 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext* ctx)
 			json_object_object_add(jobj, "pppoe_sessionid", json_object_new_int(msg->pppoe_sessionid));
 
 		/* ctrl_ifname */
-		if (msg->ip_addr)
+		if (msg->ctrl_ifname)
 			json_object_object_add(jobj, "ctrl_ifname", json_object_new_string(msg->ctrl_ifname));
 
           // TODO: send msg to redis instance
@@ -228,14 +228,22 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext* ctx)
 		json_object_put(jobj);
 
 		/* release strings pointed to by message */
-		free(msg->chan_name);
-		free(msg->sessionid);
-		free(msg->called_station_id);
-		free(msg->calling_station_id);
-		free(msg->name);
-		free(msg->username);
-		free(msg->ip_addr);
-		free(msg->ctrl_ifname);
+		if (msg->chan_name)
+			free(msg->chan_name);
+		if (msg->sessionid)
+			free(msg->sessionid);
+		if (msg->called_station_id)
+			free(msg->called_station_id);
+		if (msg->calling_station_id)
+			free(msg->calling_station_id);
+		if (msg->name)
+			free(msg->name);
+		if (msg->username)
+			free(msg->username);
+		if (msg->ip_addr)
+			free(msg->ip_addr);
+		if (msg->ctrl_ifname)
+			free(msg->ctrl_ifname);
 
 		mempool_free(msg);
 	}
@@ -462,24 +470,24 @@ static void ap_redis_enqueue(struct ap_session *ses, const int event)
 	}
 
 	msg->event = event;
-        if (ses->chan_name)
-            msg->chan_name = _strdup(ses->chan_name);
-        if (ses->sessionid)
-            msg->sessionid = _strdup(ses->sessionid);
-        if (ses->ctrl->called_station_id)
-            msg->called_station_id = _strdup(ses->ctrl->called_station_id);
-        if (ses->ctrl->calling_station_id)
-            msg->calling_station_id = _strdup(ses->ctrl->calling_station_id);
-        if (ses->ctrl->name)
-            msg->name = _strdup(ses->ctrl->name);
-        if (ses->username)
-            msg->username = _strdup(ses->username);
-        if (ses->conn_pppoe_sid)
-            msg->pppoe_sessionid = ses->conn_pppoe_sid;
-        if (ses->ctrl->ifname)
-            msg->ctrl_ifname = ses->ctrl->ifname;
+	if (ses->chan_name)
+		msg->chan_name = _strdup(ses->chan_name);
+	if (ses->sessionid)
+		msg->sessionid = _strdup(ses->sessionid);
+	if (ses->ctrl->called_station_id)
+		msg->called_station_id = _strdup(ses->ctrl->called_station_id);
+	if (ses->ctrl->calling_station_id)
+		msg->calling_station_id = _strdup(ses->ctrl->calling_station_id);
+	if (ses->ctrl->name)
+		msg->name = _strdup(ses->ctrl->name);
+	if (ses->username)
+		msg->username = _strdup(ses->username);
+	if (ses->conn_pppoe_sid)
+		msg->pppoe_sessionid = ses->conn_pppoe_sid;
+	if (ses->ctrl->ifname)
+		msg->ctrl_ifname = _strdup(ses->ctrl->ifname);
 
-        msg->ip_addr = _strdup(tmp_addr);
+    msg->ip_addr = _strdup(tmp_addr);
 
 	switch(ses->ctrl->type) {
 	case CTRL_TYPE_PPTP:    msg->ses_ctrl_type = REDIS_SES_CTRL_TYPE_PPTP;    break;
