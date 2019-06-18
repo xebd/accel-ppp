@@ -260,6 +260,12 @@ then password will be same as Calling-Station-Id.
 Or you can specify fixed password in
 .B <string>.
 .TP
+.BI "session-timeout=" n
+Specifies max sessions time in seconds. After this time session will be terminated. May redefine with radius attribute Session-Timeout
+.TP
+.BI "idle-timeout=" n
+Specifies timeout in seconds to wait for any packets from client, after this time session will terminated if client don`t send any packet. Often used with mode=L3.
+.TP
 .BI "lease-time=" n
 Specifies lease time in seconds to be sent to dhcp client.
 .TP
