@@ -3053,6 +3053,13 @@ static int l2tp_recv_SCCCN(struct l2tp_conn_t *conn,
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		switch (attr->attr->id) {
 		case Message_Type:
+		case Host_Name:
+		case Vendor_Name:
+		case Bearer_Capabilities:
+		case Recv_Window_Size:
+		case Protocol_Version:
+		case Framing_Capabilities:
+		case Assigned_Tunnel_ID:
 		case Random_Vector:
 			break;
 		case Challenge_Response:
