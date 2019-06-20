@@ -291,9 +291,9 @@ static int qdisc_fq_codel(struct qdisc_opt *qopt, struct nlmsghdr *n)
 	if (conf_lq_arg3)
 		addattr_l(n, 1024, TCA_FQ_CODEL_QUANTUM, &conf_lq_arg3, sizeof(conf_lq_arg3));
 	if (conf_lq_arg4)
-		addattr_l(n, 1024, TCA_FQ_CODEL_INTERVAL, &conf_lq_arg4, sizeof(conf_lq_arg4));
+		addattr_l(n, 1024, TCA_FQ_CODEL_TARGET, &conf_lq_arg4, sizeof(conf_lq_arg4));
 	if (conf_lq_arg5)
-		addattr_l(n, 1024, TCA_FQ_CODEL_TARGET, &conf_lq_arg5, sizeof(conf_lq_arg5));
+		addattr_l(n, 1024, TCA_FQ_CODEL_INTERVAL, &conf_lq_arg5, sizeof(conf_lq_arg5));
 	if (conf_lq_arg6 != -1)
 		addattr_l(n, 1024, TCA_FQ_CODEL_ECN, &conf_lq_arg6, sizeof(conf_lq_arg6));
 
