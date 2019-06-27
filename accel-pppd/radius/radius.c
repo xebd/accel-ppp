@@ -949,7 +949,7 @@ static int load_config(void)
 		return -1;
 	}
 
-	opt = conf_get_opt("radius", "sid_in_auth");
+	opt = conf_get_opt("radius", "sid-in-auth");
 	if (opt)
 		conf_sid_in_auth = atoi(opt);
 
