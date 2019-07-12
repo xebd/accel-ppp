@@ -170,35 +170,27 @@ static void ev_ses_finished(struct ap_session *ses)
 static void insert_dp_routes(struct ap_session *ses, struct dhcpv6_pd *pd, struct in6_addr *addr)
 {
 	struct ipv6db_addr_t *p;
-	struct in6_rtmsg rt6;
 	char str1[INET6_ADDRSTRLEN];
 	char str2[INET6_ADDRSTRLEN];
 	int err;
 
-	memset(&rt6, 0, sizeof(rt6));
-	rt6.rtmsg_ifindex = ses->ifindex;
-	rt6.rtmsg_flags = RTF_UP;
-
-	if (conf_route_via_gw && addr && !IN6_IS_ADDR_UNSPECIFIED(addr)) {
-		rt6.rtmsg_flags |= RTF_GATEWAY;
-		memcpy(&rt6.rtmsg_gateway, addr, sizeof(rt6.rtmsg_gateway));
-	}
+	if (!conf_route_via_gw || (addr && IN6_IS_ADDR_UNSPECIFIED(addr)))
+		addr = NULL;
 
 	list_for_each_entry(p, &ses->ipv6_dp->prefix_list, entry) {
-		memcpy(&rt6.rtmsg_dst, &p->addr, sizeof(p->addr));
-		rt6.rtmsg_dst_len = p->prefix_len;
-
-		if (net->sock6_ioctl(SIOCADDRT, &rt6)) {
+		if (ip6route_add(ses->ifindex, &p->addr, p->prefix_len, addr, 0, 0)) {
 			err = errno;
 			inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
-			inet_ntop(AF_INET6, &rt6.rtmsg_gateway, str2, sizeof(str2));
+			if (addr)
+				inet_ntop(AF_INET6, addr, str2, sizeof(str2));
 			log_ppp_error("dhcpv6: route add %s/%i%s%s: %s\n", str1, p->prefix_len,
-					conf_route_via_gw ? " via " : "", str2, strerror(err));
+					addr ? " via " : "", str2, strerror(err));
 		} else if (conf_verbose) {
 			inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
-			inet_ntop(AF_INET6, &rt6.rtmsg_gateway, str2, sizeof(str2));
+			if (addr)
+				inet_ntop(AF_INET6, &addr, str2, sizeof(str2));
 			log_ppp_info2("dhcpv6: route add %s/%i%s%s\n", str1, p->prefix_len,
-					conf_route_via_gw ? " via " : "", str2);
+					addr ? " via " : "", str2);
 		}
 	}
 
