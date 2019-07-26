@@ -43,6 +43,7 @@ static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
 
 #ifdef CRYPTO_OPENSSL
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
 static pthread_mutex_t *ssl_lock_cs;
 
 static unsigned long ssl_thread_id(void)
@@ -58,14 +59,9 @@ static void ssl_lock(int mode, int type, const char *file, int line)
 		pthread_mutex_unlock(&ssl_lock_cs[type]);
 }
 
-static void openssl_init(void)
+static void ssl_lock_init(void)
 {
 	int i;
-
-	SSL_library_init();
-	SSL_load_error_strings();
-	OpenSSL_add_all_algorithms();
-	OpenSSL_add_all_digests();
 
 	ssl_lock_cs = OPENSSL_malloc(CRYPTO_num_locks() * sizeof(pthread_mutex_t));
 
@@ -74,6 +70,19 @@ static void openssl_init(void)
 
 	CRYPTO_set_id_callback(ssl_thread_id);
 	CRYPTO_set_locking_callback(ssl_lock);
+}
+#endif
+
+static void openssl_init(void)
+{
+	SSL_library_init();
+	SSL_load_error_strings();
+	OpenSSL_add_all_algorithms();
+	OpenSSL_add_all_digests();
+
+#if OPENSSL_VERSION_NUMBER < 0x10100000L || defined(LIBRESSL_VERSION_NUMBER)
+	ssl_lock_init();
+#endif
 }
 #endif
 
