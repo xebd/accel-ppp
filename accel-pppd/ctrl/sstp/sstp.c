@@ -2387,7 +2387,7 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 			goto error;
 		}
 
-		SSL_CTX_set_options(ssl_ctx,
+		SSL_CTX_set_options(ssl_ctx, SSL_OP_ALL |
 #ifdef SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS
 				SSL_OP_DONT_INSERT_EMPTY_FRAGMENTS |
 #endif
