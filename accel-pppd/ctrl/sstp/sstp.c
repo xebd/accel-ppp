@@ -2381,11 +2381,7 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 	opt = conf_get_opt("sstp", "accept");
 	if (opt && strhas(opt, "ssl", ',')) {
 	legacy_ssl:
-#if OPENSSL_VERSION_NUMBER >= 0x10100000L
-		ssl_ctx = SSL_CTX_new(TLS_server_method());
-#else
 		ssl_ctx = SSL_CTX_new(SSLv23_server_method());
-#endif
 		if (!ssl_ctx) {
 			log_error("sstp: SSL_CTX error: %s\n", ERR_error_string(ERR_get_error(), NULL));
 			goto error;
@@ -2404,13 +2400,69 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 #ifndef OPENSSL_NO_ECDH
 				SSL_OP_SINGLE_ECDH_USE |
 #endif
+#ifdef OPENSSL_NO_SSL2
 				SSL_OP_NO_SSLv2 |
+#endif
+#ifdef OPENSSL_NO_SSL3
 				SSL_OP_NO_SSLv3 |
+#endif
 				SSL_OP_NO_COMPRESSION);
 		SSL_CTX_set_mode(ssl_ctx,
 				SSL_MODE_ENABLE_PARTIAL_WRITE |
 				SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 		SSL_CTX_set_read_ahead(ssl_ctx, 1);
+
+		opt = conf_get_opt("sstp", "ssl-protocol");
+		if (opt) {
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+			SSL_CTX_set_min_proto_version(ssl_ctx, 0);
+			SSL_CTX_set_max_proto_version(ssl_ctx, 0);
+#endif
+			if (strhas(opt, "ssl2", ','))
+#if defined(OPENSSL_NO_SSL2) || OPENSSL_VERSION_NUMBER >= 0x10100000L
+				log_warn("sstp: %s warning: %s is not suported\n", "ssl-protocol", "SSLv2");
+#else
+				SSL_CTX_clear_options(ssl_ctx, SSL_OP_NO_SSLv2);
+			else
+				SSL_CTX_set_options(ssl_ctx, SSL_OP_NO_SSLv2);
+#endif
+			if (strhas(opt, "ssl3", ','))
+#ifdef OPENSSL_NO_SSL3
+				log_warn("sstp: %s warning: %s is not suported\n", "ssl-protocol", "SSLv3");
+#else
+				SSL_CTX_clear_options(ssl_ctx, SSL_OP_NO_SSLv3);
+			else
+				SSL_CTX_set_options(ssl_ctx, SSL_OP_NO_SSLv3);
+#endif
+			if (strhas(opt, "tls1", ','))
+				SSL_CTX_clear_options(ssl_ctx, SSL_OP_NO_TLSv1);
+			else
+				SSL_CTX_set_options(ssl_ctx, SSL_OP_NO_TLSv1);
+			if (strhas(opt, "tls11", ',') || strhas(opt, "tls1.1", ','))
+#ifndef SSL_OP_NO_TLSv1_1
+				log_warn("sstp: %s warning: %s is not suported\n", "ssl-protocol", "TLSv1.1");
+#else
+				SSL_CTX_clear_options(ssl_ctx, SSL_OP_NO_TLSv1_1);
+			else
+				SSL_CTX_set_options(ssl_ctx, SSL_OP_NO_TLSv1_1);
+#endif
+			if (strhas(opt, "tls12", ',') || strhas(opt, "tls1.2", ','))
+#ifndef SSL_OP_NO_TLSv1_2
+				log_warn("sstp: %s warning: %s is not suported\n", "ssl-protocol", "TLSv1.2");
+#else
+				SSL_CTX_clear_options(ssl_ctx, SSL_OP_NO_TLSv1_2);
+			else
+				SSL_CTX_set_options(ssl_ctx, SSL_OP_NO_TLSv1_2);
+#endif
+			if (strhas(opt, "tls13", ',') || strhas(opt, "tls1.3", ','))
+#ifndef SSL_OP_NO_TLSv1_3
+				log_warn("sstp: %s warning: %s is not suported\n", "ssl-protocol", "TLSv1.3");
+#else
+				SSL_CTX_clear_options(ssl_ctx, SSL_OP_NO_TLSv1_3);
+			else
+				SSL_CTX_set_options(ssl_ctx, SSL_OP_NO_TLSv1_3);
+#endif
+		}
 
 #ifndef OPENSSL_NO_DH
 		opt = conf_get_opt("sstp", "ssl-dhparam");
