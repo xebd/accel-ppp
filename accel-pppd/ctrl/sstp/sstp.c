@@ -2362,18 +2362,18 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 	if (opt) {
 		in = BIO_new(BIO_s_file());
 		if (!in) {
-			log_error("sstp: SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+			log_error("sstp: %s error: %s\n", "ssl-pemfile", ERR_error_string(ERR_get_error(), NULL));
 			goto error;
 		}
 
 		if (BIO_read_filename(in, opt) <= 0) {
-			log_error("sstp: SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+			log_error("sstp: %s error: %s\n", "ssl-pemfile", ERR_error_string(ERR_get_error(), NULL));
 			goto error;
 		}
 
 		cert = PEM_read_bio_X509(in, NULL, NULL, NULL);
 		if (!cert) {
-			log_error("sstp: SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+			log_error("sstp: %s error: %s\n", "ssl-pemfile", ERR_error_string(ERR_get_error(), NULL));
 			goto error;
 		}
 	}
@@ -2383,7 +2383,7 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 	legacy_ssl:
 		ssl_ctx = SSL_CTX_new(SSLv23_server_method());
 		if (!ssl_ctx) {
-			log_error("sstp: SSL_CTX error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+			log_error("sstp: %s error: %s\n", "SSL_CTX_new", ERR_error_string(ERR_get_error(), NULL));
 			goto error;
 		}
 
@@ -2472,13 +2472,13 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 			DH *dh;
 
 			if (BIO_read_filename(in, opt) <= 0) {
-				log_error("sstp: SSL dhparam error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+				log_error("sstp: %s error: %s\n", "ssl-dhparam", ERR_error_string(ERR_get_error(), NULL));
 				goto error;
 			}
 
 			dh = PEM_read_bio_DHparams(in, NULL, NULL, NULL);
 			if (dh == NULL) {
-				log_error("sstp: SSL dhparam error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+				log_error("sstp: %s error: %s\n", "ssl-dhparam", ERR_error_string(ERR_get_error(), NULL));
 				goto error;
 			}
 
@@ -2499,7 +2499,7 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 			SSL_CTX_set_ecdh_auto(ssl_ctx, 1);
 #endif
 			if (opt && SSL_CTX_set1_curves_list(ssl_ctx, opt) == 0) {
-				log_error("sstp: SSL ecdh-curve error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+				log_error("sstp: %s error: %s\n", "ssl-ecdh-curve", ERR_error_string(ERR_get_error(), NULL));
 				goto error;
 			}
 #else
@@ -2508,13 +2508,13 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 
 			nid = OBJ_sn2nid(opt ? : "prime256v1");
 			if (nid == 0) {
-				log_error("sstp: SSL ecdh-curve error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+				log_error("sstp: %s error: %s\n", "ssl-ecdh-curve", ERR_error_string(ERR_get_error(), NULL));
 				goto error;
 			}
 
 			ecdh = EC_KEY_new_by_curve_name(nid);
 			if (ecdh == NULL) {
-				log_error("sstp: SSL ecdh-curve error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+				log_error("sstp: %s error: %s\n", "ssl-ecdh-curve", ERR_error_string(ERR_get_error(), NULL));
 				goto error;
 			}
 
@@ -2526,7 +2526,7 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 
 		opt = conf_get_opt("sstp", "ssl-ciphers");
 		if (opt && SSL_CTX_set_cipher_list(ssl_ctx, opt) != 1) {
-			log_error("sstp: SSL cipher list error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+			log_error("sstp: %s error: %s\n", "ssl-ciphers", ERR_error_string(ERR_get_error(), NULL));
 			goto error;
 		}
 
@@ -2535,26 +2535,26 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 			SSL_CTX_set_options(ssl_ctx, SSL_OP_CIPHER_SERVER_PREFERENCE);
 
 		if (cert && SSL_CTX_use_certificate(ssl_ctx, cert) != 1) {
-			log_error("sstp: SSL certificate error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+			log_error("sstp: %s error: %s\n", "ssl-pemfile", ERR_error_string(ERR_get_error(), NULL));
 			goto error;
 		}
 
 		opt = conf_get_opt("sstp", "ssl-keyfile") ? : conf_get_opt("sstp", "ssl-pemfile");
 		if ((opt && SSL_CTX_use_PrivateKey_file(ssl_ctx, opt, SSL_FILETYPE_PEM) != 1) ||
 		    SSL_CTX_check_private_key(ssl_ctx) != 1) {
-			log_error("sstp: SSL private key error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+			log_error("sstp: %s error: %s\n", "ssl-keyfile", ERR_error_string(ERR_get_error(), NULL));
 			goto error;
 		}
 
 		opt = conf_get_opt("sstp", "ssl-ca-file");
 		if (opt && SSL_CTX_load_verify_locations(ssl_ctx, opt, NULL) != 1) {
-			log_error("sstp: SSL ca file error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+			log_error("sstp: %s error: %s\n", "ssl-ca-file", ERR_error_string(ERR_get_error(), NULL));
 			goto error;
 		}
 
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
 		if (servername && SSL_CTX_set_tlsext_servername_callback(ssl_ctx, ssl_servername) != 1)
-			log_warn("sstp: SSL server name check error: %s\n", ERR_error_string(ERR_get_error(), NULL));
+			log_warn("sstp: %s error: %s\n", "host-name", ERR_error_string(ERR_get_error(), NULL));
 #endif
 
 #ifndef SSL_OP_NO_RENEGOTIATION
