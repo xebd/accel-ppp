@@ -2464,9 +2464,11 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 #endif
 		}
 
-#ifndef OPENSSL_NO_DH
 		opt = conf_get_opt("sstp", "ssl-dhparam");
 		if (opt) {
+#ifdef OPENSSL_NO_DH
+			log_warn("sstp: %s warning: %s is not suported\n", "ssl-protocol", "DH");
+#else
 			DH *dh;
 
 			if (BIO_read_filename(in, opt) <= 0) {
@@ -2482,11 +2484,14 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 
 			SSL_CTX_set_tmp_dh(ssl_ctx, dh);
 			DH_free(dh);
-		}
 #endif
+		}
 
-#ifndef OPENSSL_NO_ECDH
 		opt = conf_get_opt("sstp", "ssl-ecdh-curve");
+#ifdef OPENSSL_NO_ECDH
+		if (opt)
+			log_warn("sstp: %s warning: %s is not suported\n", "ssl-protocol", "ECDH");
+#else
 		{
 #if defined(SSL_CTX_set1_curves_list) || defined(SSL_CTRL_SET_CURVES_LIST)
 #ifdef SSL_CTRL_SET_ECDH_AUTO
