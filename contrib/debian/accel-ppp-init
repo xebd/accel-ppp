@@ -24,7 +24,7 @@ fi
 
 case "$1" in
   start)
-	log_daemon_msg "Starting PPtP/L2TP/PPPoE server" "accel-pppd"
+	log_daemon_msg "Starting IPoE/PPtP/L2TP/SSTP/PPPoE server" "accel-pppd"
 	if start-stop-daemon --start --quiet --oknodo --exec /usr/sbin/accel-pppd -- -d -p /var/run/accel-pppd.pid $ACCEL_PPPD_OPTS; then
 	    log_end_msg 0
 	else
@@ -32,7 +32,7 @@ case "$1" in
 	fi
   ;;
   restart)
-	log_daemon_msg "Restarting PPtP/L2TP/PPPoE server" "accel-pppd"
+	log_daemon_msg "Restarting IPoE/PPtP/L2TP/SSTP/PPPoE server" "accel-pppd"
 	start-stop-daemon --stop --quiet --oknodo --retry 180 --pidfile /var/run/accel-pppd.pid
 	if start-stop-daemon --start --quiet --oknodo --exec /usr/sbin/accel-pppd -- -d -p /var/run/accel-pppd.pid $ACCEL_PPPD_OPTS; then
 	    log_end_msg 0
@@ -42,7 +42,7 @@ case "$1" in
   ;;
 
   stop)
-	log_daemon_msg "Stopping PPtP/L2TP/PPPoE server" "accel-pppd"
+	log_daemon_msg "Stopping IPoE/PPtP/L2TP/SSTP/PPPoE server" "accel-pppd"
 	start-stop-daemon --stop --quiet --oknodo --retry 180 --pidfile /var/run/accel-pppd.pid
 	log_end_msg 0
   ;;
