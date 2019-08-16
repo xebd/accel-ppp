@@ -146,6 +146,7 @@ static void close_all_fd(void)
 static void __core_restart(int soft)
 {
 	char exe[PATH_MAX];
+	char exe_buf[PATH_MAX];
 
 	pthread_sigmask(SIG_SETMASK, &orig_set, NULL);
 
@@ -157,7 +158,7 @@ static void __core_restart(int soft)
 		close_all_fd();
 
 	sprintf(exe, "/proc/%u/exe", getpid());
-	readlink(exe, exe, PATH_MAX);
+	readlink(exe, exe_buf, PATH_MAX);
 
 	while (1) {
 		execv(exe, argv);
@@ -180,6 +181,7 @@ static void sigsegv(int num)
 	char cmd[128];
 	char dump[128];
 	char exec_file[PATH_MAX];
+	char exec_file_buf[PATH_MAX];
 	pid_t pid;
 	FILE *f;
 	int fd;
@@ -213,7 +215,7 @@ static void sigsegv(int num)
 		fclose(f);
 
 		sprintf(exec_file, "/proc/%s/exe", pid_str);
-		readlink(exec_file, exec_file, PATH_MAX);
+		readlink(exec_file, exec_file_buf, PATH_MAX);
 
 		execlp("gdb", "gdb", "-x", cmd, exec_file, pid_str, NULL);
 		perror("exec");
