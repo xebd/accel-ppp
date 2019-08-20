@@ -122,6 +122,9 @@ Path to file for sessions sequence number. Start sequence number may be set ther
 .TP
 .BI "max-sessions=" n
 Specifies maximum sessions which server may processed (default 0, disabled)
+.TP
+.BI "check-ip=" 0|1
+Specifies whether accel-ppp should check if IP already assigned to other ppp interface (default 0).
 .SH [ppp]
 .br
 PPP module configuration.
@@ -158,9 +161,6 @@ Protocol field compression negotiation.
 .TP
 .BI "ccp=" n
 Disable CCP negotiation if this parameter is zero.
-.TP
-.BI "check-ip=" 0|1
-Specifies whether accel-ppp should check if IP already assigned to other ppp interface (default 0).
 .TP
 .BI "mppe=" require|prefer|deny
 Specifies mppe negotiation preference.
