@@ -64,6 +64,9 @@ int conf_lq_arg6;
 static int temp_down_speed;
 static int temp_up_speed;
 
+static int dflt_down_speed;
+static int dflt_up_speed;
+
 static pthread_rwlock_t shaper_lock = PTHREAD_RWLOCK_INITIALIZER;
 static LIST_HEAD(shaper_list);
 
@@ -515,9 +518,7 @@ static void ev_ppp_pre_up(struct ap_session *ses)
 		up_speed = temp_up_speed;
 		down_burst = 0;
 		up_burst = 0;
-	} else {
-		if (!pd->cur_tr)
-			return;
+	} else if (pd->cur_tr){
 		pd->down_speed = pd->cur_tr->down_speed;
 		pd->up_speed = pd->cur_tr->up_speed;
 		down_speed = pd->cur_tr->down_speed;
@@ -525,6 +526,15 @@ static void ev_ppp_pre_up(struct ap_session *ses)
 		down_burst = pd->cur_tr->down_burst;
 		up_burst = pd->cur_tr->up_burst;
 	}
+	else if (dflt_down_speed || dflt_up_speed){
+		pd->down_speed = dflt_down_speed;
+		pd->up_speed = dflt_up_speed;
+		down_speed = dflt_down_speed;
+		up_speed =  dflt_up_speed;
+		down_burst = 0;
+		up_burst = 0;
+	}
+	else return;
 
 	if (!pd->idx)
 		pd->idx = alloc_idx(ses->ifindex);
@@ -873,6 +883,22 @@ static struct time_range_t *parse_range(time_t t, const char *val)
 	return r;
 }
 
+static int parse_dflt_shaper(const char *opt, int *down_speed, int *up_speed)
+{
+	char *endptr;
+
+	*down_speed = strtol(opt, &endptr, 10);
+
+	if (*endptr != '/'){
+		*up_speed = *down_speed;
+		return 0;
+	}
+
+	opt = endptr + 1;
+	*up_speed = strtol(opt, &endptr, 10);
+	return 0;
+}
+
 static void load_time_ranges(void)
 {
 	struct conf_sect_t *s = conf_get_section("shaper");
@@ -1100,6 +1126,10 @@ static void load_config(void)
 		conf_fwmark = atoi(opt);
 	else
 		conf_fwmark = 0;
+
+	opt = conf_get_opt("shaper", "rate-limit");
+	if (opt)
+		parse_dflt_shaper(opt, &dflt_down_speed, &dflt_up_speed);
 
 	triton_context_call(&shaper_ctx, (triton_event_func)load_time_ranges, NULL);
 }

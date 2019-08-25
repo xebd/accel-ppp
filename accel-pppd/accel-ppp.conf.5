@@ -1102,6 +1102,9 @@ fq_codel [ limit PACKETS ] [flows NUMBER ] [ target TIME ] [ interval TIME ] [qu
 .TP
 .BI "rate-multiplier=" n
 Due to accel-ppp operates with rates in kilobit basis if you send rates in different basis then you can use this option to bring your values to kilobits.
+.TP
+.BI "rate-limit=" download_speed/upload_speed
+Specifies, should accel-ppp set default rate-limit for clients. Clients rate-limit will be overwritten by RADIUS filter attributes or chap-secrets rate-limit params.
 .SH [cli]
 .br
 Configuration of the command line interface.
