@@ -487,6 +487,8 @@ int rad_acct_stop(struct radius_pd_t *rpd)
 			break;
 	}
 
+	req->pack->id++;
+
 	rad_packet_change_val(req->pack, NULL, "Acct-Status-Type", "Stop");
 	req_set_stat(req, rpd->ses);
 	req_set_RA(req, req->serv->secret);
