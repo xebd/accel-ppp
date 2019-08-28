@@ -442,6 +442,8 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 		dhcpv6_packet_print(reply, log_ppp_info2);
 	}
 
+	dhcpv6_fill_relay_info(reply);
+
 	net->sendto(pd->hnd.fd, reply->hdr, reply->endptr - (void *)reply->hdr, 0, (struct sockaddr *)&req->addr, sizeof(req->addr));
 
 	dhcpv6_packet_free(reply);
@@ -594,6 +596,8 @@ static void dhcpv6_send_reply2(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, 
 		dhcpv6_packet_print(reply, log_ppp_info2);
 	}
 
+	dhcpv6_fill_relay_info(reply);
+
 	net->sendto(pd->hnd.fd, reply->hdr, reply->endptr - (void *)reply->hdr, 0, (struct sockaddr *)&req->addr, sizeof(req->addr));
 
 out:
@@ -738,6 +742,7 @@ static void dhcpv6_recv_decline(struct dhcpv6_packet *pkt)
 {
 	// don't answer
 }
+
 
 static void dhcpv6_recv_packet(struct dhcpv6_packet *pkt)
 {

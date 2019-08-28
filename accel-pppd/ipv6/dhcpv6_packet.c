@@ -104,9 +104,11 @@ struct dhcpv6_packet *dhcpv6_packet_parse(const void *buf, size_t size)
 {
 	struct dhcpv6_packet *pkt;
 	struct dhcpv6_opt_hdr *opth;
+	struct dhcpv6_relay *rel;
+	struct dhcpv6_relay_hdr *rhdr;
 	void *ptr, *endptr;
 
-	pkt = _malloc(sizeof(*pkt));
+	pkt = _malloc(sizeof(*pkt) + size);
 	if (!pkt) {
 		log_emerg("out of memory\n");
 		return NULL;
@@ -114,18 +116,42 @@ struct dhcpv6_packet *dhcpv6_packet_parse(const void *buf, size_t size)
 
 	memset(pkt, 0, sizeof(*pkt));
 	INIT_LIST_HEAD(&pkt->opt_list);
+	INIT_LIST_HEAD(&pkt->relay_list);
 
-	pkt->hdr = _malloc(size);
-	if (!pkt->hdr) {
-		log_emerg("out of memory\n");
-		_free(pkt);
-		return NULL;
-	}
+	pkt->hdr = (void *)(pkt + 1);
 
 	memcpy(pkt->hdr, buf, size);
+	endptr =  ((void *)pkt->hdr) + size;
+
+	while (pkt->hdr->type == D6_RELAY_FORW) {
+		rhdr = (struct dhcpv6_relay_hdr *)pkt->hdr;
+		rel = _malloc(sizeof(*rel));
+		rel->hop_cnt = rhdr->hop_cnt;
+		memcpy(&rel->link_addr, &rhdr->link_addr, sizeof(rel->link_addr));
+		memcpy(&rel->peer_addr, &rhdr->peer_addr, sizeof(rel->peer_addr));
+
+		list_add_tail(&rel->entry, &pkt->relay_list);
+
+		ptr = rhdr->data;
+		while (ptr < endptr) {
+			opth = ptr;
+
+			if (ptr + sizeof(*opth) + ntohs(opth->len) > endptr) {
+				log_warn("dhcpv6: invalid packet received\n");
+				dhcpv6_packet_free(pkt);
+				return NULL;
+			}
+
+			if (opth->code == htons(D6_OPTION_RELAY_MSG)) {
+				pkt->hdr = (struct dhcpv6_msg_hdr *)opth->data;
+				endptr = opth->data + sizeof(*opth) + ntohs(opth->len);
+			}
+
+			ptr += sizeof(*opth) + ntohs(opth->len);
+		}
+	}
 
 	ptr = pkt->hdr->data;
-	endptr =  ((void *)pkt->hdr) + size;
 
 	while (ptr < endptr) {
 		opth = ptr;
@@ -199,11 +225,36 @@ struct dhcpv6_option *dhcpv6_nested_option_alloc(struct dhcpv6_packet *pkt, stru
 	return opt;
 }
 
+void dhcpv6_fill_relay_info(struct dhcpv6_packet *pkt)
+{
+	struct dhcpv6_relay *rel;
+	struct dhcpv6_opt_hdr *opt;
+	struct dhcpv6_relay_hdr *rhdr;
+
+	if (list_empty(&pkt->relay_list))
+		return;
+
+	list_for_each_entry(rel, &pkt->relay_list, entry) {
+		rhdr = (struct dhcpv6_relay_hdr *)rel->hdr;
+		rhdr->type = D6_RELAY_REPL;
+		rhdr->hop_cnt = rel->hop_cnt;
+		memcpy(&rhdr->link_addr, &rel->link_addr, sizeof(rhdr->link_addr));
+		memcpy(&rhdr->peer_addr, &rel->peer_addr, sizeof(rhdr->peer_addr));
+		opt = (struct dhcpv6_opt_hdr *)rhdr->data;
+		opt->code = htons(D6_OPTION_RELAY_MSG);
+		opt->len = (uint8_t *)pkt->endptr - rhdr->data;
+	}
+
+	rel = list_entry(pkt->relay_list.next, typeof(*rel), entry);
+
+	pkt->hdr = (struct dhcpv6_msg_hdr *)rel->hdr;
+}
 
 struct dhcpv6_packet *dhcpv6_packet_alloc_reply(struct dhcpv6_packet *req, int type)
 {
-	struct dhcpv6_packet *pkt = _malloc(sizeof(*pkt));
+	struct dhcpv6_packet *pkt = _malloc(sizeof(*pkt) + BUF_SIZE);
 	struct dhcpv6_option *opt;
+	struct dhcpv6_relay *rel;
 
 	if (!pkt) {
 		log_emerg("out of memory\n");
@@ -212,19 +263,22 @@ struct dhcpv6_packet *dhcpv6_packet_alloc_reply(struct dhcpv6_packet *req, int t
 
 	memset(pkt, 0, sizeof(*pkt));
 	INIT_LIST_HEAD(&pkt->opt_list);
+	INIT_LIST_HEAD(&pkt->relay_list);
 	pkt->ses = req->ses;
 
-	pkt->hdr = _malloc(BUF_SIZE);
-	if (!pkt->hdr) {
-		log_emerg("out of memory\n");
-		_free(pkt);
-		return NULL;
+	pkt->hdr = (void *)(pkt + 1);
+
+	while (!list_empty(&req->relay_list)) {
+		rel = list_entry(req->relay_list.next, typeof(*rel), entry);
+		rel->hdr = (void *)pkt->hdr;
+		pkt->hdr = (void *)rel->hdr + sizeof(struct dhcpv6_relay_hdr) + sizeof(struct dhcpv6_opt_hdr);
+		list_move_tail(&rel->entry, &pkt->relay_list);
 	}
+
+	pkt->endptr = pkt->hdr->data;
 
 	pkt->hdr->type = type;
 	pkt->hdr->trans_id = req->hdr->trans_id;
-
-	pkt->endptr = pkt->hdr->data;
 
 	opt = dhcpv6_option_alloc(pkt, D6_OPTION_SERVERID, ntohs(req->serverid->hdr.len));
 	memcpy(opt->hdr, req->serverid, sizeof(struct dhcpv6_opt_hdr) + ntohs(req->serverid->hdr.len));
@@ -247,10 +301,21 @@ static void free_options(struct list_head *opt_list)
 	}
 }
 
+static void free_relays(struct list_head *list)
+{
+	struct dhcpv6_relay *rel;
+
+	while (!list_empty(list)) {
+		rel = list_entry(list->next, typeof(*rel), entry);
+		list_del(&rel->entry);
+		_free(rel);
+	}
+}
+
 void dhcpv6_packet_free(struct dhcpv6_packet *pkt)
 {
 	free_options(&pkt->opt_list);
-	_free(pkt->hdr);
+	free_relays(&pkt->relay_list);
 	_free(pkt);
 }
 

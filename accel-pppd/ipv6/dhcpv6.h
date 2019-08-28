@@ -34,6 +34,7 @@
 #define D6_OPTION_DOMAIN_LIST     24
 #define D6_OPTION_IA_PD           25
 #define D6_OPTION_IAPREFIX        26
+#define D6_OPTION_IAPREFIX        26
 
 #define D6_SOLICIT                 1
 #define D6_ADVERTISE               2
@@ -70,6 +71,14 @@ struct dhcpv6_opt_hdr {
 struct dhcpv6_msg_hdr {
 	uint32_t type:8;
 	uint32_t trans_id:24;
+	uint8_t data[0];
+} __packed;
+
+struct dhcpv6_relay_hdr {
+	uint8_t type;
+	uint8_t hop_cnt;
+	struct in6_addr link_addr;
+	struct in6_addr peer_addr;
 	uint8_t data[0];
 } __packed;
 
@@ -154,6 +163,14 @@ struct dhcpv6_option {
 
 struct dhcpv6_pd;
 
+struct dhcpv6_relay {
+	struct list_head entry;
+	int hop_cnt;
+	struct in6_addr link_addr;
+	struct in6_addr peer_addr;
+	void *hdr;
+};
+
 struct dhcpv6_packet {
 	struct ap_session *ses;
 	struct dhcpv6_pd *pd;
@@ -162,6 +179,9 @@ struct dhcpv6_packet {
 	struct dhcpv6_msg_hdr *hdr;
 	struct dhcpv6_opt_clientid *clientid;
 	struct dhcpv6_opt_serverid *serverid;
+
+	struct list_head relay_list;
+
 	int rapid_commit:1;
 
 	struct list_head opt_list;
@@ -174,5 +194,6 @@ void dhcpv6_packet_print(struct dhcpv6_packet *pkt, void (*print)(const char *fm
 struct dhcpv6_packet *dhcpv6_packet_alloc_reply(struct dhcpv6_packet *req, int type);
 struct dhcpv6_option *dhcpv6_option_alloc(struct dhcpv6_packet *pkt, int code, int len);
 struct dhcpv6_option *dhcpv6_nested_option_alloc(struct dhcpv6_packet *pkt, struct dhcpv6_option *opt, int code, int len);
+void dhcpv6_fill_relay_info(struct dhcpv6_packet *pkt);
 
 #endif
