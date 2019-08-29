@@ -171,14 +171,11 @@ static void load_config(void)
 {
 	const char *opt;
 
-	opt = conf_get_opt("common", "check-ip");
-	if (opt && atoi(opt) > 0)
-		conf_check_exists = atoi(opt);
-	else {
-		opt = conf_get_opt("ppp", "check-ip");
-		if (opt && atoi(opt) >= 0)
-			conf_check_exists = atoi(opt) > 0;
-	}
+	opt = conf_get_opt("ppp", "check-ip");
+	if (!opt)
+		opt = conf_get_opt("common", "check-ip");
+	if (opt && atoi(opt) >= 0)
+		conf_check_exists = atoi(opt) > 0;
 }
 
 static void ipaddr_opt_init()
