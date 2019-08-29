@@ -67,6 +67,7 @@ struct radius_pd_t {
 	struct ipv6db_prefix_t ipv6_dp;
 	int acct_interim_interval;
 
+	char *acct_username;
 	uint8_t *attr_class;
 	int attr_class_len;
 	uint8_t *attr_state;
