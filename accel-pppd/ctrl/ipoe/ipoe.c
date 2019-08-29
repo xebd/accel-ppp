@@ -3954,8 +3954,10 @@ static void load_config(void)
 	else
 		conf_weight = 0;
 
-	opt = conf_get_opt("common", "check-ip");
-	if (opt && atoi(opt) >= 0)
+	opt = conf_get_opt("ipoe", "check-ip");
+	if (!opt)
+		opt = conf_get_opt("common", "check-ip");
+	if (opt && opt >= 0)
 		conf_check_exists = atoi(opt) > 0;
 
 #ifdef RADIUS
