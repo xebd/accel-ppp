@@ -217,19 +217,19 @@ static int dm_coa_read(struct triton_md_handler_t *h)
 		if (!pack)
 			continue;
 
-		if (pack->code != CODE_DISCONNECT_REQUEST	&& pack->code != CODE_COA_REQUEST) {
+		if (pack->code != CODE_DISCONNECT_REQUEST && pack->code != CODE_COA_REQUEST) {
 			log_warn("radius:dm_coa: unexpected code (%i) received\n", pack->code);
-			goto out_err_no_reply;
-		}
-
-		if (dm_coa_check_RA(pack, conf_dm_coa_secret)) {
-			log_warn("radius:dm_coa: RA validation failed\n");
 			goto out_err_no_reply;
 		}
 
 		if (conf_verbose) {
 			log_debug("recv ");
 			rad_packet_print(pack, NULL, log_debug);
+		}
+
+		if (dm_coa_check_RA(pack, conf_dm_coa_secret)) {
+			log_warn("radius:dm_coa: RA validation failed\n");
+			goto out_err_no_reply;
 		}
 
 		if (rad_check_nas_pack(pack)) {
@@ -293,29 +293,29 @@ static void init(void)
 	}
 
 	serv.hnd.fd = socket (PF_INET, SOCK_DGRAM, 0);
-  if (serv.hnd.fd < 0) {
-    log_emerg("radius:dm_coa: socket: %s\n", strerror(errno));
-    return;
-  }
+	if (serv.hnd.fd < 0) {
+		log_emerg("radius:dm_coa: socket: %s\n", strerror(errno));
+		return;
+	}
 
 	fcntl(serv.hnd.fd, F_SETFD, fcntl(serv.hnd.fd, F_GETFD) | FD_CLOEXEC);
 
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons (conf_dm_coa_port);
+	addr.sin_family = AF_INET;
+	addr.sin_port = htons (conf_dm_coa_port);
 	if (conf_dm_coa_server)
-	  addr.sin_addr.s_addr = conf_dm_coa_server;
+		addr.sin_addr.s_addr = conf_dm_coa_server;
 	else
 		addr.sin_addr.s_addr = htonl (INADDR_ANY);
-  if (bind (serv.hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
-    log_emerg("radius:dm_coa: bind: %s\n", strerror(errno));
+	if (bind (serv.hnd.fd, (struct sockaddr *) &addr, sizeof (addr)) < 0) {
+		log_emerg("radius:dm_coa: bind: %s\n", strerror(errno));
 		close(serv.hnd.fd);
-    return;
-  }
+		return;
+	}
 
 	if (fcntl(serv.hnd.fd, F_SETFL, O_NONBLOCK)) {
-    log_emerg("radius:dm_coa: failed to set nonblocking mode: %s\n", strerror(errno));
+		log_emerg("radius:dm_coa: failed to set nonblocking mode: %s\n", strerror(errno));
 		close(serv.hnd.fd);
-    return;
+		return;
 	}
 
 	triton_context_register(&serv.ctx, NULL);

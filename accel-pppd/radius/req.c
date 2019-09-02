@@ -72,6 +72,9 @@ static struct rad_req_t *__rad_req_alloc(struct radius_pd_t *rpd, int code, cons
 	if (!req->pack)
 		goto out_err;
 
+	if (code == CODE_ACCOUNTING_REQUEST && rpd->acct_username)
+		username = rpd->acct_username;
+
 	if (rad_packet_add_str(req->pack, NULL, "User-Name", username))
 		goto out_err;
 

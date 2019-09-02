@@ -303,6 +303,14 @@ int rad_proc_attrs(struct rad_req_t *req)
 			continue;
 
 		switch(attr->attr->id) {
+			case User_Name:
+				if (rpd->acct_username)
+					_free(rpd->acct_username);
+				if (attr->len)
+					rpd->acct_username = _strndup(attr->val.string, attr->len);
+				else if (rpd->acct_username)
+					rpd->acct_username = NULL;
+				break;
 			case Framed_IP_Address:
 				if (!conf_gw_ip_address && rpd->ses->ctrl->ppp)
 					log_ppp_warn("radius: gw-ip-address not specified, cann't assign IP address...\n");
@@ -663,6 +671,9 @@ static void ses_finished(struct ap_session *ses)
 			rad_req_free(rpd->acct_req);
 		}
 	}
+
+	if (rpd->acct_username)
+		_free(rpd->acct_username);
 
 	if (rpd->auth_reply)
 		rad_packet_free(rpd->auth_reply);
