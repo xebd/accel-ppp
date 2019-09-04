@@ -55,6 +55,7 @@ struct pptp_conn_t
 	struct ppp_t ppp;
 };
 
+static int conf_max_starting;
 static int conf_ppp_max_mtu = PPTP_MAX_MTU;
 static int conf_timeout = 5;
 static int conf_echo_interval = 0;
@@ -653,6 +654,11 @@ static int pptp_connect(struct triton_md_handler_t *h)
 			close(sock);
 			continue;
 		}
+		if (conf_max_starting > 0 && stat_starting >= conf_max_starting) {
+			close(sock);
+			log_warn("pptp: Count of starting sessions  >  conf_max_starting, droping connection...\n");
+			continue;
+		}
 
 		if (triton_module_loaded("connlimit") && connlimit_check(cl_key_from_ipv4(addr.sin_addr.s_addr))) {
 			close(sock);
@@ -777,6 +783,11 @@ static void load_config(void)
 	else
 		conf_ppp_max_mtu = PPTP_MAX_MTU;
 
+	opt = conf_get_opt("pptp", "max-starting");
+	if (opt)
+		conf_max_starting = atoi(opt);
+	else
+		conf_max_starting = 0;
 	conf_mppe = MPPE_UNSET;
 	opt = conf_get_opt("pptp", "mppe");
 	if (opt) {
