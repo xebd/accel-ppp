@@ -1797,6 +1797,8 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 			}
 
 			ses = ipoe_session_create_dhcpv4(serv, pack);
+			if (!ses)
+				goto out;
 
 			ses->weight = weight = serv->opt_weight >= 0 ? serv->sess_cnt * serv->opt_weight : (stat_active + 1) * conf_weight;
 		}	else {
