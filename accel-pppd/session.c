@@ -31,6 +31,7 @@
 
 static int conf_sid_ucase;
 static int conf_single_session = -1;
+static int conf_single_session_ignore_case;
 static int conf_sid_source;
 static int conf_seq_save_timeout = 10;
 static const char *conf_seq_file;
@@ -418,7 +419,7 @@ int __export ap_session_set_username(struct ap_session *s, char *username)
 	pthread_rwlock_wrlock(&ses_lock);
 	if (conf_single_session >= 0) {
 		list_for_each_entry(ses, &ses_list, entry) {
-			if (ses->username && ses->terminate_cause != TERM_AUTH_ERROR && !strcmp(ses->username, username)) {
+			if (ses->username && ses->terminate_cause != TERM_AUTH_ERROR && !(conf_single_session_ignore_case == 1 ? strcasecmp(ses->username, username) : strcmp(ses->username, username))) {
 				if (conf_single_session == 0) {
 					pthread_rwlock_unlock(&ses_lock);
 					log_ppp_info1("%s: second session denied\n", username);
@@ -455,7 +456,7 @@ int __export ap_check_username(const char *username)
 
 	pthread_rwlock_rdlock(&ses_lock);
 	list_for_each_entry(ses, &ses_list, entry) {
-		if (ses->username && !strcmp(ses->username, username)) {
+		if (ses->username && !(conf_single_session_ignore_case == 1 ? strcasecmp(ses->username, username) : strcmp(ses->username, username))) {
 			r = 1;
 			break;
 		}
@@ -509,6 +510,12 @@ static void load_config(void)
 			conf_single_session = 1;
 	} else
 		conf_single_session = -1;
+
+	opt = conf_get_opt("common", "single-session-ignore-case");
+	if (opt)
+		conf_single_session_ignore_case = atoi(opt);
+	else
+		conf_single_session_ignore_case = 0;
 
 	opt = conf_get_opt("common", "sid-source");
 	if (opt) {
