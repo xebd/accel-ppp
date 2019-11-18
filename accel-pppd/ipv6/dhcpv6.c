@@ -188,7 +188,7 @@ static void insert_dp_routes(struct ap_session *ses, struct dhcpv6_pd *pd, struc
 		} else if (conf_verbose) {
 			inet_ntop(AF_INET6, &p->addr, str1, sizeof(str1));
 			if (addr)
-				inet_ntop(AF_INET6, &addr, str2, sizeof(str2));
+				inet_ntop(AF_INET6, addr, str2, sizeof(str2));
 			log_ppp_info2("dhcpv6: route add %s/%i%s%s\n", str1, p->prefix_len,
 					addr ? " via " : "", str2);
 		}
