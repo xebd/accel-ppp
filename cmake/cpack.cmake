@@ -43,7 +43,7 @@ IF(CPACK_TYPE STREQUAL Debian10)
 ENDIF(CPACK_TYPE STREQUAL Debian10)
 
 IF(CPACK_TYPE STREQUAL Ubuntu16)
-	SET(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.24), libssl1.0.0 (>= 1.0.2t), libpcre3 (>= 8.39)")
+	SET(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.23), libssl1.0.0 (>= 1.0.0), libpcre3 (>= 8.39)")
 	INCLUDE(${CMAKE_HOME_DIRECTORY}/cmake/debian/debian.cmake)
 ENDIF(CPACK_TYPE STREQUAL Ubuntu16)
 
