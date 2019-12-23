@@ -60,4 +60,12 @@ IF(CPACK_TYPE STREQUAL Centos7)
 	INCLUDE(${CMAKE_HOME_DIRECTORY}/cmake/centos/centos.cmake)
 ENDIF()
 
+IF(CPACK_TYPE STREQUAL Centos8)
+        SET(CPACK_RPM_PACKAGE_LICENSE "GPL")
+        SET(CPACK_RPM_PACKAGE_URL "http://accel-ppp.org")
+        SET(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION "/usr/sbin")
+        SET(CPACK_RPM_PACKAGE_REQUIRES "glibc >= 2.28, openssl-libs >= 1.1.1, pcre >= 8.42")
+        INCLUDE(${CMAKE_HOME_DIRECTORY}/cmake/centos/centos.cmake)
+ENDIF()
+
 INCLUDE(CPack)
