@@ -174,6 +174,10 @@ static struct genl_multicast_group ipoe_nl_mcg;
 #define NETIF_F_HW_VLAN_FILTER NETIF_F_HW_VLAN_CTAG_FILTER
 #endif
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,2,0)
+#define nla_nest_start_noflag(skb, attr) nla_nest_start(skb, attr)
+#endif
+
 static inline int hash_addr(__be32 addr)
 {
 #ifdef __LITTLE_ENDIAN
@@ -255,8 +259,13 @@ static int check_nat_required(struct sk_buff *skb, struct net_device *link)
 	if (IS_ERR(rt))
 		return 0;
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,2,0)
 	if (rt->rt_gateway || (rt->dst.dev != link && rt->dst.dev != skb->dev))
 		r = 1;
+#else
+	if (rt->rt_gw4 || (rt->dst.dev != link && rt->dst.dev != skb->dev))
+		r = 1;
+#endif
 
 	ip_rt_put(rt);
 
@@ -616,7 +625,7 @@ static void ipoe_process_queue(struct work_struct *w)
 			}
 
 			if (report_skb) {
-				ns = nla_nest_start(report_skb, id++);
+				ns = nla_nest_start_noflag(report_skb, id++);
 				if (!ns)
 					goto nl_err;
 
@@ -1729,7 +1738,7 @@ static int ipoe_nl_cmd_del_net(struct sk_buff *skb, struct genl_info *info)
 	return 0;
 }
 
-static struct nla_policy ipoe_nl_policy[IPOE_ATTR_MAX + 1] = {
+static const struct nla_policy ipoe_nl_policy[IPOE_ATTR_MAX + 1] = {
 	[IPOE_ATTR_NONE]		    = { .type = NLA_UNSPEC,                     },
 	[IPOE_ATTR_ADDR]	      = { .type = NLA_U32,                        },
 	[IPOE_ATTR_PEER_ADDR]	  = { .type = NLA_U32,                        },
@@ -1741,71 +1750,93 @@ static struct nla_policy ipoe_nl_policy[IPOE_ATTR_MAX + 1] = {
 	[IPOE_ATTR_LINK_IFINDEX]= { .type = NLA_U32,                        },
 };
 
-static struct genl_ops ipoe_nl_ops[] = {
+static const struct genl_ops ipoe_nl_ops[] = {
 	{
 		.cmd = IPOE_CMD_NOOP,
 		.doit = ipoe_nl_cmd_noop,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,2,0)
 		.policy = ipoe_nl_policy,
+#endif
 		/* can be retrieved by unprivileged users */
 	},
 	{
 		.cmd = IPOE_CMD_CREATE,
 		.doit = ipoe_nl_cmd_create,
-		.policy = ipoe_nl_policy,
 		.flags = GENL_ADMIN_PERM,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,2,0)
+		.policy = ipoe_nl_policy,
+#endif
 	},
 	{
 		.cmd = IPOE_CMD_DELETE,
 		.doit = ipoe_nl_cmd_delete,
-		.policy = ipoe_nl_policy,
 		.flags = GENL_ADMIN_PERM,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,2,0)
+		.policy = ipoe_nl_policy,
+#endif
 	},
 	{
 		.cmd = IPOE_CMD_MODIFY,
 		.doit = ipoe_nl_cmd_modify,
-		.policy = ipoe_nl_policy,
 		.flags = GENL_ADMIN_PERM,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,2,0)
+		.policy = ipoe_nl_policy,
+#endif
 	},
 	{
 		.cmd = IPOE_CMD_GET,
 		.dumpit = ipoe_nl_cmd_dump_sessions,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,2,0)
 		.policy = ipoe_nl_policy,
+#endif
 	},
 	{
 		.cmd = IPOE_CMD_ADD_IF,
 		.doit = ipoe_nl_cmd_add_interface,
-		.policy = ipoe_nl_policy,
 		.flags = GENL_ADMIN_PERM,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,2,0)
+		.policy = ipoe_nl_policy,
+#endif
 	},
 	{
 		.cmd = IPOE_CMD_DEL_IF,
 		.doit = ipoe_nl_cmd_del_interface,
-		.policy = ipoe_nl_policy,
 		.flags = GENL_ADMIN_PERM,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,2,0)
+		.policy = ipoe_nl_policy,
+#endif
 	},
 	{
 		.cmd = IPOE_CMD_ADD_EXCLUDE,
 		.doit = ipoe_nl_cmd_add_exclude,
-		.policy = ipoe_nl_policy,
 		.flags = GENL_ADMIN_PERM,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,2,0)
+		.policy = ipoe_nl_policy,
+#endif
 	},
 	{
 		.cmd = IPOE_CMD_DEL_EXCLUDE,
 		.doit = ipoe_nl_cmd_del_exclude,
-		.policy = ipoe_nl_policy,
 		.flags = GENL_ADMIN_PERM,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,2,0)
+		.policy = ipoe_nl_policy,
+#endif
 	},
 	{
 		.cmd = IPOE_CMD_ADD_NET,
 		.doit = ipoe_nl_cmd_add_net,
-		.policy = ipoe_nl_policy,
 		.flags = GENL_ADMIN_PERM,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,2,0)
+		.policy = ipoe_nl_policy,
+#endif
 	},
 	{
 		.cmd = IPOE_CMD_DEL_NET,
 		.doit = ipoe_nl_cmd_del_net,
-		.policy = ipoe_nl_policy,
 		.flags = GENL_ADMIN_PERM,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,2,0)
+		.policy = ipoe_nl_policy,
+#endif
 	},
 };
 
@@ -1833,6 +1864,9 @@ static struct genl_family ipoe_nl_family = {
 	.n_ops = ARRAY_SIZE(ipoe_nl_ops),
 	.mcgrps = ipoe_nl_mcgs,
 	.n_mcgrps = ARRAY_SIZE(ipoe_nl_mcgs),
+#endif
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,2,0)
+	.policy = ipoe_nl_policy,
 #endif
 };
 
