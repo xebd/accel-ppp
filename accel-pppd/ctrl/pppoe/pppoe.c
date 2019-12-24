@@ -87,6 +87,7 @@ struct iplink_arg {
 	long *arg1;
 };
 
+static int conf_max_starting;
 int conf_verbose;
 char *conf_service_name[255];
 int conf_accept_any_service;
@@ -962,6 +963,13 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 
 	if (conf_max_sessions && ap_session_stat.active + ap_session_stat.starting >= conf_max_sessions)
 		return;
+	if (conf_max_starting > 0 && stat_starting >= conf_max_starting) {
+		log_warn("pppoe: Count of starting sessions  >  conf_max_starting, droping connection...\n");
+		return;
+
+	}
+
+
 
 	if (check_padi_limit(serv, ethhdr->h_source)) {
 		__sync_add_and_fetch(&stat_PADI_drop, 1);
@@ -1921,6 +1929,12 @@ static void load_config(void)
 {
 	char *opt;
 	struct conf_sect_t *s = conf_get_section("pppoe");
+
+	opt = conf_get_opt("pppoe", "max-starting");
+	if (opt)
+		conf_max_starting = atoi(opt);
+	else
+		conf_max_starting = 0;
 
 	opt = conf_get_opt("pppoe", "verbose");
 	if (opt)
