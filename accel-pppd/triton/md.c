@@ -9,8 +9,6 @@
 
 #include "triton_p.h"
 
-#include "memdebug.h"
-
 extern int max_events;
 
 static int epoll_fd;
@@ -35,7 +33,7 @@ int md_init(void)
 
 	fcntl(epoll_fd, F_SETFD, O_CLOEXEC);
 
-	epoll_events = _malloc(max_events * sizeof(struct epoll_event));
+	epoll_events = malloc(max_events * sizeof(struct epoll_event));
 	if (!epoll_events) {
 		fprintf(stderr,"md:cann't allocate memory\n");
 		return -1;
