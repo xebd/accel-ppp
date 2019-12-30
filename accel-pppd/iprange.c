@@ -23,6 +23,8 @@ struct iprange_t
 	struct list_head entry;
 	uint32_t begin;
 	uint32_t end;
+	char *l2tp_secret;
+	size_t l2tp_secret_len;
 };
 
 static pthread_mutex_t iprange_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -36,6 +38,8 @@ static void free_ranges(struct list_head *head)
 	while (!list_empty(head)) {
 		range = list_first_entry(head, typeof(*range), entry);
 		list_del(&range->entry);
+		if (range->l2tp_secret && range->l2tp_secret_len)
+			_free(range->l2tp_secret);
 		_free(range);
 	}
 }
@@ -44,8 +48,10 @@ static void free_ranges(struct list_head *head)
  * Ranges can be defined in CIDR notation ("192.0.2.0/24") or by specifying an
  * upper bound for the last IPv4 byte, after a '-' character ("192.0.2.0-255").
  * For simplicity, only mention the CIDR notation in error messages.
+ * A L2TP secret can be passed for each client to allow different secrets per
+ * client.
  */
-static int parse_iprange(const char *str, struct iprange_t **range)
+static int parse_iprange(struct conf_option_t *opt, struct iprange_t **range)
 {
 	struct iprange_t *new_range;
 	struct in_addr base_addr;
@@ -54,11 +60,22 @@ static int parse_iprange(const char *str, struct iprange_t **range)
 	uint32_t ip_max;
 	uint8_t suffix;
 	size_t len;
+	char *l2tp_secret = NULL;
+	char *p1;
+	char *str;
+
+	str = opt->name;
 
 	if (!strcmp(str, "disable"))
 		goto disable;
 
 	ptr = str;
+
+	p1 = strstr(ptr, ",l2tp_secret");
+	if (p1) {
+		l2tp_secret=opt->val;
+		*p1 = '\0';
+	}
 
 	/* Try IPv4 CIDR notation first */
 	len = u_parse_ip4cidr(ptr, &base_addr, &suffix);
@@ -121,6 +138,13 @@ addrange:
 
 	new_range->begin = ip_min;
 	new_range->end = ip_max;
+	if (l2tp_secret) {
+		new_range->l2tp_secret = _strdup(l2tp_secret);
+		new_range->l2tp_secret_len = strlen(l2tp_secret);
+	} else {
+		new_range->l2tp_secret = NULL;
+		new_range->l2tp_secret_len = 0;
+	}
 
 	*range = new_range;
 
@@ -145,7 +169,7 @@ static bool load_ranges(struct list_head *list, const char *conf_sect)
 		/* Ignore parsing errors, parse_iprange() already logs suitable
 		 * error messages.
 		 */
-		if (parse_iprange(opt->name, &r) < 0)
+		if (parse_iprange(opt, &r) < 0)
 			continue;
 
 		if (!r) {
@@ -173,6 +197,18 @@ static int check_range(struct list_head *list, in_addr_t ipaddr)
 	return -1;
 }
 
+static char * check_range_l2tp_secret(struct list_head *list, in_addr_t ipaddr)
+{
+	struct iprange_t *r;
+	uint32_t a = ntohl(ipaddr);
+	
+	list_for_each_entry(r, list, entry) {
+		if (a >= r->begin && a <= r->end)
+			return r->l2tp_secret;
+	}
+	return NULL;
+}
+
 enum iprange_status __export iprange_check_activation(void)
 {
 	bool disabled;
@@ -191,6 +227,21 @@ enum iprange_status __export iprange_check_activation(void)
 
 	return IPRANGE_ACTIVE;
 }
+
+__export char *iprange_client_check_l2tp_secret(in_addr_t ipaddr)
+{
+	char *res;
+
+	pthread_mutex_lock(&iprange_lock);
+	if (conf_disable)
+		res = NULL;
+	else
+		res = check_range_l2tp_secret(&client_ranges, ipaddr);
+	pthread_mutex_unlock(&iprange_lock);
+
+	return res;
+}
+
 
 int __export iprange_client_check(in_addr_t ipaddr)
 {

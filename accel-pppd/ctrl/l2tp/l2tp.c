@@ -1768,25 +1768,29 @@ static int l2tp_session_start_data_channel(struct l2tp_sess_t *sess)
 	sess->ctrl.max_mtu = conf_ppp_max_mtu;
 	sess->ctrl.mppe = conf_mppe;
 
-	sess->ctrl.calling_station_id = _malloc(17);
 	if (sess->ctrl.calling_station_id == NULL) {
-		log_session(log_error, sess,
-			    "impossible to start data channel:"
-			    " allocation of calling station ID failed\n");
-		goto err;
+		sess->ctrl.calling_station_id = _malloc(17);
+		if (sess->ctrl.calling_station_id == NULL) {
+			log_session(log_error, sess,
+				    "impossible to start data channel:"
+				    " allocation of calling station ID failed\n");
+			goto err;
+		}
+		u_inet_ntoa(sess->paren_conn->peer_addr.sin_addr.s_addr,
+			    sess->ctrl.calling_station_id);
 	}
-	u_inet_ntoa(sess->paren_conn->peer_addr.sin_addr.s_addr,
-		    sess->ctrl.calling_station_id);
 
-	sess->ctrl.called_station_id = _malloc(17);
 	if (sess->ctrl.called_station_id == NULL) {
-		log_session(log_error, sess,
-			    "impossible to start data channel:"
-			    " allocation of called station ID failed\n");
-		goto err;
+		sess->ctrl.called_station_id = _malloc(17);
+		if (sess->ctrl.called_station_id == NULL) {
+			log_session(log_error, sess,
+				    "impossible to start data channel:"
+				    " allocation of called station ID failed\n");
+			goto err;
+		}
+		u_inet_ntoa(sess->paren_conn->host_addr.sin_addr.s_addr,
+			    sess->ctrl.called_station_id);
 	}
-	u_inet_ntoa(sess->paren_conn->host_addr.sin_addr.s_addr,
-		    sess->ctrl.called_station_id);
 
 	if (conf_ip_pool) {
 		sess->ppp.ses.ipv4_pool_name = _strdup(conf_ip_pool);
@@ -2728,6 +2732,7 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 	const struct l2tp_attr_t *recv_window_size = NULL;
 	const struct l2tp_attr_t *challenge = NULL;
 	struct l2tp_conn_t *conn = NULL;
+	char *l2tp_secret = NULL;
 	struct sockaddr_in host_addr = { 0 };
 	uint16_t tid;
 	char src_addr[17];
@@ -2835,8 +2840,25 @@ static int l2tp_recv_SCCRQ(const struct l2tp_serv_t *serv,
 			}
 		}
 
-		if (conf_secret) {
-			conn->secret = _strdup(conf_secret);
+		l2tp_secret = iprange_client_check_l2tp_secret(pack->addr.sin_addr.s_addr);
+
+		/* if a secret is returned, then ip address is within the client range,
+		 * otherwise check client range at tunnel creation and not on every
+		 * inbound UDP message as it was before 
+		 */
+
+		if (l2tp_secret == NULL) {
+			l2tp_secret = (char *) conf_secret;
+			if (iprange_client_check(pack->addr.sin_addr.s_addr)) {
+				log_warn("l2tp: refusing to create tunnel from %s:" 
+				         " IP address is out of client-ip-range\n", src_addr);
+				l2tp_tunnel_free(conn);
+				return -1;
+			}
+		} 
+
+		if (l2tp_secret != NULL) {
+			conn->secret = _strdup(l2tp_secret);
 			if (conn->secret == NULL) {
 				log_error("l2tp: impossible to handle SCCRQ from %s:"
 					  " secret allocation failed\n",
@@ -3268,6 +3290,9 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
 	uint16_t res = 0;
 	uint16_t err = 0;
 
+	char *calling = NULL;
+	char *called = NULL;
+
 	if (conn->state != STATE_ESTB && conn->lns_mode) {
 		log_tunnel(log_warn, conn, "discarding unexpected ICRQ\n");
 		return 0;
@@ -3300,8 +3325,13 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
 			case Random_Vector:
 			case Call_Serial_Number:
 			case Bearer_Type:
+				break;
 			case Calling_Number:
-			case Called_Number:
+				calling = _strdup(attr->val.string);
+				break;
+			case Called_Number:				
+				called = _strdup(attr->val.string);
+				break;
 			case Sub_Address:
 			case Physical_Channel_ID:
 				break;
@@ -3340,6 +3370,12 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
 	sess->peer_sid = peer_sid;
 	sid = sess->sid;
 
+	if (calling)
+		sess->ctrl.calling_station_id = calling;
+
+	if (called)
+		sess->ctrl.called_station_id = called;
+
 	if (unknown_attr) {
 		log_tunnel(log_error, conn, "impossible to handle ICRQ:"
 			   " unknown mandatory attribute type %i,"
@@ -3365,6 +3401,7 @@ static int l2tp_recv_ICRQ(struct l2tp_conn_t *conn,
 	return 0;
 
 out_reject:
+
 	if (l2tp_tunnel_send_CDN(sid, peer_sid, res, err) < 0)
 		log_tunnel(log_warn, conn,
 			   "impossible to reject ICRQ:"
@@ -4414,12 +4451,6 @@ static int l2tp_udp_read(struct triton_md_handler_t *h)
 
 		u_inet_ntoa(pack->addr.sin_addr.s_addr, src_addr);
 
-		if (iprange_client_check(pack->addr.sin_addr.s_addr)) {
-			log_warn("l2tp: discarding unexpected message from %s:"
-				 " IP address is out of client-ip-range\n",
-				 src_addr);
-			goto skip;
-		}
 
 		if (pack->hdr.tid) {
 			log_warn("l2tp: discarding unexpected message from %s:"
