@@ -1022,27 +1022,34 @@ If attribute is vendor-specific then specify vendor name in this option.
 .SH [ipv6-pool]
 .br
 Configuration of ipv6pool module.
+.TP
+.BI ipv6prefix/mask,prefix_len[,name=pool_name][,next=next_pool_name]
 .br
-Format of each row is
-.br
-.B ipv6prefix/mask,prefix_len
-for example:
-.br
-.B fc00:0:1::/48,64
-- specifies pool of address by dividing prefix fc00:0:1::/48 to networks with 64 prefix len, e.g:
+.B fc00:0:1::/48,64 - specifies pool of address by dividing prefix fc00:0:1::/48 to networks with 64 prefix len, e.g:
 .br
 fc00:0:1:0::/64
 .br
 fc00:0:1:1::/64
 .br
-...
+ ...
+.br
 fc00:0:1:ffff::/64
 .TP
-.BI "delegate=" ipv6prefix/mask,prefix_len
+.BI "delegate=" ipv6prefix/mask,prefix_len[,name=pool_name][,next=next_pool_name]
 Specifies range of prefixes to delegate to clients through DHCPv6 prefix delegation (rfc3633).
 Format is same as described above.
+.TP
 .BI "gw-ip6-address=" ipv6address
 Specifies gateway address (used only for /128 prefixes)
+.TP
+.BI "attr-prefix=" attribute
+Specifies which Radius attribute contains delegated prefix pool name.
+.TP
+.BI "attr-address=" attribute
+Specifies which Radius attribute contains stateful address pool name.
+.TP
+.BI "vendor=" vendor
+If attribute is vendor-specific then specify vendor name in this option.
 .SH [connlimit]
 .br
 This module limits connection rate from single source.

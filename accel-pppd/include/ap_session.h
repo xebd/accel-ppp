@@ -84,6 +84,7 @@ struct ap_session
 	struct ipv6db_prefix_t *ipv6_dp;
 	char *ipv4_pool_name;
 	char *ipv6_pool_name;
+	char *ipv6_dppool_name;
 	struct ap_net *net;
 
 	const struct ap_ctrl *ctrl;

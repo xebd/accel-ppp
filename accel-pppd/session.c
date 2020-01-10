@@ -239,6 +239,11 @@ void __export ap_session_finished(struct ap_session *ses)
 		ses->ipv6_pool_name = NULL;
 	}
 
+	if (ses->ipv6_dppool_name) {
+		_free(ses->ipv6_dppool_name);
+		ses->ipv6_dppool_name = NULL;
+	}
+
 	if (ses->ifname_rename) {
 		_free(ses->ifname_rename);
 		ses->ifname_rename = NULL;
