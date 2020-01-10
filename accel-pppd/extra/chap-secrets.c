@@ -313,12 +313,14 @@ static struct ipv4db_item_t *get_ip(struct ap_session *ses)
 		if (ses->ipv4_pool_name)
 			_free(ses->ipv4_pool_name);
 		ses->ipv4_pool_name = _strdup(pd->pool);
+/* TODO: wrong to use same pool name, but there's no other syntax
 		if (ses->ipv6_pool_name)
 			_free(ses->ipv6_pool_name);
 		ses->ipv6_pool_name = _strdup(pd->pool);
-		if (ses->ipv6_dppool_name)
-			_free(ses->ipv6_dppool_name);
-		ses->ipv6_dppool_name = _strdup(pd->pool);
+		if (ses->dpv6_pool_name)
+			_free(ses->dpv6_pool_name);
+		ses->dpv6_pool_name = _strdup(pd->pool);
+*/
 		return NULL;
 	} else if (!pd->ip.peer_addr)
 		return NULL;

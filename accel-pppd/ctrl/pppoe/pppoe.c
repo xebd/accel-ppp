@@ -98,6 +98,8 @@ int conf_padi_limit = 0;
 int conf_mppe = MPPE_UNSET;
 int conf_sid_uppercase = 0;
 static const char *conf_ip_pool;
+static const char *conf_ipv6_pool;
+static const char *conf_dpv6_pool;
 static const char *conf_ifname;
 enum {CSID_MAC, CSID_IFNAME, CSID_IFNAME_MAC};
 static int conf_called_sid;
@@ -408,6 +410,10 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 
 	if (conf_ip_pool)
 		conn->ppp.ses.ipv4_pool_name = _strdup(conf_ip_pool);
+	if (conf_ipv6_pool)
+		conn->ppp.ses.ipv6_pool_name = _strdup(conf_ipv6_pool);
+	if (conf_dpv6_pool)
+		conn->ppp.ses.dpv6_pool_name = _strdup(conf_dpv6_pool);
 	if (conf_ifname)
 		conn->ppp.ses.ifname_rename = _strdup(conf_ifname);
 
@@ -2014,6 +2020,8 @@ static void load_config(void)
 	}
 
 	conf_ip_pool = conf_get_opt("pppoe", "ip-pool");
+	conf_ipv6_pool = conf_get_opt("pppoe", "ipv6-pool");
+	conf_dpv6_pool = conf_get_opt("pppoe", "ipv6-pool-delegate");
 	conf_ifname = conf_get_opt("pppoe", "ifname");
 
 	conf_called_sid = CSID_MAC;

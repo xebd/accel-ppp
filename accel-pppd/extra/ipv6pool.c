@@ -302,7 +302,7 @@ static struct ipv6db_prefix_t *get_dp(struct ap_session *ses)
 	struct ippool_t *pool;
 
 	if (ses->ipv6_pool_name)
-		pool = find_pool(IPPOOL_PREFIX, ses->ipv6_dppool_name, 0);
+		pool = find_pool(IPPOOL_PREFIX, ses->dpv6_pool_name, 0);
 	else
 		pool = def_dppool;
 
@@ -356,9 +356,9 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 			continue;
 
 		if (conf_dppool_attr && conf_dppool_attr == attr->attr->id) {
-			if (ses->ipv6_dppool_name)
-				_free(ses->ipv6_dppool_name);
-			ses->ipv6_dppool_name = _strdup(attr->val.string);
+			if (ses->dpv6_pool_name)
+				_free(ses->dpv6_pool_name);
+			ses->dpv6_pool_name = _strdup(attr->val.string);
 		} else
 		if (conf_ippool_attr && conf_ippool_attr == attr->attr->id) {
 			if (ses->ipv6_pool_name)
