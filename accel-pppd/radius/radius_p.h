@@ -66,6 +66,7 @@ struct radius_pd_t {
 	struct ipv6db_item_t ipv6_addr;
 	struct ipv6db_prefix_t ipv6_dp;
 	int acct_interim_interval;
+	int acct_interim_jitter;
 
 	char *acct_username;
 	uint8_t *attr_class;
@@ -185,6 +186,7 @@ extern int conf_require_nas_ident;
 extern in_addr_t conf_dm_coa_server;
 extern int conf_dm_coa_port;
 extern int conf_acct_interim_interval;
+extern int conf_acct_interim_jitter;
 extern int conf_accounting;
 extern const char *conf_attr_tunnel_type;
 
