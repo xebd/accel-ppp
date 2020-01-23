@@ -41,6 +41,7 @@ char *conf_dm_coa_secret;
 int conf_sid_in_auth;
 int conf_require_nas_ident;
 int conf_acct_interim_interval;
+int conf_acct_interim_jitter;
 
 int conf_accounting;
 int conf_fail_time;
@@ -277,6 +278,7 @@ int rad_proc_attrs(struct rad_req_t *req)
 	struct radius_pd_t *rpd = req->rpd;
 
 	req->rpd->acct_interim_interval = conf_acct_interim_interval;
+	req->rpd->acct_interim_jitter = conf_acct_interim_jitter;
 
 	list_for_each_entry(attr, &req->reply->attrs, entry) {
 		if (attr->vendor && attr->vendor->id == Vendor_Microsoft) {
@@ -969,8 +971,12 @@ static int load_config(void)
 		conf_require_nas_ident = atoi(opt);
 
 	opt = conf_get_opt("radius", "acct-interim-interval");
-	if (opt && atoi(opt) > 0)
+	if (opt && atoi(opt) >= 0)
 		conf_acct_interim_interval = atoi(opt);
+
+	opt = conf_get_opt("radius", "acct-interim-jitter");
+	if (opt && atoi(opt) >= 0)
+		conf_acct_interim_jitter = atoi(opt);
 
 	opt = conf_get_opt("radius", "acct-delay-time");
 	if (opt)
