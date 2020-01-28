@@ -1745,7 +1745,7 @@ static const struct nla_policy ipoe_nl_policy[IPOE_ATTR_MAX + 1] = {
 	[IPOE_ATTR_MASK]	      = { .type = NLA_U32,                        },
 	[IPOE_ATTR_MODE]	      = { .type = NLA_U8,                         },
 	[IPOE_ATTR_GW_ADDR]     = { .type = NLA_U32,                        },
-	[IPOE_ATTR_HWADDR]      = { .len = ETH_ALEN,                        },
+	[IPOE_ATTR_HWADDR]      = { .type = NLA_BINARY, .len = ETH_ALEN,    },
 	[IPOE_ATTR_IFINDEX]     = { .type = NLA_U32,                        },
 	[IPOE_ATTR_LINK_IFINDEX]= { .type = NLA_U32,                        },
 };
