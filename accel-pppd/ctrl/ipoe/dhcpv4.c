@@ -29,6 +29,10 @@
 
 #define BUF_SIZE 4096
 
+#ifndef max
+#define max(x,y) ((x) > (y) ? (x) : (y))
+#endif
+
 struct dhcpv4_relay_ctx {
 	struct list_head entry;
 	struct triton_context_t *ctx;
@@ -556,18 +560,24 @@ static int dhcpv4_relay_read(struct triton_md_handler_t *h)
 	}
 }
 
-
-uint16_t ip_csum(uint16_t *buf, int len)
+static uint16_t ip_csum(uint16_t *buf, int len)
 {
-	uint32_t sum=0;
-	int i;
+	uint32_t sum = 0;
 
-	for (i=0; i < len; i += 2)
+	for (; len > 1; len -= 2)
 		sum += *buf++;
+
+	if (len & 1) {
+#ifdef __LITTLE_ENDIAN
+		sum += *(uint8_t *)buf;
+#else
+		sum += *(uint8_t *)buf << 8;
+#endif
+ 	}
 
 	// take only 16 bits out of the 32 bit sum and add up the carries
 	while (sum >> 16)
-	  sum = (sum & 0xffff) + (sum >> 16);
+		sum = (sum & 0xffff) + (sum >> 16);
 
 	// one's complement the result
 	sum = ~sum;
@@ -575,62 +585,54 @@ uint16_t ip_csum(uint16_t *buf, int len)
 	return sum & 0xffff;
 }
 
-
 static int dhcpv4_send_raw(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack, in_addr_t saddr, in_addr_t daddr, int dport)
 {
-	uint8_t hdr[sizeof(struct ether_header) + sizeof(struct iphdr) + sizeof(struct udphdr)];
-	struct ether_header *eth = (struct ether_header *)hdr;
-	struct iphdr *ip = (struct iphdr *)(eth + 1);
-	struct udphdr *udp = (struct udphdr *)(ip + 1);
-	int len = pack->ptr - pack->data;
-	struct iovec iov[2];
-	static uint8_t bc_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+	static const uint8_t bc_addr[ETH_ALEN] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+	struct {
+		struct ether_header eth;
+		struct iphdr ip;
+		struct udphdr udp;
+		uint8_t data[0];
+	} __packed *hdr;
 	struct sockaddr_ll ll_addr;
-	struct msghdr msg;
+	int n, len = pack->ptr - pack->data;
 
 	memset(&ll_addr, 0, sizeof(ll_addr));
 	ll_addr.sll_family = AF_PACKET;
 	ll_addr.sll_ifindex = serv->ifindex;
 	ll_addr.sll_protocol = ntohs(ETH_P_IP);
 
-	msg.msg_name = &ll_addr;
-	msg.msg_namelen = sizeof(ll_addr);
-	msg.msg_iov = iov;
-	msg.msg_iovlen = 2;
-	msg.msg_controllen = 0;
-	msg.msg_flags = 0;
+	hdr = alloca(sizeof(*hdr) + max(len, 300));
+	memset(hdr, 0, sizeof(*hdr));
+	memcpy(hdr->data, pack->data, len);
 
-	memcpy(eth->ether_dhost, (pack->hdr->flags & DHCP_F_BROADCAST) ? bc_addr : pack->hdr->chaddr, ETH_ALEN);
-	memcpy(eth->ether_shost, serv->hwaddr, ETH_ALEN);
-	eth->ether_type = htons(ETH_P_IP);
+	// pad packet to minimal bootp length
+	if (len < 300) {
+		memset(hdr->data + len, 0, 300 - len);
+		len = 300;
+	}
 
-	ip->ihl = 5;
-	ip->version = 4;
-	ip->tos = 0x10;
-	ip->tot_len = ntohs(sizeof(*ip) + sizeof(*udp) + len);
-	ip->id = 0;
-	ip->frag_off = 0;
-	ip->ttl = 128;
-	ip->protocol = IPPROTO_UDP;
-	ip->check = 0;
-	ip->saddr = saddr;
-	ip->daddr = (pack->hdr->flags & DHCP_F_BROADCAST) ? INADDR_BROADCAST : daddr;
-	barrier();
-	ip->check = ip_csum((uint16_t *)ip, 20);
+	memcpy(hdr->eth.ether_dhost, (pack->hdr->flags & DHCP_F_BROADCAST) ? bc_addr : pack->hdr->chaddr, ETH_ALEN);
+	memcpy(hdr->eth.ether_shost, serv->hwaddr, ETH_ALEN);
+	hdr->eth.ether_type = htons(ETH_P_IP);
 
-	udp->source = ntohs(DHCP_SERV_PORT);
-	udp->dest = ntohs(dport);
-	udp->len = htons(sizeof(*udp) + len);
-	udp->check = 0;
+	hdr->ip.protocol = IPPROTO_UDP;
+	hdr->ip.saddr = saddr;
+	hdr->ip.daddr = (pack->hdr->flags & DHCP_F_BROADCAST) ? INADDR_BROADCAST : daddr;
+	hdr->udp.source = ntohs(DHCP_SERV_PORT);
+	hdr->udp.dest = ntohs(dport);
+	hdr->udp.len = hdr->ip.tot_len = htons(sizeof(hdr->udp) + len);
+	hdr->udp.check = ip_csum((uint16_t *)&hdr->ip, sizeof(hdr->ip) + sizeof(hdr->udp) + len);
 
-	iov[0].iov_base = hdr;
-	iov[0].iov_len = sizeof(hdr);
-	iov[1].iov_base = pack->data;
-	iov[1].iov_len = len;
+	hdr->ip.ihl = sizeof(hdr->ip) >> 2;
+	hdr->ip.version = 4;
+	hdr->ip.tos = 0x10;
+	hdr->ip.ttl = 128;
+	hdr->ip.tot_len = ntohs(sizeof(hdr->ip) + sizeof(hdr->udp) + len);
+	hdr->ip.check = ip_csum((uint16_t *)&hdr->ip, sizeof(hdr->ip));
 
-	len = sendmsg(raw_sock, &msg, 0);
-
-	if (len < 0)
+	n = sendto(raw_sock, hdr, sizeof(*hdr) + len, 0, (struct sockaddr *)&ll_addr, sizeof(ll_addr));
+	if (n != len)
 		return -1;
 
 	return 0;
@@ -639,13 +641,18 @@ static int dhcpv4_send_raw(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack,
 static int dhcpv4_send_udp(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack, in_addr_t ip, int port)
 {
 	struct sockaddr_in addr;
-	int n;
-	int len = pack->ptr - pack->data;
+	int n, len = pack->ptr - pack->data;
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sin_family = AF_INET;
 	addr.sin_port = htons(port);
 	addr.sin_addr.s_addr = ip;
+
+	// pad packet to minimal bootp length
+	if (len < 300) {
+		memset(pack->data + len, 0, 300 - len);
+		len = 300;
+	}
 
 	n = sendto(serv->hnd.fd, pack->data, len, 0, (struct sockaddr *)&addr, sizeof(addr));
 	if (n != len)
@@ -1020,6 +1027,13 @@ int dhcpv4_relay_send(struct dhcpv4_relay *relay, struct dhcpv4_packet *request,
 	}
 
 	len = request->ptr - request->data;
+
+	// pad packet to minimal bootp length
+	if (len < 300) {
+		memset(request->ptr, 0, 300 - len);
+		len = 300;
+	}
+
 	n = write(relay->hnd.fd, request->data, len);
 
 	request->hdr->giaddr = giaddr;
@@ -1076,6 +1090,12 @@ int dhcpv4_relay_send_release(struct dhcpv4_relay *relay, uint8_t *chaddr, uint3
 	*pack->ptr++ = 255;
 
 	len = pack->ptr - pack->data;
+
+	// pad packet to minimal bootp length
+	if (len < 300) {
+		memset(pack->ptr, 0, 300 - len);
+		len = 300;
+	}
 
 	if (conf_verbose) {
 		log_ppp_info2("send ");
