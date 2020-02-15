@@ -777,6 +777,9 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 			goto out_err;
 	}
 
+	if (req->relay_agent && dhcpv4_packet_add_opt(pack, 82, req->relay_agent->data, req->relay_agent->len))
+		goto out_err;
+
 	*pack->ptr++ = 255;
 
 	if (conf_verbose) {
@@ -822,6 +825,9 @@ int dhcpv4_send_nak(struct dhcpv4_serv *serv, struct dhcpv4_packet *req)
 
 	val = DHCPNAK;
 	if (dhcpv4_packet_add_opt(pack, 53, &val, 1))
+		goto out_err;
+
+	if (req->relay_agent && dhcpv4_packet_add_opt(pack, 82, req->relay_agent->data, req->relay_agent->len))
 		goto out_err;
 
 	*pack->ptr++ = 255;
