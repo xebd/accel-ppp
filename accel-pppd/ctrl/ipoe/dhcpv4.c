@@ -1021,17 +1021,17 @@ int dhcpv4_relay_send(struct dhcpv4_relay *relay, struct dhcpv4_packet *request,
 		}
 	}
 
-	if (conf_verbose) {
-		log_ppp_info2("send ");
-		dhcpv4_print_packet(request, 1, log_ppp_info2);
-	}
-
 	len = request->ptr - request->data;
 
 	// pad packet to minimal bootp length
 	if (len < 300) {
 		memset(request->ptr, 0, 300 - len);
 		len = 300;
+	}
+
+	if (conf_verbose) {
+		log_ppp_info2("send ");
+		dhcpv4_print_packet(request, 1, log_ppp_info2);
 	}
 
 	n = write(relay->hnd.fd, request->data, len);
