@@ -741,7 +741,8 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 
 	if (relay) {
 		list_for_each_entry(opt, &relay->options, entry) {
-			if (opt->type == 53 || opt->type == 54 || opt->type == 51 || opt->type == 58 || opt->type == 1 || (opt->type == 3 && router))
+			if (opt->type == 53 || opt->type == 54 || opt->type == 51 || opt->type == 58 ||
+			    opt->type == 1 || (opt->type == 3 && router) || opt->type == 82)
 				continue;
 			else if (opt->type == 6)
 				dns_avail = 1;
@@ -769,6 +770,9 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 		if (wins_avail && dhcpv4_packet_add_opt(pack, 44, addr, wins_avail * sizeof(addr[0])))
 			goto out_err;
 	}
+
+	if (req->relay_agent && dhcpv4_packet_add_opt(pack, 82, req->relay_agent->data, req->relay_agent->len))
+		goto out_err;
 
 	*pack->ptr++ = 255;
 
@@ -815,6 +819,9 @@ int dhcpv4_send_nak(struct dhcpv4_serv *serv, struct dhcpv4_packet *req)
 
 	val = DHCPNAK;
 	if (dhcpv4_packet_add_opt(pack, 53, &val, 1))
+		goto out_err;
+
+	if (req->relay_agent && dhcpv4_packet_add_opt(pack, 82, req->relay_agent->data, req->relay_agent->len))
 		goto out_err;
 
 	*pack->ptr++ = 255;
