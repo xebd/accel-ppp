@@ -159,6 +159,8 @@ static int conf_hello_interval = SSTP_HELLO_TIMEOUT;
 static int conf_verbose = 0;
 static int conf_ppp_max_mtu = 1452;
 static const char *conf_ip_pool;
+static const char *conf_ipv6_pool;
+static const char *conf_dpv6_pool;
 static const char *conf_ifname;
 static int conf_proxyproto = 0;
 
@@ -2276,6 +2278,10 @@ static int sstp_connect(struct triton_md_handler_t *h)
 		conn->ppp.ses.chan_name = _strdup(addr_buf);
 		if (conf_ip_pool)
 			conn->ppp.ses.ipv4_pool_name = _strdup(conf_ip_pool);
+		if (conf_ipv6_pool)
+			conn->ppp.ses.ipv6_pool_name = _strdup(conf_ipv6_pool);
+		if (conf_dpv6_pool)
+			conn->ppp.ses.dpv6_pool_name = _strdup(conf_dpv6_pool);
 		if (conf_ifname)
 			conn->ppp.ses.ifname_rename = _strdup(conf_ifname);
 
@@ -2693,6 +2699,8 @@ static void load_config(void)
 		conf_ppp_max_mtu = atoi(opt);
 
 	conf_ip_pool = conf_get_opt("sstp", "ip-pool");
+	conf_ipv6_pool = conf_get_opt("sstp", "ipv6-pool");
+	conf_dpv6_pool = conf_get_opt("sstp", "ipv6-pool-delegate");
 	conf_ifname = conf_get_opt("sstp", "ifname");
 
 	ipmode = (serv.addr.u.sa.sa_family == AF_INET && !conf_proxyproto) ?

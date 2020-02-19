@@ -119,6 +119,8 @@ static int conf_arp;
 static int conf_ipv6;
 static uint32_t conf_src;
 static const char *conf_ip_pool;
+static const char *conf_ipv6_pool;
+static const char *conf_dpv6_pool;
 static const char *conf_l4_redirect_pool;
 //static int conf_dhcpv6;
 static int conf_username;
@@ -1366,6 +1368,10 @@ static struct ipoe_session *ipoe_session_create_dhcpv4(struct ipoe_serv *serv, s
 
 	if (conf_ip_pool)
 		ses->ses.ipv4_pool_name = _strdup(conf_ip_pool);
+	if (conf_ipv6_pool)
+		ses->ses.ipv6_pool_name = _strdup(conf_ipv6_pool);
+	if (conf_dpv6_pool)
+		ses->ses.dpv6_pool_name = _strdup(conf_dpv6_pool);
 
 	triton_context_register(&ses->ctx, &ses->ses);
 
@@ -2073,6 +2079,10 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 
 	if (conf_ip_pool)
 		ses->ses.ipv4_pool_name = _strdup(conf_ip_pool);
+	if (conf_ipv6_pool)
+		ses->ses.ipv6_pool_name = _strdup(conf_ipv6_pool);
+	if (conf_dpv6_pool)
+		ses->ses.dpv6_pool_name = _strdup(conf_dpv6_pool);
 
 	ses->ctrl.dont_ifcfg = 1;
 
@@ -2118,6 +2128,10 @@ static void ipoe_session_create_auto(struct ipoe_serv *serv)
 
 	if (conf_ip_pool)
 		ses->ses.ipv4_pool_name = _strdup(conf_ip_pool);
+	if (conf_ipv6_pool)
+		ses->ses.ipv6_pool_name = _strdup(conf_ipv6_pool);
+	if (conf_dpv6_pool)
+		ses->ses.dpv6_pool_name = _strdup(conf_dpv6_pool);
 
 	ses->ctrl.dont_ifcfg = 1;
 
@@ -3915,6 +3929,8 @@ static void load_config(void)
 		conf_offer_timeout = 10;
 
 	conf_ip_pool = conf_get_opt("ipoe", "ip-pool");
+	conf_ipv6_pool = conf_get_opt("ipoe", "ipv6-pool");
+	conf_dpv6_pool = conf_get_opt("ipoe", "ipv6-pool-delegate");
 	conf_l4_redirect_pool = conf_get_opt("ipoe", "l4-redirect-ip-pool");
 
 	conf_vlan_name = conf_get_opt("ipoe", "vlan-name");

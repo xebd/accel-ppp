@@ -44,6 +44,7 @@ static int session_save(struct ap_session *ses, struct backup_mod *m)
 	idle_timeout = rpd->idle_timeout.period / 1000;
 
 	add_tag(RAD_TAG_INTERIM_INTERVAL, &rpd->acct_interim_interval, 4);
+	add_tag(RAD_TAG_INTERIM_JITTER, &rpd->acct_interim_jitter, 4);
 
 	if (rpd->session_timeout.tpd)
 		add_tag(RAD_TAG_SESSION_TIMEOUT, &session_timeout, 8);
@@ -121,6 +122,9 @@ void radius_restore_session(struct ap_session *ses, struct radius_pd_t *rpd)
 		switch (tag->id) {
 			case RAD_TAG_INTERIM_INTERVAL:
 				rpd->acct_interim_interval = *(uint32_t *)tag->data;
+				break;
+			case RAD_TAG_INTERIM_JITTER:
+				rpd->acct_interim_jitter = *(uint32_t *)tag->data;
 				break;
 			case RAD_TAG_SESSION_TIMEOUT:
 				rpd->session_timeout.expire_tv.tv_sec = *(uint64_t *)tag->data - ses->start_time;

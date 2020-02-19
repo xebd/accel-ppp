@@ -292,3 +292,8 @@
 #define Framed_IPv6_Route 99
 #define Framed_IPv6_Pool 100
 #define Delegated_IPv6_Prefix 123
+#define Framed_IPv6_Address 168
+#define DNS_Server_IPv6_Address 169
+#define Route_IPv6_Information 170
+#define Delegated_IPv6_Prefix_Pool 171
+#define Stateful_IPv6_Address_Pool 172
