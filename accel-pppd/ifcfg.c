@@ -319,6 +319,9 @@ int __export ap_session_rename(struct ap_session *ses, const char *ifname, int l
 		}
 		ses->net = ns;
 		net = ns;
+
+		/* Refresh the index now that it is in a new namespace */
+		ses->ifindex = net->get_ifindex(ses->ifname);
 		log_ppp_info2("move to namespace %s\n", ns->name);
 	}
 
