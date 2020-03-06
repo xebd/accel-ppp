@@ -36,6 +36,7 @@ static int conf_sid_source;
 static int conf_seq_save_timeout = 10;
 static const char *conf_seq_file;
 int __export conf_max_sessions;
+int __export conf_max_starting;
 
 pthread_rwlock_t __export ses_lock = PTHREAD_RWLOCK_INITIALIZER;
 __export LIST_HEAD(ses_list);
@@ -542,6 +543,12 @@ static void load_config(void)
 		conf_max_sessions = atoi(opt);
 	else
 		conf_max_sessions = 0;
+
+	opt = conf_get_opt("common", "max-starting");
+	if (opt)
+		conf_max_starting = atoi(opt);
+	else
+		conf_max_starting = 0;
 }
 
 static void init(void)

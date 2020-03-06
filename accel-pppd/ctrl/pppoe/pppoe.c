@@ -966,6 +966,9 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	if (ap_shutdown || pado_delay == -1)
 		return;
 
+	if (conf_max_starting && ap_session_stat.starting >= conf_max_starting)
+		return;
+
 	if (conf_max_sessions && ap_session_stat.active + ap_session_stat.starting >= conf_max_sessions)
 		return;
 
@@ -1091,6 +1094,9 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	__sync_add_and_fetch(&stat_PADR_recv, 1);
 
 	if (ap_shutdown)
+		return;
+
+	if (conf_max_starting && ap_session_stat.starting >= conf_max_starting)
 		return;
 
 	if (conf_max_sessions && ap_session_stat.active + ap_session_stat.starting >= conf_max_sessions)

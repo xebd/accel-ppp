@@ -2196,6 +2196,11 @@ static int sstp_connect(struct triton_md_handler_t *h)
 			continue;
 		}
 
+		if (conf_max_starting && ap_session_stat.starting >= conf_max_starting) {
+			close(sock);
+			continue;
+		}
+
 		ip = conf_proxyproto ? INADDR_ANY : sockaddr_ipv4(&addr);
 		if (ip && triton_module_loaded("connlimit") && connlimit_check(cl_key_from_ipv4(ip))) {
 			close(sock);

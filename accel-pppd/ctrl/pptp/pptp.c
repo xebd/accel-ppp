@@ -651,6 +651,11 @@ static int pptp_connect(struct triton_md_handler_t *h)
 			continue;
 		}
 
+		if (conf_max_starting && ap_session_stat.starting >= conf_max_starting) {
+			close(sock);
+			continue;
+		}
+
 		if (conf_max_sessions && ap_session_stat.active + ap_session_stat.starting >= conf_max_sessions) {
 			close(sock);
 			continue;
