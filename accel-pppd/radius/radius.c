@@ -274,6 +274,7 @@ int rad_proc_attrs(struct rad_req_t *req)
 	struct ev_dns_t dns = {};
 	struct rad_attr_t *attr;
 	struct ipv6db_addr_t *a;
+	struct in6_addr *b;
 	int res = 0;
 	struct radius_pd_t *rpd = req->rpd;
 
@@ -382,6 +383,14 @@ int rad_proc_attrs(struct rad_req_t *req)
 				break;
 			case Framed_IPv6_Route:
 				rad_add_framed_ipv6_route(attr->val.string, rpd);
+				break;
+			case DNS_Server_IPv6_Address:
+				log_ppp_info2("found IPv6 DNS address in Radius response\n");
+			  b = _malloc(sizeof(*b));
+			  memset(b, 0, sizeof(*b));
+			  *b = attr->val.ipv6addr;
+				dns.ses = rpd->ses;
+				dns.ip6dns1 = b;
 				break;
 		}
 	}

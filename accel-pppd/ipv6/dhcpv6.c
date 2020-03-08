@@ -128,6 +128,22 @@ static void ev_ses_started(struct ap_session *ses)
 	triton_md_enable_handler(&pd->hnd, MD_MODE_READ);
 }
 
+static void ev_dns(struct ev_dns_t *ev)
+{
+	if (!ev->ses->ipv6)
+		return;
+
+	// This should be a linked list that pre-pends to entries 
+	// from conf file (droping exesses as needed)
+	if (ev->ip6dns1) {
+		log_ppp_info2("using radius IPv6 DNS\n");
+		conf_dns[0] = *ev->ip6dns1;
+		if  (!conf_dns_count) {
+			conf_dns_count++;
+		}
+	}
+}
+
 static struct dhcpv6_pd *find_pd(struct ap_session *ses)
 {
 	struct ap_private *pd;
@@ -970,6 +986,7 @@ static void init(void)
 
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 	triton_event_register_handler(EV_SES_STARTED, (triton_event_func)ev_ses_started);
+	triton_event_register_handler(EV_DNS,(triton_event_func)ev_dns);
 	triton_event_register_handler(EV_SES_FINISHED, (triton_event_func)ev_ses_finished);
 }
 
