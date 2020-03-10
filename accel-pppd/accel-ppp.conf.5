@@ -124,7 +124,10 @@ Assign session id by sequence method
 Path to file for sessions sequence number. Start sequence number may be set there (default /var/lib/accel-ppp/seq).
 .TP
 .BI "max-sessions=" n
-Specifies maximum sessions which server may processed (default 0, disabled)
+Specifies maximum concurrent sessions which server may processed (default 0, disabled)
+.TP
+.BI "max-starting=" n
+Specifies maximum concurrent session attempts which server may processed (default 0, disabled)
 .TP
 .BI "check-ip=" 0|1
 Specifies whether accel-ppp should check if IP already assigned to other client interface (default 0).

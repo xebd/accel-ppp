@@ -135,6 +135,7 @@ extern int sock6_fd;
 extern int urandom_fd;
 extern struct ap_session_stat ap_session_stat;
 extern int conf_max_sessions;
+extern int conf_max_starting;
 
 void ap_session_init(struct ap_session *ses);
 void ap_session_set_ifindex(struct ap_session *ses);
