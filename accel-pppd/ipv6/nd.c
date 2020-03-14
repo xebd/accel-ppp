@@ -393,13 +393,12 @@ static void ev_ses_started(struct ap_session *ses)
 
 static void ev_dns(struct ev_dns_t *ev)
 {
-	// if (!ev->ses->ipv6)
-	// 	return;
+	if (!ev->ses->ipv6)
+		return;
 
 	// This should be a linked list that pre-pends to entries 
 	// from conf file (droping exesses as needed)
 	if (ev->ip6dns1) {
-		log_ppp_info2("nd using radius IPv6 DNS\n");
 		conf_dns[0] = *ev->ip6dns1;
 		if  (!conf_dns_count) {
 			conf_dns_count++;

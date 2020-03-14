@@ -386,14 +386,12 @@ int rad_proc_attrs(struct rad_req_t *req)
 				rad_add_framed_ipv6_route(attr->val.string, rpd);
 				break;
 			case DNS_Server_IPv6_Address:
-				log_ppp_info2("found IPv6 DNS address in Radius response\n");
 			  b = _malloc(sizeof(*b));
 			  memset(b, 0, sizeof(*b));
 			  *b = attr->val.ipv6addr;
 				dns.ses = rpd->ses;
 				dns.ip6dns1 = b;
 				inet_ntop(AF_INET6, dns.ip6dns1, str, INET6_ADDRSTRLEN);
-				log_ppp_info2("IPv6 DNS address %s\n", str);
 				break;
 		}
 	}
