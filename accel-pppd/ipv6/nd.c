@@ -391,21 +391,6 @@ static void ev_ses_started(struct ap_session *ses)
 	}
 }
 
-static void ev_dns(struct ev_dns_t *ev)
-{
-	if (!ev->ses->ipv6)
-		return;
-
-	// This should be a linked list that pre-pends to entries 
-	// from conf file (droping exesses as needed)
-	if (ev->ip6dns1) {
-		conf_dns[0] = *ev->ip6dns1;
-		if  (!conf_dns_count) {
-			conf_dns_count++;
-		}
-	}
-}
-
 static void ev_ses_finishing(struct ap_session *ses)
 {
 	struct ipv6_nd_handler_t *h = find_pd(ses);
@@ -590,7 +575,6 @@ static void init(void)
 
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 	triton_event_register_handler(EV_SES_STARTED, (triton_event_func)ev_ses_started);
-	triton_event_register_handler(EV_DNS,(triton_event_func)ev_dns);
 	triton_event_register_handler(EV_SES_FINISHING, (triton_event_func)ev_ses_finishing);
 }
 

@@ -274,10 +274,8 @@ int rad_proc_attrs(struct rad_req_t *req)
 	struct ev_dns_t dns = {};
 	struct rad_attr_t *attr;
 	struct ipv6db_addr_t *a;
-	struct in6_addr *b;
 	int res = 0;
 	struct radius_pd_t *rpd = req->rpd;
-	char str[INET6_ADDRSTRLEN];
 
 	req->rpd->acct_interim_interval = conf_acct_interim_interval;
 	req->rpd->acct_interim_jitter = conf_acct_interim_jitter;
@@ -386,12 +384,10 @@ int rad_proc_attrs(struct rad_req_t *req)
 				rad_add_framed_ipv6_route(attr->val.string, rpd);
 				break;
 			case DNS_Server_IPv6_Address:
-			  b = _malloc(sizeof(*b));
-			  memset(b, 0, sizeof(*b));
-			  *b = attr->val.ipv6addr;
-				dns.ses = rpd->ses;
-				dns.ip6dns1 = b;
-				inet_ntop(AF_INET6, dns.ip6dns1, str, INET6_ADDRSTRLEN);
+			  a = _malloc(sizeof(*a));
+			  memset(a, 0, sizeof(*a));
+			  a->addr = attr->val.ipv6addr;
+			  list_add_tail(&a->entry, &rpd->ipv6_dns.addr_list);
 				break;
 		}
 	}

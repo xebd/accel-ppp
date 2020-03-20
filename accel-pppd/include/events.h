@@ -58,7 +58,6 @@ struct ev_dns_t
 	struct ap_session *ses;
 	in_addr_t dns1;
 	in_addr_t dns2;
-	struct in6_addr *ip6dns1;
 };
 
 struct ev_wins_t
