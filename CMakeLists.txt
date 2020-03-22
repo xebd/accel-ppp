@@ -8,8 +8,6 @@ endif ()
 
 project(accel-ppp C)
 
-include(cmake/cpack.cmake)
-
 SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -fno-strict-aliasing -D_GNU_SOURCE -fPIC -rdynamic -Wno-unused-result")
 
 IF (NOT DEFINED LIB_SUFFIX)
@@ -51,6 +49,9 @@ ELSE (EXISTS ${CMAKE_HOME_DIRECTORY}/.git AND NOT IGNORE_GIT)
 	SET (ACCEL_PPP_VERSION 1.12.0)
 ENDIF (EXISTS ${CMAKE_HOME_DIRECTORY}/.git AND NOT IGNORE_GIT)
 
+# we must include cpack.cmake after generating the ACCEL_PPP_VERSION variable
+include(cmake/cpack.cmake)
+
 ADD_DEFINITIONS(-DACCEL_PPP_VERSION="${ACCEL_PPP_VERSION}")
 INCLUDE_DIRECTORIES(${CMAKE_CURRENT_BINARY_DIR})
 
@@ -62,7 +63,7 @@ if (NOT BUILD_DRIVER_ONLY)
 	if (NOT DEFINED CRYPTO)
 		set(CRYPTO OPENSSL)
 	endif (NOT DEFINED CRYPTO)
-	
+
 	if (CRYPTO STREQUAL OPENSSL)
 		find_library(CRYPTO_LIBRARY ssl
 			HINTS ${CMAKE_SOURCE_DIR}/lib/linux/gcc/${BIT}/lib
@@ -83,7 +84,7 @@ if (NOT BUILD_DRIVER_ONLY)
 	else (CRYPTO STREQUAL OPENSSL)
 		message(FATAL_ERROR "unknown CRYPTO type")
 	endif (CRYPTO STREQUAL OPENSSL)
-	
+
 	add_subdirectory(accel-pppd)
 	add_subdirectory(crypto)
 	add_subdirectory(accel-cmd)
