@@ -178,7 +178,6 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ds
 		int i = 0, j = 0;
 		struct ipv6db_addr_t *dns;
 
-		log_ppp_info2("User ipv6 DNS\n");
 		list_for_each_entry(dns, &ses->ipv6_dns->addr_list, entry) {
 			i++;
 		}
@@ -199,10 +198,8 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ds
 			} else {
 				break;
 			}
-			
 		}
 	} else if (conf_dns_count) {
-		log_ppp_info2("Global ipv6 DNS\n");
 		rdnssinfo = (struct nd_opt_rdnss_info_local *)pinfo;
 		memset(rdnssinfo, 0, sizeof(*rdnssinfo));
 		rdnssinfo->nd_opt_rdnssi_type = ND_OPT_RDNSS_INFORMATION;

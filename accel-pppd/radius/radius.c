@@ -384,10 +384,10 @@ int rad_proc_attrs(struct rad_req_t *req)
 				rad_add_framed_ipv6_route(attr->val.string, rpd);
 				break;
 			case DNS_Server_IPv6_Address:
-			  a = _malloc(sizeof(*a));
+				a = _malloc(sizeof(*a));
 				memset(a, 0, sizeof(*a));
-			  a->addr = attr->val.ipv6addr;
-			  list_add_tail(&a->entry, &rpd->ipv6_dns.addr_list);
+				a->addr = attr->val.ipv6addr;
+				list_add_tail(&a->entry, &rpd->ipv6_dns.addr_list);
 				break;
 		}
 	}
