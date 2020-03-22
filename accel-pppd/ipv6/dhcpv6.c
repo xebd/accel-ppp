@@ -222,11 +222,9 @@ static void insert_oro(struct dhcpv6_packet *reply, struct dhcpv6_option *opt, s
 	for (i = ntohs(opt->hdr->len) / 2, ptr = (uint16_t *)opt->hdr->data; i; i--, ptr++) {
 		if (ntohs(*ptr) == D6_OPTION_DNS_SERVERS) {
 			if (!list_empty(&ses->ipv6_dns->addr_list)) {
-				log_ppp_info2("User IPv6 DNS Servers\n");
 				list_for_each_entry(dns, &ses->ipv6_dns->addr_list, entry) {
 					j++;
 				}
-				log_ppp_info2("Found IPv6 DNS Servers %d\n", j);
 				if (j >= 3) {
 					j = 3;
 				}
