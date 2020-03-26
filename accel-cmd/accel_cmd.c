@@ -645,7 +645,7 @@ int main(int argc, char **argv)
 	bool numeric = false;
 	int inputstream = -1;
 	int oindx = 0;
-	char ochar;
+	int ochar;
 	int rv;
 
 	while ((ochar = getopt_long(argc, argv, "f:46ni:H:p:t:P:vVh-",
