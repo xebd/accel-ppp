@@ -253,7 +253,8 @@ static int pptp_start_ctrl_conn_rqst(struct pptp_conn_t *conn)
 	if (send_pptp_start_ctrl_conn_rply(conn, PPTP_CONN_RES_SUCCESS, 0))
 		return -1;
 
-	triton_timer_mod(&conn->timeout_timer, 0);
+	if (conn->timeout_timer.tpd)
+		triton_timer_mod(&conn->timeout_timer, 0);
 
 	conn->state = STATE_ESTB;
 
