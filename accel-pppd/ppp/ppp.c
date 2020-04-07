@@ -280,6 +280,7 @@ static void destablish_ppp(struct ppp_t *ppp)
 			}
 			ppp->ses.net = def_net;
 			net = def_net;
+			ppp->ses.ifindex = net->get_ifindex(ppp->ses.ifname);
 		}
 
 		sprintf(ifr.ifr_newname, "ppp%i", ppp->ses.unit_idx);
