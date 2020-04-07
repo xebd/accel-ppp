@@ -7,10 +7,10 @@
 #include <sched.h>
 #include <limits.h>
 #include <errno.h>
-#include <linux/if.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 #include <sys/syscall.h>
+#include <linux/if.h>
 
 #include "config.h"
 #include "triton.h"
