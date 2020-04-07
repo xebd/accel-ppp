@@ -88,21 +88,11 @@ void __export ap_session_set_ifindex(struct ap_session *ses)
 
 int __export ap_session_starting(struct ap_session *ses)
 {
-	struct ifreq ifr;
-
 	if (ap_shutdown)
 		return -1;
 
-	if (ses->ifindex == -1 && ses->ifname[0]) {
-		memset(&ifr, 0, sizeof(ifr));
-		strcpy(ifr.ifr_name, ses->ifname);
-
-		if (net->sock_ioctl(SIOCGIFINDEX, &ifr)) {
-			log_ppp_error("ioctl(SIOCGIFINDEX): %s\n", strerror(errno));
-			return -1;
-		}
-		ses->ifindex = ifr.ifr_ifindex;
-	}
+	if (ses->ifindex == -1 && ses->ifname[0])
+		ses->ifindex = net->get_ifindex(ses->ifname);
 
 	if (ses->ifindex != -1)
 		ap_session_set_ifindex(ses);
