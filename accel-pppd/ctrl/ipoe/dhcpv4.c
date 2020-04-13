@@ -325,6 +325,12 @@ static int dhcpv4_parse_packet(struct dhcpv4_packet *pack, int len)
 			break;
 		}
 
+		if (ptr + 2 > endptr ||
+		    ptr + 2 + ptr[1] > endptr) {
+			log_warn("dhcpv4: invalid packet received\n");
+			return -1;
+		}
+
 		opt = mempool_alloc(opt_pool);
 		if (!opt) {
 			log_emerg("out of memory\n");
@@ -335,9 +341,6 @@ static int dhcpv4_parse_packet(struct dhcpv4_packet *pack, int len)
 		opt->len = *ptr++;
 		opt->data = ptr;
 		ptr += opt->len;
-
-		if (ptr > endptr)
-			return -1;
 
 		list_add_tail(&opt->entry, &pack->options);
 
@@ -429,11 +432,14 @@ int dhcpv4_parse_opt82(struct dhcpv4_option *opt, uint8_t **agent_circuit_id, ui
 	int type, len;
 
 	while (ptr < endptr) {
+		if (ptr + 2 > endptr ||
+		    ptr + 2 + ptr[1] > endptr) {
+			log_warn("dhcpv4: invalid packet received\n");
+			return -1;
+		}
+
 		type = *ptr++;
 		len = *ptr++;
-
-		if (ptr + len > endptr)
-			return -1;
 
 		if (type == 1)
 			*agent_circuit_id = ptr - 1;
@@ -663,8 +669,12 @@ static int dhcpv4_send_udp(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack,
 
 int dhcpv4_packet_add_opt(struct dhcpv4_packet *pack, int type, const void *data, int len)
 {
-	struct dhcpv4_option *opt = mempool_alloc(opt_pool);
+	struct dhcpv4_option *opt;
 
+	if (pack->data + BUF_SIZE - pack->ptr < 2 + len)
+		return -1;
+
+	opt = mempool_alloc(opt_pool);
 	if (!opt) {
 		log_emerg("out of memory\n");
 		return -1;

@@ -35,7 +35,7 @@ static struct {
 	uint64_t u64;
 } __packed serverid;
 
-static int conf_verbose;
+int conf_verbose;
 static int conf_pref_lifetime = 604800;
 static int conf_valid_lifetime = 2592000;
 static struct dhcpv6_opt_serverid *conf_serverid = &serverid.hdr;
