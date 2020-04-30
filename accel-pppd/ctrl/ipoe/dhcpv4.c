@@ -709,7 +709,9 @@ static inline int dhcpv4_packet_add_opt_u32(struct dhcpv4_packet *pack, int type
 	return dhcpv4_packet_add_opt(pack, type, &val, 4);
 }
 
-int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_packet *req, uint32_t yiaddr, uint32_t siaddr, uint32_t router, uint32_t mask, int lease_time, int renew_time, struct dhcpv4_packet *relay)
+int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_packet *req,
+	uint32_t yiaddr, uint32_t siaddr, uint32_t router, uint32_t mask,
+	int lease_time, int renew_time, int rebind_time, struct dhcpv4_packet *relay)
 {
 	struct dhcpv4_packet *pack;
 	struct dhcpv4_option *opt;
@@ -744,10 +746,11 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 	if (dhcpv4_packet_add_opt_u32(pack, 51, lease_time))
 		goto out_err;
 
-	if (renew_time) {
-		if (dhcpv4_packet_add_opt_u32(pack, 58, renew_time))
-			goto out_err;
-	}
+	if (renew_time && dhcpv4_packet_add_opt_u32(pack, 58, renew_time))
+		goto out_err;
+
+	if (rebind_time && dhcpv4_packet_add_opt_u32(pack, 59, rebind_time))
+		goto out_err;
 
 	if (router && dhcpv4_packet_add_opt(pack, 3, &router, 4))
 		goto out_err;

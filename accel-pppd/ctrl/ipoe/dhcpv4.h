@@ -117,7 +117,9 @@ int dhcpv4_relay_send_release(struct dhcpv4_relay *relay, uint8_t *chaddr, uint3
 	struct dhcpv4_option *client_id, struct dhcpv4_option *relay_agent,
 	const char *agent_circuit_id, const char *agent_remote_id);
 
-int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_packet *req, uint32_t yiaddr, uint32_t siaddr, uint32_t router, uint32_t mask, int lease_time, int renew_time, struct dhcpv4_packet *relay_reply);
+int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_packet *req,
+	uint32_t yiaddr, uint32_t siaddr, uint32_t router, uint32_t mask,
+	int lease_time, int renew_time, int rebind_time, struct dhcpv4_packet *relay_reply);
 int dhcpv4_send_nak(struct dhcpv4_serv *serv, struct dhcpv4_packet *req);
 
 void dhcpv4_send_notify(struct dhcpv4_serv *serv, struct dhcpv4_packet *req, unsigned int weight);
