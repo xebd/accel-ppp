@@ -301,7 +301,7 @@ static struct ipv6db_prefix_t *get_dp(struct ap_session *ses)
 	struct dppool_item_t *it;
 	struct ippool_t *pool;
 
-	if (ses->ipv6_pool_name)
+	if (ses->dpv6_pool_name)
 		pool = find_pool(IPPOOL_PREFIX, ses->dpv6_pool_name, 0);
 	else
 		pool = def_dppool;
