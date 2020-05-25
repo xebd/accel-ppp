@@ -250,6 +250,8 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext* ctx)
 			free(msg->ip_addr);
 		if (msg->ctrl_ifname)
 			free(msg->ctrl_ifname);
+		if (msg->nas_identifier)
+			free(msg->nas_identifier);
 
 		mempool_free(msg);
 	}
