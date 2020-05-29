@@ -30,6 +30,7 @@
 
 extern char** environ;
 
+#define DEFAULT_NAS_ID "accel-ppp"
 #define DEFAULT_REDIS_HOST    "localhost"
 #define DEFAULT_REDIS_PORT     6379
 #define DEFAULT_REDIS_PUBCHAN "accel-ppp"
@@ -107,6 +108,8 @@ struct ap_redis_t {
 	/* flags */
 	uint32_t flags;
 
+	/*radius nas-identifier */
+	char* nas_id;
 	/* redis host */
 	char* host;
 	/* redis port */
@@ -360,6 +363,12 @@ static int ap_redis_open(struct ap_redis_t *ap_redis)
 
 	ap_redis->events = 0;
 
+// inserting the nas-identifier from the radius section of accel-ppp.conf
+	if (((opt = conf_get_opt("radius", "nas-identifier")) != NULL))
+		ap_redis->nas_id = _strdup(opt);
+	else
+		ap_redis->nas_id = _strdup(DEFAULT_NAS_ID);
+
 	if (((opt = conf_get_opt("redis", "host")) != NULL))
 		ap_redis->host = _strdup(opt);
 	else
@@ -495,7 +504,8 @@ static void ap_redis_enqueue(struct ap_session *ses, const int event)
 	if (ses->ctrl->ifname)
 		msg->ctrl_ifname = _strdup(ses->ctrl->ifname);
 
-    msg->ip_addr = _strdup(tmp_addr);
+    	msg->ip_addr = _strdup(tmp_addr);
+	msg->nas_identifier = ap_redis->nas_id;
 
 	switch(ses->ctrl->type) {
 	case CTRL_TYPE_PPTP:    msg->ses_ctrl_type = REDIS_SES_CTRL_TYPE_PPTP;    break;
