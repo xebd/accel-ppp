@@ -505,7 +505,7 @@ static void ap_redis_enqueue(struct ap_session *ses, const int event)
 		msg->ctrl_ifname = _strdup(ses->ctrl->ifname);
 
     	msg->ip_addr = _strdup(tmp_addr);
-	msg->nas_identifier = ap_redis->nas_id;
+	msg->nas_identifier = _strdup(ap_redis->nas_id);
 
 	switch(ses->ctrl->type) {
 	case CTRL_TYPE_PPTP:    msg->ses_ctrl_type = REDIS_SES_CTRL_TYPE_PPTP;    break;
