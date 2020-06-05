@@ -49,6 +49,7 @@ int conf_req_limit;
 
 static const char *conf_default_realm;
 static int conf_default_realm_len;
+static int conf_strip_realm;
 
 const char *conf_attr_tunnel_type;
 
@@ -411,18 +412,27 @@ static int rad_pwdb_check(struct pwdb_t *pwdb, struct ap_session *ses, pwdb_call
 	struct radius_pd_t *rpd = find_pd(ses);
 	char username1[256];
 
-	if (conf_default_realm && !strchr(username, '@')) {
-		int len = strlen(username);
-		if (len + conf_default_realm_len >= 256 - 2) {
-			log_ppp_error("radius: username is too large to append realm\n");
-			return PWDB_DENIED;
+	if (conf_strip_realm || conf_default_realm) {
+		int len = strchrnul(username, '@') - username;
+		if (conf_strip_realm && username[len]) {
+			if (len > sizeof(username1) - 1) {
+				log_ppp_error("radius: username is too large to strip realm\n");
+				return PWDB_DENIED;
+			}
+			username = memcpy(username1, username, len);
+			username1[len] = '\0';
 		}
-
-		memcpy(username1, username, len);
-		username1[len] = '@';
-		memcpy(username1 + len + 1, conf_default_realm, conf_default_realm_len);
-		username1[len + 1 + conf_default_realm_len] = 0;
-		username = username1;
+		if (conf_default_realm && username[len] == '\0') {
+			if (len + conf_default_realm_len > sizeof(username1) - 2) {
+				log_ppp_error("radius: username is too large to append realm\n");
+				return PWDB_DENIED;
+			}
+			if (username != username1)
+				username = memcpy(username1, username, len);
+			username1[len++] = '@';
+			memcpy(username1 + len, conf_default_realm, conf_default_realm_len);
+			username1[len + conf_default_realm_len] = '\0';
+		}
 	}
 
 	rpd->auth_ctx = mempool_alloc(auth_ctx_pool);
@@ -988,6 +998,10 @@ static int load_config(void)
 	conf_default_realm = conf_get_opt("radius", "default-realm");
 	if (conf_default_realm)
 		conf_default_realm_len = strlen(conf_default_realm);
+
+	opt = conf_get_opt("radius", "strip-realm");
+	if (opt && atoi(opt) >= 0)
+		conf_strip_realm = atoi(opt) > 0;
 
 	return 0;
 }
