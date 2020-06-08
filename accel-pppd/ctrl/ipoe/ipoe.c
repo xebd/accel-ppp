@@ -621,7 +621,10 @@ static void auth_result(struct ipoe_session *ses, int r)
 			ses->l4_redirect_timer.expire_tv.tv_sec = conf_l4_redirect_on_reject;
 			triton_timer_add(&ses->ctx, &ses->l4_redirect_timer, 0);
 
-			ap_session_set_username(&ses->ses, username);
+			if (ap_session_set_username(&ses->ses, username)) {
+				ap_session_terminate(&ses->ses, TERM_NAS_REQUEST, 1);
+				return;
+			}
 			log_ppp_info1("%s: authentication failed\n", ses->ses.username);
 			log_ppp_info1("%s: start temporary session (l4-redirect)\n", ses->ses.username);
 			goto cont;
@@ -639,10 +642,13 @@ static void auth_result(struct ipoe_session *ses, int r)
 		return;
 	}
 
-	ap_session_set_username(&ses->ses, username);
+	if (ap_session_set_username(&ses->ses, username)) {
+		ap_session_terminate(&ses->ses, TERM_NAS_REQUEST, 1);
+		return;
+	}
 	log_ppp_info1("%s: authentication succeeded\n", ses->ses.username);
 
-	if (conf_check_exists && check_exists(ses, ses->yiaddr)){
+	if (conf_check_exists && check_exists(ses, ses->yiaddr)) {
 		ap_session_terminate(&ses->ses, TERM_NAS_REQUEST, 1);
 		return;
 	}
