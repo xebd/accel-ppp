@@ -556,7 +556,7 @@ static int ipv6cp_recv_conf_nak(struct ppp_ipv6cp_t *ipv6cp, uint8_t *data, int 
 					lopt->h->print(log_ppp_info2,lopt,data);
 				}
 				if (lopt->h->recv_conf_nak && lopt->h->recv_conf_nak(ipv6cp, lopt, data))
-					res =- 1;
+					res = -1;
 				break;
 			}
 		}
