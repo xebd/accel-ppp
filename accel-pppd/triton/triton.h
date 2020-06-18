@@ -41,9 +41,9 @@ struct triton_sigchld_handler_t
 struct conf_option_t
 {
 	struct list_head entry;
-	char *name;
-	char *val;
-	char *raw;
+	const char *name;
+	const char *val;
+	const char *raw;
 	struct list_head items;
 };
 
@@ -101,7 +101,7 @@ int triton_event_register_handler(int ev_id, triton_event_func func);
 void triton_event_fire(int ev_id, void *arg);
 
 struct conf_sect_t *conf_get_section(const char *name);
-char *conf_get_opt(const char *sect, const char *name);
+const char *conf_get_opt(const char *sect, const char *name);
 void triton_conf_reload(void (*notify)(int));
 
 void triton_collect_cpu_usage(void);

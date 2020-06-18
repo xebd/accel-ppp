@@ -24,7 +24,7 @@ int load_modules(const char *name)
 	struct conf_sect_t *sect;
 	struct conf_option_t *opt;
 	char *fname;
-	char *path = MODULE_PATH;
+	const char *path = MODULE_PATH;
 	char *ptr1, *ptr2;
 	struct module_t *m;
 	void *h;

@@ -724,7 +724,7 @@ void __export triton_run()
 {
 	struct _triton_thread_t *t;
 	int i;
-	char *opt;
+	const char *opt;
 	struct timespec ts;
 
 	opt = conf_get_opt("core", "thread-count");

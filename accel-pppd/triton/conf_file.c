@@ -138,7 +138,8 @@ static int load_file(struct conf_ctx *ctx)
 					fprintf(stderr, "conf_file:%s:%i: parent option not found\n", ctx->fname, ctx->line);
 					return -1;
 				}
-				str2 = opt->val;
+				/* We're still in the building phase, disregard the const correctness */
+				str2 = (char *)opt->val;
 			}
 		} else
 			str2 = NULL;
@@ -203,9 +204,9 @@ static void free_items(struct list_head *items)
 		opt = list_entry(items->next, typeof(*opt), entry);
 		list_del(&opt->entry);
 		if (opt->val)
-			_free(opt->val);
-		_free(opt->name);
-		_free(opt->raw);
+			_free((char *)opt->val);
+		_free((char *)opt->name);
+		_free((char *)opt->raw);
 		free_items(&opt->items);
 		_free(opt);
 	}
@@ -322,7 +323,7 @@ __export struct conf_sect_t * conf_get_section(const char *name)
 	return find_sect(name);
 }
 
-__export char * conf_get_opt(const char *sect, const char *name)
+__export const char * conf_get_opt(const char *sect, const char *name)
 {
 	struct conf_option_t *opt;
 	struct conf_sect_t *s = conf_get_section(sect);
