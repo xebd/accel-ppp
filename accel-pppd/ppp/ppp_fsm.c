@@ -528,7 +528,7 @@ static void restart_timer_func(struct triton_timer_t *t)
 
 static void load_config(void)
 {
-	char *opt;
+	const char *opt;
 
 	opt = conf_get_opt("ppp", "max-terminate");
 	if (opt && atoi(opt) > 0)

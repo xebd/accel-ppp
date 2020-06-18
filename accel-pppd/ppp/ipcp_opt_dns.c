@@ -162,7 +162,7 @@ static void ev_dns(struct ev_dns_t *ev)
 
 static void load_config(void)
 {
-	char *opt;
+	const char *opt;
 
 	opt = conf_get_opt("dns", "dns1");
 	if (opt)

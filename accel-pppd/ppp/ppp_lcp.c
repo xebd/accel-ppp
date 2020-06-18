@@ -881,7 +881,7 @@ static struct ppp_layer_t lcp_layer=
 
 static void load_config(void)
 {
-	char *opt;
+	const char *opt;
 
 	opt = conf_get_opt("ppp", "lcp-echo-interval");
 	if (opt)
