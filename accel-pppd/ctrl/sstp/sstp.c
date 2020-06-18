@@ -2372,7 +2372,7 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 	SSL_CTX *old_ctx, *ssl_ctx = NULL;
 	X509 *cert = NULL;
 	BIO *in = NULL;
-	char *opt;
+	const char *opt;
 
 	opt = conf_get_opt("sstp", "ssl-pemfile");
 	if (opt) {
@@ -2638,7 +2638,7 @@ void __export sstp_get_stat(unsigned int **starting, unsigned int **active)
 static void load_config(void)
 {
 	int ipmode;
-	char *opt;
+	const char *opt;
 
 	opt = conf_get_opt("sstp", "verbose");
 	if (opt && atoi(opt) >= 0)
@@ -2741,7 +2741,7 @@ static void sstp_init(void)
 	struct sockaddr_t *addr = &serv.addr;
 	struct stat st;
 	int port, value;
-	char *opt;
+	const char *opt;
 
 	opt = conf_get_opt("sstp", "port");
 	if (opt && atoi(opt) > 0)

@@ -765,7 +765,7 @@ void __export pptp_get_stat(unsigned int **starting, unsigned int **active)
 
 static void load_config(void)
 {
-	char *opt;
+	const char *opt;
 
 	opt = conf_get_opt("pptp", "timeout");
 	if (opt && atoi(opt) > 0)
@@ -824,7 +824,7 @@ static void load_config(void)
 static void pptp_init(void)
 {
 	struct sockaddr_in addr;
-	char *opt;
+	const char *opt;
 	int fd;
 
 	fd = socket(AF_PPPOX, SOCK_STREAM, PX_PROTO_PPTP);

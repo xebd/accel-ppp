@@ -1937,7 +1937,7 @@ static void load_vlan_mon(struct conf_sect_t *sect)
 
 static void load_config(void)
 {
-	char *opt;
+	const char *opt;
 	struct conf_sect_t *s = conf_get_section("pppoe");
 
 	opt = conf_get_opt("pppoe", "verbose");
