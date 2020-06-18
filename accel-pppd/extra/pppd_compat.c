@@ -717,33 +717,28 @@ out:
 	env[n] = NULL;
 }
 
+static const char *get_exec_path(const char *opt_name)
+{
+	const char *opt;
+	opt = conf_get_opt("pppd-compat", "ip-pre-up");
+
+	if (opt && access(opt, R_OK | X_OK)) {
+		log_error("pppd_compat: %s: %s\n", opt, strerror(errno));
+		return NULL;
+	}
+	return opt;
+
+
+}
+
 static void load_config()
 {
 	const char *opt;
 
-	conf_ip_pre_up = conf_get_opt("pppd-compat", "ip-pre-up");
-	if (conf_ip_pre_up && access(conf_ip_pre_up, R_OK | X_OK)) {
-		log_error("pppd_compat: %s: %s\n", conf_ip_pre_up, strerror(errno));
-		conf_ip_pre_up = NULL;
-	}
-
-	conf_ip_up = conf_get_opt("pppd-compat", "ip-up");
-	if (conf_ip_up && access(conf_ip_up, R_OK | X_OK)) {
-		log_error("pppd_compat: %s: %s\n", conf_ip_up, strerror(errno));
-		conf_ip_up = NULL;
-	}
-
-	conf_ip_down = conf_get_opt("pppd-compat", "ip-down");
-	if (conf_ip_down && access(conf_ip_down, R_OK | X_OK)) {
-		log_error("pppd_compat: %s: %s\n", conf_ip_down, strerror(errno));
-		conf_ip_down = NULL;
-	}
-
-	conf_ip_change = conf_get_opt("pppd-compat", "ip-change");
-	if (conf_ip_change && access(conf_ip_change, R_OK | X_OK)) {
-		log_error("pppd_compat: %s: %s\n", conf_ip_change, strerror(errno));
-		conf_ip_change = NULL;
-	}
+	conf_ip_pre_up = get_exec_path("ip-pre-up");
+	conf_ip_up = get_exec_path("ip-up");
+	conf_ip_down = get_exec_path("ip-down");
+	conf_ip_change = get_exec_path("ip-change");
 
 	conf_radattr_prefix = conf_get_opt("pppd-compat", "radattr-prefix");
 
