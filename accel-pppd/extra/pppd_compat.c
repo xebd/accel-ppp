@@ -32,11 +32,11 @@
 #define ENV_MEM 1024
 #define ENV_MAX 16
 
-static char *conf_ip_up;
-static char *conf_ip_pre_up;
-static char *conf_ip_down;
-static char *conf_ip_change;
-static char *conf_radattr_prefix;
+static const char *conf_ip_up;
+static const char *conf_ip_pre_up;
+static const char *conf_ip_down;
+static const char *conf_ip_change;
+static const char *conf_radattr_prefix;
 static int conf_verbose = 0;
 static int conf_fork_limit;
 
