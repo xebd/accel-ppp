@@ -6,17 +6,16 @@
 #include <pthread.h>
 #include <fcntl.h>
 #include <sys/socket.h>
-#include <sys/ioctl.h>
-#include <net/ethernet.h>
 #include <netpacket/packet.h>
+#include <sys/ioctl.h>
 #include <arpa/inet.h>
 
-#include "triton.h"
+#include "pppoe.h"
+
 #include "log.h"
 #include "mempool.h"
 
 #include "ap_net.h"
-#include "pppoe.h"
 
 #include "memdebug.h"
 

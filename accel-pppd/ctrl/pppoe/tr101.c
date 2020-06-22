@@ -1,15 +1,12 @@
 #include <string.h>
 #include <stdlib.h>
 #include <netinet/in.h>
-#include <net/ethernet.h>
 
-#include "triton.h"
+#include "pppoe.h"
 #include "ppp.h"
 #include "log.h"
 #include "radius.h"
 #include "memdebug.h"
-
-#include "pppoe.h"
 
 #define OPT_CIRCUIT_ID                0x01
 #define OPT_REMOTE_AGENT_ID           0x02

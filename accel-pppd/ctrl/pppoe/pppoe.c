@@ -8,15 +8,13 @@
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
-#include <net/ethernet.h>
 #include <netpacket/packet.h>
 #include <arpa/inet.h>
 #include <printf.h>
 
-#include "crypto.h"
+#include "pppoe.h"
 
 #include "events.h"
-#include "triton.h"
 #include "log.h"
 #include "ppp.h"
 #include "mempool.h"
@@ -29,8 +27,6 @@
 #include "iputils.h"
 #include "connlimit.h"
 #include "vlan_mon.h"
-
-#include "pppoe.h"
 
 #include "memdebug.h"
 

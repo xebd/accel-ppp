@@ -1,14 +1,11 @@
 #include <string.h>
 #include <stdlib.h>
 #include <netinet/in.h>
-#include <net/ethernet.h>
 
-#include "triton.h"
+#include "pppoe.h"
 #include "cli.h"
 #include "ppp.h"
 #include "memdebug.h"
-
-#include "pppoe.h"
 
 static void show_interfaces(void *cli)
 {

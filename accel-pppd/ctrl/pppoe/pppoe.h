@@ -5,9 +5,12 @@
 
 #include <linux/if.h>
 #include <linux/if_pppox.h>
+#include <net/ethernet.h>
 
 #include "rbtree.h"
 #include "crypto.h"
+#include "list.h"
+#include "triton.h"
 
 /* PPPoE codes */
 #define CODE_PADI           0x09
