@@ -1253,12 +1253,12 @@ static void pppoe_recv_PADT(struct pppoe_serv_t *serv, uint8_t *pack)
 	pthread_mutex_unlock(&serv->lock);
 }
 
-void pppoe_serv_read(uint8_t *data)
+void pppoe_serv_read(struct pppoe_disc_packet_t *packet)
 {
 	struct pppoe_serv_t *serv = container_of(triton_context_self(), typeof(*serv), ctx);
-	uint8_t *pack = data + 4;
+	uint8_t *pack = packet->data;
 	struct pppoe_hdr *hdr = (struct pppoe_hdr *)(pack + ETH_HLEN);
-	int n = *(int *)data;
+	int n = packet->len;
 
 	switch (hdr->code) {
 		case CODE_PADI:
@@ -1272,7 +1272,7 @@ void pppoe_serv_read(uint8_t *data)
 			break;
 	}
 
-	mempool_free(data);
+	mempool_free(packet);
 }
 
 static void pppoe_serv_close(struct triton_context_t *ctx)

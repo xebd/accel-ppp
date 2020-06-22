@@ -202,13 +202,13 @@ void pppoe_disc_stop(struct pppoe_serv_t *serv)
 		free_net(n);
 }
 
-static int forward(struct disc_net *net, int ifindex, void *pkt, int len)
+static int forward(struct disc_net *net, int ifindex, struct pppoe_disc_packet_t *pkt, int len)
 {
 	struct pppoe_serv_t *n;
 	struct tree *t = &net->tree[ifindex & HASH_BITS];
 	struct rb_node **p = &t->root.rb_node, *parent = NULL;
 	int r = 0;
-	struct ethhdr *ethhdr = (struct ethhdr *)(pkt + 4);
+	struct ethhdr *ethhdr = (struct ethhdr *)(pkt->data);
 
 	pthread_mutex_lock(&t->lock);
 
@@ -288,7 +288,7 @@ static void disc_stop(struct disc_net *net)
 static int disc_read(struct triton_md_handler_t *h)
 {
 	struct disc_net *net = container_of(h, typeof(*net), hnd);
-	uint8_t *pack = NULL;
+	struct pppoe_disc_packet_t *pack = NULL;
 	struct ethhdr *ethhdr;
 	struct pppoe_hdr *hdr;
 	int n;
@@ -299,7 +299,7 @@ static int disc_read(struct triton_md_handler_t *h)
 		if (!pack)
 			pack = mempool_alloc(pkt_pool);
 
-		n = net->net->recvfrom(h->fd, pack + 4, ETHER_MAX_LEN, MSG_DONTWAIT, (struct sockaddr *)&src, &slen);
+		n = net->net->recvfrom(h->fd, pack->data, ETHER_MAX_LEN, MSG_DONTWAIT, (struct sockaddr *)&src, &slen);
 
 		if (n < 0) {
 			if (errno == EAGAIN)
@@ -319,8 +319,8 @@ static int disc_read(struct triton_md_handler_t *h)
 			continue;
 		}
 
-		ethhdr = (struct ethhdr *)(pack + 4);
-		hdr = (struct pppoe_hdr *)(pack + 4 + ETH_HLEN);
+		ethhdr = (struct ethhdr *)&(pack->data);
+		hdr = (struct pppoe_hdr *)(ethhdr + 1);
 
 		if (n < ETH_HLEN + sizeof(*hdr)) {
 			if (conf_verbose)
@@ -384,7 +384,8 @@ static void disc_close(struct triton_context_t *ctx)
 
 static void init()
 {
-	pkt_pool = mempool_create(ETHER_MAX_LEN + 4);
+	/* Every packet must allocate enough space to include a header before the payload */
+	pkt_pool = mempool_create(sizeof(struct pppoe_disc_packet_t));
 }
 
 DEFINE_INIT(1, init);

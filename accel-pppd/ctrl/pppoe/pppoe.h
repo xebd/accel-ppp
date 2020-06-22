@@ -64,6 +64,11 @@ struct pppoe_packet_t
 	struct list_head tags;
 };
 
+struct pppoe_disc_packet_t {
+	int len;
+	uint8_t data[ETHER_MAX_LEN];
+};
+
 struct pppoe_serv_t
 {
 	struct list_head entry;
@@ -124,7 +129,7 @@ extern struct list_head serv_list;
 int mac_filter_check(const uint8_t *addr);
 void pppoe_server_start(const char *intf, void *client);
 void pppoe_server_stop(const char *intf);
-void pppoe_serv_read(uint8_t *data);
+void pppoe_serv_read(struct pppoe_disc_packet_t *packet);
 void _server_stop(struct pppoe_serv_t *s);
 
 int pppoe_disc_start(struct pppoe_serv_t *serv);
