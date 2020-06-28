@@ -1528,7 +1528,7 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 	}
 
 	if (conn->nonce && memcmp(msg->attr.nonce, conn->nonce, SSTP_NONCE_SIZE) != 0) {
-		log_ppp_error("sstp: invalid Nonce");
+		log_ppp_error("sstp: invalid Nonce\n");
 		return sstp_abort(conn, 0);
 	}
 
@@ -1537,7 +1537,7 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 		len = SHA256_DIGEST_LENGTH;
 		if (conf_hash_sha256.len == len &&
 		    memcmp(msg->attr.cert_hash, conf_hash_sha256.hash, len) != 0) {
-			log_ppp_error("sstp: invalid SHA256 Cert Hash");
+			log_ppp_error("sstp: invalid SHA256 Cert Hash\n");
 			return sstp_abort(conn, 0);
 		}
 #ifdef CRYPTO_OPENSSL
@@ -1547,7 +1547,7 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 		len = SHA_DIGEST_LENGTH;
 		if (conf_hash_sha1.len == len &&
 		    memcmp(msg->attr.cert_hash, conf_hash_sha1.hash, len) != 0) {
-			log_ppp_error("sstp: invalid SHA1 Cert Hash");
+			log_ppp_error("sstp: invalid SHA1 Cert Hash\n");
 			return sstp_abort(conn, 0);
 		}
 #ifdef CRYPTO_OPENSSL
@@ -1573,7 +1573,7 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 		HMAC(evp, md, mdlen, (void *)&buf, sizeof(buf), buf.attr.compound_mac, &len);
 
 		if (memcmp(msg->attr.compound_mac, buf.attr.compound_mac, len) != 0) {
-			log_ppp_error("sstp: invalid Compound MAC");
+			log_ppp_error("sstp: invalid Compound MAC\n");
 			return sstp_abort(conn, 0);
 		}
 	}
