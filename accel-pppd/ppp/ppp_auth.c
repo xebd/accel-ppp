@@ -279,13 +279,12 @@ static void __ppp_auth_started(struct ppp_t *ppp)
 	if (ppp->ses.terminating)
 		return;
 
-	log_ppp_debug("auth_layer_started\n");
-	ppp_layer_started(ppp, &ad->ld);
-
-
 	log_ppp_info1("%s: authentication succeeded\n", ppp->ses.username);
 
 	triton_event_fire(EV_SES_AUTHORIZED, &ppp->ses);
+
+	log_ppp_debug("auth_layer_started\n");
+	ppp_layer_started(ppp, &ad->ld);
 }
 
 int __export ppp_auth_succeeded(struct ppp_t *ppp, char *username)

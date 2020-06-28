@@ -64,6 +64,7 @@
 enum {
 	STATE_INIT = 0,
 	STATE_STARTING,
+	STATE_AUTHORIZED,
 	STATE_STARTED,
 	STATE_FINISHED,
 };
@@ -132,6 +133,7 @@ struct sstp_conn_t {
 
 	struct buffer_t *in;
 	struct list_head out_queue;
+	struct list_head deferred_queue;
 
 	int ppp_state;
 	int ppp_flags;
@@ -180,6 +182,8 @@ static unsigned int stat_active;
 static int sstp_write(struct triton_md_handler_t *h);
 static inline void sstp_queue(struct sstp_conn_t *conn, struct buffer_t *buf);
 static int sstp_send(struct sstp_conn_t *conn, struct buffer_t *buf);
+static inline void sstp_queue_deferred(struct sstp_conn_t *conn, struct buffer_t *buf);
+static int sstp_read_deferred(struct sstp_conn_t *conn);
 static int sstp_abort(struct sstp_conn_t *conn, int disconnect);
 static void sstp_disconnect(struct sstp_conn_t *conn);
 static int sstp_handler(struct sstp_conn_t *conn, struct buffer_t *buf);
@@ -1035,7 +1039,9 @@ static void ppp_started(struct ap_session *ses)
 
 	switch (conn->ppp_state) {
 	case STATE_STARTING:
+	case STATE_AUTHORIZED:
 		conn->ppp_state = STATE_STARTED;
+		sstp_read_deferred(conn);
 		break;
 	}
 }
@@ -1049,6 +1055,7 @@ static void ppp_finished(struct ap_session *ses)
 
 	switch (conn->ppp_state) {
 	case STATE_STARTING:
+	case STATE_AUTHORIZED:
 	case STATE_STARTED:
 		conn->ppp_state = STATE_FINISHED;
 		sstp_abort(conn, 1);
@@ -1559,8 +1566,24 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 		return sstp_abort(conn, 0);
 	}
 
-#ifdef CRYPTO_OPENSSL
 	if (conn->hlak_key) {
+		/* SSTP_MSG_CALL_CONNECTED may come before auth response */
+		if (conn->ppp_state < STATE_AUTHORIZED) {
+			struct buffer_t *buf;
+
+			log_warn("sstp: SSTP_MSG_CALL_CONNECTED is out of order, deferring...\n");
+
+			buf = alloc_buf(sizeof(*msg));
+			if (!buf) {
+				log_error("sstp: no memory\n");
+				return -1;
+			}
+			buf_put_data(buf, msg, sizeof(*msg));
+			sstp_queue_deferred(conn, buf);
+			return 0;
+		}
+
+#ifdef CRYPTO_OPENSSL
 		ptr = mempcpy(md, SSTP_CMK_SEED, SSTP_CMK_SEED_SIZE);
 		*ptr++ = len;
 		*ptr++ = 0;
@@ -1576,8 +1599,8 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 			log_ppp_error("sstp: invalid Compound MAC\n");
 			return sstp_abort(conn, 0);
 		}
-	}
 #endif
+	}
 
 	conn->sstp_state = STATE_SERVER_CALL_CONNECTED;
 
@@ -1889,6 +1912,33 @@ drop:
 	return 1;
 }
 
+static inline void sstp_queue_deferred(struct sstp_conn_t *conn, struct buffer_t *buf)
+{
+	list_add_tail(&buf->entry, &conn->deferred_queue);
+}
+
+static int sstp_read_deferred(struct sstp_conn_t *conn)
+{
+	struct buffer_t *buf;
+	int n;
+
+	while (!list_empty(&conn->deferred_queue)) {
+		buf = list_first_entry(&conn->deferred_queue, typeof(*buf), entry);
+
+		n = conn->handler(conn, buf);
+		if (n < 0)
+			goto drop;
+
+		list_del(&buf->entry);
+		free_buf(buf);
+	}
+	return 0;
+
+drop:
+	sstp_disconnect(conn);
+	return 1;
+}
+
 static int sstp_recv(struct triton_md_handler_t *h)
 {
 	struct sstp_conn_t *conn = container_of(h, typeof(*conn), hnd);
@@ -2050,6 +2100,7 @@ static void sstp_close(struct triton_context_t *ctx)
 
 	switch (conn->ppp_state) {
 	case STATE_STARTING:
+	case STATE_AUTHORIZED:
 	case STATE_STARTED:
 		conn->ppp_state = STATE_FINISHED;
 		ap_session_terminate(&conn->ppp.ses, TERM_ADMIN_RESET, 1);
@@ -2110,6 +2161,7 @@ static void sstp_disconnect(struct sstp_conn_t *conn)
 		__sync_sub_and_fetch(&stat_starting, 1);
 		break;
 	case STATE_STARTING:
+	case STATE_AUTHORIZED:
 	case STATE_STARTED:
 		conn->ppp_state = STATE_FINISHED;
 		__sync_sub_and_fetch(&stat_active, 1);
@@ -2132,6 +2184,7 @@ static void sstp_disconnect(struct sstp_conn_t *conn)
 	free_buf(conn->ppp_in);
 
 	list_splice_init(&conn->ppp_queue, &conn->out_queue);
+	list_splice_init(&conn->deferred_queue, &conn->out_queue);
 	while (!list_empty(&conn->out_queue)) {
 		buf = list_first_entry(&conn->out_queue, typeof(*buf), entry);
 		list_del(&buf->entry);
@@ -2270,6 +2323,7 @@ static int sstp_connect(struct triton_md_handler_t *h)
 		conn->in = alloc_buf(SSTP_MAX_PACKET_SIZE*2);
 		INIT_LIST_HEAD(&conn->out_queue);
 		INIT_LIST_HEAD(&conn->ppp_queue);
+		INIT_LIST_HEAD(&conn->deferred_queue);
 		memcpy(&conn->addr, &addr, sizeof(conn->addr));
 
 		conn->ctrl.ctx = &conn->ctx;
@@ -2620,6 +2674,22 @@ static void ev_mppe_keys(struct ev_mppe_keys_t *ev)
 	}
 }
 
+static void ev_ses_authorized(struct ap_session *ses)
+{
+	struct ppp_t *ppp = container_of(ses, typeof(*ppp), ses);
+	struct sstp_conn_t *conn = container_of(ppp, typeof(*conn), ppp);
+
+	if (ppp->ses.ctrl->type != CTRL_TYPE_SSTP)
+		return;
+
+	switch (conn->ppp_state) {
+	case STATE_STARTING:
+		conn->ppp_state = STATE_AUTHORIZED;
+		sstp_read_deferred(conn);
+		break;
+	}
+}
+
 static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
 {
 	cli_send(client, "sstp:\r\n");
@@ -2825,6 +2895,7 @@ static void sstp_init(void)
 	cli_register_simple_cmd2(show_stat_exec, NULL, 2, "show", "stat");
 
 	triton_event_register_handler(EV_MPPE_KEYS, (triton_event_func)ev_mppe_keys);
+	triton_event_register_handler(EV_SES_AUTHORIZED, (triton_event_func)ev_ses_authorized);
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 	return;
 
