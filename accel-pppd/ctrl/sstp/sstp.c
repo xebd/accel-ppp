@@ -1483,10 +1483,6 @@ static int sstp_recv_msg_call_connect_request(struct sstp_conn_t *conn, struct s
 		conn->ppp_state = STATE_FINISHED;
 		goto error;
 	}
-
-	if (conn->timeout_timer.tpd)
-		triton_timer_del(&conn->timeout_timer);
-
 	return 0;
 
 error:
@@ -1504,6 +1500,7 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 	} __attribute__((packed)) *msg = (void *)hdr;
 	uint8_t hash;
 	unsigned int len;
+	struct npioctl np;
 #ifdef CRYPTO_OPENSSL
 	typeof(*msg) buf;
 	uint8_t md[EVP_MAX_MD_SIZE], *ptr;
@@ -1602,7 +1599,27 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 #endif
 	}
 
+	if (conn->timeout_timer.tpd)
+		triton_timer_del(&conn->timeout_timer);
 	conn->sstp_state = STATE_SERVER_CALL_CONNECTED;
+
+	conn->ctrl.ppp_npmode = NPMODE_PASS;
+	switch (conn->ppp_state) {
+	case STATE_STARTED:
+		if (conn->ppp.ses.ipv4) {
+			np.protocol = PPP_IP;
+			np.mode = conn->ctrl.ppp_npmode;
+			if (net->ppp_ioctl(conn->ppp.unit_fd, PPPIOCSNPMODE, &np))
+				log_ppp_error("failed to set NP (IPv4) mode: %s\n", strerror(errno));
+		}
+		if (conn->ppp.ses.ipv6) {
+			np.protocol = PPP_IPV6;
+			np.mode = conn->ctrl.ppp_npmode;
+			if (net->ppp_ioctl(conn->ppp.unit_fd, PPPIOCSNPMODE, &np))
+				log_ppp_error("failed to set NP (IPv6) mode: %s\n", strerror(errno));
+		}
+		break;
+	}
 
 	_free(conn->nonce);
 	conn->nonce = NULL;
@@ -2088,6 +2105,10 @@ static void sstp_timeout(struct triton_timer_t *t)
 	case STATE_CALL_DISCONNECT_ACK_PENDING:
 		triton_context_call(&conn->ctx, (triton_event_func)sstp_disconnect, conn);
 		break;
+	case STATE_SERVER_CONNECT_REQUEST_PENDING:
+	case STATE_SERVER_CALL_CONNECTED_PENDING:
+		log_ppp_warn("sstp: negotiation timeout\n");
+		/* fall through */
 	default:
 		sstp_abort(conn, 0);
 		break;
@@ -2333,6 +2354,7 @@ static int sstp_connect(struct triton_md_handler_t *h)
 		conn->ctrl.max_mtu = conf_ppp_max_mtu;
 		conn->ctrl.type = CTRL_TYPE_SSTP;
 		conn->ctrl.ppp = 1;
+		conn->ctrl.ppp_npmode = NPMODE_DROP;
 		conn->ctrl.name = "sstp";
 		conn->ctrl.ifname = "";
 		conn->ctrl.mppe = MPPE_DENY;

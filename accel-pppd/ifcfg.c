@@ -158,7 +158,7 @@ void __export ap_session_accounting_started(struct ap_session *ses)
 				ppp = container_of(ses, typeof(*ppp), ses);
 				if (ses->ipv4) {
 					np.protocol = PPP_IP;
-					np.mode = NPMODE_PASS;
+					np.mode = ses->ctrl->ppp_npmode ? : NPMODE_PASS;
 
 					if (net->ppp_ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
 						log_ppp_error("failed to set NP (IPv4) mode: %s\n", strerror(errno));
@@ -166,7 +166,7 @@ void __export ap_session_accounting_started(struct ap_session *ses)
 
 				if (ses->ipv6) {
 					np.protocol = PPP_IPV6;
-					np.mode = NPMODE_PASS;
+					np.mode = ses->ctrl->ppp_npmode ? : NPMODE_PASS;
 
 					if (net->ppp_ioctl(ppp->unit_fd, PPPIOCSNPMODE, &np))
 						log_ppp_error("failed to set NP (IPv6) mode: %s\n", strerror(errno));
