@@ -1568,7 +1568,8 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 		if (conn->ppp_state < STATE_AUTHORIZED) {
 			struct buffer_t *buf;
 
-			log_warn("sstp: SSTP_MSG_CALL_CONNECTED is out of order, deferring...\n");
+			if (conf_verbose)
+				log_warn("sstp: SSTP_MSG_CALL_CONNECTED is out of order, deferring...\n");
 
 			buf = alloc_buf(sizeof(*msg));
 			if (!buf) {
