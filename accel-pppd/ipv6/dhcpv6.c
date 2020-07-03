@@ -221,7 +221,7 @@ static void insert_oro(struct dhcpv6_packet *reply, struct dhcpv6_option *opt, s
 
 	for (i = ntohs(opt->hdr->len) / 2, ptr = (uint16_t *)opt->hdr->data; i; i--, ptr++) {
 		if (ntohs(*ptr) == D6_OPTION_DNS_SERVERS) {
-			if (!list_empty(&ses->ipv6_dns->addr_list)) {
+			if (ses->ipv6_dns && !list_empty(&ses->ipv6_dns->addr_list)) {
 				list_for_each_entry(dns, &ses->ipv6_dns->addr_list, entry) {
 					j++;
 				}

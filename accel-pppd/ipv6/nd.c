@@ -174,7 +174,7 @@ static void ipv6_nd_send_ra(struct ipv6_nd_handler_t *h, struct sockaddr_in6 *ds
 		rinfo++;
 	}*/
 
-	if (!list_empty(&ses->ipv6_dns->addr_list)) {
+	if (ses->ipv6 && !list_empty(&ses->ipv6_dns->addr_list)) {
 		int i = 0, j = 0;
 		struct ipv6db_addr_t *dns;
 
