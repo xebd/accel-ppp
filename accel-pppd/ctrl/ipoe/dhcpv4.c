@@ -325,6 +325,12 @@ static int dhcpv4_parse_packet(struct dhcpv4_packet *pack, int len)
 			break;
 		}
 
+		if (ptr + 2 > endptr ||
+		    ptr + 2 + ptr[1] > endptr) {
+			log_warn("dhcpv4: invalid packet received\n");
+			return -1;
+		}
+
 		opt = mempool_alloc(opt_pool);
 		if (!opt) {
 			log_emerg("out of memory\n");
@@ -335,9 +341,6 @@ static int dhcpv4_parse_packet(struct dhcpv4_packet *pack, int len)
 		opt->len = *ptr++;
 		opt->data = ptr;
 		ptr += opt->len;
-
-		if (ptr > endptr)
-			return -1;
 
 		list_add_tail(&opt->entry, &pack->options);
 
@@ -429,11 +432,14 @@ int dhcpv4_parse_opt82(struct dhcpv4_option *opt, uint8_t **agent_circuit_id, ui
 	int type, len;
 
 	while (ptr < endptr) {
+		if (ptr + 2 > endptr ||
+		    ptr + 2 + ptr[1] > endptr) {
+			log_warn("dhcpv4: invalid packet received\n");
+			return -1;
+		}
+
 		type = *ptr++;
 		len = *ptr++;
-
-		if (ptr + len > endptr)
-			return -1;
 
 		if (type == 1)
 			*agent_circuit_id = ptr - 1;
@@ -663,8 +669,12 @@ static int dhcpv4_send_udp(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack,
 
 int dhcpv4_packet_add_opt(struct dhcpv4_packet *pack, int type, const void *data, int len)
 {
-	struct dhcpv4_option *opt = mempool_alloc(opt_pool);
+	struct dhcpv4_option *opt;
 
+	if (pack->data + BUF_SIZE - pack->ptr < 2 + len)
+		return -1;
+
+	opt = mempool_alloc(opt_pool);
 	if (!opt) {
 		log_emerg("out of memory\n");
 		return -1;
@@ -748,7 +758,8 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 
 	if (relay) {
 		list_for_each_entry(opt, &relay->options, entry) {
-			if (opt->type == 53 || opt->type == 54 || opt->type == 51 || opt->type == 58 || opt->type == 1 || (opt->type == 3 && router))
+			if (opt->type == 53 || opt->type == 54 || opt->type == 51 || opt->type == 58 ||
+			    opt->type == 1 || (opt->type == 3 && router) || opt->type == 82)
 				continue;
 			else if (opt->type == 6)
 				dns_avail = 1;
@@ -776,6 +787,9 @@ int dhcpv4_send_reply(int msg_type, struct dhcpv4_serv *serv, struct dhcpv4_pack
 		if (wins_avail && dhcpv4_packet_add_opt(pack, 44, addr, wins_avail * sizeof(addr[0])))
 			goto out_err;
 	}
+
+	if (req->relay_agent && dhcpv4_packet_add_opt(pack, 82, req->relay_agent->data, req->relay_agent->len))
+		goto out_err;
 
 	*pack->ptr++ = 255;
 
@@ -822,6 +836,9 @@ int dhcpv4_send_nak(struct dhcpv4_serv *serv, struct dhcpv4_packet *req)
 
 	val = DHCPNAK;
 	if (dhcpv4_packet_add_opt(pack, 53, &val, 1))
+		goto out_err;
+
+	if (req->relay_agent && dhcpv4_packet_add_opt(pack, 82, req->relay_agent->data, req->relay_agent->len))
 		goto out_err;
 
 	*pack->ptr++ = 255;

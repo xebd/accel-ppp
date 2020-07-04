@@ -127,7 +127,6 @@ static int conf_username;
 static const char *conf_password;
 static int conf_unit_cache;
 static int conf_noauth;
-static int conf_max_starting;
 #ifdef RADIUS
 static int conf_vendor;
 static const char *conf_vendor_str;
@@ -1303,6 +1302,9 @@ static struct ipoe_session *ipoe_session_create_dhcpv4(struct ipoe_serv *serv, s
 	if (ap_shutdown)
 		return NULL;
 
+	if (conf_max_starting && ap_session_stat.starting >= conf_max_starting)
+		return NULL;
+
 	if (conf_max_sessions && ap_session_stat.active + ap_session_stat.starting >= conf_max_sessions)
 		return NULL;
 
@@ -1772,10 +1774,7 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 
 	if (connlimit_loaded && pack->msg_type == DHCPDISCOVER && connlimit_check(serv->opt_shared ? cl_key_from_mac(pack->hdr->chaddr) : serv->ifindex))
 		return;
-	if (conf_max_starting > 0 && pack->msg_type == DHCPDISCOVER && stat_starting > conf_max_starting) {
-		log_warn("ipoe: Count of starting sessions  > conf_max_starting, droping connection...\n");
-		return;
-	}
+
 	pthread_mutex_lock(&serv->lock);
 	if (pack->msg_type == DHCPDISCOVER) {
 		if (check_notify(serv, pack))
@@ -2029,13 +2028,13 @@ static struct ipoe_session *ipoe_session_create_up(struct ipoe_serv *serv, struc
 	if (ap_shutdown)
 		return NULL;
 
-	if (connlimit_loaded && connlimit_check(cl_key_from_ipv4(saddr)))
+	if (conf_max_starting && ap_session_stat.starting >= conf_max_starting)
 		return NULL;
-	if (conf_max_starting > 0 && stat_starting > conf_max_starting) {
-		log_warn("ipoe: Count of starting sessions  >  conf_max_starting, droping connection...\n");
-		return NULL;
-	}
+
 	if (conf_max_sessions && ap_session_stat.active + ap_session_stat.starting >= conf_max_sessions)
+		return NULL;
+
+	if (connlimit_loaded && connlimit_check(cl_key_from_ipv4(saddr)))
 		return NULL;
 
 	if (l4_redirect_list_check(saddr))
@@ -3745,11 +3744,6 @@ static void load_config(void)
 			conf_password = opt;
 	} else
 		conf_password = NULL;
-	opt = conf_get_opt("ipoe", "max-starting");
-	if (opt)
-		conf_max_starting = atoi(opt);
-	else
-		conf_max_starting = 0;
 
 	opt = conf_get_opt("ipoe", "netmask");
 	if (opt) {

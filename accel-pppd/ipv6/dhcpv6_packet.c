@@ -65,7 +65,8 @@ static void *parse_option(void *ptr, void *endptr, struct list_head *opt_list)
 	struct dhcpv6_opt_hdr *opth = ptr;
 	struct dhcpv6_option *opt;
 
-	if (ptr + sizeof(*opth) + ntohs(opth->len) > endptr) {
+	if (ptr + sizeof(*opth) > endptr ||
+	    ptr + sizeof(*opth) + ntohs(opth->len) > endptr) {
 		log_warn("dhcpv6: invalid packet received\n");
 		return NULL;
 	}
@@ -108,6 +109,12 @@ struct dhcpv6_packet *dhcpv6_packet_parse(const void *buf, size_t size)
 	struct dhcpv6_relay_hdr *rhdr;
 	void *ptr, *endptr;
 
+	if (size < sizeof(struct dhcpv6_msg_hdr)) {
+		if (conf_verbose)
+			log_warn("dhcpv6: short packet received\n");
+		return NULL;
+	}
+
 	pkt = _malloc(sizeof(*pkt) + size);
 	if (!pkt) {
 		log_emerg("out of memory\n");
@@ -121,11 +128,21 @@ struct dhcpv6_packet *dhcpv6_packet_parse(const void *buf, size_t size)
 	pkt->hdr = (void *)(pkt + 1);
 
 	memcpy(pkt->hdr, buf, size);
-	endptr =  ((void *)pkt->hdr) + size;
+	endptr = ((void *)pkt->hdr) + size;
 
 	while (pkt->hdr->type == D6_RELAY_FORW) {
 		rhdr = (struct dhcpv6_relay_hdr *)pkt->hdr;
+		if (((void *)rhdr) + sizeof(*rhdr) > endptr) {
+			log_warn("dhcpv6: invalid packet received\n");
+			goto error;
+		}
+
 		rel = _malloc(sizeof(*rel));
+		if (!rel) {
+			log_emerg("out of memory\n");
+			goto error;
+		}
+
 		rel->hop_cnt = rhdr->hop_cnt;
 		memcpy(&rel->link_addr, &rhdr->link_addr, sizeof(rel->link_addr));
 		memcpy(&rel->peer_addr, &rhdr->peer_addr, sizeof(rel->peer_addr));
@@ -135,11 +152,10 @@ struct dhcpv6_packet *dhcpv6_packet_parse(const void *buf, size_t size)
 		ptr = rhdr->data;
 		while (ptr < endptr) {
 			opth = ptr;
-
-			if (ptr + sizeof(*opth) + ntohs(opth->len) > endptr) {
+			if (ptr + sizeof(*opth) > endptr ||
+			    ptr + sizeof(*opth) + ntohs(opth->len) > endptr) {
 				log_warn("dhcpv6: invalid packet received\n");
-				dhcpv6_packet_free(pkt);
-				return NULL;
+				goto error;
 			}
 
 			if (opth->code == htons(D6_OPTION_RELAY_MSG)) {
@@ -152,28 +168,39 @@ struct dhcpv6_packet *dhcpv6_packet_parse(const void *buf, size_t size)
 	}
 
 	ptr = pkt->hdr->data;
-
 	while (ptr < endptr) {
 		opth = ptr;
+		if (ptr + sizeof(*opth) > endptr ||
+		    ptr + sizeof(*opth) + ntohs(opth->len) > endptr) {
+			log_warn("dhcpv6: invalid packet received\n");
+			goto error;
+		}
+
 		if (opth->code == htons(D6_OPTION_CLIENTID))
 			pkt->clientid = ptr;
 		else if (opth->code == htons(D6_OPTION_SERVERID))
 			pkt->serverid = ptr;
 		else if (opth->code == htons(D6_OPTION_RAPID_COMMIT))
 			pkt->rapid_commit = 1;
+
 		ptr = parse_option(ptr, endptr, &pkt->opt_list);
-		if (!ptr) {
-			dhcpv6_packet_free(pkt);
-			return NULL;
-		}
+		if (!ptr)
+			goto error;
 	}
 
 	return pkt;
+
+error:
+	dhcpv6_packet_free(pkt);
+	return NULL;
 }
 
 struct dhcpv6_option *dhcpv6_option_alloc(struct dhcpv6_packet *pkt, int code, int len)
 {
 	struct dhcpv6_option *opt;
+
+	if ((void *)pkt->hdr->data + BUF_SIZE - pkt->endptr < sizeof(struct dhcpv6_opt_hdr) + len)
+		return NULL;
 
 	opt = _malloc(sizeof(*opt));
 	if (!opt) {
@@ -198,6 +225,9 @@ struct dhcpv6_option *dhcpv6_option_alloc(struct dhcpv6_packet *pkt, int code, i
 struct dhcpv6_option *dhcpv6_nested_option_alloc(struct dhcpv6_packet *pkt, struct dhcpv6_option *popt, int code, int len)
 {
 	struct dhcpv6_option *opt;
+
+	if ((void *)pkt->hdr->data + BUF_SIZE - pkt->endptr < sizeof(struct dhcpv6_opt_hdr) + len)
+		return NULL;
 
 	opt = _malloc(sizeof(*opt));
 	if (!opt) {
@@ -281,12 +311,20 @@ struct dhcpv6_packet *dhcpv6_packet_alloc_reply(struct dhcpv6_packet *req, int t
 	pkt->hdr->trans_id = req->hdr->trans_id;
 
 	opt = dhcpv6_option_alloc(pkt, D6_OPTION_SERVERID, ntohs(req->serverid->hdr.len));
+	if (!opt)
+		goto error;
 	memcpy(opt->hdr, req->serverid, sizeof(struct dhcpv6_opt_hdr) + ntohs(req->serverid->hdr.len));
 
 	opt = dhcpv6_option_alloc(pkt, D6_OPTION_CLIENTID, ntohs(req->clientid->hdr.len));
+	if (!opt)
+		goto error;
 	memcpy(opt->hdr, req->clientid, sizeof(struct dhcpv6_opt_hdr) + ntohs(req->clientid->hdr.len));
 
 	return pkt;
+
+error:
+	dhcpv6_packet_free(pkt);
+	return NULL;
 }
 
 static void free_options(struct list_head *opt_list)

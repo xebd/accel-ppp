@@ -31,6 +31,7 @@ struct ap_net {
 	void (*rtnl_put)(struct rtnl_handle *);
 	int (*rtnl_open)(struct rtnl_handle *h, int proto);
 	int (*move_link)(struct ap_net *net, int ifindex);
+	int (*get_ifindex)(const char * ifname);
 	void (*release)(struct ap_net *net);
 };
 
