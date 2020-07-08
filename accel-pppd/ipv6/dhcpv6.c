@@ -447,7 +447,7 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 
 		// Option Request
 		} else if (ntohs(opt->hdr->code) == D6_OPTION_ORO) {
-			if (!list_empty(&ses->ipv6_dns->addr_list)) {
+			if (ses->ipv6_dns &&!list_empty(&ses->ipv6_dns->addr_list)) {
 				log_ppp_info2("User specific IPv6 DNS entries\n");
 			} 
 			insert_oro(reply, opt, ses);
