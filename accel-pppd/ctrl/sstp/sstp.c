@@ -501,12 +501,13 @@ static ssize_t ssl_stream_read(struct sstp_stream_t *stream, void *buf, size_t c
 	case SSL_ERROR_WANT_READ:
 		errno = EAGAIN;
 		/* fall through */
-	case SSL_ERROR_ZERO_RETURN:
 	case SSL_ERROR_SYSCALL:
 		return ret;
+	case SSL_ERROR_ZERO_RETURN:
+		return 0;
 	default:
 		errno = EIO;
-		return ret;
+		return -1;
 	}
 }
 
@@ -530,12 +531,13 @@ static ssize_t ssl_stream_write(struct sstp_stream_t *stream, const void *buf, s
 	case SSL_ERROR_WANT_READ:
 		errno = EAGAIN;
 		/* fall through */
-	case SSL_ERROR_ZERO_RETURN:
 	case SSL_ERROR_SYSCALL:
 		return ret;
+	case SSL_ERROR_ZERO_RETURN:
+		return 0;
 	default:
 		errno = EIO;
-		return ret;
+		return -1;
 	}
 }
 
@@ -1188,33 +1190,29 @@ static int ppp_write(struct triton_md_handler_t *h)
 
 	while (!list_empty(&conn->ppp_queue)) {
 		buf = list_first_entry(&conn->ppp_queue, typeof(*buf), entry);
-
-		if (buf_headroom(buf) > 0)
-			triton_md_disable_handler(h, MD_MODE_WRITE);
-
 		while (buf->len) {
 			n = write(conn->ppp_hnd.fd, buf->head, buf->len);
 			if (n < 0) {
 				if (errno == EINTR)
 					continue;
 				if (errno == EAGAIN)
-					break;
+					goto defer;
 				if (conf_verbose && errno != EPIPE)
 					log_ppp_info2("sstp: ppp: write: %s\n", strerror(errno));
 				goto drop;
 			} else if (n == 0)
-				break;
+				goto defer;
 			buf_pull(buf, n);
 		}
-
-		if (buf->len) {
-			triton_md_enable_handler(h, MD_MODE_WRITE);
-			break;
-		}
-
 		list_del(&buf->entry);
 		free_buf(buf);
 	}
+
+	triton_md_disable_handler(h, MD_MODE_WRITE);
+	return 0;
+
+defer:
+	triton_md_enable_handler(h, MD_MODE_WRITE);
 	return 0;
 
 drop:
@@ -2027,32 +2025,29 @@ static int sstp_write(struct triton_md_handler_t *h)
 
 	while (!list_empty(&conn->out_queue)) {
 		buf = list_first_entry(&conn->out_queue, typeof(*buf), entry);
-		if (buf_headroom(buf) > 0)
-			triton_md_disable_handler(h, MD_MODE_WRITE);
-
 		while (buf->len) {
 			n = conn->stream->write(conn->stream, buf->head, buf->len);
 			if (n < 0) {
 				if (errno == EINTR)
 					continue;
 				if (errno == EAGAIN)
-					break;
+					goto defer;
 				if (conf_verbose && errno != EPIPE)
 					log_ppp_info2("sstp: write: %s\n", strerror(errno));
 				goto drop;
 			} else if (n == 0)
-				break;
+				goto defer;
 			buf_pull(buf, n);
 		}
-
-		if (buf->len) {
-			triton_md_enable_handler(h, MD_MODE_WRITE);
-			break;
-		}
-
 		list_del(&buf->entry);
 		free_buf(buf);
 	}
+
+	triton_md_disable_handler(h, MD_MODE_WRITE);
+	return 0;
+
+defer:
+	triton_md_enable_handler(h, MD_MODE_WRITE);
 	return 0;
 
 drop:
@@ -2501,8 +2496,7 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 #endif
 				SSL_OP_NO_COMPRESSION);
 		SSL_CTX_set_mode(ssl_ctx,
-				SSL_MODE_ENABLE_PARTIAL_WRITE |
-				SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+				SSL_MODE_ENABLE_PARTIAL_WRITE);
 		SSL_CTX_set_read_ahead(ssl_ctx, 1);
 
 		opt = conf_get_opt("sstp", "ssl-protocol");
