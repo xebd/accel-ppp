@@ -2832,6 +2832,7 @@ static struct sstp_serv_t serv = {
 static void sstp_init(void)
 {
 	struct sockaddr_t *addr = &serv.addr;
+	struct linger linger;
 	struct stat st;
 	int port, value;
 	char *opt;
@@ -2882,6 +2883,11 @@ static void sstp_init(void)
 	} else {
 		value = 1;
 		setsockopt(serv.hnd.fd, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value));
+
+		/* quick timeout */
+		linger.l_onoff = 1;
+		linger.l_linger = 5;
+		setsockopt(serv.hnd.fd, SOL_SOCKET, SO_LINGER, &linger, sizeof(linger));
 	}
 
 	if (bind(serv.hnd.fd, &addr->u.sa, addr->len) < 0) {
