@@ -165,6 +165,8 @@ static const char *conf_ipv6_pool;
 static const char *conf_dpv6_pool;
 static const char *conf_ifname;
 static int conf_proxyproto = 0;
+static int conf_sndbuf = 0;
+static int conf_rcvbuf = 0;
 
 static int conf_hash_protocol = CERT_HASH_PROTOCOL_SHA1 | CERT_HASH_PROTOCOL_SHA256;
 static struct hash_t conf_hash_sha1 = { .len = 0 };
@@ -2299,9 +2301,17 @@ static int sstp_connect(struct triton_md_handler_t *h)
 		}
 
 		if (addr.u.sa.sa_family != AF_UNIX) {
-			value = 65536;
-			if (setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &value, sizeof(value)) < 0) {
-				log_error("sstp: failed to set send buffer: %s, closing connection...\n", strerror(errno));
+			if (conf_sndbuf &&
+			    setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &conf_sndbuf, sizeof(conf_sndbuf)) < 0) {
+				log_error("sstp: failed to set send buffer to %d: %s, closing connection...\n",
+					  conf_sndbuf, strerror(errno));
+				close(sock);
+				continue;
+			}
+			if (conf_rcvbuf &&
+			    setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &conf_rcvbuf, sizeof(conf_rcvbuf)) < 0) {
+				log_error("sstp: failed to set recv buffer to %d: %s, closing connection...\n",
+					  conf_rcvbuf, strerror(errno));
 				close(sock);
 				continue;
 			}
@@ -2799,6 +2809,14 @@ static void load_config(void)
 	conf_ipv6_pool = conf_get_opt("sstp", "ipv6-pool");
 	conf_dpv6_pool = conf_get_opt("sstp", "ipv6-pool-delegate");
 	conf_ifname = conf_get_opt("sstp", "ifname");
+
+	opt = conf_get_opt("sstp", "sndbuf");
+	if (opt && atoi(opt) > 0)
+		conf_sndbuf = atoi(opt);
+
+	opt = conf_get_opt("sstp", "rcvbuf");
+	if (opt && atoi(opt) > 0)
+		conf_rcvbuf = atoi(opt);
 
 	ipmode = (serv.addr.u.sa.sa_family == AF_INET && !conf_proxyproto) ?
 			iprange_check_activation() : -1;
