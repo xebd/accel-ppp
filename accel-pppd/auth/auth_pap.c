@@ -73,6 +73,7 @@ static struct auth_data_t* auth_data_init(struct ppp_t *ppp)
 
 	memset(d, 0, sizeof(*d));
 	d->auth.proto = PPP_PAP;
+	d->auth.len = 0;
 	d->ppp = ppp;
 
 	return &d->auth;
