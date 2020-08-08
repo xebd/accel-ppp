@@ -13,6 +13,7 @@
 #include <netinet/tcp.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/uio.h>
 #include <sys/un.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
@@ -48,6 +49,7 @@
 
 #define PPP_SYNC	0 /* buggy yet */
 #define PPP_BUF_SIZE	8192
+#define PPP_BUF_IOVEC	256
 #define PPP_F_ESCAPE	1
 #define PPP_F_TOSS	2
 
@@ -1188,29 +1190,47 @@ drop:
 static int ppp_write(struct triton_md_handler_t *h)
 {
 	struct sstp_conn_t *conn = container_of(h, typeof(*conn), ppp_hnd);
+	struct iovec iov[PPP_BUF_IOVEC];
 	struct buffer_t *buf;
-	int n;
+	ssize_t n;
+	int i;
 
-	while (!list_empty(&conn->ppp_queue)) {
-		buf = list_first_entry(&conn->ppp_queue, typeof(*buf), entry);
-		while (buf->len) {
-			n = write(conn->ppp_hnd.fd, buf->head, buf->len);
-			if (n < 0) {
-				if (errno == EINTR)
-					continue;
-				if (errno == EAGAIN)
-					goto defer;
-				if (conf_verbose && errno != EPIPE)
-					log_ppp_info2("sstp: ppp: write: %s\n", strerror(errno));
-				goto drop;
-			} else if (n == 0)
-				goto defer;
-			buf_pull(buf, n);
+	if (!list_empty(&conn->ppp_queue)) {
+		i = n = 0;
+		list_for_each_entry(buf, &conn->ppp_queue, entry) {
+			if (i < PPP_BUF_IOVEC && n < PPP_BUF_SIZE) {
+				iov[i].iov_base = buf->head;
+				iov[i++].iov_len = buf->len;
+				n += buf->len;
+			} else
+				break;
 		}
-		list_del(&buf->entry);
-		free_buf(buf);
-	}
+	again:
+		n = writev(conn->ppp_hnd.fd, iov, i);
+		if (n < 0) {
+			if (errno == EINTR)
+				goto again;
+			if (errno == EAGAIN)
+				goto defer;
+			if (conf_verbose && errno != EPIPE)
+				log_ppp_info2("sstp: ppp: write: %s\n", strerror(errno));
+			goto drop;
+		} else if (n == 0)
+			goto defer;
+		do {
+			buf = list_first_entry(&conn->ppp_queue, typeof(*buf), entry);
+			if (buf->len > n) {
+				buf_pull(buf, n);
+				break;
+			}
+			n -= buf->len;
+			list_del(&buf->entry);
+			free_buf(buf);
+		} while (n > 0);
 
+		if (!list_empty(&conn->ppp_queue))
+			goto defer;
+	}
 	triton_md_disable_handler(h, MD_MODE_WRITE);
 	return 0;
 
@@ -1781,6 +1801,9 @@ static int sstp_recv_data_packet(struct sstp_conn_t *conn, struct sstp_hdr *hdr)
 	}
 
 	size = ntohs(hdr->length) - sizeof(*hdr);
+	if (size == 0)
+		return 0;
+
 #if PPP_SYNC
 	buf = alloc_buf(size);
 	if (!buf) {
