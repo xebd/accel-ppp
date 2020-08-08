@@ -181,7 +181,6 @@ static mempool_t conn_pool;
 static unsigned int stat_starting;
 static unsigned int stat_active;
 
-static int sstp_write(struct triton_md_handler_t *h);
 static inline void sstp_queue(struct sstp_conn_t *conn, struct buffer_t *buf);
 static int sstp_send(struct sstp_conn_t *conn, struct buffer_t *buf);
 static inline void sstp_queue_deferred(struct sstp_conn_t *conn, struct buffer_t *buf);
@@ -1177,7 +1176,9 @@ static int ppp_read(struct triton_md_handler_t *h)
 		}
 #endif
 	}
-	return sstp_write(&conn->hnd);
+	if (!list_empty(&conn->out_queue))
+		triton_md_enable_handler(&conn->hnd, MD_MODE_WRITE);
+	return 0;
 
 drop:
 	sstp_disconnect(conn);
@@ -1230,7 +1231,8 @@ static inline void ppp_queue(struct sstp_conn_t *conn, struct buffer_t *buf)
 static int ppp_send(struct sstp_conn_t *conn, struct buffer_t *buf)
 {
 	ppp_queue(conn, buf);
-	return ppp_write(&conn->ppp_hnd) ? -1 : 0;
+	triton_md_enable_handler(&conn->ppp_hnd, MD_MODE_WRITE);
+	return 0;
 }
 
 /* sstp */
@@ -2065,7 +2067,8 @@ static inline void sstp_queue(struct sstp_conn_t *conn, struct buffer_t *buf)
 static int sstp_send(struct sstp_conn_t *conn, struct buffer_t *buf)
 {
 	sstp_queue(conn, buf);
-	return sstp_write(&conn->hnd) ? -1 : 0;
+	triton_md_enable_handler(&conn->hnd, MD_MODE_WRITE);
+	return 0;
 }
 
 static void sstp_msg_echo(struct triton_timer_t *t)
