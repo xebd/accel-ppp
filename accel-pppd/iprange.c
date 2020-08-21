@@ -62,9 +62,12 @@ static int parse_iprange(struct conf_option_t *opt, struct iprange_t **range)
 	size_t len;
 	char *l2tp_secret = NULL;
 	char *p1;
-	char *str;
+	char *str = NULL;
 
-	str = opt->name;
+	if (!opt->name)
+		goto disable;
+
+	str = _strdup(opt->name);
 
 	if (!strcmp(str, "disable"))
 		goto disable;
@@ -72,6 +75,7 @@ static int parse_iprange(struct conf_option_t *opt, struct iprange_t **range)
 	ptr = str;
 
 	p1 = strstr(ptr, ",l2tp_secret");
+
 	if (p1) {
 		l2tp_secret=opt->val;
 		*p1 = '\0';
@@ -122,6 +126,8 @@ addrange:
 		log_error("iprange: parsing range \"%s\" failed:"
 			  " unexpected data at \"%s\"\n",
 			  str, ptr);
+		if (str)
+			_free(str);
 		return -1;
 	}
 
@@ -133,6 +139,8 @@ addrange:
 		log_error("iprange: impossible to load range \"%s\":"
 			  " memory allocation failed\n",
 			  str);
+		if (str)
+			_free(str);
 		return -1;
 	}
 
@@ -148,10 +156,14 @@ addrange:
 
 	*range = new_range;
 
+	if (str)
+		_free(str);
 	return 0;
 
 disable:
 	*range = NULL;
+	if (str)
+		_free(str);
 
 	return 0;
 }
