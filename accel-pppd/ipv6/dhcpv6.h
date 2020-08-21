@@ -188,6 +188,8 @@ struct dhcpv6_packet {
 	void *endptr;
 };
 
+extern int conf_verbose;
+
 struct dhcpv6_packet *dhcpv6_packet_parse(const void *buf, size_t size);
 void dhcpv6_packet_free(struct dhcpv6_packet *pkt);
 void dhcpv6_packet_print(struct dhcpv6_packet *pkt, void (*print)(const char *fmt, ...));

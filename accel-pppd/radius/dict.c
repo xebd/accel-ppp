@@ -80,7 +80,7 @@ static int dict_load(const char *fname)
 
 	f = fopen(fname, "r");
 	if (!f) {
-		log_emerg("radius: open dictioanary '%s': %s\n", fname, strerror(errno));
+		log_emerg("radius: open dictionary '%s': %s\n", fname, strerror(errno));
 		return -1;
 	}
 

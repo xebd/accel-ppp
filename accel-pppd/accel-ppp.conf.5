@@ -124,7 +124,10 @@ Assign session id by sequence method
 Path to file for sessions sequence number. Start sequence number may be set there (default /var/lib/accel-ppp/seq).
 .TP
 .BI "max-sessions=" n
-Specifies maximum sessions which server may processed (default 0, disabled)
+Specifies maximum concurrent sessions which server may processed (default 0, disabled)
+.TP
+.BI "max-starting=" n
+Specifies maximum concurrent session attempts which server may processed (default 0, disabled)
 .TP
 .BI "check-ip=" 0|1
 Specifies whether accel-ppp should check if IP already assigned to other client interface (default 0).
@@ -277,6 +280,9 @@ Specifies lease time in seconds to be sent to dhcp client.
 .TP
 .BI "renew-time=" n
 Specifies lease renew time (option 58) in seconds to be sent to dhcp client.
+.TP
+.BI "rebind-time=" n
+Specifies lease rebind time (option 59) in seconds to be sent to dhcp client.
 .TP
 .BI "max-lease-time=" n
 Specifies max lease time in seconds, after this time session will be terminated if client won't renew it.
@@ -838,6 +844,9 @@ Specifies secret to use in DM/CoA communication.
 .BI "acct-interim-interval=" n
 Specifies interval in seconds to send accounting information (may be overriden by radius Acct-Interim-Interval attribute)
 .TP
+.BI "acct-interim-jitter=" n
+Specifies absolute maximum jitter value in seconds to be applied to accounting information interval.
+.TP
 .BI "verbose=" n
 If this option is given and 
 .B n
@@ -860,14 +869,20 @@ Specifies timeout of accounting interim update.
 .BI "acct-delay-time=" 0|1
 Specifies whether radius client should include Acct-Delay-Time attribute to accounting requests (default 0).
 .TP
-.BI "default-realm=" realm
-Append specified realm to username.
-.TP
 .BI "acct-on=" 0|1
 Specifies whether radius client should send Account-Request with Acct-Status-Type=Accounting-On on startup and Acct-Status-Type=Accounting-Off on shutdown.
 .TP
 .BI "attr-tunnel-type=" name
 Specifies custom attribute name to be used to send tunnel type (as string).
+.TP
+.BI "default-realm=" realm
+Appends specified realm to username if there was no realm already.
+.TP
+.BI "strip-realm=" 0|1
+Strips realm from username, can be used along with
+.B
+default-realm
+option for realm substitution.
 .TP
 .BI "sid-in-auth=0|1"
 Specifies should accel-ppp generate and send Acct-Session-Id on Access-Request packet.
@@ -962,7 +977,7 @@ Path to ip-down script which is executed when session is about to terminate.
 .BI "ip-change=" file
 Path to ip-change script which is executed for RADIUS CoA handling.
 .TP
-.BI "radattr=" prefix
+.BI "radattr-prefix=" prefix
 Prefix of radattr files (for example /var/run/radattr, resulting files will be /var/run/radattr.pppX)
 .TP
 .BI "verbose=" n
@@ -1022,27 +1037,34 @@ If attribute is vendor-specific then specify vendor name in this option.
 .SH [ipv6-pool]
 .br
 Configuration of ipv6pool module.
+.TP
+.BI ipv6prefix/mask,prefix_len[,name=pool_name][,next=next_pool_name]
 .br
-Format of each row is
-.br
-.B ipv6prefix/mask,prefix_len
-for example:
-.br
-.B fc00:0:1::/48,64
-- specifies pool of address by dividing prefix fc00:0:1::/48 to networks with 64 prefix len, e.g:
+.B fc00:0:1::/48,64 - specifies pool of address by dividing prefix fc00:0:1::/48 to networks with 64 prefix len, e.g:
 .br
 fc00:0:1:0::/64
 .br
 fc00:0:1:1::/64
 .br
-...
+ ...
+.br
 fc00:0:1:ffff::/64
 .TP
-.BI "delegate=" ipv6prefix/mask,prefix_len
+.BI "delegate=" ipv6prefix/mask,prefix_len[,name=pool_name][,next=next_pool_name]
 Specifies range of prefixes to delegate to clients through DHCPv6 prefix delegation (rfc3633).
 Format is same as described above.
+.TP
 .BI "gw-ip6-address=" ipv6address
 Specifies gateway address (used only for /128 prefixes)
+.TP
+.BI "attr-prefix=" attribute
+Specifies which Radius attribute contains delegated prefix pool name.
+.TP
+.BI "attr-address=" attribute
+Specifies which Radius attribute contains stateful address pool name.
+.TP
+.BI "vendor=" vendor
+If attribute is vendor-specific then specify vendor name in this option.
 .SH [connlimit]
 .br
 This module limits connection rate from single source.

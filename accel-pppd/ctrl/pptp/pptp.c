@@ -55,7 +55,6 @@ struct pptp_conn_t
 	struct ppp_t ppp;
 };
 
-static int conf_max_starting;
 static int conf_ppp_max_mtu = PPTP_MAX_MTU;
 static int conf_timeout = 5;
 static int conf_echo_interval = 0;
@@ -63,6 +62,8 @@ static int conf_echo_failure = 3;
 static int conf_verbose = 0;
 static int conf_mppe = MPPE_UNSET;
 static const char *conf_ip_pool;
+static const char *conf_ipv6_pool;
+static const char *conf_dpv6_pool;
 static const char *conf_ifname;
 
 static mempool_t conn_pool;
@@ -252,7 +253,8 @@ static int pptp_start_ctrl_conn_rqst(struct pptp_conn_t *conn)
 	if (send_pptp_start_ctrl_conn_rply(conn, PPTP_CONN_RES_SUCCESS, 0))
 		return -1;
 
-	triton_timer_mod(&conn->timeout_timer, 0);
+	if (conn->timeout_timer.tpd)
+		triton_timer_mod(&conn->timeout_timer, 0);
 
 	conn->state = STATE_ESTB;
 
@@ -650,13 +652,13 @@ static int pptp_connect(struct triton_md_handler_t *h)
 			continue;
 		}
 
-		if (conf_max_sessions && ap_session_stat.active + ap_session_stat.starting >= conf_max_sessions) {
+		if (conf_max_starting && ap_session_stat.starting >= conf_max_starting) {
 			close(sock);
 			continue;
 		}
-		if (conf_max_starting > 0 && stat_starting >= conf_max_starting) {
+
+		if (conf_max_sessions && ap_session_stat.active + ap_session_stat.starting >= conf_max_sessions) {
 			close(sock);
-			log_warn("pptp: Count of starting sessions  >  conf_max_starting, droping connection...\n");
 			continue;
 		}
 
@@ -713,6 +715,10 @@ static int pptp_connect(struct triton_md_handler_t *h)
 
 		if (conf_ip_pool)
 			conn->ppp.ses.ipv4_pool_name = _strdup(conf_ip_pool);
+		if (conf_ipv6_pool)
+			conn->ppp.ses.ipv6_pool_name = _strdup(conf_ipv6_pool);
+		if (conf_dpv6_pool)
+			conn->ppp.ses.dpv6_pool_name = _strdup(conf_dpv6_pool);
 		if (conf_ifname)
 			conn->ppp.ses.ifname_rename = _strdup(conf_ifname);
 
@@ -783,11 +789,6 @@ static void load_config(void)
 	else
 		conf_ppp_max_mtu = PPTP_MAX_MTU;
 
-	opt = conf_get_opt("pptp", "max-starting");
-	if (opt)
-		conf_max_starting = atoi(opt);
-	else
-		conf_max_starting = 0;
 	conf_mppe = MPPE_UNSET;
 	opt = conf_get_opt("pptp", "mppe");
 	if (opt) {
@@ -802,6 +803,8 @@ static void load_config(void)
 	}
 
 	conf_ip_pool = conf_get_opt("pptp", "ip-pool");
+	conf_ipv6_pool = conf_get_opt("pptp", "ipv6-pool");
+	conf_dpv6_pool = conf_get_opt("pptp", "ipv6-pool-delegate");
 	conf_ifname = conf_get_opt("pptp", "ifname");
 
 	switch (iprange_check_activation()) {

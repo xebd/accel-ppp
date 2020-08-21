@@ -41,6 +41,7 @@ char *conf_dm_coa_secret;
 int conf_sid_in_auth;
 int conf_require_nas_ident;
 int conf_acct_interim_interval;
+int conf_acct_interim_jitter;
 
 int conf_accounting;
 int conf_fail_time;
@@ -48,6 +49,7 @@ int conf_req_limit;
 
 static const char *conf_default_realm;
 static int conf_default_realm_len;
+static int conf_strip_realm;
 
 const char *conf_attr_tunnel_type;
 
@@ -277,6 +279,7 @@ int rad_proc_attrs(struct rad_req_t *req)
 	struct radius_pd_t *rpd = req->rpd;
 
 	req->rpd->acct_interim_interval = conf_acct_interim_interval;
+	req->rpd->acct_interim_jitter = conf_acct_interim_jitter;
 
 	list_for_each_entry(attr, &req->reply->attrs, entry) {
 		if (attr->vendor && attr->vendor->id == Vendor_Microsoft) {
@@ -314,7 +317,7 @@ int rad_proc_attrs(struct rad_req_t *req)
 			case Framed_IP_Address:
 				if (!conf_gw_ip_address && rpd->ses->ctrl->ppp)
 					log_ppp_warn("radius: gw-ip-address not specified, cann't assign IP address...\n");
-				else if (attr->val.ipaddr != 0xfffffffe) {
+				else if (attr->val.ipaddr != htonl(0xfffffffe)) {
 					rpd->ipv4_addr.owner = &ipdb;
 					rpd->ipv4_addr.peer_addr = attr->val.ipaddr;
 					rpd->ipv4_addr.addr = rpd->ses->ctrl->ppp ? conf_gw_ip_address : 0;
@@ -409,18 +412,27 @@ static int rad_pwdb_check(struct pwdb_t *pwdb, struct ap_session *ses, pwdb_call
 	struct radius_pd_t *rpd = find_pd(ses);
 	char username1[256];
 
-	if (conf_default_realm && !strchr(username, '@')) {
-		int len = strlen(username);
-		if (len + conf_default_realm_len >= 256 - 2) {
-			log_ppp_error("radius: username is too large to append realm\n");
-			return PWDB_DENIED;
+	if (conf_strip_realm || conf_default_realm) {
+		int len = strchrnul(username, '@') - username;
+		if (conf_strip_realm && username[len]) {
+			if (len > sizeof(username1) - 1) {
+				log_ppp_error("radius: username is too large to strip realm\n");
+				return PWDB_DENIED;
+			}
+			username = memcpy(username1, username, len);
+			username1[len] = '\0';
 		}
-
-		memcpy(username1, username, len);
-		username1[len] = '@';
-		memcpy(username1 + len + 1, conf_default_realm, conf_default_realm_len);
-		username1[len + 1 + conf_default_realm_len] = 0;
-		username = username1;
+		if (conf_default_realm && username[len] == '\0') {
+			if (len + conf_default_realm_len > sizeof(username1) - 2) {
+				log_ppp_error("radius: username is too large to append realm\n");
+				return PWDB_DENIED;
+			}
+			if (username != username1)
+				username = memcpy(username1, username, len);
+			username1[len++] = '@';
+			memcpy(username1 + len, conf_default_realm, conf_default_realm_len);
+			username1[len + conf_default_realm_len] = '\0';
+		}
 	}
 
 	rpd->auth_ctx = mempool_alloc(auth_ctx_pool);
@@ -815,7 +827,8 @@ struct radius_pd_t *rad_find_session_pack(struct rad_packet_t *pack)
 				port_id = attr->val.string;
 				break;
 			case Framed_IP_Address:
-				ipaddr = attr->val.ipaddr;
+				if (attr->val.ipaddr != htonl(0xfffffffe))
+					ipaddr = attr->val.ipaddr;
 				break;
 			case Calling_Station_Id:
 				csid = attr->val.string;
@@ -969,8 +982,12 @@ static int load_config(void)
 		conf_require_nas_ident = atoi(opt);
 
 	opt = conf_get_opt("radius", "acct-interim-interval");
-	if (opt && atoi(opt) > 0)
+	if (opt && atoi(opt) >= 0)
 		conf_acct_interim_interval = atoi(opt);
+
+	opt = conf_get_opt("radius", "acct-interim-jitter");
+	if (opt && atoi(opt) >= 0)
+		conf_acct_interim_jitter = atoi(opt);
 
 	opt = conf_get_opt("radius", "acct-delay-time");
 	if (opt)
@@ -981,6 +998,10 @@ static int load_config(void)
 	conf_default_realm = conf_get_opt("radius", "default-realm");
 	if (conf_default_realm)
 		conf_default_realm_len = strlen(conf_default_realm);
+
+	opt = conf_get_opt("radius", "strip-realm");
+	if (opt && atoi(opt) >= 0)
+		conf_strip_realm = atoi(opt) > 0;
 
 	return 0;
 }

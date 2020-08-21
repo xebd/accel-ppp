@@ -240,6 +240,7 @@ static void ctx_thread(struct _triton_context_t *ctx)
 			list_del(&h->entry2);
 			h->pending = 0;
 			events = h->trig_epoll_events;
+			h->trig_epoll_events = 0;
 			spin_unlock(&ctx->lock);
 
 			__sync_sub_and_fetch(&triton_stat.md_handler_pending, 1);

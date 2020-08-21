@@ -13,6 +13,7 @@
 #include <netinet/tcp.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/uio.h>
 #include <sys/un.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
@@ -48,6 +49,7 @@
 
 #define PPP_SYNC	0 /* buggy yet */
 #define PPP_BUF_SIZE	8192
+#define PPP_BUF_IOVEC	256
 #define PPP_F_ESCAPE	1
 #define PPP_F_TOSS	2
 
@@ -64,6 +66,7 @@
 enum {
 	STATE_INIT = 0,
 	STATE_STARTING,
+	STATE_AUTHORIZED,
 	STATE_STARTED,
 	STATE_FINISHED,
 };
@@ -132,6 +135,7 @@ struct sstp_conn_t {
 
 	struct buffer_t *in;
 	struct list_head out_queue;
+	struct list_head deferred_queue;
 
 	int ppp_state;
 	int ppp_flags;
@@ -159,8 +163,12 @@ static int conf_hello_interval = SSTP_HELLO_TIMEOUT;
 static int conf_verbose = 0;
 static int conf_ppp_max_mtu = 1452;
 static const char *conf_ip_pool;
+static const char *conf_ipv6_pool;
+static const char *conf_dpv6_pool;
 static const char *conf_ifname;
 static int conf_proxyproto = 0;
+static int conf_sndbuf = 0;
+static int conf_rcvbuf = 0;
 
 static int conf_hash_protocol = CERT_HASH_PROTOCOL_SHA1 | CERT_HASH_PROTOCOL_SHA256;
 static struct hash_t conf_hash_sha1 = { .len = 0 };
@@ -175,9 +183,10 @@ static mempool_t conn_pool;
 static unsigned int stat_starting;
 static unsigned int stat_active;
 
-static int sstp_write(struct triton_md_handler_t *h);
 static inline void sstp_queue(struct sstp_conn_t *conn, struct buffer_t *buf);
 static int sstp_send(struct sstp_conn_t *conn, struct buffer_t *buf);
+static inline void sstp_queue_deferred(struct sstp_conn_t *conn, struct buffer_t *buf);
+static int sstp_read_deferred(struct sstp_conn_t *conn);
 static int sstp_abort(struct sstp_conn_t *conn, int disconnect);
 static void sstp_disconnect(struct sstp_conn_t *conn);
 static int sstp_handler(struct sstp_conn_t *conn, struct buffer_t *buf);
@@ -495,12 +504,13 @@ static ssize_t ssl_stream_read(struct sstp_stream_t *stream, void *buf, size_t c
 	case SSL_ERROR_WANT_READ:
 		errno = EAGAIN;
 		/* fall through */
-	case SSL_ERROR_ZERO_RETURN:
 	case SSL_ERROR_SYSCALL:
 		return ret;
+	case SSL_ERROR_ZERO_RETURN:
+		return 0;
 	default:
 		errno = EIO;
-		return ret;
+		return -1;
 	}
 }
 
@@ -524,12 +534,13 @@ static ssize_t ssl_stream_write(struct sstp_stream_t *stream, const void *buf, s
 	case SSL_ERROR_WANT_READ:
 		errno = EAGAIN;
 		/* fall through */
-	case SSL_ERROR_ZERO_RETURN:
 	case SSL_ERROR_SYSCALL:
 		return ret;
+	case SSL_ERROR_ZERO_RETURN:
+		return 0;
 	default:
 		errno = EIO;
-		return ret;
+		return -1;
 	}
 }
 
@@ -1033,7 +1044,9 @@ static void ppp_started(struct ap_session *ses)
 
 	switch (conn->ppp_state) {
 	case STATE_STARTING:
+	case STATE_AUTHORIZED:
 		conn->ppp_state = STATE_STARTED;
+		sstp_read_deferred(conn);
 		break;
 	}
 }
@@ -1047,6 +1060,7 @@ static void ppp_finished(struct ap_session *ses)
 
 	switch (conn->ppp_state) {
 	case STATE_STARTING:
+	case STATE_AUTHORIZED:
 	case STATE_STARTED:
 		conn->ppp_state = STATE_FINISHED;
 		sstp_abort(conn, 1);
@@ -1164,7 +1178,9 @@ static int ppp_read(struct triton_md_handler_t *h)
 		}
 #endif
 	}
-	return sstp_write(&conn->hnd);
+	if (!list_empty(&conn->out_queue))
+		triton_md_enable_handler(&conn->hnd, MD_MODE_WRITE);
+	return 0;
 
 drop:
 	sstp_disconnect(conn);
@@ -1174,38 +1190,52 @@ drop:
 static int ppp_write(struct triton_md_handler_t *h)
 {
 	struct sstp_conn_t *conn = container_of(h, typeof(*conn), ppp_hnd);
+	struct iovec iov[PPP_BUF_IOVEC];
 	struct buffer_t *buf;
-	int n;
+	ssize_t n;
+	int i;
 
-	while (!list_empty(&conn->ppp_queue)) {
-		buf = list_first_entry(&conn->ppp_queue, typeof(*buf), entry);
-
-		if (buf_headroom(buf) > 0)
-			triton_md_disable_handler(h, MD_MODE_WRITE);
-
-		while (buf->len) {
-			n = write(conn->ppp_hnd.fd, buf->head, buf->len);
-			if (n < 0) {
-				if (errno == EINTR)
-					continue;
-				if (errno == EAGAIN)
-					break;
-				if (conf_verbose && errno != EPIPE)
-					log_ppp_info2("sstp: ppp: write: %s\n", strerror(errno));
-				goto drop;
-			} else if (n == 0)
+	if (!list_empty(&conn->ppp_queue)) {
+		i = n = 0;
+		list_for_each_entry(buf, &conn->ppp_queue, entry) {
+			if (i < PPP_BUF_IOVEC && n < PPP_BUF_SIZE) {
+				iov[i].iov_base = buf->head;
+				iov[i++].iov_len = buf->len;
+				n += buf->len;
+			} else
 				break;
-			buf_pull(buf, n);
 		}
+	again:
+		n = writev(conn->ppp_hnd.fd, iov, i);
+		if (n < 0) {
+			if (errno == EINTR)
+				goto again;
+			if (errno == EAGAIN)
+				goto defer;
+			if (conf_verbose && errno != EPIPE)
+				log_ppp_info2("sstp: ppp: write: %s\n", strerror(errno));
+			goto drop;
+		} else if (n == 0)
+			goto defer;
+		do {
+			buf = list_first_entry(&conn->ppp_queue, typeof(*buf), entry);
+			if (buf->len > n) {
+				buf_pull(buf, n);
+				break;
+			}
+			n -= buf->len;
+			list_del(&buf->entry);
+			free_buf(buf);
+		} while (n > 0);
 
-		if (buf->len) {
-			triton_md_enable_handler(h, MD_MODE_WRITE);
-			break;
-		}
-
-		list_del(&buf->entry);
-		free_buf(buf);
+		if (!list_empty(&conn->ppp_queue))
+			goto defer;
 	}
+	triton_md_disable_handler(h, MD_MODE_WRITE);
+	return 0;
+
+defer:
+	triton_md_enable_handler(h, MD_MODE_WRITE);
 	return 0;
 
 drop:
@@ -1221,7 +1251,8 @@ static inline void ppp_queue(struct sstp_conn_t *conn, struct buffer_t *buf)
 static int ppp_send(struct sstp_conn_t *conn, struct buffer_t *buf)
 {
 	ppp_queue(conn, buf);
-	return ppp_write(&conn->ppp_hnd) ? -1 : 0;
+	triton_md_enable_handler(&conn->ppp_hnd, MD_MODE_WRITE);
+	return 0;
 }
 
 /* sstp */
@@ -1474,10 +1505,6 @@ static int sstp_recv_msg_call_connect_request(struct sstp_conn_t *conn, struct s
 		conn->ppp_state = STATE_FINISHED;
 		goto error;
 	}
-
-	if (conn->timeout_timer.tpd)
-		triton_timer_del(&conn->timeout_timer);
-
 	return 0;
 
 error:
@@ -1495,6 +1522,7 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 	} __attribute__((packed)) *msg = (void *)hdr;
 	uint8_t hash;
 	unsigned int len;
+	struct npioctl np;
 #ifdef CRYPTO_OPENSSL
 	typeof(*msg) buf;
 	uint8_t md[EVP_MAX_MD_SIZE], *ptr;
@@ -1526,7 +1554,7 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 	}
 
 	if (conn->nonce && memcmp(msg->attr.nonce, conn->nonce, SSTP_NONCE_SIZE) != 0) {
-		log_ppp_error("sstp: invalid Nonce");
+		log_ppp_error("sstp: invalid Nonce\n");
 		return sstp_abort(conn, 0);
 	}
 
@@ -1535,7 +1563,7 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 		len = SHA256_DIGEST_LENGTH;
 		if (conf_hash_sha256.len == len &&
 		    memcmp(msg->attr.cert_hash, conf_hash_sha256.hash, len) != 0) {
-			log_ppp_error("sstp: invalid SHA256 Cert Hash");
+			log_ppp_error("sstp: invalid SHA256 Cert Hash\n");
 			return sstp_abort(conn, 0);
 		}
 #ifdef CRYPTO_OPENSSL
@@ -1545,7 +1573,7 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 		len = SHA_DIGEST_LENGTH;
 		if (conf_hash_sha1.len == len &&
 		    memcmp(msg->attr.cert_hash, conf_hash_sha1.hash, len) != 0) {
-			log_ppp_error("sstp: invalid SHA1 Cert Hash");
+			log_ppp_error("sstp: invalid SHA1 Cert Hash\n");
 			return sstp_abort(conn, 0);
 		}
 #ifdef CRYPTO_OPENSSL
@@ -1557,8 +1585,25 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 		return sstp_abort(conn, 0);
 	}
 
-#ifdef CRYPTO_OPENSSL
 	if (conn->hlak_key) {
+		/* SSTP_MSG_CALL_CONNECTED may come before auth response */
+		if (conn->ppp_state < STATE_AUTHORIZED) {
+			struct buffer_t *buf;
+
+			if (conf_verbose)
+				log_warn("sstp: SSTP_MSG_CALL_CONNECTED is out of order, deferring...\n");
+
+			buf = alloc_buf(sizeof(*msg));
+			if (!buf) {
+				log_error("sstp: no memory\n");
+				return -1;
+			}
+			buf_put_data(buf, msg, sizeof(*msg));
+			sstp_queue_deferred(conn, buf);
+			return 0;
+		}
+
+#ifdef CRYPTO_OPENSSL
 		ptr = mempcpy(md, SSTP_CMK_SEED, SSTP_CMK_SEED_SIZE);
 		*ptr++ = len;
 		*ptr++ = 0;
@@ -1571,13 +1616,33 @@ static int sstp_recv_msg_call_connected(struct sstp_conn_t *conn, struct sstp_ct
 		HMAC(evp, md, mdlen, (void *)&buf, sizeof(buf), buf.attr.compound_mac, &len);
 
 		if (memcmp(msg->attr.compound_mac, buf.attr.compound_mac, len) != 0) {
-			log_ppp_error("sstp: invalid Compound MAC");
+			log_ppp_error("sstp: invalid Compound MAC\n");
 			return sstp_abort(conn, 0);
 		}
-	}
 #endif
+	}
 
+	if (conn->timeout_timer.tpd)
+		triton_timer_del(&conn->timeout_timer);
 	conn->sstp_state = STATE_SERVER_CALL_CONNECTED;
+
+	conn->ctrl.ppp_npmode = NPMODE_PASS;
+	switch (conn->ppp_state) {
+	case STATE_STARTED:
+		if (conn->ppp.ses.ipv4) {
+			np.protocol = PPP_IP;
+			np.mode = conn->ctrl.ppp_npmode;
+			if (net->ppp_ioctl(conn->ppp.unit_fd, PPPIOCSNPMODE, &np))
+				log_ppp_error("failed to set NP (IPv4) mode: %s\n", strerror(errno));
+		}
+		if (conn->ppp.ses.ipv6) {
+			np.protocol = PPP_IPV6;
+			np.mode = conn->ctrl.ppp_npmode;
+			if (net->ppp_ioctl(conn->ppp.unit_fd, PPPIOCSNPMODE, &np))
+				log_ppp_error("failed to set NP (IPv6) mode: %s\n", strerror(errno));
+		}
+		break;
+	}
 
 	_free(conn->nonce);
 	conn->nonce = NULL;
@@ -1736,6 +1801,9 @@ static int sstp_recv_data_packet(struct sstp_conn_t *conn, struct sstp_hdr *hdr)
 	}
 
 	size = ntohs(hdr->length) - sizeof(*hdr);
+	if (size == 0)
+		return 0;
+
 #if PPP_SYNC
 	buf = alloc_buf(size);
 	if (!buf) {
@@ -1887,6 +1955,33 @@ drop:
 	return 1;
 }
 
+static inline void sstp_queue_deferred(struct sstp_conn_t *conn, struct buffer_t *buf)
+{
+	list_add_tail(&buf->entry, &conn->deferred_queue);
+}
+
+static int sstp_read_deferred(struct sstp_conn_t *conn)
+{
+	struct buffer_t *buf;
+	int n;
+
+	while (!list_empty(&conn->deferred_queue)) {
+		buf = list_first_entry(&conn->deferred_queue, typeof(*buf), entry);
+
+		n = conn->handler(conn, buf);
+		if (n < 0)
+			goto drop;
+
+		list_del(&buf->entry);
+		free_buf(buf);
+	}
+	return 0;
+
+drop:
+	sstp_disconnect(conn);
+	return 1;
+}
+
 static int sstp_recv(struct triton_md_handler_t *h)
 {
 	struct sstp_conn_t *conn = container_of(h, typeof(*conn), hnd);
@@ -1957,32 +2052,29 @@ static int sstp_write(struct triton_md_handler_t *h)
 
 	while (!list_empty(&conn->out_queue)) {
 		buf = list_first_entry(&conn->out_queue, typeof(*buf), entry);
-		if (buf_headroom(buf) > 0)
-			triton_md_disable_handler(h, MD_MODE_WRITE);
-
 		while (buf->len) {
 			n = conn->stream->write(conn->stream, buf->head, buf->len);
 			if (n < 0) {
 				if (errno == EINTR)
 					continue;
 				if (errno == EAGAIN)
-					break;
+					goto defer;
 				if (conf_verbose && errno != EPIPE)
 					log_ppp_info2("sstp: write: %s\n", strerror(errno));
 				goto drop;
 			} else if (n == 0)
-				break;
+				goto defer;
 			buf_pull(buf, n);
 		}
-
-		if (buf->len) {
-			triton_md_enable_handler(h, MD_MODE_WRITE);
-			break;
-		}
-
 		list_del(&buf->entry);
 		free_buf(buf);
 	}
+
+	triton_md_disable_handler(h, MD_MODE_WRITE);
+	return 0;
+
+defer:
+	triton_md_enable_handler(h, MD_MODE_WRITE);
 	return 0;
 
 drop:
@@ -1998,7 +2090,8 @@ static inline void sstp_queue(struct sstp_conn_t *conn, struct buffer_t *buf)
 static int sstp_send(struct sstp_conn_t *conn, struct buffer_t *buf)
 {
 	sstp_queue(conn, buf);
-	return sstp_write(&conn->hnd) ? -1 : 0;
+	triton_md_enable_handler(&conn->hnd, MD_MODE_WRITE);
+	return 0;
 }
 
 static void sstp_msg_echo(struct triton_timer_t *t)
@@ -2036,6 +2129,10 @@ static void sstp_timeout(struct triton_timer_t *t)
 	case STATE_CALL_DISCONNECT_ACK_PENDING:
 		triton_context_call(&conn->ctx, (triton_event_func)sstp_disconnect, conn);
 		break;
+	case STATE_SERVER_CONNECT_REQUEST_PENDING:
+	case STATE_SERVER_CALL_CONNECTED_PENDING:
+		log_ppp_warn("sstp: negotiation timeout\n");
+		/* fall through */
 	default:
 		sstp_abort(conn, 0);
 		break;
@@ -2048,6 +2145,7 @@ static void sstp_close(struct triton_context_t *ctx)
 
 	switch (conn->ppp_state) {
 	case STATE_STARTING:
+	case STATE_AUTHORIZED:
 	case STATE_STARTED:
 		conn->ppp_state = STATE_FINISHED;
 		ap_session_terminate(&conn->ppp.ses, TERM_ADMIN_RESET, 1);
@@ -2108,6 +2206,7 @@ static void sstp_disconnect(struct sstp_conn_t *conn)
 		__sync_sub_and_fetch(&stat_starting, 1);
 		break;
 	case STATE_STARTING:
+	case STATE_AUTHORIZED:
 	case STATE_STARTED:
 		conn->ppp_state = STATE_FINISHED;
 		__sync_sub_and_fetch(&stat_active, 1);
@@ -2130,6 +2229,7 @@ static void sstp_disconnect(struct sstp_conn_t *conn)
 	free_buf(conn->ppp_in);
 
 	list_splice_init(&conn->ppp_queue, &conn->out_queue);
+	list_splice_init(&conn->deferred_queue, &conn->out_queue);
 	while (!list_empty(&conn->out_queue)) {
 		buf = list_first_entry(&conn->out_queue, typeof(*buf), entry);
 		list_del(&buf->entry);
@@ -2194,10 +2294,20 @@ static int sstp_connect(struct triton_md_handler_t *h)
 			continue;
 		}
 
+		if (conf_max_starting && ap_session_stat.starting >= conf_max_starting) {
+			close(sock);
+			continue;
+		}
+
+		if (conf_max_sessions && ap_session_stat.active + ap_session_stat.starting >= conf_max_sessions) {
+			close(sock);
+			continue;
+		}
+
 		ip = conf_proxyproto ? INADDR_ANY : sockaddr_ipv4(&addr);
 		if (ip && triton_module_loaded("connlimit") && connlimit_check(cl_key_from_ipv4(ip))) {
 			close(sock);
-			return 0;
+			continue;
 		}
 
 		sockaddr_ntop(&addr, addr_buf, sizeof(addr_buf), 0);
@@ -2217,9 +2327,17 @@ static int sstp_connect(struct triton_md_handler_t *h)
 		}
 
 		if (addr.u.sa.sa_family != AF_UNIX) {
-			value = 65536;
-			if (setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &value, sizeof(value)) < 0) {
-				log_error("sstp: failed to set send buffer: %s, closing connection...\n", strerror(errno));
+			if (conf_sndbuf &&
+			    setsockopt(sock, SOL_SOCKET, SO_SNDBUF, &conf_sndbuf, sizeof(conf_sndbuf)) < 0) {
+				log_error("sstp: failed to set send buffer to %d: %s, closing connection...\n",
+					  conf_sndbuf, strerror(errno));
+				close(sock);
+				continue;
+			}
+			if (conf_rcvbuf &&
+			    setsockopt(sock, SOL_SOCKET, SO_RCVBUF, &conf_rcvbuf, sizeof(conf_rcvbuf)) < 0) {
+				log_error("sstp: failed to set recv buffer to %d: %s, closing connection...\n",
+					  conf_rcvbuf, strerror(errno));
 				close(sock);
 				continue;
 			}
@@ -2258,6 +2376,7 @@ static int sstp_connect(struct triton_md_handler_t *h)
 		conn->in = alloc_buf(SSTP_MAX_PACKET_SIZE*2);
 		INIT_LIST_HEAD(&conn->out_queue);
 		INIT_LIST_HEAD(&conn->ppp_queue);
+		INIT_LIST_HEAD(&conn->deferred_queue);
 		memcpy(&conn->addr, &addr, sizeof(conn->addr));
 
 		conn->ctrl.ctx = &conn->ctx;
@@ -2267,6 +2386,7 @@ static int sstp_connect(struct triton_md_handler_t *h)
 		conn->ctrl.max_mtu = conf_ppp_max_mtu;
 		conn->ctrl.type = CTRL_TYPE_SSTP;
 		conn->ctrl.ppp = 1;
+		conn->ctrl.ppp_npmode = NPMODE_DROP;
 		conn->ctrl.name = "sstp";
 		conn->ctrl.ifname = "";
 		conn->ctrl.mppe = MPPE_DENY;
@@ -2276,6 +2396,10 @@ static int sstp_connect(struct triton_md_handler_t *h)
 		conn->ppp.ses.chan_name = _strdup(addr_buf);
 		if (conf_ip_pool)
 			conn->ppp.ses.ipv4_pool_name = _strdup(conf_ip_pool);
+		if (conf_ipv6_pool)
+			conn->ppp.ses.ipv6_pool_name = _strdup(conf_ipv6_pool);
+		if (conf_dpv6_pool)
+			conn->ppp.ses.dpv6_pool_name = _strdup(conf_dpv6_pool);
 		if (conf_ifname)
 			conn->ppp.ses.ifname_rename = _strdup(conf_ifname);
 
@@ -2408,8 +2532,7 @@ static void ssl_load_config(struct sstp_serv_t *serv, const char *servername)
 #endif
 				SSL_OP_NO_COMPRESSION);
 		SSL_CTX_set_mode(ssl_ctx,
-				SSL_MODE_ENABLE_PARTIAL_WRITE |
-				SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+				SSL_MODE_ENABLE_PARTIAL_WRITE);
 		SSL_CTX_set_read_ahead(ssl_ctx, 1);
 
 		opt = conf_get_opt("sstp", "ssl-protocol");
@@ -2604,6 +2727,22 @@ static void ev_mppe_keys(struct ev_mppe_keys_t *ev)
 	}
 }
 
+static void ev_ses_authorized(struct ap_session *ses)
+{
+	struct ppp_t *ppp = container_of(ses, typeof(*ppp), ses);
+	struct sstp_conn_t *conn = container_of(ppp, typeof(*conn), ppp);
+
+	if (ppp->ses.ctrl->type != CTRL_TYPE_SSTP)
+		return;
+
+	switch (conn->ppp_state) {
+	case STATE_STARTING:
+		conn->ppp_state = STATE_AUTHORIZED;
+		sstp_read_deferred(conn);
+		break;
+	}
+}
+
 static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
 {
 	cli_send(client, "sstp:\r\n");
@@ -2693,7 +2832,17 @@ static void load_config(void)
 		conf_ppp_max_mtu = atoi(opt);
 
 	conf_ip_pool = conf_get_opt("sstp", "ip-pool");
+	conf_ipv6_pool = conf_get_opt("sstp", "ipv6-pool");
+	conf_dpv6_pool = conf_get_opt("sstp", "ipv6-pool-delegate");
 	conf_ifname = conf_get_opt("sstp", "ifname");
+
+	opt = conf_get_opt("sstp", "sndbuf");
+	if (opt && atoi(opt) > 0)
+		conf_sndbuf = atoi(opt);
+
+	opt = conf_get_opt("sstp", "rcvbuf");
+	if (opt && atoi(opt) > 0)
+		conf_rcvbuf = atoi(opt);
 
 	ipmode = (serv.addr.u.sa.sa_family == AF_INET && !conf_proxyproto) ?
 			iprange_check_activation() : -1;
@@ -2721,6 +2870,7 @@ static struct sstp_serv_t serv = {
 static void sstp_init(void)
 {
 	struct sockaddr_t *addr = &serv.addr;
+	struct linger linger;
 	struct stat st;
 	int port, value;
 	char *opt;
@@ -2771,6 +2921,11 @@ static void sstp_init(void)
 	} else {
 		value = 1;
 		setsockopt(serv.hnd.fd, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value));
+
+		/* quick timeout */
+		linger.l_onoff = 1;
+		linger.l_linger = 5;
+		setsockopt(serv.hnd.fd, SOL_SOCKET, SO_LINGER, &linger, sizeof(linger));
 	}
 
 	if (bind(serv.hnd.fd, &addr->u.sa, addr->len) < 0) {
@@ -2807,6 +2962,7 @@ static void sstp_init(void)
 	cli_register_simple_cmd2(show_stat_exec, NULL, 2, "show", "stat");
 
 	triton_event_register_handler(EV_MPPE_KEYS, (triton_event_func)ev_mppe_keys);
+	triton_event_register_handler(EV_SES_AUTHORIZED, (triton_event_func)ev_ses_authorized);
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 	return;
 

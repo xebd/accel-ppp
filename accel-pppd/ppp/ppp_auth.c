@@ -15,7 +15,6 @@
 #include "memdebug.h"
 
 static LIST_HEAD(auth_handlers);
-static int extra_opt_len = 0;
 static int conf_noauth = 0;
 
 static struct lcp_option_t *auth_init(struct ppp_lcp_t *lcp);
@@ -75,11 +74,12 @@ static struct lcp_option_t *auth_init(struct ppp_lcp_t *lcp)
 	struct ppp_auth_handler_t *h;
 	struct auth_data_t *d;
 	struct auth_layer_data_t *ad;
+	int auth_data_len = 0;
 
 	ad = container_of(ppp_find_layer_data(lcp->ppp, &auth_layer), typeof(*ad), ld);
 
 	ad->auth_opt.opt.id = CI_AUTH;
-	ad->auth_opt.opt.len = 4 + extra_opt_len;
+	ad->auth_opt.opt.len = 4;
 
 	INIT_LIST_HEAD(&ad->auth_opt.auth_list);
 
@@ -90,7 +90,11 @@ static struct lcp_option_t *auth_init(struct ppp_lcp_t *lcp)
 		d = h->init(lcp->ppp);
 		d->h = h;
 		list_add_tail(&d->entry, &ad->auth_opt.auth_list);
+		if (auth_data_len < d->len)
+			auth_data_len = d->len;
 	}
+
+	ad->auth_opt.opt.len += auth_data_len;
 
 	return &ad->auth_opt.opt;
 }
@@ -279,13 +283,12 @@ static void __ppp_auth_started(struct ppp_t *ppp)
 	if (ppp->ses.terminating)
 		return;
 
-	log_ppp_debug("auth_layer_started\n");
-	ppp_layer_started(ppp, &ad->ld);
-
-
 	log_ppp_info1("%s: authentication succeeded\n", ppp->ses.username);
 
 	triton_event_fire(EV_SES_AUTHORIZED, &ppp->ses);
+
+	log_ppp_debug("auth_layer_started\n");
+	ppp_layer_started(ppp, &ad->ld);
 }
 
 int __export ppp_auth_succeeded(struct ppp_t *ppp, char *username)

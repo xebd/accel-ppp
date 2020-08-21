@@ -53,6 +53,7 @@ struct ap_ctrl {
 	char *called_station_id;
 	int dont_ifcfg:1;
 	int ppp:1;
+	int ppp_npmode:2;
 	void (*started)(struct ap_session*);
 	void (*finished)(struct ap_session *);
 	int (*terminate)(struct ap_session *, int hard);
@@ -84,6 +85,7 @@ struct ap_session
 	struct ipv6db_prefix_t *ipv6_dp;
 	char *ipv4_pool_name;
 	char *ipv6_pool_name;
+	char *dpv6_pool_name;
 	struct ap_net *net;
 
 	const struct ap_ctrl *ctrl;
@@ -134,6 +136,7 @@ extern int sock6_fd;
 extern int urandom_fd;
 extern struct ap_session_stat ap_session_stat;
 extern int conf_max_sessions;
+extern int conf_max_starting;
 
 void ap_session_init(struct ap_session *ses);
 void ap_session_set_ifindex(struct ap_session *ses);

@@ -87,7 +87,6 @@ struct iplink_arg {
 	long *arg1;
 };
 
-static int conf_max_starting;
 int conf_verbose;
 char *conf_service_name[255];
 int conf_accept_any_service;
@@ -99,6 +98,8 @@ int conf_padi_limit = 0;
 int conf_mppe = MPPE_UNSET;
 int conf_sid_uppercase = 0;
 static const char *conf_ip_pool;
+static const char *conf_ipv6_pool;
+static const char *conf_dpv6_pool;
 static const char *conf_ifname;
 enum {CSID_MAC, CSID_IFNAME, CSID_IFNAME_MAC};
 static int conf_called_sid;
@@ -409,6 +410,10 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 
 	if (conf_ip_pool)
 		conn->ppp.ses.ipv4_pool_name = _strdup(conf_ip_pool);
+	if (conf_ipv6_pool)
+		conn->ppp.ses.ipv6_pool_name = _strdup(conf_ipv6_pool);
+	if (conf_dpv6_pool)
+		conn->ppp.ses.dpv6_pool_name = _strdup(conf_dpv6_pool);
 	if (conf_ifname)
 		conn->ppp.ses.ifname_rename = _strdup(conf_ifname);
 
@@ -721,26 +726,32 @@ static void setup_header(uint8_t *pack, const uint8_t *src, const uint8_t *dst, 
 	hdr->length = 0;
 }
 
-static void add_tag(uint8_t *pack, int type, const void *data, int len)
+static int add_tag(uint8_t *pack, size_t pack_size, int type, const void *data, int len)
 {
 	struct pppoe_hdr *hdr = (struct pppoe_hdr *)(pack + ETH_HLEN);
 	struct pppoe_tag *tag = (struct pppoe_tag *)(pack + ETH_HLEN + sizeof(*hdr) + ntohs(hdr->length));
+	if (pack_size <= ETH_HLEN + sizeof(*hdr) + ntohs(hdr->length) + sizeof(struct pppoe_tag) + len || len < 0)
+		return -1;
 
 	tag->tag_type = htons(type);
 	tag->tag_len = htons(len);
 	memcpy(tag->tag_data, data, len);
 
 	hdr->length = htons(ntohs(hdr->length) + sizeof(*tag) + len);
+	return 0;
 }
 
-static void add_tag2(uint8_t *pack, const struct pppoe_tag *t)
+static int add_tag2(uint8_t *pack, size_t pack_size, const struct pppoe_tag *t)
 {
 	struct pppoe_hdr *hdr = (struct pppoe_hdr *)(pack + ETH_HLEN);
 	struct pppoe_tag *tag = (struct pppoe_tag *)(pack + ETH_HLEN + sizeof(*hdr) + ntohs(hdr->length));
+	if (pack_size <= ETH_HLEN + sizeof(*hdr) + ntohs(hdr->length) + ntohs(t->tag_len) || ntohs(t->tag_len) < 0)
+		return -1;
 
 	memcpy(tag, t, sizeof(*t) + ntohs(t->tag_len));
 
 	hdr->length = htons(ntohs(hdr->length) + sizeof(*tag) + ntohs(t->tag_len));
+	return 0;
 }
 
 static void pppoe_send(struct pppoe_serv_t *serv, const uint8_t *pack)
@@ -764,31 +775,31 @@ static void pppoe_send_PADO(struct pppoe_serv_t *serv, const uint8_t *addr, cons
 
 	setup_header(pack, serv->hwaddr, addr, CODE_PADO, 0);
 
-	add_tag(pack, TAG_AC_NAME, (uint8_t *)conf_ac_name, strlen(conf_ac_name));
+	add_tag(pack, sizeof(pack), TAG_AC_NAME, (uint8_t *)conf_ac_name, strlen(conf_ac_name));
 	if (conf_service_name[0]) {
 		int i = 0;
 		do {
-		    add_tag(pack, TAG_SERVICE_NAME, (uint8_t *)conf_service_name[i], strlen(conf_service_name[i]));
+		    add_tag(pack, sizeof(pack), TAG_SERVICE_NAME, (uint8_t *)conf_service_name[i], strlen(conf_service_name[i]));
 		    i++;
 		} while(conf_service_name[i]);
 	}
 
 	if (service_name)
-		add_tag2(pack, service_name);
+		add_tag2(pack, sizeof(pack), service_name);
 
 	generate_cookie(serv, addr, cookie, host_uniq, relay_sid);
 
-	add_tag(pack, TAG_AC_COOKIE, cookie, COOKIE_LENGTH);
+	add_tag(pack, sizeof(pack), TAG_AC_COOKIE, cookie, COOKIE_LENGTH);
 
 	if (host_uniq)
-		add_tag2(pack, host_uniq);
+		add_tag2(pack, sizeof(pack), host_uniq);
 
 	if (relay_sid)
-		add_tag2(pack, relay_sid);
+		add_tag2(pack, sizeof(pack), relay_sid);
 
 	if (ppp_max_payload) {
 		ppp_max_payload = htons(ppp_max_payload);
-		add_tag(pack, TAG_PPP_MAX_PAYLOAD, &ppp_max_payload, 2);
+		add_tag(pack, sizeof(pack), TAG_PPP_MAX_PAYLOAD, &ppp_max_payload, 2);
 	}
 
 	if (conf_verbose)
@@ -804,14 +815,14 @@ static void pppoe_send_err(struct pppoe_serv_t *serv, const uint8_t *addr, const
 
 	setup_header(pack, serv->hwaddr, addr, code, 0);
 
-	add_tag(pack, TAG_AC_NAME, (uint8_t *)conf_ac_name, strlen(conf_ac_name));
-	add_tag(pack, tag_type, NULL, 0);
+	add_tag(pack, sizeof(pack), TAG_AC_NAME, (uint8_t *)conf_ac_name, strlen(conf_ac_name));
+	add_tag(pack, sizeof(pack), tag_type, NULL, 0);
 
 	if (host_uniq)
-		add_tag2(pack, host_uniq);
+		add_tag2(pack, sizeof(pack), host_uniq);
 
 	if (relay_sid)
-		add_tag2(pack, relay_sid);
+		add_tag2(pack, sizeof(pack), relay_sid);
 
 	if (conf_verbose)
 		print_packet(serv->ifname, "send", pack);
@@ -825,19 +836,19 @@ static void pppoe_send_PADS(struct pppoe_conn_t *conn)
 
 	setup_header(pack, conn->serv->hwaddr, conn->addr, CODE_PADS, conn->sid);
 
-	add_tag(pack, TAG_AC_NAME, (uint8_t *)conf_ac_name, strlen(conf_ac_name));
+	add_tag(pack, sizeof(pack), TAG_AC_NAME, (uint8_t *)conf_ac_name, strlen(conf_ac_name));
 
-	add_tag2(pack, conn->service_name);
+	add_tag2(pack, sizeof(pack), conn->service_name);
 
 	if (conn->host_uniq)
-		add_tag2(pack, conn->host_uniq);
+		add_tag2(pack, sizeof(pack), conn->host_uniq);
 
 	if (conn->relay_sid)
-		add_tag2(pack, conn->relay_sid);
+		add_tag2(pack, sizeof(pack), conn->relay_sid);
 
 	if (conn->ctrl.max_mtu > ETH_DATA_LEN - 8) {
 		uint16_t ppp_max_payload = htons(conn->ctrl.max_mtu);
-		add_tag(pack, TAG_PPP_MAX_PAYLOAD, &ppp_max_payload, 2);
+		add_tag(pack, sizeof(pack), TAG_PPP_MAX_PAYLOAD, &ppp_max_payload, 2);
 	}
 
 	if (conf_verbose)
@@ -853,12 +864,12 @@ static void pppoe_send_PADT(struct pppoe_conn_t *conn)
 
 	setup_header(pack, conn->serv->hwaddr, conn->addr, CODE_PADT, conn->sid);
 
-	add_tag(pack, TAG_AC_NAME, (uint8_t *)conf_ac_name, strlen(conf_ac_name));
+	add_tag(pack, sizeof(pack), TAG_AC_NAME, (uint8_t *)conf_ac_name, strlen(conf_ac_name));
 
-	add_tag2(pack, conn->service_name);
+	add_tag2(pack, sizeof(pack), conn->service_name);
 
 	if (conn->relay_sid)
-		add_tag2(pack, conn->relay_sid);
+		add_tag2(pack, sizeof(pack), conn->relay_sid);
 
 	if (conf_verbose)
 		print_packet(conn->serv->ifname, "send", pack);
@@ -961,15 +972,11 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	if (ap_shutdown || pado_delay == -1)
 		return;
 
+	if (conf_max_starting && ap_session_stat.starting >= conf_max_starting)
+		return;
+
 	if (conf_max_sessions && ap_session_stat.active + ap_session_stat.starting >= conf_max_sessions)
 		return;
-	if (conf_max_starting > 0 && stat_starting >= conf_max_starting) {
-		log_warn("pppoe: Count of starting sessions  >  conf_max_starting, droping connection...\n");
-		return;
-
-	}
-
-
 
 	if (check_padi_limit(serv, ethhdr->h_source)) {
 		__sync_add_and_fetch(&stat_PADI_drop, 1);
@@ -1093,6 +1100,9 @@ static void pppoe_recv_PADR(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	__sync_add_and_fetch(&stat_PADR_recv, 1);
 
 	if (ap_shutdown)
+		return;
+
+	if (conf_max_starting && ap_session_stat.starting >= conf_max_starting)
 		return;
 
 	if (conf_max_sessions && ap_session_stat.active + ap_session_stat.starting >= conf_max_sessions)
@@ -1930,12 +1940,6 @@ static void load_config(void)
 	char *opt;
 	struct conf_sect_t *s = conf_get_section("pppoe");
 
-	opt = conf_get_opt("pppoe", "max-starting");
-	if (opt)
-		conf_max_starting = atoi(opt);
-	else
-		conf_max_starting = 0;
-
 	opt = conf_get_opt("pppoe", "verbose");
 	if (opt)
 		conf_verbose = atoi(opt);
@@ -2028,6 +2032,8 @@ static void load_config(void)
 	}
 
 	conf_ip_pool = conf_get_opt("pppoe", "ip-pool");
+	conf_ipv6_pool = conf_get_opt("pppoe", "ipv6-pool");
+	conf_dpv6_pool = conf_get_opt("pppoe", "ipv6-pool-delegate");
 	conf_ifname = conf_get_opt("pppoe", "ifname");
 
 	conf_called_sid = CSID_MAC;

@@ -260,7 +260,7 @@ static void send_conf_ack(struct ppp_fsm_t *fsm)
 	hdr->code = CONFACK;
 
 	if (conf_ppp_verbose)
-		log_ppp_info2("send [LCP ConfAck id=%x ]\n", lcp->fsm.recv_id);
+		log_ppp_info2("send [LCP ConfAck id=%x]\n", lcp->fsm.recv_id);
 
 	ppp_chan_send(lcp->ppp, hdr, ntohs(hdr->len) + 2);
 }
@@ -270,10 +270,10 @@ static void send_code_rej(struct ppp_fsm_t *fsm)
 	struct ppp_lcp_t *lcp = container_of(fsm, typeof(*lcp), fsm);
 	struct lcp_hdr_t *hdr = (struct lcp_hdr_t*)lcp->ppp->buf;
 
-	hdr->code = CONFACK;
+	hdr->code = CODEREJ;
 
 	if (conf_ppp_verbose)
-		log_ppp_info2("send [LCP CodeRej %x id=%x ]\n",hdr->code, lcp->fsm.recv_id);
+		log_ppp_info2("send [LCP CodeRej id=%x <%02x>]\n", lcp->fsm.recv_id, hdr->code);
 
 	ppp_chan_send(lcp->ppp, hdr, ntohs(hdr->len) + 2);
 }
@@ -326,7 +326,7 @@ static void send_conf_rej(struct ppp_fsm_t *fsm)
 	struct recv_opt_t *ropt;
 
 	if (conf_ppp_verbose)
-		log_ppp_info2("send [LCP ConfRej id=%x ", lcp->fsm.recv_id);
+		log_ppp_info2("send [LCP ConfRej id=%x", lcp->fsm.recv_id);
 
 	lcp_hdr->proto = htons(PPP_LCP);
 	lcp_hdr->code = CONFREJ;

@@ -87,7 +87,8 @@ static int alloc_ip(struct ppp_t *ppp)
 		return IPCP_OPT_CLOSE;
 	}
 
-	if (iprange_tunnel_check(ppp->ses.ipv4->peer_addr)) {
+	if (ppp->ses.ctrl->type != CTRL_TYPE_PPPOE &&
+	    iprange_tunnel_check(ppp->ses.ipv4->peer_addr)) {
 		log_ppp_warn("ppp:ipcp: to avoid kernel soft lockup requested IP cannot be assigned (%i.%i.%i.%i)\n",
 			ppp->ses.ipv4->peer_addr&0xff,
 			(ppp->ses.ipv4->peer_addr >> 8)&0xff,

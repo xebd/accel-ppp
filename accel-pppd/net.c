@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 #include <sys/syscall.h>
+#include <linux/if.h>
 
 #include "config.h"
 #include "triton.h"
@@ -215,6 +216,22 @@ static int def_move_link(struct ap_net *new_net, int ifindex)
 #endif
 }
 
+static int def_get_ifindex(const char *ifname)
+{
+	struct kern_net *n = container_of(net, typeof(*n), net);
+	struct ifreq ifr;
+
+	memset(&ifr, 0, sizeof(ifr));
+	strcpy(ifr.ifr_name, ifname);
+
+	if (ioctl(n->sock, SIOCGIFINDEX, &ifr)) {
+		log_ppp_error("ioctl(SIOCGIFINDEX): %s\n", strerror(errno));
+		return -1;
+	}
+	return ifr.ifr_ifindex;
+}
+
+
 static void def_release(struct ap_net *d)
 {
 	struct kern_net *n = container_of(d, typeof(*n), net);
@@ -299,6 +316,7 @@ static struct ap_net *alloc_net(const char *name)
 	net->rtnl_put = def_rtnl_put;
 	net->rtnl_open = def_rtnl_open;
 	net->move_link = def_move_link;
+	net->get_ifindex = def_get_ifindex;
 	net->release = def_release;
 
 	n->sock = socket(AF_INET, SOCK_DGRAM, 0);

@@ -18,6 +18,10 @@
 
 #include "memdebug.h"
 
+#ifndef max
+#define max(x,y) ((x) > (y) ? (x) : (y))
+#endif
+
 #define INTERIM_SAFE_TIME 10
 
 static int req_set_RA(struct rad_req_t *req, const char *secret)
@@ -188,6 +192,12 @@ static void rad_acct_interim_update(struct triton_timer_t *t)
 	if (rad_req_send(rpd->acct_req) && conf_acct_timeout) {
 		log_ppp_warn("radius:acct: no servers available, terminating session...\n");
 		ap_session_terminate(rpd->ses, TERM_NAS_ERROR, 0);
+	} else if (rpd->acct_interim_interval && rpd->acct_interim_jitter) {
+		t->period = max(rpd->acct_interim_interval -
+					rpd->acct_interim_jitter, INTERIM_SAFE_TIME) * 1000;
+		t->period += ((rpd->acct_interim_interval +
+					rpd->acct_interim_jitter) * 1000 - t->period) * random() / RAND_MAX;
+		triton_timer_mod(t, 0);
 	}
 }
 
@@ -250,7 +260,13 @@ static void rad_acct_start_recv(struct rad_req_t *req)
 
 		rad_packet_change_val(req->pack, NULL, "Acct-Status-Type", "Interim-Update");
 		rpd->acct_interim_timer.expire = rad_acct_interim_update;
-		rpd->acct_interim_timer.period = rpd->acct_interim_interval * 1000;
+		if (rpd->acct_interim_jitter) {
+			rpd->acct_interim_timer.period = max(rpd->acct_interim_interval -
+						rpd->acct_interim_jitter, INTERIM_SAFE_TIME) * 1000;
+			rpd->acct_interim_timer.period += ((rpd->acct_interim_interval +
+						rpd->acct_interim_jitter) * 1000 - rpd->acct_interim_timer.period) * random() / RAND_MAX;
+		} else
+			rpd->acct_interim_timer.period = rpd->acct_interim_interval * 1000;
 		triton_timer_add(rpd->ses->ctrl->ctx, &rpd->acct_interim_timer, 0);
 
 		req->timeout.expire = rad_acct_timeout;

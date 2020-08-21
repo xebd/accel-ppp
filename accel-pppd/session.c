@@ -36,6 +36,7 @@ static int conf_sid_source;
 static int conf_seq_save_timeout = 10;
 static const char *conf_seq_file;
 int __export conf_max_sessions;
+int __export conf_max_starting;
 
 pthread_rwlock_t __export ses_lock = PTHREAD_RWLOCK_INITIALIZER;
 __export LIST_HEAD(ses_list);
@@ -87,21 +88,11 @@ void __export ap_session_set_ifindex(struct ap_session *ses)
 
 int __export ap_session_starting(struct ap_session *ses)
 {
-	struct ifreq ifr;
-
 	if (ap_shutdown)
 		return -1;
 
-	if (ses->ifindex == -1 && ses->ifname[0]) {
-		memset(&ifr, 0, sizeof(ifr));
-		strcpy(ifr.ifr_name, ses->ifname);
-
-		if (net->sock_ioctl(SIOCGIFINDEX, &ifr)) {
-			log_ppp_error("ioctl(SIOCGIFINDEX): %s\n", strerror(errno));
-			return -1;
-		}
-		ses->ifindex = ifr.ifr_ifindex;
-	}
+	if (ses->ifindex == -1 && ses->ifname[0])
+		ses->ifindex = net->get_ifindex(ses->ifname);
 
 	if (ses->ifindex != -1)
 		ap_session_set_ifindex(ses);
@@ -237,6 +228,11 @@ void __export ap_session_finished(struct ap_session *ses)
 	if (ses->ipv6_pool_name) {
 		_free(ses->ipv6_pool_name);
 		ses->ipv6_pool_name = NULL;
+	}
+
+	if (ses->dpv6_pool_name) {
+		_free(ses->dpv6_pool_name);
+		ses->dpv6_pool_name = NULL;
 	}
 
 	if (ses->ifname_rename) {
@@ -537,6 +533,12 @@ static void load_config(void)
 		conf_max_sessions = atoi(opt);
 	else
 		conf_max_sessions = 0;
+
+	opt = conf_get_opt("common", "max-starting");
+	if (opt)
+		conf_max_starting = atoi(opt);
+	else
+		conf_max_starting = 0;
 }
 
 static void init(void)
