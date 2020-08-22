@@ -4857,6 +4857,50 @@ static int l2tp_create_session_exec(const char *cmd, char * const *fields,
 	return res;
 }
 
+static int l2tp_show_tunnel_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
+{
+	struct l2tp_conn_t conn;
+	char paddr[17];
+	char haddr[17];
+
+	cli_send(client, "l2tp tunnels:\r\n");
+
+	for (int i = 0; i < UINT16_MAX; i++)
+	{
+		pthread_mutex_lock(&l2tp_lock);
+
+		if (l2tp_conn[i] == NULL) {
+			pthread_mutex_unlock(&l2tp_lock);
+			continue;
+		}
+
+		memcpy(&conn, l2tp_conn[i], sizeof(struct l2tp_conn_t));
+		pthread_mutex_unlock(&l2tp_lock);
+
+		u_inet_ntoa(conn.peer_addr.sin_addr.s_addr, paddr);
+		u_inet_ntoa(conn.host_addr.sin_addr.s_addr, haddr);
+
+		cli_sendv(client, "\t %s:%d => %s:%d\r\n", 
+		                  paddr, ntohs(conn.peer_addr.sin_port),
+		                  haddr, ntohs(conn.host_addr.sin_port));
+
+		cli_sendv(client, "\t\t tid: %u\r\n", conn.tid);
+		cli_sendv(client, "\t\t peer tid: %u\r\n", conn.peer_tid);
+		cli_sendv(client, "\t\t state: %u\r\n", conn.state);
+		cli_sendv(client, "\t\t send queue length: %u\r\n", conn.send_queue_len);
+		cli_sendv(client, "\t\t sessions: %u\r\n", conn.sess_count);
+		cli_sendv(client, "\t\t references: %u\r\n", conn.ref_count);
+
+	}
+	return CLI_CMD_OK;
+}
+
+static void l2tp_show_tunnel_help(char * const *fields, int fields_cnt, void *client)
+{
+	cli_send(client, "l2tp show tunnel\r\n"
+		"\t shows statistics of active l2tp tunnels\r\n");
+}
+
 static void l2tp_create_tunnel_help(char * const *fields, int fields_cnt,
 				    void *client)
 {
@@ -5038,6 +5082,9 @@ static void l2tp_init(void)
 	start_udp_server();
 
 	cli_register_simple_cmd2(&show_stat_exec, NULL, 2, "show", "stat");
+	cli_register_simple_cmd2(l2tp_show_tunnel_exec, 
+	                         l2tp_show_tunnel_help, 3, 
+	                         "l2tp", "show", "tunnel");
 	cli_register_simple_cmd2(l2tp_create_tunnel_exec,
 				 l2tp_create_tunnel_help, 3,
 				 "l2tp", "create", "tunnel");
