@@ -42,6 +42,7 @@ int conf_sid_in_auth;
 int conf_require_nas_ident;
 int conf_acct_interim_interval;
 int conf_acct_interim_jitter;
+int conf_send_auth_reply_attr_acct;
 
 int conf_accounting;
 int conf_fail_time;
@@ -966,6 +967,12 @@ static int load_config(void)
 	opt = conf_get_opt("radius", "acct-timeout");
 	if (opt && atoi(opt) >= 0)
 		conf_acct_timeout = atoi(opt);
+
+	opt = conf_get_opt("radius", "send-auth-reply-attr-acct");
+	if (opt && atoi(opt) >= 0)
+		conf_send_auth_reply_attr_acct = atoi(opt) > 0;
+	else
+		conf_send_auth_reply_attr_acct = 0;
 
 	opt = conf_get_opt("radius", "verbose");
 	if (opt && atoi(opt) >= 0)

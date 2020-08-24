@@ -24,6 +24,7 @@ static struct rad_req_t *__rad_req_alloc(struct radius_pd_t *rpd, int code, cons
 	struct ppp_t *ppp = NULL;
 	struct rad_req_t *req = mempool_alloc(req_pool);
 	struct timespec ts;
+        struct rad_attr_t *attr;
 
 	if (!req) {
 		log_emerg("radius: out of memory\n");
@@ -121,6 +122,15 @@ static struct rad_req_t *__rad_req_alloc(struct radius_pd_t *rpd, int code, cons
 	if (conf_attr_tunnel_type)
 		if (rad_packet_add_str(req->pack, NULL, conf_attr_tunnel_type, rpd->ses->ctrl->name))
 			goto out_err;
+
+	if (code == CODE_ACCOUNTING_REQUEST && rpd->auth_reply && conf_send_auth_reply_attr_acct) 
+	{
+		list_for_each_entry(attr, &rpd->auth_reply->attrs, entry) {
+			if (attr && attr->vendor && attr->vendor->name && attr->attr && attr->attr->name && attr->val.string)
+				if (rad_packet_add_str(req->pack, attr->vendor->name, attr->attr->name, attr->val.string))
+					log_ppp_error("Could not add reply attribute %s to Accounting-Start request", attr->attr->name);
+		}
+	}
 
 	list_for_each_entry(plugin, &req->rpd->plugin_list, entry) {
 		switch (code) {
