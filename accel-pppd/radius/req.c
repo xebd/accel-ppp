@@ -126,9 +126,25 @@ static struct rad_req_t *__rad_req_alloc(struct radius_pd_t *rpd, int code, cons
 	if (code == CODE_ACCOUNTING_REQUEST && rpd->auth_reply && conf_send_auth_reply_attr_acct) 
 	{
 		list_for_each_entry(attr, &rpd->auth_reply->attrs, entry) {
-			if (attr && attr->vendor && attr->vendor->name && attr->attr && attr->attr->name && attr->val.string)
-				if (rad_packet_add_str(req->pack, attr->vendor->name, attr->attr->name, attr->val.string))
-					log_ppp_error("Could not add reply attribute %s to Accounting-Start request", attr->attr->name);
+			if (attr && attr->vendor && attr->vendor->name && attr->attr && attr->attr->name)
+			{
+				switch(attr->attr->type) {
+					case ATTR_TYPE_INTEGER:
+						if (rad_packet_add_int(req->pack, attr->vendor->name, attr->attr->name, attr->val.integer))
+							log_ppp_error("Could not add reply attribute %s to Accounting-Start request", attr->attr->name);
+						break;
+					case ATTR_TYPE_OCTETS:
+						if (rad_packet_add_octets(req->pack, attr->vendor->name, attr->attr->name, attr->val.octets, attr->len))
+							log_ppp_error("Could not add reply attribute %s to Accounting-Start request", attr->attr->name);
+						break;
+					case ATTR_TYPE_STRING:					
+						if (rad_packet_add_str(req->pack, attr->vendor->name, attr->attr->name, attr->val.string))
+							log_ppp_error("Could not add reply attribute %s to Accounting-Start request", attr->attr->name);
+						break;
+					default:
+						log_ppp_info2("Skipping adding attribute %s to Accounting-Start request", attr->attr->name);
+				}
+			}
 		}
 	}
 
