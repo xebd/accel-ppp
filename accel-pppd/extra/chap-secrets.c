@@ -363,7 +363,7 @@ static void des_encrypt(const uint8_t *input, const uint8_t *key, uint8_t *outpu
 	DES_key_schedule ks;
 
 	memcpy(p_key.buf, key, 7);
-	p_key.u64 = bswap_64(p_key.u64);
+	p_key.u64 = be64toh(p_key.u64);
 
 	for (i = 0; i < 8; i++) {
 		cb[i] = (((p_key.u64 << (7 * i)) >> 56) & 0xfe);

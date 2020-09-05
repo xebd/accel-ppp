@@ -574,7 +574,7 @@ static uint16_t ip_csum(uint16_t *buf, int len)
 		sum += *buf++;
 
 	if (len & 1) {
-#ifdef __LITTLE_ENDIAN
+#if __BYTE_ORDER == __LITTLE_ENDIAN
 		sum += *(uint8_t *)buf;
 #else
 		sum += *(uint8_t *)buf << 8;
