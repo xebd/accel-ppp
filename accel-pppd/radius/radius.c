@@ -412,6 +412,11 @@ static int rad_pwdb_check(struct pwdb_t *pwdb, struct ap_session *ses, pwdb_call
 	struct radius_pd_t *rpd = find_pd(ses);
 	char username1[256];
 
+	if (!rpd) {
+		log_emerg("radius:%s:BUG: rpd not found\n", __func__);
+		abort();
+	}
+
 	if (conf_strip_realm || conf_default_realm) {
 		int len = strchrnul(username, '@') - username;
 		if (conf_strip_realm && username[len]) {
@@ -482,14 +487,21 @@ static struct ipv4db_item_t *get_ipv4(struct ap_session *ses)
 {
 	struct radius_pd_t *rpd = find_pd(ses);
 
+	if (!rpd)
+		return NULL;
+
 	if (rpd->ipv4_addr.peer_addr)
 		return &rpd->ipv4_addr;
+
 	return NULL;
 }
 
 static struct ipv6db_item_t *get_ipv6(struct ap_session *ses)
 {
 	struct radius_pd_t *rpd = find_pd(ses);
+
+	if (!rpd)
+		return NULL;
 
 	rpd->ipv6_addr.intf_id = 0;
 
@@ -502,6 +514,9 @@ static struct ipv6db_item_t *get_ipv6(struct ap_session *ses)
 static struct ipv6db_prefix_t *get_ipv6_prefix(struct ap_session *ses)
 {
 	struct radius_pd_t *rpd = find_pd(ses);
+
+	if (!rpd)
+		return NULL;
 
 	if (!list_empty(&rpd->ipv6_dp.prefix_list)) {
 		rpd->ipv6_dp_assigned = 1;
@@ -574,7 +589,7 @@ static void ses_acct_start(struct ap_session *ses)
 	if (!conf_accounting)
 		return;
 
-	if (!rpd->authenticated)
+	if (!rpd || !rpd->authenticated)
 		return;
 
 	if (rad_acct_start(rpd)) {
@@ -590,6 +605,11 @@ static void ses_started(struct ap_session *ses)
 	struct radius_pd_t *rpd = find_pd(ses);
 	struct framed_ip6_route *fr6;
 	struct framed_route *fr;
+
+	if (!rpd) {
+		log_emerg("radius:%s:BUG: rpd not found\n", __func__);
+		abort();
+	}
 
 	if (rpd->session_timeout.expire_tv.tv_sec) {
 		rpd->session_timeout.expire = session_timeout;
@@ -629,6 +649,11 @@ static void ses_finishing(struct ap_session *ses)
 	struct framed_ip6_route *fr6;
 	struct framed_route *fr;
 
+	if (!rpd) {
+		log_emerg("radius:%s:BUG: rpd not found\n", __func__);
+		abort();
+	}
+
 	if (rpd->auth_ctx) {
 		rad_server_req_cancel(rpd->auth_ctx->req, 1);
 		rad_req_free(rpd->auth_ctx->req);
@@ -661,6 +686,11 @@ static void ses_finished(struct ap_session *ses)
 	struct ipv6db_addr_t *a;
 	struct framed_route *fr = rpd->fr;
 	struct framed_ip6_route *fr6;
+
+	if (!rpd) {
+		log_emerg("radius:%s:BUG: rpd not found\n", __func__);
+		abort();
+	}
 
 	pthread_rwlock_wrlock(&sessions_lock);
 	pthread_mutex_lock(&rpd->lock);
@@ -757,8 +787,8 @@ struct radius_pd_t *find_pd(struct ap_session *ses)
 			return rpd;
 		}
 	}
-	log_emerg("radius:BUG: rpd not found\n");
-	abort();
+
+	return NULL;
 }
 
 void hold_pd(struct radius_pd_t *rpd)
