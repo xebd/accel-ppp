@@ -28,12 +28,18 @@ void l2tp_packet_print(const struct l2tp_packet_t *pack,
 	const struct l2tp_attr_t *attr;
 	const struct l2tp_dict_value_t *val;
 
-	if (pack->hdr.ver == 2) {
+	switch (pack->hdr.flags & L2TP_VER_MASK) {
+	case 2:
 		print("[L2TP tid=%u sid=%u", ntohs(pack->hdr.tid), ntohs(pack->hdr.sid));
 		log_ppp_debug(" Ns=%u Nr=%u", ntohs(pack->hdr.Ns), ntohs(pack->hdr.Nr));
-	} else {
+		break;
+	case 3:
 		print("[L2TP cid=%u", pack->hdr.cid);
 		log_ppp_debug(" Ns=%u Nr=%u", ntohs(pack->hdr.Ns), ntohs(pack->hdr.Nr));
+		break;
+	default:
+		print("[L2TP unknown version]\n");
+		return;
 	}
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
@@ -72,10 +78,7 @@ struct l2tp_packet_t *l2tp_packet_alloc(int ver, int msg_type,
 
 	memset(pack, 0, sizeof(*pack));
 	INIT_LIST_HEAD(&pack->attrs);
-	pack->hdr.ver = ver;
-	pack->hdr.T = 1;
-	pack->hdr.L = 1;
-	pack->hdr.S = 1;
+	pack->hdr.flags = L2TP_FLAG_T | L2TP_FLAG_L | L2TP_FLAG_S | (ver & L2TP_VER_MASK);
 	memcpy(&pack->addr, addr, sizeof(*addr));
 	pack->hide_avps = H;
 	pack->secret = secret;
@@ -150,21 +153,23 @@ static int decode_avp(struct l2tp_avp_t *avp, const struct l2tp_attr_t *RV,
 	uint8_t md5[MD5_DIGEST_LENGTH];
 	uint8_t p1[MD5_DIGEST_LENGTH];
 	uint8_t *prev_block = NULL;
+	uint16_t avp_len;
 	uint16_t attr_len;
 	uint16_t orig_attr_len;
 	uint16_t bytes_left;
 	uint16_t blocks_left;
 	uint16_t last_block_len;
 
-	if (avp->length < sizeof(struct l2tp_avp_t) + 2) {
+	avp_len = avp->flags & L2TP_AVP_LEN_MASK;
+	if (avp_len < sizeof(struct l2tp_avp_t) + 2) {
 		/* Hidden AVPs must contain at least two bytes
 		   for storing original attribute length */
 		log_warn("l2tp: incorrect hidden avp received (type %hu):"
 			 " length too small (%hu bytes)\n",
-			 ntohs(avp->type), avp->length);
+			 ntohs(avp->type), avp_len);
 		return -1;
 	}
-	attr_len = avp->length - sizeof(struct l2tp_avp_t);
+	attr_len = avp_len - sizeof(struct l2tp_avp_t);
 
 	/* Decode first block */
 	MD5_Init(&md5_ctx);
@@ -228,31 +233,29 @@ static int decode_avp(struct l2tp_avp_t *avp, const struct l2tp_attr_t *RV,
 int l2tp_recv(int fd, struct l2tp_packet_t **p, struct in_pktinfo *pkt_info,
 	      const char *secret, size_t secret_len)
 {
-	int n, length;
-	uint8_t *buf;
+	struct l2tp_packet_t *pack;
 	struct l2tp_hdr_t *hdr;
 	struct l2tp_avp_t *avp;
-	struct l2tp_dict_attr_t *da;
-	struct l2tp_attr_t *attr, *RV = NULL;
-	uint8_t *ptr;
-	struct l2tp_packet_t *pack;
+	struct l2tp_attr_t *RV = NULL;
 	struct sockaddr_in addr;
-	socklen_t len = sizeof(addr);
-	struct msghdr msg;
-	char msg_control[128];
-	struct cmsghdr *cmsg;
+	socklen_t addr_len;
 	uint16_t orig_avp_len;
 	void *orig_avp_val;
+	uint8_t *buf, *ptr;
+	int n, length;
 
-  *p = NULL;
+	*p = NULL;
 
 	if (pkt_info) {
+		struct msghdr msg;
+		struct cmsghdr *cmsg;
+		char msg_control[128];
+
 		memset(&msg, 0, sizeof(msg));
 		msg.msg_control = msg_control;
-		msg.msg_controllen = 128;
+		msg.msg_controllen = sizeof(msg_control);
 
 		n = recvmsg(fd, &msg, MSG_PEEK);
-
 		if (n < 0) {
 			if (errno == EAGAIN)
 				return -1;
@@ -276,8 +279,8 @@ int l2tp_recv(int fd, struct l2tp_packet_t **p, struct in_pktinfo *pkt_info,
 	hdr = (struct l2tp_hdr_t *)buf;
 	ptr = (uint8_t *)(hdr + 1);
 
-	n = recvfrom(fd, buf, L2TP_MAX_PACKET_SIZE, 0, &addr, &len);
-
+	addr_len = sizeof(addr);
+	n = recvfrom(fd, buf, L2TP_MAX_PACKET_SIZE, 0, &addr, &addr_len);
 	if (n < 0) {
 		mempool_free(buf);
 		if (errno == EAGAIN) {
@@ -289,45 +292,50 @@ int l2tp_recv(int fd, struct l2tp_packet_t **p, struct in_pktinfo *pkt_info,
 		return 0;
 	}
 
-	if (n < 6) {
+	if (n < sizeof(*hdr)) {
 		if (conf_verbose)
 			log_warn("l2tp: short packet received (%i/%zu)\n", n, sizeof(*hdr));
 		goto out_err_hdr;
 	}
 
-	if (hdr->T == 0)
+	hdr->flags = ntohs(hdr->flags);
+	if (!(hdr->flags & L2TP_FLAG_T))
 		goto out_err_hdr;
-
-	if (n < ntohs(hdr->length)) {
+	if (!(hdr->flags & L2TP_FLAG_L)) {
 		if (conf_verbose)
-			log_warn("l2tp: short packet received (%i/%i)\n", n, ntohs(hdr->length));
+			log_warn("l2tp: incorrect control message received (L=0)\n");
+		goto out_err_hdr;
+	}
+	if (!(hdr->flags & L2TP_FLAG_S)) {
+		if (conf_verbose)
+			log_warn("l2tp: incorrect control message received (S=0)\n");
+		goto out_err_hdr;
+	}
+	switch (hdr->flags & L2TP_VER_MASK) {
+	case 2:
+		if (hdr->flags & L2TP_FLAG_O) {
+			if (conf_verbose)
+				log_warn("l2tp: incorrect control message received (O=1)\n");
+			goto out_err_hdr;
+		}
+		break;
+	case 3:
+		break;
+	default:
+		if (conf_verbose)
+			log_warn("l2tp: protocol version %i is not supported\n",
+				 hdr->flags & L2TP_VER_MASK);
 		goto out_err_hdr;
 	}
 
-	if (hdr->ver == 2) {
-		if (hdr->L == 0) {
-			if (conf_verbose)
-				log_warn("l2tp: incorrect message received (L=0)\n");
-			if (!conf_avp_permissive)
-			    goto out_err_hdr;
-		}
-
-		if (hdr->S == 0) {
-			if (conf_verbose)
-				log_warn("l2tp: incorrect message received (S=0)\n");
-			if (!conf_avp_permissive)
-			    goto out_err_hdr;
-		}
-
-		if (hdr->O == 1) {
-			if (conf_verbose)
-				log_warn("l2tp: incorrect message received (O=1)\n");
-			if (!conf_avp_permissive)
-			    goto out_err_hdr;
-		}
-	} else if (hdr->ver != 3) {
+	length = ntohs(hdr->length);
+	if (length < sizeof(*hdr)) {
 		if (conf_verbose)
-			log_warn("l2tp: protocol version %i is not supported\n", hdr->ver);
+			log_warn("l2tp: short packet received (%i/%zu)\n", length, sizeof(*hdr));
+		goto out_err_hdr;
+	} else if (n < length) {
+		if (conf_verbose)
+			log_warn("l2tp: short packet received (%i/%i)\n", n, length);
 		goto out_err_hdr;
 	}
 
@@ -342,13 +350,27 @@ int l2tp_recv(int fd, struct l2tp_packet_t **p, struct in_pktinfo *pkt_info,
 
 	memcpy(&pack->addr, &addr, sizeof(addr));
 	memcpy(&pack->hdr, hdr, sizeof(*hdr));
-	length = ntohs(hdr->length) - sizeof(*hdr);
+	length -= sizeof(*hdr);
 
-	while (length) {
-		*(uint16_t *)ptr = ntohs(*(uint16_t *)ptr);
+	while (length > 0) {
+		struct l2tp_dict_attr_t *da;
+		struct l2tp_attr_t *attr;
+		uint16_t avp_len;
+
+		if (length < sizeof(*avp)) {
+			if (conf_verbose)
+				log_warn("l2tp: short avp received\n");
+			goto out_err;
+		}
+
 		avp = (struct l2tp_avp_t *)ptr;
-
-		if (avp->length > length) {
+		avp->flags = ntohs(avp->flags);
+		avp_len = avp->flags & L2TP_AVP_LEN_MASK;
+		if (avp_len < sizeof(*avp)) {
+			if (conf_verbose)
+				log_warn("l2tp: short avp received\n");
+			goto out_err;
+		} else if (length < avp_len) {
 			if (conf_verbose)
 				log_warn("l2tp: incorrect avp received (exceeds message length)\n");
 			goto out_err;
@@ -359,26 +381,32 @@ int l2tp_recv(int fd, struct l2tp_packet_t **p, struct in_pktinfo *pkt_info,
 
 		da = l2tp_dict_find_attr_by_id(ntohs(avp->type));
 		if (!da) {
-			if (conf_verbose)
-				log_warn("l2tp: unknown avp received (type=%i, M=%u)\n", ntohs(avp->type), avp->M);
-			if (avp->M && !conf_avp_permissive)
+			if (conf_verbose) {
+				log_warn("l2tp: unknown avp received (type=%i, M=%u)\n",
+					 ntohs(avp->type), !!(avp->flags & L2TP_AVP_FLAG_M));
+			}
+			if ((avp->flags & L2TP_AVP_FLAG_M) && !conf_avp_permissive)
 				goto out_err;
 		} else {
-			if (da->M != -1 && da->M != avp->M) {
-				if (conf_verbose)
-					log_warn("l2tp: incorrect avp received (type=%i, M=%i, must be %i)\n", ntohs(avp->type), avp->M, da->M);
+			if (da->M != -1 && !da->M != !(avp->flags & L2TP_AVP_FLAG_M)) {
+				if (conf_verbose) {
+					log_warn("l2tp: incorrect avp received (type=%i, M=%i, must be %i)\n",
+						 ntohs(avp->type), !!(avp->flags & L2TP_AVP_FLAG_M), da->M);
+				}
 				if (!conf_avp_permissive)
 				    goto out_err;
 			}
 
-			if (da->H != -1 && da->H != avp->H) {
-				if (conf_verbose)
-					log_warn("l2tp: incorrect avp received (type=%i, H=%i, must be %i)\n", ntohs(avp->type), avp->H, da->H);
+			if (da->H != -1 && !da->H != !(avp->flags & L2TP_AVP_FLAG_H)) {
+				if (conf_verbose) {
+					log_warn("l2tp: incorrect avp received (type=%i, H=%i, must be %i)\n",
+						 ntohs(avp->type), !!(avp->flags & L2TP_AVP_FLAG_H), da->H);
+				}
 				if (!conf_avp_permissive)
 				    goto out_err;
 			}
 
-			if (avp->H) {
+			if (avp->flags & L2TP_AVP_FLAG_H) {
 				if (!RV) {
 					if (conf_verbose)
 						log_warn("l2tp: incorrect avp received (type=%i, H=1, but Random-Vector is not received)\n", ntohs(avp->type));
@@ -393,24 +421,21 @@ int l2tp_recv(int fd, struct l2tp_packet_t **p, struct in_pktinfo *pkt_info,
 				}
 				if (decode_avp(avp, RV, secret, secret_len) < 0)
 					goto out_err;
+
+				orig_avp_len = ntohs(*(uint16_t *)avp->val) + sizeof(*avp);
+				orig_avp_val = avp->val + sizeof(uint16_t);
+			} else {
+				orig_avp_len = avp_len;
+				orig_avp_val = avp->val;
 			}
 
 			attr = mempool_alloc(attr_pool);
 			memset(attr, 0, sizeof(*attr));
-			list_add_tail(&attr->entry, &pack->attrs);
-
-			if (avp->H) {
-				orig_avp_len = ntohs(*(uint16_t *)avp->val) + sizeof(*avp);
-				orig_avp_val = avp->val + sizeof(uint16_t);
-			} else {
-				orig_avp_len = avp->length;
-				orig_avp_val = avp->val;
-			}
-
 			attr->attr = da;
-			attr->M = avp->M;
+			attr->M = !!(avp->flags & L2TP_AVP_FLAG_M);
 			attr->H = 0;
 			attr->length = orig_avp_len - sizeof(*avp);
+			list_add_tail(&attr->entry, &pack->attrs);
 
 			if (attr->attr->id == Random_Vector)
 				RV = attr;
@@ -447,8 +472,8 @@ int l2tp_recv(int fd, struct l2tp_packet_t **p, struct in_pktinfo *pkt_info,
 			}
 		}
 skip:
-		ptr += avp->length;
-		length -= avp->length;
+		ptr += avp_len;
+		length -= avp_len;
 	}
 
 	*p = pack;
@@ -473,21 +498,22 @@ out_err_mem:
 
 int l2tp_packet_send(int sock, struct l2tp_packet_t *pack)
 {
-	uint8_t *buf = mempool_alloc(buf_pool);
+	struct l2tp_hdr_t *hdr;
 	struct l2tp_avp_t *avp;
 	struct l2tp_attr_t *attr;
-	uint8_t *ptr;
-	int n;
-	int len = sizeof(pack->hdr);
+	uint8_t *buf, *ptr;
+	int n, len;
 
+	buf = mempool_alloc(buf_pool);
 	if (!buf) {
 		log_emerg("l2tp: out of memory\n");
 		return -1;
 	}
 
 	memset(buf, 0, L2TP_MAX_PACKET_SIZE);
-
-	ptr = buf + sizeof(pack->hdr);
+	hdr = (struct l2tp_hdr_t *)buf;
+	ptr = (uint8_t *)(hdr + 1);
+	len = sizeof(pack->hdr);
 
 	list_for_each_entry(attr, &pack->attrs, entry) {
 		if (len + sizeof(*avp) + attr->length >= L2TP_MAX_PACKET_SIZE) {
@@ -497,10 +523,9 @@ int l2tp_packet_send(int sock, struct l2tp_packet_t *pack)
 		}
 		avp = (struct l2tp_avp_t *)ptr;
 		avp->type = htons(attr->attr->id);
-		avp->M = attr->M;
-		avp->H = attr->H;
-		avp->length = sizeof(*avp) + attr->length;
-		*(uint16_t *)ptr = htons(*(uint16_t *)ptr);
+		avp->flags = htons((attr->M ? L2TP_AVP_FLAG_M : 0) |
+				   (attr->H ? L2TP_AVP_FLAG_H : 0) |
+				   ((sizeof(*avp) + attr->length) & L2TP_AVP_LEN_MASK));
 		if (attr->H)
 			memcpy(avp->val, attr->val.octets, attr->length);
 		else
@@ -525,9 +550,9 @@ int l2tp_packet_send(int sock, struct l2tp_packet_t *pack)
 
 	pack->hdr.length = htons(len);
 	memcpy(buf, &pack->hdr, sizeof(pack->hdr));
+	hdr->flags = htons(pack->hdr.flags);
 
-	n = sendto(sock, buf, ntohs(pack->hdr.length), 0,
-		   &pack->addr, sizeof(pack->addr));
+	n = sendto(sock, buf, len, 0, &pack->addr, sizeof(pack->addr));
 	mempool_free(buf);
 
 	if (n < 0) {
@@ -541,9 +566,9 @@ int l2tp_packet_send(int sock, struct l2tp_packet_t *pack)
 		}
 	}
 
-	if (n != ntohs(pack->hdr.length)) {
+	if (n != len) {
 		if (conf_verbose)
-			log_warn("l2tp: short write (%i/%i)\n", n, ntohs(pack->hdr.length));
+			log_warn("l2tp: short write (%i/%i)\n", n, len);
 	}
 
 	return 0;
