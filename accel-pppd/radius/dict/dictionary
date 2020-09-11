@@ -79,4 +79,5 @@ $INCLUDE dictionary.rfc6911
 $INCLUDE dictionary.microsoft
 $INCLUDE dictionary.cisco
 $INCLUDE dictionary.alcatel
+$INCLUDE dictionary.mikrotik
 $INCLUDE dictionary.dhcp
