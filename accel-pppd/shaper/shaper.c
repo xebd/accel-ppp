@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <string.h>
 #include <stdio.h>
+#include <ctype.h>
 #include <netinet/in.h>
 #include <linux/if.h>
 #include <sys/ioctl.h>
@@ -193,29 +194,58 @@ static struct shaper_pd_t *find_pd(struct ap_session *ses, int create)
 	return NULL;
 }
 
+static long int parse_integer(const char *str, char **endptr, double *multiplier)
+{
+	const static struct {
+		char suffix;
+		double multiplier;
+	} table[] = {
+		{ 'B', 0.001 },
+		{ 'K', 1.0 },
+		{ 'M', 1000.0 },
+		{ 'G', 10000000.0 }
+	};
+	long int val;
+	int i;
+
+	val = strtol(str, endptr, 10);
+	if (multiplier) {
+		*multiplier = 1;
+		if (endptr && **endptr) {
+			char suffix = toupper(**endptr);
+			for (i = 0; i < sizeof(table)/sizeof(table[0]); i++) {
+				if (table[i].suffix == suffix) {
+					*multiplier = table[i].multiplier;
+					(*endptr)++;
+					break;
+				}
+			}
+		}
+	}
+
+	return val;
+}
+
 static void parse_string_simple(const char *str, int dir, int *speed, int *burst, int *tr_id)
 {
 	char *endptr;
 	long int val;
+	double mult = 1;
 
-	val = strtol(str, &endptr, 10);
-	if (*endptr == 0) {
-		*speed = conf_multiplier * val;
-		return;
-	}
+	val = parse_integer(str, &endptr, &mult);
 	if (*endptr == ',') {
 		*tr_id = val;
-		val = strtol(endptr + 1, &endptr, 10);
+		val = parse_integer(endptr + 1, &endptr, &mult);
 	}
-	if (*endptr == 0) {
-		*speed = conf_multiplier * val;
-		return;
-	} else {
-		if (*endptr == '/' || *endptr == '\\' || *endptr == ':') {
-			if (dir == ATTR_DOWN)
-				*speed = conf_multiplier * val;
-			else
-				*speed = conf_multiplier * strtol(endptr + 1, &endptr, 10);
+	if (*endptr == '\0')
+		*speed = conf_multiplier * mult * val;
+	else if (*endptr == '/' || *endptr == '\\' || *endptr == ':') {
+		if (dir == ATTR_DOWN)
+			*speed = conf_multiplier * mult * val;
+		else {
+			val = parse_integer(endptr + 1, &endptr, &mult);
+			if (*endptr == '\0')
+				*speed = conf_multiplier * mult * val;
 		}
 	}
 }
