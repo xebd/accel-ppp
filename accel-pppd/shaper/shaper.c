@@ -226,7 +226,7 @@ static long int parse_integer(const char *str, char **endptr, double *multiplier
 	return val;
 }
 
-static void parse_string_simple(const char *str, int dir, int *speed, int *burst, int *tr_id)
+static int parse_string_simple(const char *str, int dir, int *speed, int *burst, int *tr_id)
 {
 	char *endptr;
 	long int val;
@@ -237,20 +237,27 @@ static void parse_string_simple(const char *str, int dir, int *speed, int *burst
 		*tr_id = val;
 		val = parse_integer(endptr + 1, &endptr, &mult);
 	}
-	if (*endptr == '\0')
+
+	if (*endptr == '\0') {
 		*speed = conf_multiplier * mult * val;
-	else if (*endptr == '/' || *endptr == '\\' || *endptr == ':') {
-		if (dir == ATTR_DOWN)
+		return 0;
+	} else if (*endptr == '/' || *endptr == '\\' || *endptr == ':') {
+		if (dir == ATTR_DOWN) {
 			*speed = conf_multiplier * mult * val;
-		else {
+			return 0;
+		} else {
 			val = parse_integer(endptr + 1, &endptr, &mult);
-			if (*endptr == '\0')
+			if (*endptr == '\0') {
 				*speed = conf_multiplier * mult * val;
+				return 0;
+			}
 		}
 	}
+
+	return -1;
 }
 
-static void parse_string(const char *str, int dir, int *speed, int *burst, int *tr_id)
+static int parse_string_cisco(const char *str, int dir, int *speed, int *burst, int *tr_id)
 {
 	long int val;
 	unsigned int n1, n2, n3;
@@ -264,7 +271,7 @@ static void parse_string(const char *str, int dir, int *speed, int *burst, int *
 				*speed = n1/1000;
 				*burst = n2;
 			}
-			return;
+			return 0;
 		}
 
 		str1 = strstr(str, "rate-limit output");
@@ -274,7 +281,7 @@ static void parse_string(const char *str, int dir, int *speed, int *burst, int *
 				*speed = n1/1000;
 				*burst = n2;
 			}
-			return;
+			return 0;
 		}
 	} else {
 		str1 = strstr(str, "rate-limit input access-group");
@@ -284,7 +291,7 @@ static void parse_string(const char *str, int dir, int *speed, int *burst, int *
 				*speed = n1/1000;
 				*burst = n2;
 			}
-			return;
+			return 0;
 		}
 
 		str1 = strstr(str, "rate-limit input");
@@ -294,18 +301,22 @@ static void parse_string(const char *str, int dir, int *speed, int *burst, int *
 				*speed = n1/1000;
 				*burst = n2;
 			}
-			return;
+			return 0;
 		}
 	}
 
-#ifdef RADIUS
-	if (conf_vendor == 9) {
-		/* VENDOR_Cisco */
-		return;
-	}
-#endif
+	return -1;
+}
 
-	parse_string_simple(str, dir, speed, burst, tr_id);
+static int parse_string(const char *str, int dir, int *speed, int *burst, int *tr_id)
+{
+	int ret;
+
+	ret = parse_string_cisco(str, dir, speed, burst, tr_id);
+	if (ret < 0)
+		ret = parse_string_simple(str, dir, speed, burst, tr_id);
+
+	return ret;
 }
 
 static struct time_range_pd_t *get_tr_pd(struct shaper_pd_t *pd, int id)
@@ -345,6 +356,7 @@ static void clear_tr_pd(struct shaper_pd_t *pd)
 	}
 }
 
+#ifdef RADIUS
 static void clear_old_tr_pd(struct shaper_pd_t *pd)
 {
 	struct time_range_pd_t *tr_pd;
@@ -359,12 +371,20 @@ static void clear_old_tr_pd(struct shaper_pd_t *pd)
 	}
 }
 
-#ifdef RADIUS
 static void parse_attr(struct rad_attr_t *attr, int dir, int *speed, int *burst, int *tr_id)
 {
-	if (attr->attr->type == ATTR_TYPE_STRING)
-		parse_string(attr->val.string, dir, speed, burst, tr_id);
-	else if (attr->attr->type == ATTR_TYPE_INTEGER)
+	if (attr->attr->type == ATTR_TYPE_STRING) {
+		int vendor = attr->vendor ? attr->vendor->id : 0;
+		if (vendor == 9) {
+			/* VENDOR_Cisco */
+			parse_string_cisco(attr->val.string, dir, speed, burst, tr_id);
+		} else if (vendor == 14988 && attr->attr->id == 8) {
+			/* VENDOR_Mikrotik && Mikrotik-Rate-Limit */
+			dir = (dir == ATTR_DOWN) ? ATTR_UP : ATTR_DOWN;
+			parse_string_simple(attr->val.string, dir, speed, burst, tr_id);
+		} else
+			parse_string(attr->val.string, dir, speed, burst, tr_id);
+	} else if (attr->attr->type == ATTR_TYPE_INTEGER)
 		*speed = conf_multiplier * attr->val.integer;
 }
 
