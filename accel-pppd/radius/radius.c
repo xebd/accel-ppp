@@ -282,7 +282,7 @@ int rad_proc_attrs(struct rad_req_t *req)
 	req->rpd->acct_interim_jitter = conf_acct_interim_jitter;
 
 	list_for_each_entry(attr, &req->reply->attrs, entry) {
-		if (attr->vendor && attr->vendor->id == Vendor_Microsoft) {
+		if (attr->vendor && attr->vendor->id == VENDOR_Microsoft) {
 			switch (attr->attr->id) {
 				case MS_Primary_DNS_Server:
 					dns.ses = rpd->ses;

@@ -340,7 +340,7 @@ static void setup_mppe(struct rad_req_t *req, const uint8_t *challenge)
 		return;
 
 	list_for_each_entry(attr, &req->reply->attrs, entry) {
-		if (attr->vendor && attr->vendor->id == Vendor_Microsoft) {
+		if (attr->vendor && attr->vendor->id == VENDOR_Microsoft) {
 			switch (attr->attr->id) {
 				case MS_CHAP_MPPE_Keys:
 					if (decrypt_chap_mppe_keys(req, attr, challenge, mppe_recv_key))

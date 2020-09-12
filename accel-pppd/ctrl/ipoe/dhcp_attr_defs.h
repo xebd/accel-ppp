@@ -1,4 +1,5 @@
 #define VENDOR_DHCP 54
+
 #define DHCP_Opcode 256
 #define DHCP_Hardware_Type 257
 #define DHCP_Hardware_Address_Length 258
@@ -16,7 +17,12 @@
 #define DHCP_Relay_To_IP_Address 270
 #define DHCP_Relay_Max_Hop_Count 271
 #define DHCP_Relay_IP_Address 272
+
 #define DHCP_Flags_Broadcast 0x8000
+
+#define DHCP_Opcode_Client_Message 1
+#define DHCP_Opcode_Server_Message 2
+
 #define DHCP_Hardware_Type_Ethernet 1
 #define DHCP_Hardware_Type_Experiemental_Ethernet 2
 #define DHCP_Hardware_Type_AX_25 3
@@ -50,6 +56,7 @@
 #define DHCP_Hardware_Type_IPSec_Tunnel 31
 #define DHCP_Hardware_Type_Infiniband 32
 #define DHCP_Hardware_Type_CAI_TIA_102 33
+
 #define DHCP_Subnet_Mask 1
 #define DHCP_Time_Offset 2
 #define DHCP_Router_Address 3
@@ -132,18 +139,6 @@
 #define DHCP_Rapid_Commit 80
 #define DHCP_Client_FQDN 81
 #define DHCP_Relay_Agent_Information 82
-#define DHCP_Agent_Circuit_Id 1
-#define DHCP_Agent_Remote_Id 2
-#define DHCP_Relay_Circuit_Id 1
-#define DHCP_Relay_Remote_Id 2
-#define DHCP_Docsis_Device_Class 4
-#define DHCP_Relay_Link_Selection 5
-#define DHCP_Subscriber_Id 6
-#define DHCP_RADIUS_Attributes 7
-#define DHCP_Authentication_Information 8
-#define DHCP_Vendor_Specific_Information 9
-#define DHCP_Relay_Agent_Flags 10
-#define DHCP_Server_Identifier_Override 11
 #define DHCP_iSNS 83
 #define DHCP_NDS_Servers 85
 #define DHCP_NDS_Tree_Name 86
@@ -181,8 +176,20 @@
 #define DHCP_HTTP_Proxy 135
 #define DHCP_Cisco_TFTP_Server_IP_Addresses 150
 #define DHCP_End_Of_Options 255
-#define DHCP_Opcode_Client_Message 1
-#define DHCP_Opcode_Server_Message 2
+
+#define DHCP_Agent_Circuit_Id 1
+#define DHCP_Agent_Remote_Id 2
+#define DHCP_Relay_Circuit_Id 1
+#define DHCP_Relay_Remote_Id 2
+#define DHCP_Docsis_Device_Class 4
+#define DHCP_Relay_Link_Selection 5
+#define DHCP_Subscriber_Id 6
+#define DHCP_RADIUS_Attributes 7
+#define DHCP_Authentication_Information 8
+#define DHCP_Vendor_Specific_Information 9
+#define DHCP_Relay_Agent_Flags 10
+#define DHCP_Server_Identifier_Override 11
+
 #define DHCP_Message_Type_DHCP_Discover 1
 #define DHCP_Message_Type_DHCP_Offer 2
 #define DHCP_Message_Type_DHCP_Request 3
@@ -192,6 +199,7 @@
 #define DHCP_Message_Type_DHCP_Release 7
 #define DHCP_Message_Type_DHCP_Inform 8
 #define DHCP_Message_Type_DHCP_Force_Renew 9
+
 #define DHCP_Parameter_Request_List_DHCP_Subnet_Mask 1
 #define DHCP_Parameter_Request_List_DHCP_Time_Offset 2
 #define DHCP_Parameter_Request_List_DHCP_Router_Address 3

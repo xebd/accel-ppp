@@ -2,7 +2,6 @@
 #define __ATTR_DEFS_H
 
 #define Message_Type 0
-#define Random_Vector 36
 #define Result_Code 1
 #define Protocol_Version 2
 #define Framing_Capabilities 3
@@ -26,10 +25,7 @@
 #define Calling_Number 22
 #define Sub_Address 23
 #define TX_Speed 24
-#define RX_Speed 38
 #define Physical_Channel_ID 25
-#define Private_Group_ID 37
-#define Sequencing_Required 39
 #define Init_Recv_LCP 26
 #define Last_Sent_LCP 27
 #define Last_Recv_LCP 28
@@ -40,6 +36,27 @@
 #define Proxy_Authen_Response 33
 #define Call_Errors 34
 #define ACCM 35
+#define Random_Vector 36
+#define Private_Group_ID 37
+#define RX_Speed 38
+#define Sequencing_Required 39
+#define Message_Digest 59
+#define Router_ID 60
+#define Assigned_Connection_ID 61
+#define Pseudowire_Capabilities 62
+#define Local_Session_ID 63
+#define Remote_Session_ID 64
+#define Assigned_Cookie 65
+#define Remote_End_ID 66
+#define Pseudowire_Type 68
+#define L2_Specific_Sublayer 69
+#define Data_Sequencing 70
+#define Circuit_Status 71
+#define Prefered_Language 72
+#define Ctrl_Message_Auth_Nonce 73
+#define TX_Connect_Speed 74
+#define RX_Connect_Speed 75
+
 #define Message_Type_Start_Ctrl_Conn_Request 1
 #define Message_Type_Start_Ctrl_Conn_Reply 2
 #define Message_Type_Start_Ctrl_Conn_Connected 3
@@ -54,22 +71,6 @@
 #define Message_Type_Call_Disconnect_Notify 14
 #define Message_Type_WAN_Error_Notify 15
 #define Message_Type_Set_Link_Info 16
-#define Message_Digest 59
-#define Ctrl_Message_Auth_Nonce 73
-#define Router_ID 60
-#define Assigned_Connection_ID 61
-#define Pseudowire_Capabilities 62
-#define Prefered_Language 72
-#define Local_Session_ID 63
-#define Remote_Session_ID 64
-#define Assigned_Cookie 65
-#define Remote_End_ID 66
-#define Pseudowire_Type 68
-#define L2_Specific_Sublayer 69
-#define Data_Sequencing 70
-#define TX_Connect_Speed 74
-#define RX_Connect_Speed 75
-#define Circuit_Status 71
 #define Message_Type_Explicit_Ack 20
 
 #endif

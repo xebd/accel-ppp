@@ -299,8 +299,10 @@ static void parse_string(const char *str, int dir, int *speed, int *burst, int *
 	}
 
 #ifdef RADIUS
-	if (conf_vendor == 9)
+	if (conf_vendor == 9) {
+		/* VENDOR_Cisco */
 		return;
+	}
 #endif
 
 	parse_string_simple(str, dir, speed, burst, tr_id);

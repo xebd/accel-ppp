@@ -468,6 +468,7 @@ static struct backup_module backup_mod = {
 static int parse_attr(struct ap_session *ses, struct rad_attr_t *attr)
 {
 	if (conf_vendor == 9) {
+		/* VENDOR_Cisco */
 		if (attr->len > sizeof("ip:addr-pool=") && memcmp(attr->val.string, "ip:addr-pool=", sizeof("ip:addr-pool=") - 1) == 0) {
 			if (ses->ipv4_pool_name)
 				_free(ses->ipv4_pool_name);
