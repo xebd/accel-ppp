@@ -238,7 +238,7 @@ static int parse_string_simple(const char *str, int dir, int *speed, int *burst,
 		val = parse_integer(endptr + 1, &endptr, &mult);
 	}
 
-	if (*endptr == '\0') {
+	if (*endptr == '\0' || isblank(*endptr)) {
 		*speed = conf_multiplier * mult * val;
 		return 0;
 	} else if (*endptr == '/' || *endptr == '\\' || *endptr == ':') {
@@ -247,7 +247,7 @@ static int parse_string_simple(const char *str, int dir, int *speed, int *burst,
 			return 0;
 		} else {
 			val = parse_integer(endptr + 1, &endptr, &mult);
-			if (*endptr == '\0') {
+			if (*endptr == '\0' || isblank(*endptr)) {
 				*speed = conf_multiplier * mult * val;
 				return 0;
 			}
