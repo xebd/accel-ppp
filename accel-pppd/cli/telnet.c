@@ -732,11 +732,14 @@ static void load_history_file(void)
 		return;
 
 	while (fgets((char *)temp_buf, RECV_BUF_SIZE, f)) {
-		b = _malloc(sizeof(*b) + strlen((char *)temp_buf) + 1);
-		b->p_buf = NULL;
-		b->size = strlen((char *)temp_buf) - 1;
-		memcpy(b->buf, temp_buf, b->size);
-		list_add_tail(&b->entry, &history);
+                int buf_len=strlen((char *)temp_buf);
+                if( buf_len > 0){
+                        b = _malloc(sizeof(*b) + buf_len + 1);
+                        b->p_buf = NULL;
+                        b->size = buf_len - 1;
+                        memcpy(b->buf, temp_buf, b->size);
+                        list_add_tail(&b->entry, &history);
+                }
 	}
 
 	fclose(f);
