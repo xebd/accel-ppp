@@ -206,6 +206,14 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 				len -= vendor->tag + vendor->len;
 
 				n -= 4 + vendor->tag + vendor->len;
+				if (len < 0) {
+					log_ppp_warn("radius:packet invalid vendor attribute len received\n");
+					goto out_err;
+				}
+				if (2 + len > n) {
+					log_ppp_warn("radius:packet: too long vendor attribute received (%i, %i)\n", id, len);
+					goto out_err;
+				}
 			} else
 				log_ppp_warn("radius:packet: vendor %i not found\n", id);
 		} else
