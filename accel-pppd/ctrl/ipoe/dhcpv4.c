@@ -818,7 +818,7 @@ out_err:
 	return -1;
 }
 
-int dhcpv4_send_nak(struct dhcpv4_serv *serv, struct dhcpv4_packet *req)
+int dhcpv4_send_nak(struct dhcpv4_serv *serv, struct dhcpv4_packet *req, const char *err)
 {
 	struct dhcpv4_packet *pack;
 	int val, r;
@@ -842,6 +842,9 @@ int dhcpv4_send_nak(struct dhcpv4_serv *serv, struct dhcpv4_packet *req)
 		goto out_err;
 
 	if (req->relay_agent && dhcpv4_packet_add_opt(pack, 82, req->relay_agent->data, req->relay_agent->len))
+		goto out_err;
+
+	if (err && dhcpv4_packet_add_opt(pack, 56, err, strlen(err)))
 		goto out_err;
 
 	*pack->ptr++ = 255;

@@ -51,6 +51,8 @@
 
 #define LEASE_TIME 600
 
+#define SESSION_TERMINATED "Session was terminated"
+
 struct iplink_arg {
 	pcre *re;
 	const char *opt;
@@ -1032,7 +1034,7 @@ static void __ipoe_session_activate(struct ipoe_session *ses)
 			dhcpv4_send_reply(DHCPACK, ses->dhcpv4 ?: ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->router, ses->mask,
 					  ses->lease_time, ses->renew_time, ses->rebind_time, ses->dhcpv4_relay_reply);
 		else
-			dhcpv4_send_nak(ses->serv->dhcpv4, ses->dhcpv4_request);
+			dhcpv4_send_nak(ses->serv->dhcpv4, ses->dhcpv4_request, SESSION_TERMINATED);
 
 		dhcpv4_packet_free(ses->dhcpv4_request);
 		ses->dhcpv4_request = NULL;
@@ -1088,7 +1090,7 @@ static void ipoe_session_keepalive(struct dhcpv4_packet *pack)
 		dhcpv4_send_reply(DHCPACK, ses->dhcpv4 ?: ses->serv->dhcpv4, ses->dhcpv4_request, ses->yiaddr, ses->siaddr, ses->router, ses->mask,
 				  ses->lease_time, ses->renew_time, ses->rebind_time, ses->dhcpv4_relay_reply);
 	} else
-		dhcpv4_send_nak(ses->dhcpv4 ?: ses->serv->dhcpv4, ses->dhcpv4_request);
+		dhcpv4_send_nak(ses->dhcpv4 ?: ses->serv->dhcpv4, ses->dhcpv4_request, SESSION_TERMINATED);
 
 	dhcpv4_packet_free(ses->dhcpv4_request);
 	ses->dhcpv4_request = NULL;
@@ -1273,7 +1275,7 @@ static void ipoe_session_terminated_pkt(struct dhcpv4_packet *pack)
 		dhcpv4_print_packet(pack, 0, log_ppp_info2);
 	}
 
-	dhcpv4_send_nak(ses->serv->dhcpv4, pack);
+	dhcpv4_send_nak(ses->serv->dhcpv4, pack, SESSION_TERMINATED);
 
 	dhcpv4_packet_free(pack);
 
@@ -1431,7 +1433,7 @@ static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packe
 
 	if (ses->terminate) {
 		if (pack->msg_type != DHCPDISCOVER)
-			dhcpv4_send_nak(dhcpv4, pack);
+			dhcpv4_send_nak(dhcpv4, pack, SESSION_TERMINATED);
 		triton_context_call(ses->ctrl.ctx, (triton_event_func)ipoe_session_terminated, ses);
 		return;
 	}
@@ -1474,7 +1476,7 @@ static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packe
 	if (conf_check_mac_change && pack->relay_agent && !opt82_match) {
 		log_ppp_info2("port change detected\n");
 		if (pack->msg_type == DHCPREQUEST)
-			dhcpv4_send_nak(dhcpv4, pack);
+			dhcpv4_send_nak(dhcpv4, pack, SESSION_TERMINATED);
 		triton_context_call(ses->ctrl.ctx, (triton_event_func)__ipoe_session_terminate, &ses->ses);
 		return;
 	}
@@ -1496,7 +1498,7 @@ static void ipoe_ses_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packe
 			(pack->hdr->ciaddr && (pack->hdr->xid != ses->xid || pack->hdr->ciaddr != ses->yiaddr))) {
 
 			if (pack->server_id == ses->siaddr)
-				dhcpv4_send_nak(dhcpv4, pack);
+				dhcpv4_send_nak(dhcpv4, pack, "Wrong session");
 			else if (ses->serv->dhcpv4_relay)
 				dhcpv4_relay_send(ses->serv->dhcpv4_relay, pack, 0, ses->serv->ifname, conf_agent_remote_id);
 
@@ -1542,7 +1544,7 @@ static void ipoe_ses_recv_dhcpv4_request(struct dhcpv4_packet *pack)
 		(pack->hdr->ciaddr && (pack->hdr->ciaddr != ses->yiaddr))) {
 
 		if (pack->server_id == ses->siaddr)
-			dhcpv4_send_nak(ses->serv->dhcpv4, pack);
+			dhcpv4_send_nak(ses->serv->dhcpv4, pack, "Wrong session");
 
 		ap_session_terminate(&ses->ses, TERM_USER_REQUEST, 1);
 
@@ -1859,13 +1861,13 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 			}
 
 			if (pack->src_addr) {
-				dhcpv4_send_nak(dhcpv4, pack);
+				dhcpv4_send_nak(dhcpv4, pack, "Session dosn't exist");
 				goto out;
 			}
 
 			if (pack->server_id) {
 				if (check_server_id(pack->server_id)) {
-					dhcpv4_send_nak(dhcpv4, pack);
+					dhcpv4_send_nak(dhcpv4, pack, "Wrong server id");
 					goto out;
 				}
 			}
@@ -1881,7 +1883,7 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 				goto out;
 
 			if (ipoe_serv_request_check(serv, pack->hdr->xid))
-				dhcpv4_send_nak(dhcpv4, pack);
+				dhcpv4_send_nak(dhcpv4, pack, "Session doesn't exist");
 		} else {
 			if (ses->terminate) {
 				dhcpv4_packet_ref(pack);
@@ -2004,7 +2006,7 @@ static void ipoe_ses_recv_dhcpv4_relay(struct dhcpv4_packet *pack)
 					  ses->lease_time, ses->renew_time, ses->rebind_time, ses->dhcpv4_relay_reply);
 
 	} else if (pack->msg_type == DHCPNAK) {
-		dhcpv4_send_nak(ses->dhcpv4 ?: ses->serv->dhcpv4, ses->dhcpv4_request);
+		dhcpv4_send_nak(ses->dhcpv4 ?: ses->serv->dhcpv4, ses->dhcpv4_request, "Session is terminated");
 		ap_session_terminate(&ses->ses, TERM_NAS_REQUEST, 1);
 		return;
 	}
