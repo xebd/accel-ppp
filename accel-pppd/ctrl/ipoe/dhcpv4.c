@@ -822,6 +822,7 @@ int dhcpv4_send_nak(struct dhcpv4_serv *serv, struct dhcpv4_packet *req, const c
 {
 	struct dhcpv4_packet *pack;
 	int val, r;
+	uint32_t server_id = req->server_id ? req->server_id : req->hdr->siaddr;
 
 	pack = dhcpv4_packet_alloc();
 	if (!pack) {
@@ -839,6 +840,9 @@ int dhcpv4_send_nak(struct dhcpv4_serv *serv, struct dhcpv4_packet *req, const c
 
 	val = DHCPNAK;
 	if (dhcpv4_packet_add_opt(pack, 53, &val, 1))
+		goto out_err;
+
+	if (server_id && dhcpv4_packet_add_opt(pack, 54, &server_id, 4))
 		goto out_err;
 
 	if (req->relay_agent && dhcpv4_packet_add_opt(pack, 82, req->relay_agent->data, req->relay_agent->len))
