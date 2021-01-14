@@ -16,7 +16,7 @@
 #include "memdebug.h"
 
 #define CELL_SIZE 128
-#define DEF_COLUMNS "ifname,username,calling-sid,ip,rate-limit,type,comp,state,uptime"
+#define DEF_COLUMNS "ifname,username,calling-sid,ip,rate-limit,ip6,ipv6-dp,state,uptime"
 
 struct column_t
 {
@@ -389,6 +389,11 @@ static void print_ifname(struct ap_session *ses, char *buf)
 	snprintf(buf, CELL_SIZE, "%s", ses->ifname);
 }
 
+static void print_ifname_origin(struct ap_session *ses, char *buf)
+{
+	snprintf(buf, CELL_SIZE, "%s", ses->ctrl->ifname);
+}
+
 static void print_username(struct ap_session *ses, char *buf)
 {
 	if (ses->username)
@@ -641,6 +646,7 @@ static void init(void)
 	cli_show_ses_register("netns", "network namespace name", print_netns);
 	cli_show_ses_register("ifname", "interface name", print_ifname);
 	cli_show_ses_register("username", "user name", print_username);
+  cli_show_ses_register("origin", "origin", print_ifname_origin);
 	cli_show_ses_register("ip", "IP address", print_ip);
 	cli_show_ses_register("ip6", "IPv6 address", print_ip6);
 	cli_show_ses_register("ip6-dp", "IPv6 delegated prefix", print_ip6_dp);

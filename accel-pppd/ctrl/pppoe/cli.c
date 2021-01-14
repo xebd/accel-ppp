@@ -19,14 +19,14 @@ static void show_interfaces(void *cli)
 
 	pthread_rwlock_rdlock(&serv_lock);
 	list_for_each_entry(serv, &serv_list, entry) {
-		cli_sendv(cli, "%9s    %11u    %6s\r\n", serv->ifname, serv->conn_cnt, serv->stopping ? "stop" : "active");
+		cli_sendv(cli, "%9s    %11u/%i    %6s\r\n", serv->ifname, serv->conn_cnt, serv->max_connections, serv->stopping ? "stop" : "active");
 	}
 	pthread_rwlock_unlock(&serv_lock);
 }
 
 static void intf_help(char * const *fields, int fields_cnt, void *client)
 {
-	uint8_t show = 7;
+	uint8_t show = 15;
 
 	if (fields_cnt >= 3) {
 		show &= (strcmp(fields[2], "add")) ? ~1 : ~0;
@@ -35,7 +35,7 @@ static void intf_help(char * const *fields, int fields_cnt, void *client)
 		if (show == 0) {
 			cli_sendv(client, "Invalid action \"%s\"\r\n",
 				  fields[2]);
-			show = 7;
+			show = 15;
 		}
 	}
 	if (show & 1)
@@ -52,6 +52,11 @@ static void intf_help(char * const *fields, int fields_cnt, void *client)
 			 "pppoe interface show"
 			 " - show interfaces on which pppoe server"
 			 " started\r\n");
+	 if (show & 8)
+	 	cli_send(client,
+	 		 "pppoe interface limit <name> <max_connections>"
+	 		 " - set max connections for a interface\r\n");
+
 }
 
 static int intf_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
@@ -68,7 +73,31 @@ static int intf_exec(const char *cmd, char * const *fields, int fields_cnt, void
 		return CLI_CMD_OK;
 	}
 
-	if (fields_cnt != 4)
+	if (fields_cnt == 5) {
+
+		if (!strcmp(fields[2], "limit")) {
+
+			int limit = atoi(fields[4]);
+
+			if (limit > INT32_MAX){
+				cli_sendv(client, "The max value allowed is %i, %i given\r\n" , INT32_MAX, limit);
+				return CLI_CMD_OK;
+			}
+
+			if (pppoe_server_max_connection(fields[3], limit) == 1){
+				cli_sendv(client, "Max Connections on interface %s is now %i\n", fields[3], limit);
+			} else {
+					cli_sendv(client, "Interface %s not founded.\n", fields[3]);
+			}
+
+   	} else
+			goto help;
+
+		return CLI_CMD_OK;
+
+	}
+
+	if (fields_cnt != 5)
 		goto help;
 
 	if (!strcmp(fields[2], "add"))
@@ -260,6 +289,8 @@ static int set_ac_name_exec(const char *cmd, char * const *f, int f_cnt, void *c
 
 	return CLI_CMD_OK;
 }
+
+
 //===================================
 
 
