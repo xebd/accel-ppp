@@ -30,7 +30,7 @@
 
 extern char** environ;
 
-#define DEFAULT_NAS_ID "accel-ppp"
+#define DEFAULT_NAS_ID        "accel-ppp"
 #define DEFAULT_REDIS_HOST    "localhost"
 #define DEFAULT_REDIS_PORT     6379
 #define DEFAULT_REDIS_PUBCHAN "accel-ppp"
@@ -212,7 +212,7 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext* ctx)
 		if (msg->ip_addr)
 			json_object_object_add(jobj, "ip_addr", json_object_new_string(msg->ip_addr));
 
-          	/* pppoe_sessionid */
+		/* pppoe_sessionid */
 		if (msg->pppoe_sessionid)
 			json_object_object_add(jobj, "pppoe_sessionid", json_object_new_int(msg->pppoe_sessionid));
 
@@ -220,12 +220,12 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext* ctx)
 		if (msg->ctrl_ifname)
 			json_object_object_add(jobj, "ctrl_ifname", json_object_new_string(msg->ctrl_ifname));
 
-                /* nas_identifier */
-                if (msg->nas_identifier)
-                        json_object_object_add(jobj, "nas_identifier", json_object_new_string(msg->nas_identifier));
+		/* nas_identifier */
+		if (msg->nas_identifier)
+			json_object_object_add(jobj, "nas_identifier", json_object_new_string(msg->nas_identifier));
 
 
-          // TODO: send msg to redis instance
+		// TODO: send msg to redis instance
 		redisReply* reply;
 		reply = redisCommand(ctx, "PUBLISH %s %s", ap_redis->pubchan, json_object_to_json_string(jobj));
 
@@ -504,7 +504,7 @@ static void ap_redis_enqueue(struct ap_session *ses, const int event)
 	if (ses->ctrl->ifname)
 		msg->ctrl_ifname = _strdup(ses->ctrl->ifname);
 
-    	msg->ip_addr = _strdup(tmp_addr);
+	msg->ip_addr = _strdup(tmp_addr);
 	msg->nas_identifier = _strdup(ap_redis->nas_id);
 
 	switch(ses->ctrl->type) {
