@@ -316,6 +316,16 @@ static void* ap_redis_thread(void* arg)
 			continue;
 		}
 
+		uint64_t num = 0;
+		ssize_t bytes_read;
+
+		if ((bytes_read = read(epev[0].data.fd, &num, sizeof(uint64_t))) == -1){
+			log_error("ap_redis: Could not read epoll fd: %d (%s)\n", errno, strerror(errno));
+			continue;
+		}
+
+		log_debug("ap_redis: Epoll fd content: %lu.\n", num);
+
 		for (unsigned int i = 0; i < 32; i++) {
 			if (epev[i].data.fd == ap_redis->evfd) {
 				ap_redis_dequeue(ap_redis, ctx);
