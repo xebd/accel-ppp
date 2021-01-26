@@ -30,6 +30,7 @@
 
 extern char** environ;
 
+#define DEFAULT_NAS_ID "accel-ppp"
 #define DEFAULT_REDIS_HOST    "localhost"
 #define DEFAULT_REDIS_PORT     6379
 #define DEFAULT_REDIS_PUBCHAN "accel-ppp"
@@ -85,6 +86,7 @@ struct ap_redis_msg_t {
 	char* sessionid;
 	int pppoe_sessionid;
 	char* ctrl_ifname;
+	char* nas_identifier;
 };
 
 struct ap_redis_t {
@@ -106,6 +108,8 @@ struct ap_redis_t {
 	/* flags */
 	uint32_t flags;
 
+	/*radius nas-identifier */
+	char* nas_id;
 	/* redis host */
 	char* host;
 	/* redis port */
@@ -208,13 +212,18 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext* ctx)
 		if (msg->ip_addr)
 			json_object_object_add(jobj, "ip_addr", json_object_new_string(msg->ip_addr));
 
-          /* pppoe_sessionid */
+          	/* pppoe_sessionid */
 		if (msg->pppoe_sessionid)
 			json_object_object_add(jobj, "pppoe_sessionid", json_object_new_int(msg->pppoe_sessionid));
 
 		/* ctrl_ifname */
 		if (msg->ctrl_ifname)
 			json_object_object_add(jobj, "ctrl_ifname", json_object_new_string(msg->ctrl_ifname));
+
+                /* nas_identifier */
+                if (msg->nas_identifier)
+                        json_object_object_add(jobj, "nas_identifier", json_object_new_string(msg->nas_identifier));
+
 
           // TODO: send msg to redis instance
 		redisReply* reply;
@@ -244,6 +253,8 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext* ctx)
 			free(msg->ip_addr);
 		if (msg->ctrl_ifname)
 			free(msg->ctrl_ifname);
+		if (msg->nas_identifier)
+			free(msg->nas_identifier);
 
 		mempool_free(msg);
 	}
@@ -351,6 +362,12 @@ static int ap_redis_open(struct ap_redis_t *ap_redis)
 	}
 
 	ap_redis->events = 0;
+
+// inserting the nas-identifier from the radius section of accel-ppp.conf
+	if (((opt = conf_get_opt("radius", "nas-identifier")) != NULL))
+		ap_redis->nas_id = _strdup(opt);
+	else
+		ap_redis->nas_id = _strdup(DEFAULT_NAS_ID);
 
 	if (((opt = conf_get_opt("redis", "host")) != NULL))
 		ap_redis->host = _strdup(opt);
@@ -487,7 +504,8 @@ static void ap_redis_enqueue(struct ap_session *ses, const int event)
 	if (ses->ctrl->ifname)
 		msg->ctrl_ifname = _strdup(ses->ctrl->ifname);
 
-    msg->ip_addr = _strdup(tmp_addr);
+    	msg->ip_addr = _strdup(tmp_addr);
+	msg->nas_identifier = _strdup(ap_redis->nas_id);
 
 	switch(ses->ctrl->type) {
 	case CTRL_TYPE_PPTP:    msg->ses_ctrl_type = REDIS_SES_CTRL_TYPE_PPTP;    break;
