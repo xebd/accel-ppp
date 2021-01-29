@@ -319,7 +319,7 @@ static void* ap_redis_thread(void* arg)
 		uint64_t num = 0;
 		ssize_t bytes_read;
 
-		if ((bytes_read = read(epev[0].data.fd, &num, sizeof(uint64_t))) == -1){
+		if ((bytes_read = read(epev[0].data.fd, &num, sizeof(uint64_t))) < 0){
 			log_error("ap_redis: Could not read epoll fd: %d (%s)\n", errno, strerror(errno));
 			continue;
 		}
