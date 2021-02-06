@@ -255,7 +255,7 @@ static void sigclean(int num)
 
 static int mmap_grow(void)
 {
-	int size = sysconf(_SC_PAGE_SIZE) * (1 << PAGE_ORDER);
+	int size = sysconf(_SC_PAGESIZE) * (1 << PAGE_ORDER);
 	void *ptr;
 
 	if (mmap_endptr) {

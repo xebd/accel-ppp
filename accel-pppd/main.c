@@ -291,7 +291,7 @@ int main(int _argc, char **_argv)
 	int c, sig, goto_daemon = 0, len;
 	pid_t pid = 0;
 	struct sigaction sa;
-	int pagesize = sysconf(_SC_PAGE_SIZE);
+	int pagesize = sysconf(_SC_PAGESIZE);
 	char *dump = NULL;
 	int internal = 0;
 	int no_sigint = 0;
