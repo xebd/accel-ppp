@@ -407,6 +407,8 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 	conn->ppp.ses.net = serv->net;
 	conn->ppp.ses.ctrl = &conn->ctrl;
 	conn->ppp.ses.chan_name = conn->ctrl.calling_station_id;
+    /* Insert session id into ap_session to make it available for publication
+     * on redis. */
 	conn->ppp.ses.conn_pppoe_sid = conn->sid;
 
 	if (conf_ip_pool)

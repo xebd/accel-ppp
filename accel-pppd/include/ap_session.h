@@ -118,6 +118,9 @@ struct ap_session
 	uint32_t acct_rx_bytes_i;
 	uint32_t acct_tx_bytes_i;
 	int acct_start;
+
+    /* Add members for PPPoE session id and Filter-Id to make them available
+     * across events for publication on the redis bus. */
 	int conn_pppoe_sid;
 	char *filter_id;
 };
