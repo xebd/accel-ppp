@@ -589,9 +589,9 @@ static void ev_ses_acct_start(struct ap_session *ses)
 	ap_redis_enqueue(ses, REDIS_EV_SES_ACCT_START);
 }
 
-static void ev_ses_auth_failed(struct ap_session *ses)
+static void ev_ses_auth_failed(struct ppp_t *ppp)
 {
-	ap_redis_enqueue(ses, REDIS_EV_SES_AUTH_FAILED);
+	ap_redis_enqueue(&ppp->ses, REDIS_EV_SES_AUTH_FAILED);
 }
 
 static void ev_ses_pre_finished(struct ap_session *ses)
