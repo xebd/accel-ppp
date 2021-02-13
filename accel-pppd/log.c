@@ -490,7 +490,7 @@ static void sighup(int n)
 
 static void load_config(void)
 {
-	char *opt;
+	const char *opt;
 
 	opt = conf_get_opt("log", "level");
 	if (opt && atoi(opt) >= 0)

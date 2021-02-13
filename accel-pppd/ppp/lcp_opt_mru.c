@@ -161,7 +161,7 @@ static void mru_print(void (*print)(const char *fmt, ...), struct lcp_option_t *
 
 static void load_config(void)
 {
-	char *opt;
+	const char *opt;
 
 	opt = conf_get_opt("ppp", "mtu");
 	if (opt && atoi(opt) > 0)

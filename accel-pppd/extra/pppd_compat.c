@@ -32,11 +32,11 @@
 #define ENV_MEM 1024
 #define ENV_MAX 16
 
-static char *conf_ip_up;
-static char *conf_ip_pre_up;
-static char *conf_ip_down;
-static char *conf_ip_change;
-static char *conf_radattr_prefix;
+static const char *conf_ip_up;
+static const char *conf_ip_pre_up;
+static const char *conf_ip_down;
+static const char *conf_ip_change;
+static const char *conf_radattr_prefix;
 static int conf_verbose = 0;
 static int conf_fork_limit;
 
@@ -65,8 +65,8 @@ struct pppd_compat_pd
 };
 
 static struct pppd_compat_pd *find_pd(struct ap_session *ses);
-static void fill_argv(char **argv, struct pppd_compat_pd *pd, char *path);
-static void fill_env(char **env, char *mem, struct pppd_compat_pd *pd);
+static void fill_argv(const char **argv, struct pppd_compat_pd *pd, const char *path, char *addr_buf, char *peer_buf);
+static void fill_env(const char **env, char *mem, struct pppd_compat_pd *pd);
 #ifdef RADIUS
 static void remove_radattr(struct pppd_compat_pd *);
 static void write_radattr(struct pppd_compat_pd *, struct rad_packet_t *pack);
@@ -119,7 +119,6 @@ static void check_fork_limit(struct pppd_compat_pd *pd, struct list_head *queue)
 		pthread_mutex_unlock(&queue_lock);
 	}
 }
-
 
 static void ip_pre_up_handler(struct sigchld_handler_t *h, int status)
 {
@@ -202,8 +201,8 @@ static void ev_ses_starting(struct ap_session *ses)
 static void ev_ses_pre_up(struct ap_session *ses)
 {
 	pid_t pid;
-	char *argv[8];
-	char *env[ENV_MAX];
+	const char *argv[8];
+	const char *env[ENV_MAX];
 	char env_mem[ENV_MEM];
 	char ipaddr[17];
 	char peer_ipaddr[17];
@@ -236,9 +235,7 @@ static void ev_ses_pre_up(struct ap_session *ses)
 	if (!conf_ip_pre_up)
 		return;
 
-	argv[4] = ipaddr;
-	argv[5] = peer_ipaddr;
-	fill_argv(argv, pd, conf_ip_pre_up);
+	fill_argv(argv, pd, conf_ip_pre_up, ipaddr, peer_ipaddr);
 
 	fill_env(env, env_mem, pd);
 
@@ -270,7 +267,7 @@ static void ev_ses_pre_up(struct ap_session *ses)
 		pthread_sigmask(SIG_UNBLOCK, &set, NULL);
 
 		net->enter_ns();
-		execve(conf_ip_pre_up, argv, env);
+		execve(conf_ip_pre_up, (char **)argv, (char **)env);
 		net->exit_ns();
 
 		log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_pre_up, strerror(errno));
@@ -286,8 +283,8 @@ static void ev_ses_pre_up(struct ap_session *ses)
 static void ev_ses_started(struct ap_session *ses)
 {
 	pid_t pid;
-	char *argv[8];
-	char *env[ENV_MAX];
+	const char *argv[8];
+	const char *env[ENV_MAX];
 	char env_mem[ENV_MEM];
 	char ipaddr[17];
 	char peer_ipaddr[17];
@@ -302,9 +299,7 @@ static void ev_ses_started(struct ap_session *ses)
 	if (!conf_ip_up)
 		return;
 
-	argv[4] = ipaddr;
-	argv[5] = peer_ipaddr;
-	fill_argv(argv, pd, conf_ip_up);
+	fill_argv(argv, pd, conf_ip_up, ipaddr, peer_ipaddr);
 
 	fill_env(env, env_mem, pd);
 
@@ -324,7 +319,7 @@ static void ev_ses_started(struct ap_session *ses)
 		pthread_sigmask(SIG_UNBLOCK, &set, NULL);
 
 		net->enter_ns();
-		execve(conf_ip_up, argv, env);
+		execve(conf_ip_up, (char **)argv, (char **)env);
 		net->exit_ns();
 
 		log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_up, strerror(errno));
@@ -339,8 +334,8 @@ static void ev_ses_started(struct ap_session *ses)
 static void ev_ses_finished(struct ap_session *ses)
 {
 	pid_t pid;
-	char *argv[8];
-	char *env[ENV_MAX];
+	const char *argv[8];
+	const char *env[ENV_MAX];
 	char env_mem[ENV_MEM];
 	char ipaddr[17];
 	char peer_ipaddr[17];
@@ -359,9 +354,7 @@ static void ev_ses_finished(struct ap_session *ses)
 	}
 
 	if (pd->started && conf_ip_down) {
-		argv[4] = ipaddr;
-		argv[5] = peer_ipaddr;
-		fill_argv(argv, pd, conf_ip_down);
+		fill_argv(argv, pd, conf_ip_down, ipaddr, peer_ipaddr);
 
 		fill_env(env, env_mem, pd);
 
@@ -387,7 +380,7 @@ static void ev_ses_finished(struct ap_session *ses)
 			pthread_sigmask(SIG_UNBLOCK, &set, NULL);
 
 			net->enter_ns();
-			execve(conf_ip_down, argv, env);
+			execve(conf_ip_down, (char **)argv, (char **)env);
 			net->exit_ns();
 
 			log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_down, strerror(errno));
@@ -439,8 +432,8 @@ static void ev_radius_access_accept(struct ev_radius_t *ev)
 static void ev_radius_coa(struct ev_radius_t *ev)
 {
 	pid_t pid;
-	char *argv[8];
-	char *env[ENV_MAX];
+	const char *argv[8];
+	const char *env[ENV_MAX];
 	char env_mem[ENV_MEM];
 	char ipaddr[17];
 	char peer_ipaddr[17];
@@ -457,7 +450,7 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 	if (conf_ip_change) {
 		argv[4] = ipaddr;
 		argv[5] = peer_ipaddr;
-		fill_argv(argv, pd, conf_ip_change);
+		fill_argv(argv, pd, conf_ip_change, ipaddr, peer_ipaddr);
 
 		fill_env(env, env_mem, pd);
 
@@ -479,7 +472,7 @@ static void ev_radius_coa(struct ev_radius_t *ev)
 				ev->res = pd->res;
 		} else if (pid == 0) {
 			net->enter_ns();
-			execve(conf_ip_change, argv, env);
+			execve(conf_ip_change, (char **)argv, (char **)env);
 			net->exit_ns();
 
 			log_emerg("pppd_compat: exec '%s': %s\n", conf_ip_change, strerror(errno));
@@ -599,19 +592,21 @@ static struct pppd_compat_pd *find_pd(struct ap_session *ses)
 	return NULL;
 }
 
-static void fill_argv(char **argv, struct pppd_compat_pd *pd, char *path)
+static void fill_argv(const char **argv, struct pppd_compat_pd *pd, const char *path, char *addr_buf, char *peer_buf)
 {
+	u_inet_ntoa(pd->ipv4_addr, addr_buf);
+	u_inet_ntoa(pd->ipv4_peer_addr, peer_buf);
 	argv[0] = path;
 	argv[1] = pd->ses->ifname;
 	argv[2] = "none";
 	argv[3] = "0";
-	u_inet_ntoa(pd->ipv4_addr, argv[4]);
-	u_inet_ntoa(pd->ipv4_peer_addr, argv[5]);
+	argv[4] = addr_buf;
+	argv[5] = peer_buf;
 	argv[6] = pd->ses->ctrl->calling_station_id;
 	argv[7] = NULL;
 }
 
-static void fill_env(char **env, char *mem, struct pppd_compat_pd *pd)
+static void fill_env(const char **env, char *mem, struct pppd_compat_pd *pd)
 {
 	struct ap_session *ses = pd->ses;
 	size_t mem_sz = ENV_MEM;
@@ -722,33 +717,28 @@ out:
 	env[n] = NULL;
 }
 
+static const char *get_exec_path(const char *opt_name)
+{
+	const char *opt;
+	opt = conf_get_opt("pppd-compat", "ip-pre-up");
+
+	if (opt && access(opt, R_OK | X_OK)) {
+		log_error("pppd_compat: %s: %s\n", opt, strerror(errno));
+		return NULL;
+	}
+	return opt;
+
+
+}
+
 static void load_config()
 {
 	const char *opt;
 
-	conf_ip_pre_up = conf_get_opt("pppd-compat", "ip-pre-up");
-	if (conf_ip_pre_up && access(conf_ip_pre_up, R_OK | X_OK)) {
-		log_error("pppd_compat: %s: %s\n", conf_ip_pre_up, strerror(errno));
-		conf_ip_pre_up = NULL;
-	}
-
-	conf_ip_up = conf_get_opt("pppd-compat", "ip-up");
-	if (conf_ip_up && access(conf_ip_up, R_OK | X_OK)) {
-		log_error("pppd_compat: %s: %s\n", conf_ip_up, strerror(errno));
-		conf_ip_up = NULL;
-	}
-
-	conf_ip_down = conf_get_opt("pppd-compat", "ip-down");
-	if (conf_ip_down && access(conf_ip_down, R_OK | X_OK)) {
-		log_error("pppd_compat: %s: %s\n", conf_ip_down, strerror(errno));
-		conf_ip_down = NULL;
-	}
-
-	conf_ip_change = conf_get_opt("pppd-compat", "ip-change");
-	if (conf_ip_change && access(conf_ip_change, R_OK | X_OK)) {
-		log_error("pppd_compat: %s: %s\n", conf_ip_change, strerror(errno));
-		conf_ip_change = NULL;
-	}
+	conf_ip_pre_up = get_exec_path("ip-pre-up");
+	conf_ip_up = get_exec_path("ip-up");
+	conf_ip_down = get_exec_path("ip-down");
+	conf_ip_change = get_exec_path("ip-change");
 
 	conf_radattr_prefix = conf_get_opt("pppd-compat", "radattr-prefix");
 

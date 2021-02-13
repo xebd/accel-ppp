@@ -440,7 +440,8 @@ static void ippool_init2(void)
 	struct conf_sect_t *s = conf_get_section("ipv6-pool");
 	struct conf_option_t *opt;
 	struct ippool_t *pool, *next;
-	char *pool_name, *val;
+	char *pool_name;
+	const char *val;
 	enum ippool_type type;
 #ifdef RADIUS
 	int dppool_attr = 0, ippool_attr = 0;

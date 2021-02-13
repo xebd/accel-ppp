@@ -953,7 +953,7 @@ static int parse_server(const char *opt, in_addr_t *addr, int *port, char **secr
 
 static int load_config(void)
 {
-	char *opt;
+	const char *opt;
 
 	opt = conf_get_opt("radius", "max-try");
 	if (opt && atoi(opt) > 0)

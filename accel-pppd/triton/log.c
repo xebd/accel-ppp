@@ -12,8 +12,8 @@ static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
 int log_init(void)
 {
-	char *log_error = conf_get_opt("core","log-error");
-	char *log_debug = conf_get_opt("core","log-debug");
+	const char *log_error = conf_get_opt("core","log-error");
+	const char *log_debug = conf_get_opt("core","log-debug");
 
 	if (log_error) {
 		f_error = fopen(log_error, "a");
