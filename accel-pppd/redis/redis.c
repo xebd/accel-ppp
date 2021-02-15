@@ -599,9 +599,9 @@ static void ev_ses_pre_finished(struct ap_session *ses)
 	ap_redis_enqueue(ses, REDIS_EV_SES_PRE_FINISHED);
 }
 
-static void ev_radius_access_accept(struct ap_session *ses)
+static void ev_radius_access_accept(struct ev_radius_t *ev)
 {
-	ap_redis_enqueue(ses, REDIS_EV_RADIUS_ACCESS_ACCEPT);
+	ap_redis_enqueue(ev->ses, REDIS_EV_RADIUS_ACCESS_ACCEPT);
 }
 
 static void ev_radius_coa(struct ap_session *ses)
