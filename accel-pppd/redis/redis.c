@@ -455,32 +455,32 @@ static void ap_redis_enqueue(struct ap_session *ses, const int event)
 	}
 
 	switch (event) {
-	case REDIS_EV_SES_STARTING:
-	case REDIS_EV_SES_STARTED:
-	case REDIS_EV_SES_FINISHING:
-	case REDIS_EV_SES_FINISHED:
-	case REDIS_EV_SES_AUTHORIZED:
-	case REDIS_EV_CTRL_STARTING:
-	case REDIS_EV_CTRL_STARTED:
-	case REDIS_EV_CTRL_FINISHED:
-	case REDIS_EV_SES_PRE_UP:
-	case REDIS_EV_SES_ACCT_START:
-	case REDIS_EV_CONFIG_RELOAD:
-	case REDIS_EV_SES_AUTH_FAILED:
-	case REDIS_EV_SES_PRE_FINISHED:
-	case REDIS_EV_IP_CHANGED:
-	case REDIS_EV_SHAPER:
-	case REDIS_EV_MPPE_KEYS:
-	case REDIS_EV_DNS:
-	case REDIS_EV_WINS:
-	case REDIS_EV_FORCE_INTERIM_UPDATE:
-	case REDIS_EV_RADIUS_ACCESS_ACCEPT:
-	case REDIS_EV_RADIUS_COA: {
-		/* do nothing */
-	} break;
-	default: {
-		return;
-	};
+		case REDIS_EV_SES_STARTING:
+		case REDIS_EV_SES_STARTED:
+		case REDIS_EV_SES_FINISHING:
+		case REDIS_EV_SES_FINISHED:
+		case REDIS_EV_SES_AUTHORIZED:
+		case REDIS_EV_CTRL_STARTING:
+		case REDIS_EV_CTRL_STARTED:
+		case REDIS_EV_CTRL_FINISHED:
+		case REDIS_EV_SES_PRE_UP:
+		case REDIS_EV_SES_ACCT_START:
+		case REDIS_EV_CONFIG_RELOAD:
+		case REDIS_EV_SES_AUTH_FAILED:
+		case REDIS_EV_SES_PRE_FINISHED:
+		case REDIS_EV_IP_CHANGED:
+		case REDIS_EV_SHAPER:
+		case REDIS_EV_MPPE_KEYS:
+		case REDIS_EV_DNS:
+		case REDIS_EV_WINS:
+		case REDIS_EV_FORCE_INTERIM_UPDATE:
+		case REDIS_EV_RADIUS_ACCESS_ACCEPT:
+		case REDIS_EV_RADIUS_COA: {
+			/* do nothing */
+		} break;
+		default: {
+			return;
+		};
 	}
 
 	struct ap_redis_msg_t* msg = mempool_alloc(ap_redis->msg_pool);
@@ -589,9 +589,9 @@ static void ev_ses_acct_start(struct ap_session *ses)
 	ap_redis_enqueue(ses, REDIS_EV_SES_ACCT_START);
 }
 
-static void ev_ses_auth_failed(struct ap_session *ses)
+static void ev_ses_auth_failed(struct ppp_t *ppp)
 {
-	ap_redis_enqueue(ses, REDIS_EV_SES_AUTH_FAILED);
+	ap_redis_enqueue(&ppp->ses, REDIS_EV_SES_AUTH_FAILED);
 }
 
 static void ev_ses_pre_finished(struct ap_session *ses)
@@ -599,14 +599,14 @@ static void ev_ses_pre_finished(struct ap_session *ses)
 	ap_redis_enqueue(ses, REDIS_EV_SES_PRE_FINISHED);
 }
 
-static void ev_radius_access_accept(struct ap_session *ses)
+static void ev_radius_access_accept(struct ev_radius_t *ev)
 {
-	ap_redis_enqueue(ses, REDIS_EV_RADIUS_ACCESS_ACCEPT);
+	ap_redis_enqueue(ev->ses, REDIS_EV_RADIUS_ACCESS_ACCEPT);
 }
 
-static void ev_radius_coa(struct ap_session *ses)
+static void ev_radius_coa(struct ev_radius_t *ev)
 {
-	ap_redis_enqueue(ses, REDIS_EV_RADIUS_COA);
+	ap_redis_enqueue(ev->ses, REDIS_EV_RADIUS_COA);
 }
 
 
