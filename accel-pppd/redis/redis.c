@@ -87,6 +87,7 @@ struct ap_redis_msg_t {
 	int pppoe_sessionid;
 	char* ctrl_ifname;
 	char* nas_identifier;
+	char* qos_val;
 };
 
 struct ap_redis_t {
@@ -224,6 +225,9 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext* ctx)
 		if (msg->nas_identifier)
 			json_object_object_add(jobj, "nas_identifier", json_object_new_string(msg->nas_identifier));
 
+		/* qos_val */
+		if (msg->qos_val)
+			json_object_object_add(jobj, "qos_val", json_object_new_string(msg->qos_val));
 
 		// TODO: send msg to redis instance
 		redisReply* reply;
@@ -255,6 +259,8 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext* ctx)
 			free(msg->ctrl_ifname);
 		if (msg->nas_identifier)
 			free(msg->nas_identifier);
+		if (msg->qos_val)
+			free(msg->qos_val);
 
 		mempool_free(msg);
 	}
@@ -513,6 +519,8 @@ static void ap_redis_enqueue(struct ap_session *ses, const int event)
 		msg->pppoe_sessionid = ses->conn_pppoe_sid;
 	if (ses->ctrl->ifname)
 		msg->ctrl_ifname = _strdup(ses->ctrl->ifname);
+	if (ses->filter_id)
+		msg->qos_val = _strdup(ses->filter_id);
 
 	msg->ip_addr = _strdup(tmp_addr);
 	msg->nas_identifier = _strdup(ap_redis->nas_id);
