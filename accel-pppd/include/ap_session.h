@@ -119,6 +119,7 @@ struct ap_session
 	uint32_t acct_tx_bytes_i;
 	int acct_start;
 	int conn_pppoe_sid;
+	char *filter_id;
 };
 
 struct ap_session_stat

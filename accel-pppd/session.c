@@ -246,6 +246,10 @@ void __export ap_session_finished(struct ap_session *ses)
 	if (ses->timer.tpd)
 		triton_timer_del(&ses->timer);
 
+	if (ses->filter_id)
+		_free(ses->filter_id);
+		ses->filter_id = NULL;
+
 #ifdef USE_BACKUP
 	if (ses->backup)
 		ses->backup->storage->free(ses->backup);
