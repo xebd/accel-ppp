@@ -384,6 +384,13 @@ int rad_proc_attrs(struct rad_req_t *req)
 			case Framed_IPv6_Route:
 				rad_add_framed_ipv6_route(attr->val.string, rpd);
 				break;
+			case Filter_Id:
+				if (rpd->ses->filter_id)
+					_free(rpd->ses->filter_id);
+				rpd->ses->filter_id = _malloc(attr->len + 1);
+				memcpy(rpd->ses->filter_id, attr->val.string, attr->len);
+				rpd->ses->filter_id[attr->len] = 0;
+				break;
 		}
 	}
 
