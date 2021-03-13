@@ -4224,7 +4224,7 @@ static int l2tp_tunnel_store_msg(struct l2tp_conn_t *conn,
 
 static int l2tp_tunnel_reply(struct l2tp_conn_t *conn, int need_ack)
 {
-	const struct l2tp_attr_t *msg_attr;
+	const struct l2tp_attr_t *msg_attr = NULL;
 	struct l2tp_packet_t *pack;
 	struct l2tp_sess_t *sess;
 	uint16_t msg_sid;
@@ -4430,7 +4430,7 @@ static int l2tp_udp_read(struct triton_md_handler_t *h)
 {
 	struct l2tp_serv_t *serv = container_of(h, typeof(*serv), hnd);
 	struct l2tp_packet_t *pack;
-	const struct l2tp_attr_t *msg_type;
+	const struct l2tp_attr_t *msg_type = NULL;
 	struct in_pktinfo pkt_info;
 	char src_addr[17];
 
