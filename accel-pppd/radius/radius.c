@@ -684,13 +684,14 @@ static void ses_finished(struct ap_session *ses)
 {
 	struct radius_pd_t *rpd = find_pd(ses);
 	struct ipv6db_addr_t *a;
-	struct framed_route *fr = rpd->fr;
 	struct framed_ip6_route *fr6;
 
 	if (!rpd) {
 		log_emerg("radius:%s:BUG: rpd not found\n", __func__);
 		abort();
 	}
+
+	struct framed_route *fr = rpd->fr;
 
 	pthread_rwlock_wrlock(&sessions_lock);
 	pthread_mutex_lock(&rpd->lock);

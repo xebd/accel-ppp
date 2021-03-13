@@ -109,7 +109,8 @@ static void parse_gw_ip_address(const char *val)
 //parses ranges like x.x.x.x/mask
 static int parse1(const char *str, uint32_t *begin, uint32_t *end)
 {
-	int n, f1, f2, f3, f4, m;
+	int n;
+	unsigned int f1, f2, f3, f4, m;
 
 	n = sscanf(str, "%u.%u.%u.%u/%u",&f1, &f2, &f3, &f4, &m);
 	if (n != 5)
@@ -136,7 +137,8 @@ static int parse1(const char *str, uint32_t *begin, uint32_t *end)
 //parses ranges like x.x.x.x-y
 static int parse2(const char *str, uint32_t *begin, uint32_t *end)
 {
-	int n, f1, f2, f3, f4, f5;
+	int n;
+	unsigned int f1, f2, f3, f4, f5;
 
 	n = sscanf(str, "%u.%u.%u.%u-%u",&f1, &f2, &f3, &f4, &f5);
 	if (n != 5)
