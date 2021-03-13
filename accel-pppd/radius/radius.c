@@ -1041,6 +1041,10 @@ static void radius_init(void)
 {
 	const char *dict = NULL;
 	struct conf_sect_t *s = conf_get_section("radius");
+
+	if (!s)
+		_exit(EXIT_FAILURE);
+
 	struct conf_option_t *opt1;
 
 	rpd_pool = mempool_create(sizeof(struct radius_pd_t));
