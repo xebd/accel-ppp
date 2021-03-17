@@ -298,7 +298,7 @@ static int serv_read(struct triton_md_handler_t *h)
 
 static void serv_close(struct triton_context_t *ctx)
 {
-	struct tcp_client_t *cln;
+	struct tcp_client_t *cln = NULL;
 
 	while (!list_empty(&clients)) {
 		cln = list_entry(clients.next, typeof(*cln), entry);

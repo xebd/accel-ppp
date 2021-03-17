@@ -95,7 +95,7 @@ static void change_limits(void)
 
 	f = fopen("/proc/sys/fs/nr_open", "r");
 	if (f) {
-		fscanf(f, "%d", &nr_open);
+		fscanf(f, "%u", &nr_open);
 		fclose(f);
 	}
 

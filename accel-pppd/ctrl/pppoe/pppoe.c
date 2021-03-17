@@ -1577,7 +1577,7 @@ void _server_stop(struct pppoe_serv_t *serv)
 
 void pppoe_server_free(struct pppoe_serv_t *serv)
 {
-	struct delayed_pado_t *pado;
+	struct delayed_pado_t *pado = NULL;
 
 	pthread_rwlock_wrlock(&serv_lock);
 	list_del(&serv->entry);

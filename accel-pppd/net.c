@@ -285,10 +285,10 @@ static struct ap_net *alloc_net(const char *name)
 			close(ns_fd);
 			return NULL;
 		}
+		log_debug("open ns %s\n", name);
 	} else
 		def_ns_fd = ns_fd = open("/proc/self/ns/net", O_RDONLY);
 
-	log_debug("open ns %s\n", name);
 #endif
 
 	n = _malloc(sizeof(*n));

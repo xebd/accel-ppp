@@ -33,9 +33,6 @@ static int sect_add_item(struct conf_ctx *ctx, const char *name, char *val, char
 static struct conf_option_t *find_item(struct conf_sect_t *, const char *name);
 static int load_file(struct conf_ctx *ctx);
 
-static char *buf;
-static struct conf_sect_t *cur_sect;
-
 static int __conf_load(struct conf_ctx *ctx, const char *fname)
 {
 	struct conf_ctx ctx1;
@@ -59,10 +56,15 @@ static int __conf_load(struct conf_ctx *ctx, const char *fname)
 
 static int load_file(struct conf_ctx *ctx)
 {
-	char *str, *str2, *raw;
-	int len;
+	char *str2, *raw;
+	char buf[1024] = {0};
+
+	static struct conf_sect_t *cur_sect = NULL;
 
 	while(1) {
+		int len;
+		char *str;
+
 		if (!fgets(buf, 1024, ctx->file))
 			break;
 		ctx->line++;
@@ -93,13 +95,14 @@ static int load_file(struct conf_ctx *ctx)
 				return -1;
 			}
 
+			cur_sect = find_sect(str);
+
 			if (cur_sect && ctx->items != &cur_sect->items) {
 				fprintf(stderr, "conf_file:%s:%i: cann't open section inside option\n", ctx->fname, ctx->line);
 				return -1;
 			}
 
 			*str2 = 0;
-			cur_sect = find_sect(str);
 			if (!cur_sect)
 				cur_sect = create_sect(str);
 			ctx->items = &cur_sect->items;
@@ -184,13 +187,8 @@ int conf_load(const char *fname)
 	} else
 		fname = conf_fname;
 
-	buf = _malloc(1024);
-
-	cur_sect = NULL;
 	ctx.items = NULL;
 	r = __conf_load(&ctx, fname);
-
-	_free(buf);
 
 	return r;
 }
@@ -218,8 +216,6 @@ int conf_reload(const char *fname)
 	LIST_HEAD(sections_bak);
 
 	list_splice_init(&sections, &sections_bak);
-
-	cur_sect = NULL;
 
 	r = conf_load(fname);
 

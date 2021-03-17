@@ -139,7 +139,7 @@ int pppoe_disc_start(struct pppoe_serv_t *serv)
 	struct rb_node **p, *parent = NULL;
 	struct tree *t;
 	int ifindex = serv->ifindex, i;
-	struct pppoe_serv_t *n;
+	struct pppoe_serv_t *n = NULL;
 
 	if (!net) {
 		pthread_mutex_lock(&nets_lock);

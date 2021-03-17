@@ -268,10 +268,16 @@ static int session_module(lua_State *L)
 
 void __export lua_session_module_register(const struct lua_session_module *mod)
 {
+	char *mods_new;
 	if (!mods)
-		mods = malloc(sizeof(void *));
+		mods_new = malloc(sizeof(void *));
 	else
-		mods = realloc(mods, (mod_cnt + 1) * sizeof(void *));
+		mods_new = realloc(mods, (mod_cnt + 1) * sizeof(void *));
 
-	mods[mod_cnt++] = mod;
+	if (mods_new) {
+	    mods = mods_new;
+	    mods[mod_cnt++] = mod;
+	} else {
+            log_emerg("lua: out of memory\n");
+	}
 }
