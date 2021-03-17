@@ -758,6 +758,8 @@ static int parse_server2(const char *_opt, struct rad_server_t *s)
 		goto out;
 
 	ptr2 = strchr(ptr1 + 1, ',');
+	if (!ptr2)
+		goto out;
 
 	*ptr1 = 0;
 
@@ -826,8 +828,7 @@ static int parse_server2(const char *_opt, struct rad_server_t *s)
 	else
 		s->backup = 0;
 
-	if (ptr2)
-		*ptr2 = 0;
+	*ptr2 = 0;
 
 	s->secret = _strdup(ptr1 + 1);
 
