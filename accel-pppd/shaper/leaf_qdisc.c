@@ -198,7 +198,7 @@ void leaf_qdisc_parse(const char *opt)
 			if (parse_sfq(params))
 				goto out_err;
 #ifdef TCA_FQ_CODEL_MAX
-		} else if (qdisc && strcmp(qdisc, "fq_codel") == 0) {
+		} else if (strcmp(qdisc, "fq_codel") == 0) {
 			if (parse_fq_codel(params))
 				goto out_err;
 #endif
