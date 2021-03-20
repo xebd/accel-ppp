@@ -53,7 +53,7 @@ struct ap_ctrl {
 	char *called_station_id;
 	unsigned int dont_ifcfg:1;
 	unsigned int ppp:1;
-	int ppp_npmode:2;
+	unsigned int ppp_npmode:2;
 	void (*started)(struct ap_session*);
 	void (*finished)(struct ap_session *);
 	int (*terminate)(struct ap_session *, int hard);

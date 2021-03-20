@@ -46,7 +46,7 @@ struct radius_pd_t {
 	struct ap_private pd;
 	struct ap_session *ses;
 	pthread_mutex_t lock;
-	int refs:8;
+	unsigned int refs:8;
 	unsigned int authenticated:1;
 	unsigned int acct_started:1;
 	unsigned int ipv6_dp_assigned:1;

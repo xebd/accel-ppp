@@ -79,7 +79,7 @@ struct rad_dict_attr_t
 	struct list_head entry;
 	const char *name;
 	int id;
-	int type:30;
+	unsigned int type:30;
 	unsigned int array:1;
 	int size;
 	struct list_head values;
