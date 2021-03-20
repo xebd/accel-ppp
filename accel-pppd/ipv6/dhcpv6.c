@@ -43,7 +43,7 @@ static int conf_route_via_gw = 1;
 
 static struct in6_addr conf_dns[MAX_DNS_COUNT];
 static int conf_dns_count;
-static void *conf_dnssl;
+static uint8_t *conf_dnssl;
 static int conf_dnssl_size;
 
 struct dhcpv6_pd {
@@ -53,7 +53,7 @@ struct dhcpv6_pd {
 	struct dhcpv6_opt_clientid *clientid;
 	uint32_t addr_iaid;
 	uint32_t dp_iaid;
-	int dp_active:1;
+	unsigned int dp_active:1;
 };
 
 static void *pd_key;
@@ -908,14 +908,14 @@ static uint64_t parse_serverid(const char *opt)
 		uint16_t u16[4];
 	} __packed u;
 
-	int n[4];
+	unsigned int n[4];
 	int i;
 
 	if (sscanf(opt, "%x:%x:%x:%x", &n[0], &n[1], &n[2], &n[3]) != 4)
 		goto err;
 
 	for (i = 0; i < 4; i++) {
-		if (n[i] < 0 || n[i] > 0xffff)
+		if (n[i] > 0xffff)
 			goto err;
 		u.u16[i] = htons(n[i]);
 	}

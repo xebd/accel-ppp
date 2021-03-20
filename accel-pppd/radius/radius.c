@@ -930,15 +930,19 @@ static int parse_server(const char *opt, in_addr_t *addr, int *port, char **secr
 		*p1 = 0;
 	if (p2)
 		*p2 = 0;
-	else
+	else {
+		_free(str);
 		return -1;
+	}
 
 	*addr = inet_addr(str);
 
 	if (p1) {
 		*port = atoi(p1 + 1);
-		if (*port <=0 )
+		if (*port <=0) {
+			_free(str);
 			return -1;
+		}
 	}
 
 	p1 = _strdup(p2 + 1);
@@ -1042,28 +1046,35 @@ static void radius_init(void)
 	const char *dict = NULL;
 	struct conf_sect_t *s = conf_get_section("radius");
 
-	if (!s)
+	if (!s) {
+		log_emerg("radius: config section not found\n");
 		_exit(EXIT_FAILURE);
+	}
 
 	struct conf_option_t *opt1;
 
 	rpd_pool = mempool_create(sizeof(struct radius_pd_t));
 	auth_ctx_pool = mempool_create(sizeof(struct radius_auth_ctx));
 
-	if (load_config())
+	if (load_config()) {
+		log_emerg("radius: config load failed\n");
 		_exit(EXIT_FAILURE);
-
+	}
 
 	list_for_each_entry(opt1, &s->items, entry) {
 		if (strcmp(opt1->name, "dictionary") || !opt1->val)
 			continue;
 		dict = opt1->val;
-		if (rad_dict_load(dict))
+		if (rad_dict_load(dict)) {
+			log_emerg("radius: dictionary load failed\n");
 			_exit(0);
+		}
 	}
 
-	if (!dict && rad_dict_load(DICTIONARY))
+	if (!dict && rad_dict_load(DICTIONARY)) {
+		log_emerg("radius: default dictionary load failed\n");
 		_exit(0);
+	}
 
 	pwdb_register(&pwdb);
 	ipdb_register(&ipdb);

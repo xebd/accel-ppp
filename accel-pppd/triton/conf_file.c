@@ -56,21 +56,21 @@ static int __conf_load(struct conf_ctx *ctx, const char *fname)
 
 static int load_file(struct conf_ctx *ctx)
 {
-	char *str2, *raw;
+	char *str2;
 	char buf[1024] = {0};
 
 	static struct conf_sect_t *cur_sect = NULL;
 
 	while(1) {
 		int len;
-		char *str;
+		char *str, *raw;
 
 		if (!fgets(buf, 1024, ctx->file))
 			break;
 		ctx->line++;
 
 		len = strlen(buf);
-		if (buf[len - 1] == '\n')
+		if (len && buf[len - 1] == '\n')
 			buf[--len] = 0;
 
 		while (len && (buf[len - 1] == ' ' || buf[len - 1] == '\t'))
@@ -109,13 +109,13 @@ static int load_file(struct conf_ctx *ctx)
 			continue;
 		}
 
-		if (*str == '}' && ctx->items != &cur_sect->items)
-			return 0;
-
 		if (!cur_sect) {
 			fprintf(stderr, "conf_file:%s:%i: no section opened\n", ctx->fname, ctx->line);
 			return -1;
 		}
+
+		if (*str == '}' && ctx->items != &cur_sect->items)
+			return 0;
 
 		raw = _strdup(str);
 		str2 = skip_word(str);
@@ -139,6 +139,7 @@ static int load_file(struct conf_ctx *ctx)
 				opt = find_item(cur_sect, str2);
 				if (!opt) {
 					fprintf(stderr, "conf_file:%s:%i: parent option not found\n", ctx->fname, ctx->line);
+					_free(raw);
 					return -1;
 				}
 				str2 = opt->val;

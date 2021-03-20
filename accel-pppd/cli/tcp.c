@@ -30,8 +30,8 @@ struct tcp_client_t {
 	uint8_t *cmdline;
 	int xmit_pos;
 	int recv_pos;
-	int auth:1;
-	int disconnect:1;
+	unsigned int auth:1;
+	unsigned int disconnect:1;
 };
 
 struct buffer_t {
@@ -357,10 +357,6 @@ static void start_server(const char *host, int port)
     return;
 	}
 
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(port);
-	addr.sin_addr.s_addr = inet_addr(host);
-
 	triton_context_register(&serv_ctx, NULL);
 	triton_context_set_priority(&serv_ctx, 0);
 	triton_md_register_handler(&serv_ctx, &serv_hnd);
@@ -407,6 +403,7 @@ static void init(void)
 
 	triton_event_register_handler(EV_CONFIG_RELOAD, (triton_event_func)load_config);
 
+	free(host);
 	return;
 err_fmt:
 	log_emerg("cli: tcp: invalid format\n");

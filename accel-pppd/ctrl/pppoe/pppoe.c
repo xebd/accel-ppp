@@ -46,7 +46,7 @@ struct pppoe_conn_t {
 	struct pppoe_serv_t *serv;
 	uint16_t sid;
 	uint8_t addr[ETH_ALEN];
-	int ppp_started:1;
+	unsigned int ppp_started:1;
 
 	struct pppoe_tag *relay_sid;
 	struct pppoe_tag *host_uniq;
@@ -735,7 +735,8 @@ static int add_tag(uint8_t *pack, size_t pack_size, int type, const void *data, 
 
 	tag->tag_type = htons(type);
 	tag->tag_len = htons(len);
-	memcpy(tag->tag_data, data, len);
+	if (data && len)
+		memcpy(tag->tag_data, data, len);
 
 	hdr->length = htons(ntohs(hdr->length) + sizeof(*tag) + len);
 	return 0;

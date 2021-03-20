@@ -32,7 +32,7 @@ struct _mempool_t
 	uint64_t magic;
 #endif
 	spinlock_t lock;
-	int mmap:1;
+	unsigned int mmap:1;
 	int objects;
 };
 
@@ -55,8 +55,8 @@ struct _item_t
 static LIST_HEAD(pools);
 static spinlock_t pools_lock;
 static spinlock_t mmap_lock;
-static void *mmap_ptr;
-static void *mmap_endptr;
+static uint8_t *mmap_ptr;
+static uint8_t *mmap_endptr;
 
 static int mmap_grow(void);
 static void mempool_clean(void);
@@ -113,8 +113,10 @@ void __export *mempool_alloc(mempool_t *pool)
 	if (p->mmap) {
 		spin_lock(&mmap_lock);
 		if (mmap_ptr + size >= mmap_endptr) {
-			if (mmap_grow())
+			if (mmap_grow()) {
+				spin_unlock(&mmap_lock);
 				return NULL;
+			}
 		}
 		it = (struct _item_t *)mmap_ptr;
 		mmap_ptr += size;
@@ -256,7 +258,7 @@ static void sigclean(int num)
 static int mmap_grow(void)
 {
 	int size = sysconf(_SC_PAGESIZE) * (1 << PAGE_ORDER);
-	void *ptr;
+	uint8_t *ptr;
 
 	if (mmap_endptr) {
 		ptr = mmap(mmap_endptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
