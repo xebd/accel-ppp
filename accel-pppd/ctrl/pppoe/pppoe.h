@@ -5,9 +5,12 @@
 
 #include <linux/if.h>
 #include <linux/if_pppox.h>
+#include <net/ethernet.h>
 
 #include "rbtree.h"
 #include "crypto.h"
+#include "list.h"
+#include "triton.h"
 
 /* PPPoE codes */
 #define CODE_PADI           0x09
@@ -62,6 +65,11 @@ struct pppoe_packet_t
 	int code;
 	uint16_t sid;
 	struct list_head tags;
+};
+
+struct pppoe_disc_packet_t {
+	int len;
+	uint8_t data[ETHER_MAX_LEN];
 };
 
 struct pppoe_serv_t
@@ -124,7 +132,7 @@ extern struct list_head serv_list;
 int mac_filter_check(const uint8_t *addr);
 void pppoe_server_start(const char *intf, void *client);
 void pppoe_server_stop(const char *intf);
-void pppoe_serv_read(uint8_t *data);
+void pppoe_serv_read(struct pppoe_disc_packet_t *packet);
 void _server_stop(struct pppoe_serv_t *s);
 
 int pppoe_disc_start(struct pppoe_serv_t *serv);

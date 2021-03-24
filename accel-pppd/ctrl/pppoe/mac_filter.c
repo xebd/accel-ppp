@@ -3,16 +3,13 @@
 #include <pthread.h>
 #include <errno.h>
 #include <netinet/in.h>
-#include <net/ethernet.h>
 
-#include "list.h"
+#include "pppoe.h"
+
 #include "cli.h"
-#include "triton.h"
 #include "log.h"
 #include "ppp.h"
 #include "memdebug.h"
-
-#include "pppoe.h"
 
 struct mac_t
 {

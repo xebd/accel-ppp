@@ -8,15 +8,13 @@
 #include <fcntl.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
-#include <net/ethernet.h>
 #include <netpacket/packet.h>
 #include <arpa/inet.h>
 #include <printf.h>
 
-#include "crypto.h"
+#include "pppoe.h"
 
 #include "events.h"
-#include "triton.h"
 #include "log.h"
 #include "ppp.h"
 #include "mempool.h"
@@ -29,8 +27,6 @@
 #include "iputils.h"
 #include "connlimit.h"
 #include "vlan_mon.h"
-
-#include "pppoe.h"
 
 #include "memdebug.h"
 
@@ -1253,12 +1249,12 @@ static void pppoe_recv_PADT(struct pppoe_serv_t *serv, uint8_t *pack)
 	pthread_mutex_unlock(&serv->lock);
 }
 
-void pppoe_serv_read(uint8_t *data)
+void pppoe_serv_read(struct pppoe_disc_packet_t *packet)
 {
 	struct pppoe_serv_t *serv = container_of(triton_context_self(), typeof(*serv), ctx);
-	uint8_t *pack = data + 4;
+	uint8_t *pack = packet->data;
 	struct pppoe_hdr *hdr = (struct pppoe_hdr *)(pack + ETH_HLEN);
-	int n = *(int *)data;
+	int n = packet->len;
 
 	switch (hdr->code) {
 		case CODE_PADI:
@@ -1272,7 +1268,7 @@ void pppoe_serv_read(uint8_t *data)
 			break;
 	}
 
-	mempool_free(data);
+	mempool_free(packet);
 }
 
 static void pppoe_serv_close(struct triton_context_t *ctx)
