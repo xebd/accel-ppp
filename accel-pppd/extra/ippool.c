@@ -332,38 +332,39 @@ static void generate_pool_net30(struct ippool_t *p)
 static struct ipv4db_item_t *get_ip(struct ap_session *ses)
 {
 	struct ippool_item_t *it;
-	struct ippool_t *p;
+	struct ippool_t *pool, *start;
 
 	if (ses->ipv4_pool_name)
-		p = find_pool(ses->ipv4_pool_name, 0);
+		pool = find_pool(ses->ipv4_pool_name, 0);
 	else
-		p = def_pool;
+		pool = def_pool;
 
-	if (!p)
+	if (!pool)
 		return NULL;
 
-again:
-	spin_lock(&p->lock);
-	if (!list_empty(&p->items)) {
-		it = list_entry(p->items.next, typeof(*it), entry);
-		list_del(&it->entry);
-	} else
-		it = NULL;
-	spin_unlock(&p->lock);
+	start = pool;
+	do {
+		spin_lock(&pool->lock);
+		if (!list_empty(&pool->items)) {
+			it = list_entry(pool->items.next, typeof(*it), entry);
+			list_del(&it->entry);
+		} else
+			it = NULL;
+		spin_unlock(&pool->lock);
 
-	if (it) {
-		if (ses->ctrl->ppp)
-			it->it.addr = conf_gw_ip_address;
-		else
-			it->it.addr = 0;
+		if (it) {
+			if (ses->ctrl->ppp)
+				it->it.addr = conf_gw_ip_address;
+			else
+				it->it.addr = 0;
 
-		it->it.mask = 0;
+			it->it.mask = 0;
 
-		return &it->it;
-	} else if (p->next) {
-		p = p->next;
-		goto again;
-	}
+			return &it->it;
+		}
+
+		pool = pool->next;
+	} while (pool && pool != start);
 
 	return NULL;
 }
@@ -639,9 +640,7 @@ static void ippool_init2(void)
 			else if (!opt->val || strchr(opt->name, ','))
 				add_range(pool, &pool->tunnel_list, opt->name, generate);
 
-			if (pool == next)
-				log_warn("ippool: %s: same next pool\n", opt->raw);
-			else if (next)
+			if (next)
 				pool->next = next;
 		}
 	}

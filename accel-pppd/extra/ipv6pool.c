@@ -249,7 +249,7 @@ static struct ipv6db_item_t *get_ip(struct ap_session *ses)
 {
 	struct ippool_item_t *it;
 	struct ipv6db_addr_t *a;
-	struct ippool_t *pool;
+	struct ippool_t *pool, *start;
 
 	if (ses->ipv6_pool_name)
 		pool = find_pool(IPPOOL_ADDRESS, ses->ipv6_pool_name, 0);
@@ -259,30 +259,31 @@ static struct ipv6db_item_t *get_ip(struct ap_session *ses)
 	if (!pool)
 		return NULL;
 
-again:
-	spin_lock(&pool->lock);
-	if (!list_empty(&pool->items)) {
-		it = list_entry(pool->items.next, typeof(*it), entry);
-		list_del(&it->entry);
-	} else
-		it = NULL;
-	spin_unlock(&pool->lock);
+	start = pool;
+	do {
+		spin_lock(&pool->lock);
+		if (!list_empty(&pool->items)) {
+			it = list_entry(pool->items.next, typeof(*it), entry);
+			list_del(&it->entry);
+		} else
+			it = NULL;
+		spin_unlock(&pool->lock);
 
-	if (it) {
-		a = list_entry(it->it.addr_list.next, typeof(*a), entry);
-		if (a->prefix_len == 128) {
-			memcpy(&it->it.intf_id, conf_gw_addr.s6_addr + 8, 8);
-			memcpy(&it->it.peer_intf_id, a->addr.s6_addr + 8, 8);
-		} else {
-			it->it.intf_id = 0;
-			it->it.peer_intf_id = 0;
+		if (it) {
+			a = list_entry(it->it.addr_list.next, typeof(*a), entry);
+			if (a->prefix_len == 128) {
+				memcpy(&it->it.intf_id, conf_gw_addr.s6_addr + 8, 8);
+				memcpy(&it->it.peer_intf_id, a->addr.s6_addr + 8, 8);
+			} else {
+				it->it.intf_id = 0;
+				it->it.peer_intf_id = 0;
+			}
+
+			return &it->it;
 		}
 
-		return &it->it;
-	} else if (pool->next) {
 		pool = pool->next;
-		goto again;
-	}
+	} while (pool && pool != start);
 
 	return NULL;
 }
@@ -299,28 +300,28 @@ static void put_ip(struct ap_session *ses, struct ipv6db_item_t *it)
 static struct ipv6db_prefix_t *get_dp(struct ap_session *ses)
 {
 	struct dppool_item_t *it;
-	struct ippool_t *pool;
+	struct ippool_t *pool, *start;
 
 	if (ses->dpv6_pool_name)
 		pool = find_pool(IPPOOL_PREFIX, ses->dpv6_pool_name, 0);
 	else
 		pool = def_dppool;
 
-again:
-	spin_lock(&pool->lock);
-	if (!list_empty(&pool->items)) {
-		it = list_entry(pool->items.next, typeof(*it), entry);
-		list_del(&it->entry);
-	} else
-		it = NULL;
-	spin_unlock(&pool->lock);
+	start = pool;
+	do {
+		spin_lock(&pool->lock);
+		if (!list_empty(&pool->items)) {
+			it = list_entry(pool->items.next, typeof(*it), entry);
+			list_del(&it->entry);
+		} else
+			it = NULL;
+		spin_unlock(&pool->lock);
 
-	if (it)
-		return &it->it;
-	else if (pool->next) {
+		if (it)
+			return &it->it;
+
 		pool = pool->next;
-		goto again;
-	}
+	} while (pool && pool != start);
 
 	return NULL;
 }
@@ -495,9 +496,7 @@ static void ippool_init2(void)
 
 		add_prefix(type, pool, val);
 
-		if (pool == next)
-			log_warn("ipv6_pool: %s: same next pool\n", opt->raw);
-		else if (next)
+		if (next)
 			pool->next = next;
 	}
 
