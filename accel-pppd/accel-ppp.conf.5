@@ -557,6 +557,10 @@ Specifies Service-Name to respond. If absent any Service-Name is acceptable and 
 If service-name specified still will answer with service names, but accepts any service name in PADR request. Useful 
 for scenarios, where selection of PPPoE done by client, based on service names in PADO.
 .TP
+.BI "accept-blank-service=" n
+Allow answering on blank Service-Name even if Service-Name configured.
+Useful when needs to allow only Service-Names described in the config and also blank Service-Name.
+.TP
 .BI "pado-delay=" delay[,delay1:count1[,delay2:count2[,...]]]
 Specifies delays (also in condition of connection count) to send PADO (ms).
 Last delay in list may be -1 which means don't accept new connections.
