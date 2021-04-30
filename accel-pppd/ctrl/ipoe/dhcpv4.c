@@ -156,6 +156,11 @@ struct dhcpv4_serv *dhcpv4_create(struct triton_context_t *ctx, const char *ifna
 		goto out_err;
 	}
 
+	if (setsockopt(sock, IPPROTO_IP, IP_PKTINFO, &f, sizeof(f))) {
+		log_error("setsockopt(IP_PKTINFO): %s\n", strerror(errno));
+		goto out_err;
+	}
+
 	if (bind(sock, &addr, sizeof(addr))) {
 		log_error("bind: %s\n", strerror(errno));
 		goto out_err;
@@ -483,8 +488,19 @@ static int dhcpv4_read(struct triton_md_handler_t *h)
 	struct dhcpv4_packet *pack;
 	struct dhcpv4_serv *serv = container_of(h, typeof(*serv), hnd);
 	struct sockaddr_in addr;
-	socklen_t len;
 	int n;
+	struct msghdr msg;
+	struct cmsghdr *cmsg;
+	char msg_control[128];
+	struct iovec iov;
+
+	memset(&msg, 0, sizeof(msg));
+	msg.msg_name = &addr;
+	msg.msg_namelen = sizeof(addr);
+	msg.msg_iov = &iov;
+	msg.msg_iovlen = 1;
+	msg.msg_control = msg_control;
+	msg.msg_controllen = sizeof(msg_control);
 
 	while (1) {
 		pack = dhcpv4_packet_alloc();
@@ -493,8 +509,10 @@ static int dhcpv4_read(struct triton_md_handler_t *h)
 			return 1;
 		}
 
-		len = sizeof(addr);
-		n = recvfrom(h->fd, pack->data, BUF_SIZE, 0, &addr, &len);
+		iov.iov_base = pack->data;
+		iov.iov_len = BUF_SIZE;
+
+		n = recvmsg(h->fd, &msg, 0);
 		if (n == -1) {
 			mempool_free(pack);
 			if (errno == EAGAIN)
@@ -514,6 +532,14 @@ static int dhcpv4_read(struct triton_md_handler_t *h)
 		}
 
 		pack->src_addr = addr.sin_addr.s_addr;
+
+		for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+			if (cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_PKTINFO) {
+				struct in_pktinfo *pkt_info = (struct in_pktinfo *)CMSG_DATA(cmsg);
+				pack->dst_addr = pkt_info->ipi_addr.s_addr;
+				break;
+			}
+		}
 
 		if (serv->recv)
 			serv->recv(serv, pack);
@@ -822,7 +848,7 @@ int dhcpv4_send_nak(struct dhcpv4_serv *serv, struct dhcpv4_packet *req, const c
 {
 	struct dhcpv4_packet *pack;
 	int val, r;
-	uint32_t server_id = req->server_id ? req->server_id : req->hdr->siaddr;
+	uint32_t server_id = req->server_id ?: req->hdr->siaddr ?: req->dst_addr;
 
 	pack = dhcpv4_packet_alloc();
 	if (!pack) {

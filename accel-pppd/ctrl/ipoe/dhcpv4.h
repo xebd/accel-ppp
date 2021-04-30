@@ -69,6 +69,7 @@ struct dhcpv4_packet {
 	uint32_t server_id;
 	int msg_type;
 	in_addr_t src_addr;
+	in_addr_t dst_addr;
 	int volatile refs;
 	uint8_t *ptr;
 	uint8_t data[0];
