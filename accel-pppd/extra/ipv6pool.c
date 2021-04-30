@@ -249,7 +249,7 @@ static struct ipv6db_item_t *get_ip(struct ap_session *ses)
 {
 	struct ippool_item_t *it;
 	struct ipv6db_addr_t *a;
-	struct ippool_t *pool;
+	struct ippool_t *pool, *start;
 
 	if (ses->ipv6_pool_name)
 		pool = find_pool(IPPOOL_ADDRESS, ses->ipv6_pool_name, 0);
@@ -259,30 +259,31 @@ static struct ipv6db_item_t *get_ip(struct ap_session *ses)
 	if (!pool)
 		return NULL;
 
-again:
-	spin_lock(&pool->lock);
-	if (!list_empty(&pool->items)) {
-		it = list_entry(pool->items.next, typeof(*it), entry);
-		list_del(&it->entry);
-	} else
-		it = NULL;
-	spin_unlock(&pool->lock);
+	start = pool;
+	do {
+		spin_lock(&pool->lock);
+		if (!list_empty(&pool->items)) {
+			it = list_entry(pool->items.next, typeof(*it), entry);
+			list_del(&it->entry);
+		} else
+			it = NULL;
+		spin_unlock(&pool->lock);
 
-	if (it) {
-		a = list_entry(it->it.addr_list.next, typeof(*a), entry);
-		if (a->prefix_len == 128) {
-			memcpy(&it->it.intf_id, conf_gw_addr.s6_addr + 8, 8);
-			memcpy(&it->it.peer_intf_id, a->addr.s6_addr + 8, 8);
-		} else {
-			it->it.intf_id = 0;
-			it->it.peer_intf_id = 0;
+		if (it) {
+			a = list_entry(it->it.addr_list.next, typeof(*a), entry);
+			if (a->prefix_len == 128) {
+				memcpy(&it->it.intf_id, conf_gw_addr.s6_addr + 8, 8);
+				memcpy(&it->it.peer_intf_id, a->addr.s6_addr + 8, 8);
+			} else {
+				it->it.intf_id = 0;
+				it->it.peer_intf_id = 0;
+			}
+
+			return &it->it;
 		}
 
-		return &it->it;
-	} else if (pool->next) {
 		pool = pool->next;
-		goto again;
-	}
+	} while (pool && pool != start);
 
 	return NULL;
 }
@@ -299,28 +300,28 @@ static void put_ip(struct ap_session *ses, struct ipv6db_item_t *it)
 static struct ipv6db_prefix_t *get_dp(struct ap_session *ses)
 {
 	struct dppool_item_t *it;
-	struct ippool_t *pool;
+	struct ippool_t *pool, *start;
 
 	if (ses->dpv6_pool_name)
 		pool = find_pool(IPPOOL_PREFIX, ses->dpv6_pool_name, 0);
 	else
 		pool = def_dppool;
 
-again:
-	spin_lock(&pool->lock);
-	if (!list_empty(&pool->items)) {
-		it = list_entry(pool->items.next, typeof(*it), entry);
-		list_del(&it->entry);
-	} else
-		it = NULL;
-	spin_unlock(&pool->lock);
+	start = pool;
+	do {
+		spin_lock(&pool->lock);
+		if (!list_empty(&pool->items)) {
+			it = list_entry(pool->items.next, typeof(*it), entry);
+			list_del(&it->entry);
+		} else
+			it = NULL;
+		spin_unlock(&pool->lock);
 
-	if (it)
-		return &it->it;
-	else if (pool->next) {
+		if (it)
+			return &it->it;
+
 		pool = pool->next;
-		goto again;
-	}
+	} while (pool && pool != start);
 
 	return NULL;
 }
@@ -404,30 +405,39 @@ static int parse_vendor_opt(const char *opt)
 }
 #endif
 
-static void parse_options(enum ippool_type type, const char *opt, char **pool_name, struct ippool_t **next)
+static int parse_options(enum ippool_type type, const char *opt, struct ippool_t **pool, struct ippool_t **next)
 {
-	char *ptr1, *ptr2, *tmp;
+	char *name, *ptr;
 
-	ptr1 = strstr(opt, ",name=");
-	if (ptr1) {
-		ptr1 += sizeof(",name=") - 1;
-		ptr2 = strchrnul(ptr1, ',');
-		*pool_name = _strndup(ptr1, ptr2 - ptr1);
-	}
+	name = strstr(opt, ",name=");
+	if (name) {
+		name += sizeof(",name=") - 1;
+		ptr = strchrnul(name, ',');
+		name = _strndup(name, ptr - name);
+		if (!name)
+			return -1;
+		*pool = find_pool(type, name, 1);
+	} else if (type == IPPOOL_PREFIX)
+		*pool = def_dppool;
+	else
+		*pool = def_ippool;
 
-	ptr1 = strstr(opt, ",next=");
-	if (ptr1) {
-		ptr1 += sizeof(",next=") - 1;
-		ptr2 = strchrnul(ptr1, ',');
-		if (*ptr2 == ',') {
-			tmp = alloca(ptr2 - ptr1 + 1);
-			strncpy(tmp, ptr1, ptr2 - ptr1);
-			ptr1 = tmp;
+	name = strstr(opt, ",next=");
+	if (name) {
+		name += sizeof(",next=") - 1;
+		ptr = strchrnul(name, ',');
+		name = strncpy(alloca(ptr - name + 1), name, ptr - name + 1);
+		*next = find_pool(type, name, 0);
+		if (!*next) {
+			name = _strdup(name);
+			if (!name)
+				return -1;
+			*next = find_pool(type, name, 1);
 		}
-		*next = find_pool(type, ptr1, 0);
-		if (!(*next))
-			log_error("ipv6_pool: %s: next pool not found\n", opt);
-	}
+	} else
+		*next = NULL;
+
+	return 0;
 }
 
 static void ippool_init1(void)
@@ -440,7 +450,7 @@ static void ippool_init2(void)
 	struct conf_sect_t *s = conf_get_section("ipv6-pool");
 	struct conf_option_t *opt;
 	struct ippool_t *pool, *next;
-	char *pool_name, *val;
+	char *val;
 	enum ippool_type type;
 #ifdef RADIUS
 	int dppool_attr = 0, ippool_attr = 0;
@@ -458,12 +468,10 @@ static void ippool_init2(void)
 			if (!strcmp(opt->name, "vendor")) {
 				conf_vendor = parse_vendor_opt(opt->val);
 				continue;
-			}
-			if (!strcmp(opt->name, "attr-prefix")) {
+			} else if (!strcmp(opt->name, "attr-prefix")) {
 				dppool_attr = parse_attr_opt(opt->val);
 				continue;
-			}
-			if (!strcmp(opt->name, "attr-address")) {
+			} else if (!strcmp(opt->name, "attr-address")) {
 				ippool_attr = parse_attr_opt(opt->val);
 				continue;
 			}
@@ -471,26 +479,34 @@ static void ippool_init2(void)
 #endif
 		if (!strcmp(opt->name, "gw-ip6-address")) {
 			if (inet_pton(AF_INET6, opt->val, &conf_gw_addr) == 0)
-				log_error("ipv6_pool: failed to parse gw-ip6-address\n");
+				log_error("ipv6_pool: failed to parse '%s'\n", opt->raw);
 			continue;
 		} else if (!strcmp(opt->name, "delegate")) {
 			type = IPPOOL_PREFIX;
 			val = opt->val;
-			pool = def_dppool;
 		} else {
 			type = IPPOOL_ADDRESS;
 			val = opt->name;
-			pool = def_ippool;
 		}
 
-		pool_name = NULL;
-		parse_options(type, opt->raw, &pool_name, &next);
+		if (parse_options(type, opt->raw, &pool, &next)) {
+			log_error("ipv6_pool: failed to parse '%s'\n", opt->raw);
+			continue;
+		}
 
-		if (pool_name)
-			pool = find_pool(type, pool_name, 1);
 		add_prefix(type, pool, val);
 
-		pool->next = next;
+		if (next)
+			pool->next = next;
+	}
+
+	list_for_each_entry(pool, &ippool_list, entry) {
+		if (list_empty(&pool->items))
+			log_warn("ipv6_pool: pool '%s' is empty or not defined\n", pool->name);
+	}
+	list_for_each_entry(pool, &dppool_list, entry) {
+		if (list_empty(&pool->items))
+			log_warn("ipv6_pool: delegate pool '%s' is empty or not defined\n", pool->name);
 	}
 
 #ifdef RADIUS
