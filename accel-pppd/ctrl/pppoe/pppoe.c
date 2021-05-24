@@ -90,6 +90,7 @@ struct iplink_arg {
 int conf_verbose;
 char *conf_service_name[255];
 int conf_accept_any_service;
+int conf_accept_blank_service;
 char *conf_ac_name;
 int conf_ifname_in_sid;
 char *conf_pado_delay;
@@ -1003,7 +1004,11 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 			case TAG_END_OF_LIST:
 				break;
 			case TAG_SERVICE_NAME:
-				if (conf_service_name[0]) {
+				if (tag->tag_len == 0 && conf_accept_blank_service) {
+					service_match = 1;
+					break;
+				}
+				else if (conf_service_name[0]) {
 					int svc_index = 0;
 					do {
 					    if (ntohs(tag->tag_len) == strlen(conf_service_name[svc_index]) &&
@@ -1948,6 +1953,10 @@ static void load_config(void)
 	opt = conf_get_opt("pppoe", "accept-any-service");
 	if (opt)
 	    conf_accept_any_service = atoi(opt);
+
+	opt = conf_get_opt("pppoe", "accept-blank-service");
+	if (opt)
+	    conf_accept_blank_service = atoi(opt);
 
 	opt = conf_get_opt("pppoe", "ac-name");
 	if (!opt)
