@@ -87,6 +87,8 @@ static void show_stat_help(char * const *fields, int fields_cnt, void *client)
 static int show_version_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
 {
 	cli_sendv(client, "%s\r\n", ACCEL_PPP_VERSION);
+
+	return CLI_CMD_OK;
 }
 
 static void show_version_help(char * const *fields, int fields_cnt, void *client)
