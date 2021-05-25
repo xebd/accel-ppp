@@ -152,7 +152,7 @@ static int parse_fq_codel(char *str)
 			continue;
 		}
 
-		value = strtok_r(str, " ", &ptr);
+		value = strtok_r(NULL, " ", &ptr);
 		if (!value)
 			return -1;
 
@@ -183,7 +183,7 @@ out:
 
 void leaf_qdisc_parse(const char *opt)
 {
-	char *str, *qdisc, *params, *ptr;
+	char *str, *qdisc, *params;
 
 	str = strdup(opt);
 	if (!str) {
@@ -191,9 +191,8 @@ void leaf_qdisc_parse(const char *opt)
 		return;
 	}
 
-	qdisc = strtok_r(str, " ", &ptr);
+	qdisc = strtok_r(str, " ", &params);
 	if (qdisc) {
-		params = strtok_r(NULL, " ", &ptr);
 		if (strcmp(qdisc, "sfq") == 0) {
 			if (parse_sfq(params))
 				goto out_err;
