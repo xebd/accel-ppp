@@ -147,7 +147,7 @@ static int parse_fq_codel(char *str)
 		if (strcmp(key, "ecn") == 0) {
 			conf_lq_arg6 = 1;
 			continue;
-		} else if (strcmp(str, "noecn") == 0) {
+		} else if (strcmp(key, "noecn") == 0) {
 			conf_lq_arg6 = 0;
 			continue;
 		}
