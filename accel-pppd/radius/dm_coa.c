@@ -16,6 +16,7 @@
 #include "events.h"
 #include "log.h"
 
+#include "attr_defs.h"
 #include "radius_p.h"
 
 #include "memdebug.h"
@@ -143,6 +144,26 @@ static void disconnect_request(struct radius_pd_t *rpd)
 	ap_session_terminate(rpd->ses, TERM_ADMIN_RESET, 0);
 }
 
+void handle_coa_attributes(struct radius_pd_t *rpd)
+{
+	struct rad_attr_t *attr;
+
+	/* Similar logic as in rad_proc_attrs in radius.c, i.e. iterate through the
+	attributes in the CoA request message and update the session data structure
+	with the new values	*/
+	list_for_each_entry(attr, &rpd->dm_coa_req->attrs, entry) {
+		switch(attr->attr->id) {
+			case Filter_Id:
+				if (rpd->ses->filter_id)
+					_free(rpd->ses->filter_id);
+				rpd->ses->filter_id = _malloc(attr->len + 1);
+				memcpy(rpd->ses->filter_id, attr->val.string, attr->len);
+				rpd->ses->filter_id[attr->len] = 0;
+				break;
+		}
+	}
+}
+
 static void coa_request(struct radius_pd_t *rpd)
 {
 	struct rad_attr_t *class;
@@ -157,6 +178,12 @@ static void coa_request(struct radius_pd_t *rpd)
 		log_ppp_info2("recv ");
 		rad_packet_print(rpd->dm_coa_req, NULL, log_ppp_info2);
 	}
+
+	/* Process RADIUS attributes in CoA request message and update the
+	corresponding session with the new values. This is done before the triton
+	event is triggered so the redis module can read and publish the new values
+	from the session data structure */
+	handle_coa_attributes(rpd);
 
 	triton_event_fire(EV_RADIUS_COA, &ev);
 
