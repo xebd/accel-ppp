@@ -105,7 +105,7 @@ static struct dhcpv4_iprange *parse_range(const char *str)
 	pthread_mutex_init(&r->lock, NULL);
 
 	end -= start;
-	r->free[(end - 1) / ( 8 * sizeof(long))] &= (1 << ((end - 1) % (8 * sizeof(long)) + 1)) - 1;
+	r->free[(end - 1) / ( 8 * sizeof(long))] &= (1l << ((end - 1) % (8 * sizeof(long)) + 1)) - 1;
 	r->free[0] &= ~3;
 
 	return r;
@@ -1179,7 +1179,7 @@ int dhcpv4_get_ip(struct dhcpv4_serv *serv, uint32_t *yiaddr, uint32_t *siaddr, 
 		for (i = serv->range->pos; i < serv->range->len; i++) {
 			k = ffsl(serv->range->free[i]);
 			if (k) {
-				serv->range->free[i] &= ~(1 << (k - 1));
+				serv->range->free[i] &= ~(1l << (k - 1));
 				serv->range->pos = i;
 				pthread_mutex_unlock(&serv->range->lock);
 				*yiaddr = htonl(serv->range->startip + i * 8 * sizeof(long) + k - 1);
@@ -1207,7 +1207,7 @@ void dhcpv4_put_ip(struct dhcpv4_serv *serv, uint32_t ip)
 		return;
 
 	pthread_mutex_lock(&serv->range->lock);
-	serv->range->free[n / (8 * sizeof(long))] |= 1 << (n % (8 * sizeof(long)));
+	serv->range->free[n / (8 * sizeof(long))] |= 1l << (n % (8 * sizeof(long)));
 	pthread_mutex_unlock(&serv->range->lock);
 }
 
