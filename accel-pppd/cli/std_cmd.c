@@ -5,6 +5,7 @@
 #include <signal.h>
 #include <malloc.h>
 #include <arpa/inet.h>
+#include <sys/utsname.h>
 
 #include "triton.h"
 #include "events.h"
@@ -16,6 +17,23 @@
 #include "memdebug.h"
 
 void core_restart(int);
+
+static int show_version_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
+{
+	struct utsname uninfo;
+	if (uname(&uninfo) == 0) {
+		cli_sendv(client, "%s %s %s accel-ppp version %s compiled on %s\r\n", 
+		          uninfo.nodename, uninfo.release, uninfo.version, ACCEL_PPP_VERSION, __TIMESTAMP__);
+	} else {
+		cli_sendv(client, "accel-ppp version %s compiled on %s\r\n", ACCEL_PPP_VERSION, __TIMESTAMP__);
+	}
+	return CLI_CMD_OK;
+}
+
+static void show_version_help(char * const *fields, int fields_cnt, void *client)
+{
+	cli_send(client, "show version - shows host and software version/build information\r\n");
+}
 
 static int show_stat_exec(const char *cmd, char * const *fields, int fields_cnt, void *client)
 {
@@ -393,6 +411,7 @@ static void restart_help(char * const *fields, int fields_cnt, void *client)
 
 static void init(void)
 {
+	cli_register_simple_cmd2(show_version_exec, show_version_help, 2, "show", "version");
 	cli_register_simple_cmd2(show_stat_exec, show_stat_help, 2, "show", "stat");
 	cli_register_simple_cmd2(show_version_exec, show_version_help, 2, "show", "version");
 	cli_register_simple_cmd2(terminate_exec, terminate_help, 1, "terminate");

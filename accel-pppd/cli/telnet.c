@@ -71,6 +71,8 @@ static uint8_t *temp_buf;
 static int conf_history_len = 100;
 static const char *conf_history_file = "/var/lib/accel-ppp/history";
 static int conf_verbose;
+static const char *def_cli_banner= "accel-ppp version " ACCEL_PPP_VERSION "\r\n";
+static char *conf_cli_banner;
 
 static LIST_HEAD(history);
 static int history_len;
@@ -194,7 +196,7 @@ static int cli_client_sendv(struct cli_client_t *tcln, const char *fmt, va_list 
 
 static int send_banner(struct telnet_client_t *cln)
 {
-	if (telnet_send(cln, "accel-ppp version " ACCEL_PPP_VERSION "\r\n", sizeof("accel-ppp version " ACCEL_PPP_VERSION "\r\n")))
+	if (telnet_send(cln, conf_cli_banner, strlen(conf_cli_banner)))
 		return -1;
 	return 0;
 }
@@ -750,6 +752,17 @@ static void load_config(void)
 		conf_verbose = atoi(opt);
 	else
 		conf_verbose = 1;
+
+        if (conf_cli_banner && conf_cli_banner != def_cli_banner)
+                _free(conf_cli_banner);
+        opt = conf_get_opt("cli", "banner");
+        if (opt) {
+                conf_cli_banner = _malloc(strlen(opt) + 3);
+		sprintf(conf_cli_banner, "%s\r\n", opt);
+		conf_cli_banner[strlen(opt)+2] = '\0';
+	} else {
+                conf_cli_banner = (char *)def_cli_banner;
+	}
 }
 
 static void init(void)
@@ -762,7 +775,7 @@ static void init(void)
 	if (!opt)
 		return;
 
-	host = strdup(opt);
+	host = _strdup(opt);
 	d = strstr(host, ":");
 	if (!d)
 		goto err_fmt;
