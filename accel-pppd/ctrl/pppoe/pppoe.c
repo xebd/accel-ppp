@@ -80,6 +80,13 @@ struct padi_t
 	uint8_t addr[ETH_ALEN];
 };
 
+struct subscriber_tags_t
+{
+	struct list_head entry;
+	uint32_t tags;
+	uint8_t addr[ETH_ALEN];
+};
+
 struct iplink_arg {
 	pcre *re;
 	const char *opt;
@@ -110,6 +117,7 @@ static int conf_vlan_timeout;
 static mempool_t conn_pool;
 static mempool_t pado_pool;
 static mempool_t padi_pool;
+static mempool_t subscriber_tags_pool;
 
 unsigned int stat_starting;
 unsigned int stat_active;
@@ -276,6 +284,7 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 {
 	struct pppoe_conn_t *conn;
 	unsigned long *old_sid_ptr;
+	struct subscriber_tags_t *subscriber_tags;
 
 	conn = mempool_alloc(conn_pool);
 	if (!conn) {
@@ -410,6 +419,19 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
     /* Insert session id into ap_session to make it available for publication
      * on redis. */
 	conn->ppp.ses.conn_pppoe_sid = conn->sid;
+
+	/* 1. Iterate through list of subscriber tags
+	   2. Compare subscriber ethernet address
+	   3. If those match, extract subscriber tag, add it to session struct,
+	   and delete tags from list */
+	list_for_each_entry(subscriber_tags, &serv->subscriber_tags_list, entry) {
+		if (memcmp(subscriber_tags->addr, addr, ETH_ALEN) == 0) {
+			conn->ppp.ses.subscriber_tags = subscriber_tags->tags;
+			list_del(&subscriber_tags->entry);
+			mempool_free(subscriber_tags);
+			break;
+		}
+	}
 
 	if (conf_ip_pool)
 		conn->ppp.ses.ipv4_pool_name = _strdup(conf_ip_pool);
@@ -910,6 +932,7 @@ static void pado_timer(struct triton_timer_t *t)
 static int check_padi_limit(struct pppoe_serv_t *serv, uint8_t *addr)
 {
 	struct padi_t *padi;
+	struct subscriber_tags_t *subscriber_tags;
 	struct timespec ts;
 
 	if (serv->padi_limit == 0)
@@ -920,6 +943,13 @@ static int check_padi_limit(struct pppoe_serv_t *serv, uint8_t *addr)
 	while (!list_empty(&serv->padi_list)) {
 		padi = list_entry(serv->padi_list.next, typeof(*padi), entry);
 		if ((ts.tv_sec - padi->ts.tv_sec) * 1000 + (ts.tv_nsec - padi->ts.tv_nsec) / 1000000 > 1000) {
+			// Iterate through subscribers tag list and delete subscriber tags from matching address
+			list_for_each_entry(subscriber_tags, &serv->subscriber_tags_list, entry) {
+				if (memcmp(subscriber_tags->addr, addr, ETH_ALEN) == 0) {
+					list_del(&subscriber_tags->entry);
+					mempool_free(subscriber_tags);
+				}
+			}
 			list_del(&padi->entry);
 			mempool_free(padi);
 			serv->padi_cnt--;
@@ -965,10 +995,13 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 	struct pppoe_tag *host_uniq_tag = NULL;
 	struct pppoe_tag *relay_sid_tag = NULL;
 	struct pppoe_tag *service_name_tag = NULL;
+	struct pppoe_tag *subscriber_tags_tag = NULL;
 	int len, n, service_match = conf_service_name[0] == NULL;
+	struct subscriber_tags_t *subscriber_tags;
 	struct delayed_pado_t *pado;
 	struct timespec ts;
 	uint16_t ppp_max_payload = 0;
+	int vendor_id;
 
 	__sync_add_and_fetch(&stat_PADI_recv, 1);
 
@@ -1028,7 +1061,28 @@ static void pppoe_recv_PADI(struct pppoe_serv_t *serv, uint8_t *pack, int size)
 				if (ntohs(tag->tag_len) == 2)
 					ppp_max_payload = ntohs(*(uint16_t *)tag->tag_data);
 				break;
+			case TAG_VENDOR_SPECIFIC:
+				// 8 bytes so it can allocate 1 int for vendor ID and one for tag data
+				if (ntohs(tag->tag_len) < 8)
+					continue;
+				vendor_id = ntohl(*(uint32_t *)tag->tag_data);
+				if (vendor_id == VENDOR_BISDN) {
+					subscriber_tags_tag = tag;
+				}
+				break;
 		}
+	}
+
+	if (subscriber_tags_tag) {
+		subscriber_tags = mempool_alloc(subscriber_tags_pool);
+		memset(subscriber_tags, 0, sizeof(*subscriber_tags));
+		memcpy(subscriber_tags->addr, ethhdr->h_source, ETH_ALEN);
+		subscriber_tags->tags = ntohl(*(uint32_t *)(subscriber_tags_tag->tag_data+4));
+
+		log_debug("pppoe: Extracted subscriber tags: 0x%08x\n",
+				subscriber_tags->tags);
+
+		list_add_tail(&subscriber_tags->entry, &serv->subscriber_tags_list);
 	}
 
 	if (conf_verbose)
@@ -1524,6 +1578,7 @@ static void __pppoe_server_start(const char *ifname, const char *opt, void *cli,
 	INIT_LIST_HEAD(&serv->conn_list);
 	INIT_LIST_HEAD(&serv->pado_list);
 	INIT_LIST_HEAD(&serv->padi_list);
+	INIT_LIST_HEAD(&serv->subscriber_tags_list);
 	serv->padi_limit = padi_limit;
 
 	triton_context_register(&serv->ctx, serv);
@@ -2100,6 +2155,7 @@ static void pppoe_init(void)
 	conn_pool = mempool_create(sizeof(struct pppoe_conn_t));
 	pado_pool = mempool_create(sizeof(struct delayed_pado_t));
 	padi_pool = mempool_create(sizeof(struct padi_t));
+	subscriber_tags_pool = mempool_create(sizeof(struct subscriber_tags_t));
 	conf_service_name[0] = NULL;
 
 	if (!conf_get_section("pppoe")) {
