@@ -44,6 +44,7 @@
 #define MAX_PPPOE_MTU (MAX_PPPOE_PAYLOAD - 2)
 
 #define VENDOR_ADSL_FORUM 0xde9
+#define VENDOR_BISDN 0xaaaa
 
 #define SECRET_LENGTH 16
 #define COOKIE_LENGTH 24
@@ -96,6 +97,8 @@ struct pppoe_serv_t
 	int padi_cnt;
 	int padi_limit;
 	time_t last_padi_limit_warn;
+
+	struct list_head subscriber_tags_list;
 
 	int stopping:1;
 	int vlan_mon:1;

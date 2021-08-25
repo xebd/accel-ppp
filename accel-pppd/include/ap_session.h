@@ -123,6 +123,7 @@ struct ap_session
      * across events for publication on the redis bus. */
 	int conn_pppoe_sid;
 	char *filter_id;
+	uint32_t subscriber_tags;
 };
 
 struct ap_session_stat
