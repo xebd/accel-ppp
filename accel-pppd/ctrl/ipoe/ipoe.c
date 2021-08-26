@@ -1786,13 +1786,13 @@ static void __ipoe_recv_dhcpv4(struct dhcpv4_serv *dhcpv4, struct dhcpv4_packet 
 	unsigned int weight = 0;
 	//struct dhcpv4_packet *reply;
 
-	if (serv->timer.tpd)
-		triton_timer_mod(&serv->timer, 0);
-
 	if (connlimit_loaded && pack->msg_type == DHCPDISCOVER && connlimit_check(serv->opt_shared ? cl_key_from_mac(pack->hdr->chaddr) : serv->ifindex))
 		return;
 
 	pthread_mutex_lock(&serv->lock);
+	if (serv->timer.tpd)
+		triton_timer_mod(&serv->timer, 0);
+
 	if (pack->msg_type == DHCPDISCOVER) {
 		if (check_notify(serv, pack))
 			goto out;
@@ -2542,7 +2542,6 @@ static void ipoe_serv_release(struct ipoe_serv *serv)
 		pthread_mutex_unlock(&serv->lock);
 		return;
 	}
-	pthread_mutex_unlock(&serv->lock);
 
 	if (serv->vlan_mon && !serv->need_close && !ap_shutdown && !serv->opt_auto) {
 		if (serv->timer.tpd)
@@ -2550,8 +2549,10 @@ static void ipoe_serv_release(struct ipoe_serv *serv)
 		else
 			triton_timer_add(&serv->ctx, &serv->timer, 0);
 
+		pthread_mutex_unlock(&serv->lock);
 		return;
 	}
+	pthread_mutex_unlock(&serv->lock);
 
 	log_info2("ipoe: stop interface %s\n", serv->ifname);
 
