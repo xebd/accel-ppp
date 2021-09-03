@@ -278,6 +278,8 @@ void __export ap_session_terminate(struct ap_session *ses, int cause, int hard)
 	if (ses->terminating) {
 		if (hard)
 			ses->ctrl->terminate(ses, hard);
+		else if (ses->state == AP_STATE_FINISHING)
+			ses->ctrl->terminate(ses, 1);
 		return;
 	}
 
