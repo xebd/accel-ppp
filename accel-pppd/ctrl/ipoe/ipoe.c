@@ -237,6 +237,21 @@ static void ipoe_ctx_switch(struct triton_context_t *ctx, void *arg)
 	log_switch(ctx, arg);
 }
 
+int ipoe_check_localnet(in_addr_t addr)
+{
+	struct local_net *n;
+
+	if (list_empty(&local_nets))
+		return 1;
+
+	list_for_each_entry(n, &local_nets, entry) {
+		if ((addr & n->mask) == n->addr)
+			return 1;
+	}
+
+	return 0;
+}
+
 static struct ipoe_session *ipoe_session_lookup(struct ipoe_serv *serv, struct dhcpv4_packet *pack, struct ipoe_session **opt82_ses)
 {
 	struct ipoe_session *ses, *res = NULL;
@@ -3731,6 +3746,9 @@ static void parse_local_net(const char *opt)
 		mask = 24;
 	}
 
+	mask = htonl(mask ? ~0 << (32 - mask) : 0);
+	addr = addr & mask;
+
 	list_for_each_entry(n, &local_nets, entry) {
 		if (n->addr == addr && n->mask == mask) {
 			n->active = 1;
@@ -3744,7 +3762,7 @@ static void parse_local_net(const char *opt)
 	n->active = 1;
 	list_add_tail(&n->entry, &local_nets);
 
-	ipoe_nl_add_net(addr, mask);
+	ipoe_nl_add_net(addr, ntohl(mask));
 
 	return;
 

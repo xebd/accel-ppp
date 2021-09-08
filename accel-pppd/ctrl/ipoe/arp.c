@@ -196,6 +196,9 @@ static int arp_read(struct triton_md_handler_t *h)
 		if (ah->ar_spa == 0)
 			continue;
 
+		if (!ipoe_check_localnet(ah->ar_spa))
+			continue;
+
 		t = &arp_tree[src.sll_ifindex & HASH_BITS];
 
 		parent = NULL;

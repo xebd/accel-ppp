@@ -161,5 +161,7 @@ void *arpd_start(struct ipoe_serv *ipoe);
 void arpd_stop(void *arp);
 void arp_send(int ifindex, struct _arphdr *arph, int bc);
 
+int ipoe_check_localnet(in_addr_t addr);
+
 #endif
 
