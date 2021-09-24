@@ -330,12 +330,12 @@ int triton_queue_ctx(struct _triton_context_t *ctx)
 {
 	spin_lock(&threads_lock);
 	ctx->pending = 1;
-	if (ctx->thread || ctx->entry2.next || ctx->need_free) {
+	if (ctx->thread || ctx->entry2.next || ctx->need_free || ctx->init) {
 		spin_unlock(&threads_lock);
 		return 0;
 	}
 
-	if (list_empty(&sleep_threads) || ctx->init || need_config_reload) {
+	if (list_empty(&sleep_threads) || need_config_reload) {
 		list_add_tail(&ctx->entry2, &ctx_queue[ctx->priority]);
 		spin_unlock(&threads_lock);
 		ctx->queued = 1;
