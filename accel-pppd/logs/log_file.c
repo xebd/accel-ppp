@@ -268,7 +268,7 @@ static struct ap_private *find_pd(struct ap_session *ses, void *pd_key)
 	struct list_head *pos, *next;
 
 	list_for_each_safe(pos, next, &ses->pd_list) {
-		pd = list_entry(pos->next, typeof(*pd), entry);
+		pd = list_entry(pos, typeof(*pd), entry);
 		if (pd->key == pd_key) {
 			return pd;
 		}
