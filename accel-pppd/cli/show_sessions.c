@@ -651,7 +651,7 @@ static void init(void)
 	cli_show_ses_register("calling-sid", "calling station id", print_calling_sid);
 	cli_show_ses_register("called-sid", "called station id", print_called_sid);
 	cli_show_ses_register("sid", "session id", print_sid);
-	cli_show_ses_register("comp", "compression/ecnryption method", print_comp);
+	cli_show_ses_register("comp", "compression/encryption method", print_comp);
 	cli_show_ses_register("rx-bytes", "received bytes (human readable)", print_rx_bytes);
 	cli_show_ses_register("tx-bytes", "transmitted bytes (human readable)", print_tx_bytes);
 	cli_show_ses_register("rx-bytes-raw", "received bytes", print_rx_bytes_raw);

@@ -386,7 +386,7 @@ static void restart_help(char * const *fields, int fields_cnt, void *client)
 #else
 	cli_send(client, "restart [hard] - restart daemon\r\n");
 #endif
-	cli_send(client, "\t\thard - restart immediatly\r\n");
+	cli_send(client, "\t\thard - restart immediately\r\n");
 	cli_send(client, "\t\tdefault action - terminate all connections then restart\r\n");
 }
 
