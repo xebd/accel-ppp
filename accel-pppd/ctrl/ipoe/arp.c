@@ -109,13 +109,8 @@ static void arp_ctx_read(struct _arphdr *ah)
 			pthread_mutex_unlock(&ipoe->lock);
 			goto out;
 		}
-
-		if (ipoe->opt_arp == 2)
-			memcpy(ah2.ar_sha, ses2->hwaddr, ETH_ALEN);
-		else
-			memcpy(ah2.ar_sha, ipoe->hwaddr, ETH_ALEN);
-	} else
-		memcpy(ah2.ar_sha, ipoe->hwaddr, ETH_ALEN);
+	}
+	memcpy(ah2.ar_sha, ipoe->hwaddr, ETH_ALEN);
 
 	pthread_mutex_unlock(&ipoe->lock);
 
