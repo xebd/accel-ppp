@@ -88,6 +88,7 @@ struct ap_redis_msg_t {
 	char* ctrl_ifname;
 	char* nas_identifier;
 	char* qos_val;
+	int subscriber_tags;
 };
 
 struct ap_redis_t {
@@ -228,6 +229,10 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext* ctx)
 		/* qos_val */
 		if (msg->qos_val)
 			json_object_object_add(jobj, "qos_val", json_object_new_string(msg->qos_val));
+
+		/* subscriber_tags */
+		if (msg->subscriber_tags)
+			json_object_object_add(jobj, "subscriber_tags", json_object_new_int(msg->subscriber_tags));
 
 		// TODO: send msg to redis instance
 		redisReply* reply;
@@ -521,6 +526,8 @@ static void ap_redis_enqueue(struct ap_session *ses, const int event)
 		msg->ctrl_ifname = _strdup(ses->ctrl->ifname);
 	if (ses->filter_id)
 		msg->qos_val = _strdup(ses->filter_id);
+	if (ses->subscriber_tags)
+		msg->subscriber_tags = ses->subscriber_tags;
 
 	msg->ip_addr = _strdup(tmp_addr);
 	msg->nas_identifier = _strdup(ap_redis->nas_id);
