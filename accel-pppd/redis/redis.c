@@ -34,6 +34,7 @@ extern char** environ;
 #define DEFAULT_NAS_ID        "accel-ppp"
 #define DEFAULT_REDIS_HOST    "localhost"
 #define DEFAULT_REDIS_PORT     6379
+#define DEFAULT_REDIS_TIMEOUT  8
 #define DEFAULT_REDIS_PUBCHAN "accel-ppp"
 #define DEFAULT_MAX_ROUNDS     4
 
@@ -118,6 +119,8 @@ struct ap_redis_t {
 	char* host;
 	/* redis port */
 	uint16_t port;
+	/* redis timeout */
+	struct timeval timeout;
 	/* redis channel (publish) */
 	char* pubchan;
 
@@ -246,7 +249,7 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext** ctx)
 		                unsigned int n_rounds = DEFAULT_MAX_ROUNDS;
 	     	                unsigned int backoff = 1;
 				while (n_rounds > 0) {
-                                        *ctx = redisConnect(ap_redis->host, ap_redis->port);
+                                        *ctx = redisConnectWithTimeout(ap_redis->host, ap_redis->port, ap_redis->timeout);
                                         if ( ((*ctx) == NULL) || ((*ctx)->err) ) {
                                                 if (*ctx) {
                                                         log_error("ap_redis: redisConnect failed: (%s)\n", (*ctx)->errstr);
@@ -441,10 +444,18 @@ static int ap_redis_open(struct ap_redis_t *ap_redis)
 		ap_redis->host = _strdup(opt);
 	else
 		ap_redis->host = _strdup(DEFAULT_REDIS_HOST);
+
 	if (((opt = conf_get_opt("redis", "port")) != NULL))
 		ap_redis->port = strtol(opt, NULL, 0);
 	else
 		ap_redis->port = DEFAULT_REDIS_PORT;
+
+        memset(&(ap_redis->timeout), 0, sizeof(ap_redis->timeout));
+	if (((opt = conf_get_opt("redis", "timeout")) != NULL))
+		ap_redis->timeout.tv_sec = strtol(opt, NULL, 0);
+	else
+		ap_redis->timeout.tv_sec = DEFAULT_REDIS_TIMEOUT;
+
 	if (((opt = conf_get_opt("redis", "pubchan")) != NULL))
 		ap_redis->pubchan = _strdup(opt);
 	else
