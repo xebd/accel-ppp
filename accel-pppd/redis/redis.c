@@ -276,27 +276,16 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext** ctx)
         		if (reply == NULL) {
                                 log_error("ap_redis: redisCommand failed: (%s)\n", (*ctx)->errstr);
         			switch ((*ctx)->err) {
-        			case REDIS_ERR_IO: {
-                                        redisFree(*ctx);
-        				*ctx = NULL;
-					// TODO: check errno for details
-        			} break;
-        			case REDIS_ERR_EOF: {
-                                        redisFree(*ctx);
-        				*ctx = NULL;
-        		        } break;
-        			case REDIS_ERR_PROTOCOL: {
-                                        redisFree(*ctx);
-        				*ctx = NULL;
-        		        } break;
-        			case REDIS_ERR_OTHER: {
-                                        redisFree(*ctx);
-        				*ctx = NULL;
-        		        } return;
+        			case REDIS_ERR_IO:
+        			case REDIS_ERR_EOF:
+        			case REDIS_ERR_PROTOCOL:
+        			case REDIS_ERR_OTHER:
         			default: {
                                         redisFree(*ctx);
         				*ctx = NULL;
-        			} return;
+		                        /* delete json object */
+                 		        json_object_put(jobj);
+        		        } return;
         			}
         		} else {
 			        msg_sent = 1;
