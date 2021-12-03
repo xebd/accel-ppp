@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <limits.h>
+#include <math.h>
 #include <aio.h>
 #include <signal.h>
 #include <sys/stat.h>
@@ -34,6 +35,7 @@ extern char** environ;
 #define DEFAULT_REDIS_HOST    "localhost"
 #define DEFAULT_REDIS_PORT     6379
 #define DEFAULT_REDIS_PUBCHAN "accel-ppp"
+#define DEFAULT_MAX_ROUNDS     4
 
 enum ap_redis_events_t {
 	REDIS_EV_SES_STARTING         = 0x00000001,
@@ -135,14 +137,15 @@ static struct ap_redis_t *ap_redis;
 static mempool_t redis_pool;
 
 
-static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext* ctx)
+static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext** ctx)
 {
+	redisReply *reply = NULL;
+
 	spin_lock(&ap_redis->msg_queue_lock);
 
 	while (!list_empty(&ap_redis->msg_queue)) {
 
 		struct ap_redis_msg_t* msg = list_first_entry(&(ap_redis->msg_queue), typeof(*msg), entry);
-		list_del(&msg->entry);
 
 		json_object* jobj = json_object_new_object();
 		json_object* jstring;
@@ -234,13 +237,74 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext* ctx)
 		if (msg->subscriber_tags)
 			json_object_object_add(jobj, "subscriber_tags", json_object_new_int(msg->subscriber_tags));
 
-		// TODO: send msg to redis instance
-		redisReply* reply;
-		reply = redisCommand(ctx, "PUBLISH %s %s", ap_redis->pubchan, json_object_to_json_string(jobj));
+		/* sent message to redis */
+		unsigned int msg_sent = 0;
+		while (!msg_sent) {
 
-		if (reply) {
-			// TODO
-		}
+                        /* establish connection to redis server */
+        		if ((*ctx) == NULL) {
+		                unsigned int n_rounds = DEFAULT_MAX_ROUNDS;
+	     	                unsigned int backoff = 1;
+				while (n_rounds > 0) {
+                                        *ctx = redisConnect(ap_redis->host, ap_redis->port);
+                                        if ( ((*ctx) == NULL) || ((*ctx)->err) ) {
+                                                if (*ctx) {
+                                                        log_error("ap_redis: redisConnect failed: (%s)\n", (*ctx)->errstr);
+                		                } else {
+                			                log_error("ap_redis: failed to allocate redis context\n");
+                		                }
+        					/* sleep backoff seconds */
+                                                sleep(backoff);
+        					/* increase backoff */
+        				        backoff = (unsigned int)(pow(2, (DEFAULT_MAX_ROUNDS - n_rounds)));
+        					/* decrement n_rounds by one */
+        					n_rounds--;
+						/* return after DEFAULT_MAX_ROUNDS */
+                		                if (!n_rounds) {
+						        return;	
+						}
+                	                } else {
+                                                log_info2("ap_redis: redisConnect succeeded\n");
+                                                /* redis connection established successfully */
+                                                break;
+                                        }
+        	                }
+        		}
+        
+    		        /* send msg to redis instance */
+		        reply = redisCommand(*ctx, "PUBLISH %s %s", ap_redis->pubchan, json_object_to_json_string(jobj));
+        		if (reply == NULL) {
+                                log_error("ap_redis: redisCommand failed: (%s)\n", (*ctx)->errstr);
+        			switch ((*ctx)->err) {
+        			case REDIS_ERR_IO: {
+                                        redisFree(*ctx);
+        				*ctx = NULL;
+					// TODO: check errno for details
+        			} break;
+        			case REDIS_ERR_EOF: {
+                                        redisFree(*ctx);
+        				*ctx = NULL;
+        		        } break;
+        			case REDIS_ERR_PROTOCOL: {
+                                        redisFree(*ctx);
+        				*ctx = NULL;
+        		        } break;
+        			case REDIS_ERR_OTHER: {
+                                        redisFree(*ctx);
+        				*ctx = NULL;
+        		        } return;
+        			default: {
+                                        redisFree(*ctx);
+        				*ctx = NULL;
+        			} return;
+        			}
+        		} else {
+			        msg_sent = 1;
+                        }
+                }
+        
+		/* transmission successful: pop message from internal queue */
+		list_del(&msg->entry);
 
 		/* delete json object */
 		json_object_put(jobj);
@@ -282,17 +346,8 @@ static void* ap_redis_thread(void* arg)
 	struct ap_redis_t* ap_redis = (struct ap_redis_t*)arg;
 	ap_redis->thread_exit_code = -1;
 
-	/* establish connection to redis server */
-	redisContext *ctx;
-	ctx = redisConnect(ap_redis->host, ap_redis->port);
-	if ((ctx == NULL) || (ctx->err)) {
-		if (ctx) {
-			log_error("ap_redis: redisConnect failed: (%s)\n", ctx->errstr);
-		} else {
-			log_error("ap_redis: failed to allocate redis context\n");
-		}
-		return &(ap_redis->thread_exit_code);
-	}
+	/* redis connection context */
+	redisContext *ctx = NULL;
 
 	/* create epoll device */
 	int epfd;
@@ -339,7 +394,7 @@ static void* ap_redis_thread(void* arg)
 
 		for (unsigned int i = 0; i < 32; i++) {
 			if (epev[i].data.fd == ap_redis->evfd) {
-				ap_redis_dequeue(ap_redis, ctx);
+				ap_redis_dequeue(ap_redis, &ctx);
 			}
 		}
 	}
@@ -350,7 +405,10 @@ static void* ap_redis_thread(void* arg)
 	close(epfd);
 
 	/* release redis context */
-	redisFree(ctx);
+        if (ctx) {
+   	        redisFree(ctx);
+                ctx = NULL;
+        }
 
 	return &(ap_redis->thread_exit_code);
 }
