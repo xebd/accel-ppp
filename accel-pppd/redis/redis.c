@@ -268,6 +268,9 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext** ctx)
                                                                 redisFree(*ctx);
                                                                 *ctx = NULL;
                                                         }
+
+		                                        /* delete json object */
+                 		                        json_object_put(jobj);
 						        return;	
 						}
                 	                } else {
@@ -290,6 +293,7 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext** ctx)
         			default: {
                                         redisFree(*ctx);
         				*ctx = NULL;
+
 		                        /* delete json object */
                  		        json_object_put(jobj);
         		        } return;
