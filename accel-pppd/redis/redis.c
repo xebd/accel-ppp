@@ -264,6 +264,10 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext** ctx)
         					n_rounds--;
 						/* return after DEFAULT_MAX_ROUNDS */
                 		                if (!n_rounds) {
+                                                        if (*ctx) {
+                                                                redisFree(*ctx);
+                                                                *ctx = NULL;
+                                                        }
 						        return;	
 						}
                 	                } else {
