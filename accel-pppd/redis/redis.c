@@ -34,6 +34,7 @@ extern char** environ;
 #define DEFAULT_NAS_ID        "accel-ppp"
 #define DEFAULT_REDIS_HOST    "localhost"
 #define DEFAULT_REDIS_PORT     6379
+#define DEFAULT_REDIS_TIMEOUT  8
 #define DEFAULT_REDIS_PUBCHAN "accel-ppp"
 #define DEFAULT_MAX_ROUNDS     4
 
@@ -118,6 +119,8 @@ struct ap_redis_t {
 	char* host;
 	/* redis port */
 	uint16_t port;
+	/* redis timeout */
+	struct timeval timeout;
 	/* redis channel (publish) */
 	char* pubchan;
 
@@ -137,7 +140,7 @@ static struct ap_redis_t *ap_redis;
 static mempool_t redis_pool;
 
 
-static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext** ctx)
+static int ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext** ctx)
 {
 	redisReply *reply = NULL;
 
@@ -237,7 +240,7 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext** ctx)
 		if (msg->subscriber_tags)
 			json_object_object_add(jobj, "subscriber_tags", json_object_new_int(msg->subscriber_tags));
 
-		/* sent message to redis */
+		/* send message to redis */
 		unsigned int msg_sent = 0;
 		while (!msg_sent) {
 
@@ -246,7 +249,7 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext** ctx)
 		                unsigned int n_rounds = DEFAULT_MAX_ROUNDS;
 	     	                unsigned int backoff = 1;
 				while (n_rounds > 0) {
-                                        *ctx = redisConnect(ap_redis->host, ap_redis->port);
+                                        *ctx = redisConnectWithTimeout(ap_redis->host, ap_redis->port, ap_redis->timeout);
                                         if ( ((*ctx) == NULL) || ((*ctx)->err) ) {
                                                 if (*ctx) {
                                                         log_error("ap_redis: redisConnect failed: (%s)\n", (*ctx)->errstr);
@@ -261,7 +264,17 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext** ctx)
         					n_rounds--;
 						/* return after DEFAULT_MAX_ROUNDS */
                 		                if (!n_rounds) {
-						        return;	
+                                                        if (*ctx) {
+                                                                redisFree(*ctx);
+                                                                *ctx = NULL;
+                                                        }
+
+		                                        /* delete json object */
+                 		                        json_object_put(jobj);
+
+                                                        /* unlock msg queue */
+                                                        spin_unlock(&ap_redis->msg_queue_lock);
+						        return -1;
 						}
                 	                } else {
                                                 log_info2("ap_redis: redisConnect succeeded\n");
@@ -283,9 +296,14 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext** ctx)
         			default: {
                                         redisFree(*ctx);
         				*ctx = NULL;
+
 		                        /* delete json object */
                  		        json_object_put(jobj);
-        		        } return;
+
+                                        /* unlock msg queue */
+                                        spin_unlock(&ap_redis->msg_queue_lock);
+                                        return -1;
+                                };
         			}
         		} else {
 			        msg_sent = 1;
@@ -324,6 +342,8 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext** ctx)
 	}
 
 	spin_unlock(&ap_redis->msg_queue_lock);
+
+        return 0;
 }
 
 
@@ -383,7 +403,9 @@ static void* ap_redis_thread(void* arg)
 
 		for (unsigned int i = 0; i < 32; i++) {
 			if (epev[i].data.fd == ap_redis->evfd) {
-				ap_redis_dequeue(ap_redis, &ctx);
+                                while (ap_redis_dequeue(ap_redis, &ctx) < 0) {
+                                        sleep(1);
+                                }
 			}
 		}
 	}
@@ -441,10 +463,18 @@ static int ap_redis_open(struct ap_redis_t *ap_redis)
 		ap_redis->host = _strdup(opt);
 	else
 		ap_redis->host = _strdup(DEFAULT_REDIS_HOST);
+
 	if (((opt = conf_get_opt("redis", "port")) != NULL))
 		ap_redis->port = strtol(opt, NULL, 0);
 	else
 		ap_redis->port = DEFAULT_REDIS_PORT;
+
+        memset(&(ap_redis->timeout), 0, sizeof(ap_redis->timeout));
+	if (((opt = conf_get_opt("redis", "timeout")) != NULL))
+		ap_redis->timeout.tv_sec = strtol(opt, NULL, 0);
+	else
+		ap_redis->timeout.tv_sec = DEFAULT_REDIS_TIMEOUT;
+
 	if (((opt = conf_get_opt("redis", "pubchan")) != NULL))
 		ap_redis->pubchan = _strdup(opt);
 	else
