@@ -140,7 +140,7 @@ static struct ap_redis_t *ap_redis;
 static mempool_t redis_pool;
 
 
-static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext** ctx)
+static int ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext** ctx)
 {
 	redisReply *reply = NULL;
 
@@ -271,7 +271,10 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext** ctx)
 
 		                                        /* delete json object */
                  		                        json_object_put(jobj);
-						        return;	
+
+                                                        /* unlock msg queue */
+                                                        spin_unlock(&ap_redis->msg_queue_lock);
+						        return -1;
 						}
                 	                } else {
                                                 log_info2("ap_redis: redisConnect succeeded\n");
@@ -296,7 +299,11 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext** ctx)
 
 		                        /* delete json object */
                  		        json_object_put(jobj);
-        		        } return;
+
+                                        /* unlock msg queue */
+                                        spin_unlock(&ap_redis->msg_queue_lock);
+                                        return -1;
+                                };
         			}
         		} else {
 			        msg_sent = 1;
@@ -335,6 +342,8 @@ static void ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext** ctx)
 	}
 
 	spin_unlock(&ap_redis->msg_queue_lock);
+
+        return 0;
 }
 
 
@@ -394,7 +403,9 @@ static void* ap_redis_thread(void* arg)
 
 		for (unsigned int i = 0; i < 32; i++) {
 			if (epev[i].data.fd == ap_redis->evfd) {
-				ap_redis_dequeue(ap_redis, &ctx);
+                                while (ap_redis_dequeue(ap_redis, &ctx) < 0) {
+                                        sleep(1);
+                                }
 			}
 		}
 	}
