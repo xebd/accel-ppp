@@ -240,7 +240,7 @@ static int ap_redis_dequeue(struct ap_redis_t* ap_redis, redisContext** ctx)
 		if (msg->subscriber_tags)
 			json_object_object_add(jobj, "subscriber_tags", json_object_new_int(msg->subscriber_tags));
 
-		/* sent message to redis */
+		/* send message to redis */
 		unsigned int msg_sent = 0;
 		while (!msg_sent) {
 
