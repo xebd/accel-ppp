@@ -10,6 +10,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <netdb.h>
 
 #include "log.h"
 #include "triton.h"
@@ -697,6 +698,9 @@ static int parse_server1(const char *_opt, struct rad_server_t *s)
 {
 	char *opt = _strdup(_opt);
 	char *ptr1, *ptr2, *ptr3, *endptr;
+        struct addrinfo hints;
+        struct addrinfo *result, *rp;
+        int rc;
 
 	ptr1 = strchr(opt, ',');
 	if (!ptr1)
@@ -715,7 +719,37 @@ static int parse_server1(const char *_opt, struct rad_server_t *s)
 	if (ptr3)
 		*ptr3 = 0;
 
-	s->addr = inet_addr(opt);
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_DGRAM;
+        hints.ai_flags = 0;
+        hints.ai_protocol = 0;
+
+        if ((rc = getaddrinfo(opt, NULL, &hints, &result)) != 0) {
+                log_error("radius: %s: getaddrinfo failed\n", opt);
+                goto out;
+        }
+
+        for (rp = result; rp != NULL; rp = rp->ai_next) {
+                switch (rp->ai_family) {
+                case AF_INET: {
+                        s->addr = ((struct sockaddr_in*)(rp->ai_addr))->sin_addr.s_addr;
+                        /* fprintf(stderr, "%s", inet_ntoa(((struct sockaddr_in*)(rp->ai_addr))->sin_addr)); */
+                } break;
+                default: {
+                        /* ignoring */
+                };
+                }
+
+                break; /* for now: take the first result obtained from DNS */
+        }
+
+        struct sockaddr_in addr;
+        memset(&addr, 0, sizeof(struct sockaddr_in));
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = s->addr;
+        log_info2("radius: server FQDN resolved from %s to %s\n", opt, inet_ntoa(addr.sin_addr));
+        fprintf(stderr, "radius: server FQDN resolved from %s to %s\n", opt, inet_ntoa(addr.sin_addr));
 
 	if (ptr2) {
 		if (ptr2[1]) {
@@ -752,6 +786,9 @@ static int parse_server2(const char *_opt, struct rad_server_t *s)
 {
 	char *opt = _strdup(_opt);
 	char *ptr1, *ptr2, *ptr3, *endptr;
+        struct addrinfo hints;
+        struct addrinfo *result, *rp;
+        int rc;
 
 	ptr1 = strchr(opt, ',');
 	if (!ptr1)
@@ -761,7 +798,37 @@ static int parse_server2(const char *_opt, struct rad_server_t *s)
 
 	*ptr1 = 0;
 
-	s->addr = inet_addr(opt);
+        memset(&hints, 0, sizeof(hints));
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_DGRAM;
+        hints.ai_flags = 0;
+        hints.ai_protocol = 0;
+
+        if ((rc = getaddrinfo(opt, NULL, &hints, &result)) != 0) {
+                log_error("radius: %s: getaddrinfo failed\n", opt);
+                goto out;
+        }
+
+        for (rp = result; rp != NULL; rp = rp->ai_next) {
+                switch (rp->ai_family) {
+                case AF_INET: {
+                        s->addr = ((struct sockaddr_in*)(rp->ai_addr))->sin_addr.s_addr;
+                        /* fprintf(stderr, "%s", inet_ntoa(((struct sockaddr_in*)(rp->ai_addr))->sin_addr)); */
+                } break;
+                default: {
+                        /* ignoring */
+                };
+                }
+
+                break; /* for now: take the first result obtained from DNS */
+        }
+
+        struct sockaddr_in addr;
+        memset(&addr, 0, sizeof(struct sockaddr_in));
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = s->addr;
+        log_info2("radius: server FQDN resolved from %s to %s\n", opt, inet_ntoa(addr.sin_addr));
+        fprintf(stderr, "radius: server FQDN resolved from %s to %s\n", opt, inet_ntoa(addr.sin_addr));
 
 	ptr3 = strstr(ptr2, ",auth-port=");
 	if (ptr3) {
