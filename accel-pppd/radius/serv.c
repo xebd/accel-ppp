@@ -734,6 +734,7 @@ static int parse_server1(const char *_opt, struct rad_server_t *s)
                 switch (rp->ai_family) {
                 case AF_INET: {
                         s->addr = ((struct sockaddr_in*)(rp->ai_addr))->sin_addr.s_addr;
+                        /* fprintf(stderr, "%s", inet_ntoa(((struct sockaddr_in*)(rp->ai_addr))->sin_addr)); */
                 } break;
                 default: {
                         /* ignoring */
@@ -742,6 +743,7 @@ static int parse_server1(const char *_opt, struct rad_server_t *s)
 
                 break; /* for now: take the first result obtained from DNS */
         }
+
 
 	if (ptr2) {
 		if (ptr2[1]) {
@@ -805,6 +807,7 @@ static int parse_server2(const char *_opt, struct rad_server_t *s)
                 switch (rp->ai_family) {
                 case AF_INET: {
                         s->addr = ((struct sockaddr_in*)(rp->ai_addr))->sin_addr.s_addr;
+                        /* fprintf(stderr, "%s", inet_ntoa(((struct sockaddr_in*)(rp->ai_addr))->sin_addr)); */
                 } break;
                 default: {
                         /* ignoring */
