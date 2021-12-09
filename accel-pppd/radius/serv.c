@@ -744,6 +744,12 @@ static int parse_server1(const char *_opt, struct rad_server_t *s)
                 break; /* for now: take the first result obtained from DNS */
         }
 
+        struct sockaddr_in addr;
+        memset(&addr, 0, sizeof(struct sockaddr_in));
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = s->addr;
+        log_info2("radius: server FQDN resolved from %s to %s\n", opt, inet_ntoa(addr.sin_addr));
+        fprintf(stderr, "radius: server FQDN resolved from %s to %s\n", opt, inet_ntoa(addr.sin_addr));
 
 	if (ptr2) {
 		if (ptr2[1]) {
@@ -816,6 +822,13 @@ static int parse_server2(const char *_opt, struct rad_server_t *s)
 
                 break; /* for now: take the first result obtained from DNS */
         }
+
+        struct sockaddr_in addr;
+        memset(&addr, 0, sizeof(struct sockaddr_in));
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = s->addr;
+        log_info2("radius: server FQDN resolved from %s to %s\n", opt, inet_ntoa(addr.sin_addr));
+        fprintf(stderr, "radius: server FQDN resolved from %s to %s\n", opt, inet_ntoa(addr.sin_addr));
 
 	ptr3 = strstr(ptr2, ",auth-port=");
 	if (ptr3) {
