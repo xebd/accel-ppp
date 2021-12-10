@@ -19,7 +19,10 @@
 #include "ipdb.h"
 #include "log.h"
 #include "backup.h"
+#include "config.h"
 #include "memdebug.h"
+
+#define VRF_DEFAULT_NAME "default"
 
 // from /usr/include/linux/ipv6.h
 struct in6_ifreq {
@@ -55,6 +58,15 @@ void ap_session_ifup(struct ap_session *ses)
 		_free(ses->ifname_rename);
 		ses->ifname_rename = NULL;
 	}
+
+#ifdef HAVE_VRF
+	if (ses->vrf_name) {
+		if (ap_session_vrf(ses, ses->vrf_name, -1)) {
+			ap_session_terminate(ses, TERM_NAS_ERROR, 0);
+			return;
+		}
+	}
+#endif
 
 	triton_event_fire(EV_SES_ACCT_START, ses);
 
@@ -334,3 +346,34 @@ int __export ap_session_rename(struct ap_session *ses, const char *ifname, int l
 	return 0;
 }
 
+#ifdef HAVE_VRF
+int __export ap_session_vrf(struct ap_session *ses, const char *vrf_name, int len)
+{
+	if (len == -1)
+		len = strlen(vrf_name);
+
+	int vrf_ifindex = 0;
+
+	if (len) {
+		vrf_ifindex = ses->net->get_ifindex(vrf_name);
+		if (vrf_ifindex < 0) {
+			log_ppp_error("vrf '%s' not found\n", vrf_name);
+			return -1;
+		}
+	} else
+		vrf_name = VRF_DEFAULT_NAME;
+
+	if (ses->net->set_vrf(ses->ifindex, vrf_ifindex)) {
+		log_ppp_error("set vrf %s failed ifindex=%d, vrf_ifindex=%d\n", vrf_name, ses->ifindex, vrf_ifindex);
+		return -1;
+	} else
+		log_ppp_info2("set vrf %s\n", vrf_name);
+
+	if (!len) {
+		_free(ses->vrf_name);
+		ses->vrf_name = NULL;
+	}
+
+	return 0;
+}
+#endif

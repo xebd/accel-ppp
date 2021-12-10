@@ -64,6 +64,14 @@ CHECK_INCLUDE_FILE("linux/netfilter/ipset/ip_set.h" HAVE_IPSET)
 INCLUDE(CheckFunctionExists)
 CHECK_FUNCTION_EXISTS(setns HAVE_SETNS)
 
+INCLUDE (CheckCSourceCompiles)
+CHECK_C_SOURCE_COMPILES("
+#include <linux/if_link.h>
+int main(void)
+{
+	return IFLA_VRF_UNSPEC+IFLA_VRF_TABLE;
+}" HAVE_VRF)
+
 ADD_EXECUTABLE(accel-pppd
 	memdebug.c
 	session.c

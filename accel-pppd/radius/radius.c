@@ -20,6 +20,7 @@
 
 #include "radius_p.h"
 #include "attr_defs.h"
+#include "config.h"
 
 #include "memdebug.h"
 
@@ -282,28 +283,43 @@ int rad_proc_attrs(struct rad_req_t *req)
 	req->rpd->acct_interim_jitter = conf_acct_interim_jitter;
 
 	list_for_each_entry(attr, &req->reply->attrs, entry) {
-		if (attr->vendor && attr->vendor->id == VENDOR_Microsoft) {
-			switch (attr->attr->id) {
-				case MS_Primary_DNS_Server:
-					dns.ses = rpd->ses;
-					dns.dns1 = attr->val.ipaddr;
-					break;
-				case MS_Secondary_DNS_Server:
-					dns.ses = rpd->ses;
-					dns.dns2 = attr->val.ipaddr;
-					break;
-				case MS_Primary_NBNS_Server:
-					wins.ses = rpd->ses;
-					wins.wins1 = attr->val.ipaddr;
-					break;
-				case MS_Secondary_NBNS_Server:
-					wins.ses = rpd->ses;
-					wins.wins2 = attr->val.ipaddr;
-					break;
+		if (attr->vendor) {
+			if (attr->vendor->id == VENDOR_Microsoft) {
+				switch (attr->attr->id) {
+					case MS_Primary_DNS_Server:
+						dns.ses = rpd->ses;
+						dns.dns1 = attr->val.ipaddr;
+						break;
+					case MS_Secondary_DNS_Server:
+						dns.ses = rpd->ses;
+						dns.dns2 = attr->val.ipaddr;
+						break;
+					case MS_Primary_NBNS_Server:
+						wins.ses = rpd->ses;
+						wins.wins1 = attr->val.ipaddr;
+						break;
+					case MS_Secondary_NBNS_Server:
+						wins.ses = rpd->ses;
+						wins.wins2 = attr->val.ipaddr;
+						break;
+				}
+				continue;
+#ifdef HAVE_VRF
+			} else if (attr->vendor->id == VENDOR_Accel_PPP) {
+				switch (attr->attr->id) {
+					case Accel_VRF_Name:
+						if (rpd->ses->vrf_name)
+							_free(rpd->ses->vrf_name);
+						rpd->ses->vrf_name = _malloc(attr->len + 1);
+						memcpy(rpd->ses->vrf_name, attr->val.string, attr->len);
+						rpd->ses->vrf_name[attr->len] = 0;
+						break;
+				}
+				continue;
+#endif
 			}
 			continue;
-		} else if (attr->vendor)
-			continue;
+		}
 
 		switch(attr->attr->id) {
 			case User_Name:

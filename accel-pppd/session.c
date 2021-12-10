@@ -24,6 +24,7 @@
 #include "iputils.h"
 #include "spinlock.h"
 #include "mempool.h"
+#include "config.h"
 #include "memdebug.h"
 
 #define SID_SOURCE_SEQ 0
@@ -239,6 +240,11 @@ void __export ap_session_finished(struct ap_session *ses)
 		_free(ses->ifname_rename);
 		ses->ifname_rename = NULL;
 	}
+
+#ifdef HAVE_VRF
+	if (ses->vrf_name)
+		ap_session_vrf(ses, NULL, 0);
+#endif
 
 	if (ses->net)
 		ses->net->release(ses->net);

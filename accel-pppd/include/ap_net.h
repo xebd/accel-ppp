@@ -6,6 +6,7 @@
 
 #include "libnetlink.h"
 #include "list.h"
+#include "config.h"
 
 struct ap_net {
 	struct list_head entry;
@@ -33,6 +34,10 @@ struct ap_net {
 	int (*move_link)(struct ap_net *net, int ifindex);
 	int (*get_ifindex)(const char * ifname);
 	void (*release)(struct ap_net *net);
+#ifdef HAVE_VRF
+	int (*set_vrf)(int ifindex, int vrf_ifindex);
+#endif
+
 };
 
 extern __thread struct ap_net *net;
