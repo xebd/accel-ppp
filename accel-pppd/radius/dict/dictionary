@@ -76,6 +76,7 @@ $INCLUDE dictionary.rfc4818
 $INCLUDE dictionary.rfc5176
 $INCLUDE dictionary.rfc6911
 
+$INCLUDE dictionary.accel
 $INCLUDE dictionary.microsoft
 $INCLUDE dictionary.cisco
 $INCLUDE dictionary.alcatel

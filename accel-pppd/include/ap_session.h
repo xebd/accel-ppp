@@ -73,6 +73,7 @@ struct ap_session
 	char *chan_name;
 	char ifname[AP_IFNAME_LEN];
 	char *ifname_rename;
+	char *vrf_name;
 	int unit_idx;
 	int ifindex;
 	char sessionid[AP_SESSIONID_LEN+1];
@@ -151,6 +152,9 @@ int ap_check_username(const char *username);
 void ap_session_ifup(struct ap_session *ses);
 void ap_session_ifdown(struct ap_session *ses);
 int ap_session_rename(struct ap_session *ses, const char *ifname, int len);
+#ifdef HAVE_VRF
+int ap_session_vrf(struct ap_session *ses, const char *vrf_name, int len);
+#endif
 
 int ap_session_read_stats(struct ap_session *ses, struct rtnl_link_stats *stats);
 

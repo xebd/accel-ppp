@@ -231,6 +231,44 @@ static int def_get_ifindex(const char *ifname)
 	return ifr.ifr_ifindex;
 }
 
+#ifdef HAVE_VRF
+static int def_set_vrf(int ifindex, int vrf_ifindex)
+{
+	struct iplink_req {
+		struct nlmsghdr n;
+		struct ifinfomsg i;
+		char buf[1024];
+	} req;
+
+	struct rtnl_handle *rth = net->rtnl_get();
+
+	int r = 0;
+
+	if (!rth) {
+		log_ppp_error("def_set_vrf rtnl_get failed\n");
+		return -1;
+	}
+
+	memset(&req, 0, sizeof(req) - 1024);
+
+	req.n.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
+	req.n.nlmsg_flags = NLM_F_REQUEST;
+	req.n.nlmsg_type = RTM_NEWLINK;
+	req.i.ifi_family = AF_UNSPEC;
+	req.i.ifi_index = ifindex;
+
+	addattr_l(&req.n, sizeof(req), IFLA_MASTER, &vrf_ifindex, sizeof(vrf_ifindex));
+
+	if (rtnl_talk(rth, &req.n, 0, 0, NULL, NULL, NULL, 0) < 0) {
+		log_ppp_error("def_set_vrf rtnl_talk failed\n");
+		r = -1;
+	}
+
+	net->rtnl_put(rth);
+
+	return r;
+}
+#endif
 
 static void def_release(struct ap_net *d)
 {
@@ -318,6 +356,9 @@ static struct ap_net *alloc_net(const char *name)
 	net->move_link = def_move_link;
 	net->get_ifindex = def_get_ifindex;
 	net->release = def_release;
+#ifdef HAVE_VRF
+	net->set_vrf = def_set_vrf;
+#endif
 
 	n->sock = socket(AF_INET, SOCK_DGRAM, 0);
 	n->sock6 = socket(AF_INET6, SOCK_DGRAM, 0);

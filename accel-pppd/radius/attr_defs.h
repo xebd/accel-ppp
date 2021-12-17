@@ -1,6 +1,8 @@
 #define VENDOR_Microsoft 311
 #define VENDOR_Accel_PPP 55999
 
+#define Accel_VRF_Name 1
+
 #define User_Name 1
 #define User_Password 2
 #define CHAP_Password 3

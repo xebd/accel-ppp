@@ -17,6 +17,7 @@
 #include "log.h"
 
 #include "radius_p.h"
+#include "attr_defs.h"
 
 #include "memdebug.h"
 
@@ -143,6 +144,24 @@ static void disconnect_request(struct radius_pd_t *rpd)
 	ap_session_terminate(rpd->ses, TERM_ADMIN_RESET, 0);
 }
 
+#ifdef HAVE_VRF
+int rad_update_vrf(struct radius_pd_t *rpd, const char *vrf_name)
+{
+	if (*vrf_name == '0') {
+		// Delete interface from VRF
+		if (!ap_session_vrf(rpd->ses, NULL, 0))
+			return 1;
+	}
+	else {
+		// Add interface to VRF
+		if(!ap_session_vrf(rpd->ses, vrf_name, -1))
+			return 1;
+	}
+
+	return 0;
+}
+#endif
+
 static void coa_request(struct radius_pd_t *rpd)
 {
 	struct rad_attr_t *class;
@@ -153,6 +172,8 @@ static void coa_request(struct radius_pd_t *rpd)
 		.request = rpd->dm_coa_req,
 	};
 
+	int send_ack = 0;
+
 	if (conf_verbose) {
 		log_ppp_info2("recv ");
 		rad_packet_print(rpd->dm_coa_req, NULL, log_ppp_info2);
@@ -161,7 +182,7 @@ static void coa_request(struct radius_pd_t *rpd)
 	triton_event_fire(EV_RADIUS_COA, &ev);
 
 	if (ev.res)
-		dm_coa_send_nak(serv.hnd.fd, rpd->dm_coa_req, &rpd->dm_coa_addr, 0);
+		goto out;
 	else {
 		class = rad_packet_find_attr(rpd->dm_coa_req, NULL, "Class");
 		if (class) {
@@ -180,14 +201,32 @@ static void coa_request(struct radius_pd_t *rpd)
 				else
 					rad_packet_add_octets(rpd->acct_req->pack, NULL, "Class", rpd->attr_class, rpd->attr_class_len);
 			}
+			send_ack = 1;
+			goto out;
 		}
 
 		attr = rad_packet_find_attr(rpd->dm_coa_req, NULL, "Session-Timeout");
-		if (attr)
+		if (attr){
 			rad_update_session_timeout(rpd, attr->val.integer);
-
-		dm_coa_send_ack(serv.hnd.fd, rpd->dm_coa_req, &rpd->dm_coa_addr);
+			send_ack = 1;
+			goto out;
+		}
+#ifdef HAVE_VRF
+		attr = rad_packet_find_attr(rpd->dm_coa_req, "Accel-PPP", "Accel-VRF-Name");
+		if (attr){
+			if(!rad_update_vrf(rpd, attr->val.string)){
+				goto out;
+			}
+		}
+#endif
+		send_ack = 1;
 	}
+
+out:
+	if (send_ack)
+		dm_coa_send_ack(serv.hnd.fd, rpd->dm_coa_req, &rpd->dm_coa_addr);
+	else
+		dm_coa_send_nak(serv.hnd.fd, rpd->dm_coa_req, &rpd->dm_coa_addr, 0);
 
 	rad_packet_free(rpd->dm_coa_req);
 
