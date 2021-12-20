@@ -131,6 +131,12 @@ Specifies maximum concurrent session attempts which server may processed (defaul
 .TP
 .BI "check-ip=" 0|1
 Specifies whether accel-ppp should check if IP already assigned to other client interface (default 0).
+.TP
+.BI "nl-snd-buffer=" n
+Specifies netlink maximum send buffer size (SO_SNDBUF option) (default 32768).
+.TP
+.BI "nl-rcv-buffer=" n
+Specifies netlink maximum receive buffer size (SO_RCVBUF option) (default 1048576).
 .SH [ppp]
 .br
 PPP module configuration.

@@ -28,7 +28,8 @@
 
 #define __export __attribute__((visibility("default")))
 
-int rcvbuf = 1024 * 1024;
+extern int conf_nl_rcvbuf;
+extern int conf_nl_sndbuf;
 
 void __export rtnl_close(struct rtnl_handle *rth)
 {
@@ -52,12 +53,22 @@ int __export rtnl_open_byproto(struct rtnl_handle *rth, unsigned subscriptions,
 		return -1;
 	}
 
-	if (setsockopt(rth->fd,SOL_SOCKET,SO_SNDBUF,&sndbuf,sizeof(sndbuf)) < 0) {
-		log_debug("libnetlink: ""SO_SNDBUF: %s\n", strerror(errno));
-		return -1;
+	if (conf_nl_sndbuf > 0) {
+		if (setsockopt(rth->fd,SOL_SOCKET,SO_SNDBUF,&conf_nl_sndbuf,sizeof(conf_nl_sndbuf)) < 0) {
+			log_debug("libnetlink: ""SO_SNDBUF: %s\n", strerror(errno));
+			log_debug("libnetlink: unable to set custom sndbuf. Default value %d will be used", sndbuf);
+			conf_nl_sndbuf = -1;
+		}
 	}
 
-	if (setsockopt(rth->fd,SOL_SOCKET,SO_RCVBUF,&rcvbuf,sizeof(rcvbuf)) < 0) {
+	if (conf_nl_sndbuf <= 0) {
+		if (setsockopt(rth->fd,SOL_SOCKET,SO_SNDBUF,&sndbuf,sizeof(sndbuf)) < 0) {
+			log_debug("libnetlink: ""SO_SNDBUF: %s\n", strerror(errno));
+			return -1;
+		}
+	}
+
+	if (setsockopt(rth->fd,SOL_SOCKET,SO_RCVBUF,&conf_nl_rcvbuf,sizeof(conf_nl_rcvbuf)) < 0) {
 		log_debug("libnetlink: ""SO_RCVBUF: %s\n", strerror(errno));
 		return -1;
 	}

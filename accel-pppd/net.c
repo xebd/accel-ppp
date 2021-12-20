@@ -45,6 +45,9 @@ __export __thread struct ap_net *net;
 __export struct ap_net *def_net;
 static int def_ns_fd;
 
+__export int conf_nl_rcvbuf = 1024 * 1024;
+__export int conf_nl_sndbuf = -1;
+
 static int def_socket(int domain, int type, int proto)
 {
 	return socket(domain, type, proto);
@@ -431,6 +434,14 @@ __export struct ap_net *ap_net_open_ns(const char *name)
 static void __init init()
 {
 	const char *opt;
+
+	opt = conf_get_opt("common", "nl-rcv-buffer");
+	if (opt)
+		conf_nl_rcvbuf = atoi(opt);
+
+	opt = conf_get_opt("common", "nl-snd-buffer");
+	if (opt)
+		conf_nl_sndbuf = atoi(opt);
 
 	opt = conf_get_opt("common", "netns-run-dir");
 	if (opt)
