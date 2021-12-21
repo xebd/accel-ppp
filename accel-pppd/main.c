@@ -162,7 +162,7 @@ static void __core_restart(int soft)
 	readlink(exe, exe_buf, PATH_MAX);
 
 	while (1) {
-		execv(exe, argv);
+		execv(exe_buf, argv);
 		sleep(3);
 	}
 }
