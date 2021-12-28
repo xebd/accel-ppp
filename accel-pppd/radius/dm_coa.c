@@ -337,6 +337,13 @@ static void init(void)
 		return;
 	}
 
+	if ( !conf_dm_coa_vrf_default && ( 0 > setsockopt(serv.hnd.fd, SOL_SOCKET, SO_BINDTODEVICE, conf_dm_coa_vrf_name, strlen(conf_dm_coa_vrf_name)) ) )
+        {
+		log_emerg("radius:dm_coa: failed set vrf '%s' in setsockopt: %s\n", conf_dm_coa_vrf_name, strerror(errno));
+		close(serv.hnd.fd);
+		return;
+	}
+
 	fcntl(serv.hnd.fd, F_SETFD, fcntl(serv.hnd.fd, F_GETFD) | FD_CLOEXEC);
 
 	addr.sin_family = AF_INET;

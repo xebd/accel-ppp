@@ -546,6 +546,8 @@ static void __add_server(struct rad_server_t *s)
 			s1->req_limit = s->req_limit;
 			s1->max_fail = s->max_fail;
 			s1->need_free = 0;
+			s1->vrf_default = s->vrf_default;
+			strcpy(s1->vrf_name, s->vrf_name);
 			_free(s);
 			return;
 		}
@@ -677,6 +679,7 @@ static void add_server_old(void)
 	s->fail_timeout = conf_fail_timeout;
 	s->req_limit = conf_req_limit;
 	s->max_fail = conf_max_fail;
+	s->vrf_default = 1;
 
 	if (auth_addr == acct_addr && !strcmp(auth_secret, acct_secret)) {
 		s->acct_port = acct_port;
@@ -695,6 +698,7 @@ static void add_server_old(void)
 		s->fail_timeout = conf_fail_timeout;
 		s->req_limit = conf_req_limit;
 		s->max_fail = conf_max_fail;
+		s->vrf_default = 1;
 		__add_server(s);
 	}
 }
@@ -745,6 +749,7 @@ static int parse_server1(const char *_opt, struct rad_server_t *s)
 	s->fail_timeout = conf_fail_timeout;
 	s->req_limit = conf_req_limit;
 	s->max_fail = conf_max_fail;
+	s->vrf_default = 1;
 
 	return 0;
 
@@ -827,6 +832,23 @@ static int parse_server2(const char *_opt, struct rad_server_t *s)
 		}
 	} else
 		s->weight = 1;
+
+	ptr3 = strstr(ptr2, ",vrf=");
+	if (ptr3) {
+		endptr = strchrnul(ptr3 + 5, ',');
+		if (*endptr != ',' && *endptr != 0)
+			goto out;
+		if  ( ( endptr - ptr3 - 5 ) >  IFNAMSIZ - 1 ) {
+			log_error("radius: %s: too long vrf name, set vrf to default\n", _opt);
+			s->vrf_default = 1;
+		} else
+		{
+			s->vrf_default = 0;
+			bzero(s->vrf_name, sizeof(s->vrf_name));
+			strncpy(s->vrf_name, ptr3 + 5, endptr - ptr3 - 5);
+		}
+	} else
+		s->vrf_default = 1;
 
 	ptr3 = strstr(ptr2, ",backup");
 	if (ptr3)

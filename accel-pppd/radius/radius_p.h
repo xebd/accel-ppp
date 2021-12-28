@@ -128,6 +128,8 @@ struct rad_server_t {
 	int queue_cnt;
 	int fail_timeout;
 	int max_fail;
+	char vrf_name[IFNAMSIZ];
+	unsigned int vrf_default:1;
 
 	struct list_head req_queue[2];
 	int client_cnt[2];
@@ -181,6 +183,8 @@ extern in_addr_t conf_bind;
 extern in_addr_t conf_gw_ip_address;
 extern in_addr_t conf_auth_server;
 extern char *conf_dm_coa_secret;
+extern char conf_dm_coa_vrf_name[IFNAMSIZ];
+extern unsigned int conf_dm_coa_vrf_default;
 extern int conf_sid_in_auth;
 extern int conf_require_nas_ident;
 extern in_addr_t conf_dm_coa_server;
