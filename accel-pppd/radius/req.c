@@ -290,7 +290,7 @@ static int make_socket(struct rad_req_t *req)
 	addr.sin_addr.s_addr = req->server_addr;
 	addr.sin_port = htons(req->server_port);
 
-	if ( req->serv && !req->serv->vrf_default && ( 0 > setsockopt(req->hnd.fd, SOL_SOCKET, SO_BINDTODEVICE, req->serv->vrf_name, strlen(req->serv->vrf_name)) ) )
+	if ( req->serv && !req->serv->bind_default && ( 0 > setsockopt(req->hnd.fd, SOL_SOCKET, SO_BINDTODEVICE, req->serv->bind_device, strlen(req->serv->bind_device)) ) )
 	{
 		log_ppp_error("radius:setsockopt: %s\n", strerror(errno));
 		goto out_err;

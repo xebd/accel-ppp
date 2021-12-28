@@ -337,9 +337,9 @@ static void init(void)
 		return;
 	}
 
-	if ( !conf_dm_coa_vrf_default && ( 0 > setsockopt(serv.hnd.fd, SOL_SOCKET, SO_BINDTODEVICE, conf_dm_coa_vrf_name, strlen(conf_dm_coa_vrf_name)) ) )
+	if ( !conf_dm_coa_bind_default && ( 0 > setsockopt(serv.hnd.fd, SOL_SOCKET, SO_BINDTODEVICE, conf_dm_coa_bind_device, strlen(conf_dm_coa_bind_device)) ) )
         {
-		log_emerg("radius:dm_coa: failed set vrf '%s' in setsockopt: %s\n", conf_dm_coa_vrf_name, strerror(errno));
+		log_emerg("radius:dm_coa: failed set bind device '%s' in setsockopt: %s\n", conf_dm_coa_bind_device, strerror(errno));
 		close(serv.hnd.fd);
 		return;
 	}
