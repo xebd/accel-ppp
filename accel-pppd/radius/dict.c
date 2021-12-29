@@ -193,14 +193,20 @@ static int dict_load(const char *fname)
 					attr->type = ATTR_TYPE_STRING;
 				else if (!strcmp(ptr[2], "date"))
 					attr->type = ATTR_TYPE_DATE;
-				else if (!strcmp(ptr[2], "ipaddr"))
+				else if (!strcmp(ptr[2], "ipaddr")) {
 					attr->type = ATTR_TYPE_IPADDR;
+					attr->size = 4; /* RFC 8044 §3.8 ipv4addr */
+				}
 				else if (!strcmp(ptr[2], "octets"))
 					attr->type = ATTR_TYPE_OCTETS;
-				else if (!strcmp(ptr[2], "ifid"))
+				else if (!strcmp(ptr[2], "ifid")) {
 					attr->type = ATTR_TYPE_IFID;
-				else if (!strcmp(ptr[2], "ipv6addr"))
+					attr->size = 8; /* RFC 8044 §3.7 ifid */
+				}
+				else if (!strcmp(ptr[2], "ipv6addr")) {
 					attr->type = ATTR_TYPE_IPV6ADDR;
+					attr->size = 16; /* RFC 8044 §3.9 ipv6addr */
+				}
 				else if (!strcmp(ptr[2], "ipv6prefix"))
 					attr->type = ATTR_TYPE_IPV6PREFIX;
 				else if (!strcmp(ptr[2], "ether"))
