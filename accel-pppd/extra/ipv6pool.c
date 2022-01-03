@@ -307,6 +307,9 @@ static struct ipv6db_prefix_t *get_dp(struct ap_session *ses)
 	else
 		pool = def_dppool;
 
+	if (!pool)
+		return NULL;
+
 	start = pool;
 	do {
 		spin_lock(&pool->lock);

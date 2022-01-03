@@ -352,6 +352,10 @@ static void dhcpv6_send_reply(struct dhcpv6_packet *req, struct dhcpv6_pd *pd, i
 				ses->ipv6_dp = ipdb_get_ipv6_prefix(ses);
 				if (ses->ipv6_dp)
 					triton_event_fire(EV_FORCE_INTERIM_UPDATE, ses);
+				else {
+					dhcpv6_packet_free(reply);
+					return;
+				}
 			}
 
 			if ((req->hdr->type == D6_RENEW) && pd->dp_iaid != ia_na->iaid) {
