@@ -141,8 +141,8 @@ again:
 			if (errno != EPIPE) {
 				if (conf_verbose)
 					log_ppp_info2("pptp: write: %s\n", strerror(errno));
-				return -1;
 			}
+			return -1;
 		}
 	}
 
