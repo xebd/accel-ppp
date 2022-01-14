@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <sys/time.h>
 
+#include <linux/if.h>           /* For IFNAMSIZ */
+
 #include "ap_session.h"
 #include "list.h"
 

@@ -38,6 +38,8 @@ int conf_interim_verbose;
 in_addr_t conf_dm_coa_server;
 int conf_dm_coa_port = 3799;
 char *conf_dm_coa_secret;
+char conf_dm_coa_bind_device[IFNAMSIZ];
+unsigned int conf_dm_coa_bind_default;
 
 int conf_sid_in_auth;
 int conf_require_nas_ident;
@@ -934,10 +936,10 @@ static struct pwdb_t pwdb = {
 	.check = rad_pwdb_check,
 };
 
-static int parse_server(const char *opt, in_addr_t *addr, int *port, char **secret)
+static int parse_server(const char *opt, in_addr_t *addr, int *port, char **secret, char *bind_device, unsigned int *bind_default)
 {
 	char *str = _strdup(opt);
-	char *p1, *p2;
+	char *p1, *p2, *p3;
 
 	p1 = strstr(str, ":");
 	p2 = strstr(str, ",");
@@ -950,6 +952,20 @@ static int parse_server(const char *opt, in_addr_t *addr, int *port, char **secr
 		_free(str);
 		return -1;
 	}
+
+	p3 = strstr(p2 + 1, ",bind-device=");
+	if (p3)
+	{
+		*p3 = 0;
+		if ( strlen(p3 + 13) > IFNAMSIZ - 1 )
+		{
+			_free(str);
+			return -1;
+		}
+		strcpy ( bind_device, p3 + 13);
+		*bind_default = 0;
+	} else
+		*bind_default = 1;
 
 	*addr = inet_addr(str);
 
@@ -1019,7 +1035,7 @@ static int load_config(void)
 		conf_bind = conf_nas_ip_address;
 
 	opt = conf_get_opt("radius", "dae-server");
-	if (opt && parse_server(opt, &conf_dm_coa_server, &conf_dm_coa_port, &conf_dm_coa_secret)) {
+	if (opt && parse_server(opt, &conf_dm_coa_server, &conf_dm_coa_port, &conf_dm_coa_secret, conf_dm_coa_bind_device, &conf_dm_coa_bind_default)) {
 		log_emerg("radius: failed to parse dae-server\n");
 		return -1;
 	}

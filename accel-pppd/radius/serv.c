@@ -546,6 +546,8 @@ static void __add_server(struct rad_server_t *s)
 			s1->req_limit = s->req_limit;
 			s1->max_fail = s->max_fail;
 			s1->need_free = 0;
+			s1->bind_default = s->bind_default;
+			strcpy(s1->bind_device, s->bind_device);
 			_free(s);
 			return;
 		}
@@ -677,6 +679,7 @@ static void add_server_old(void)
 	s->fail_timeout = conf_fail_timeout;
 	s->req_limit = conf_req_limit;
 	s->max_fail = conf_max_fail;
+	s->bind_default = 1;
 
 	if (auth_addr == acct_addr && !strcmp(auth_secret, acct_secret)) {
 		s->acct_port = acct_port;
@@ -695,6 +698,7 @@ static void add_server_old(void)
 		s->fail_timeout = conf_fail_timeout;
 		s->req_limit = conf_req_limit;
 		s->max_fail = conf_max_fail;
+		s->bind_default = 1;
 		__add_server(s);
 	}
 }
@@ -745,6 +749,7 @@ static int parse_server1(const char *_opt, struct rad_server_t *s)
 	s->fail_timeout = conf_fail_timeout;
 	s->req_limit = conf_req_limit;
 	s->max_fail = conf_max_fail;
+	s->bind_default = 1;
 
 	return 0;
 
@@ -827,6 +832,23 @@ static int parse_server2(const char *_opt, struct rad_server_t *s)
 		}
 	} else
 		s->weight = 1;
+
+	ptr3 = strstr(ptr2, ",bind-device=");
+	if (ptr3) {
+		endptr = strchrnul(ptr3 + 13, ',');
+		if (*endptr != ',' && *endptr != 0)
+			goto out;
+		if  ( ( endptr - ptr3 - 13 ) >  IFNAMSIZ - 1 ) {
+			log_error("radius: %s: too long bind device name\n", _opt);
+			s->bind_default = 1;
+		} else
+		{
+			s->bind_default = 0;
+			bzero(s->bind_device, sizeof(s->bind_device));
+			strncpy(s->bind_device, ptr3 + 13, endptr - ptr3 - 13);
+		}
+	} else
+		s->bind_default = 1;
 
 	ptr3 = strstr(ptr2, ",backup");
 	if (ptr3)

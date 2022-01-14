@@ -824,8 +824,11 @@ Specifies IP address, port and secret of authentication RADIUS server. (obsolete
 .BI "acct-server=" x.x.x.x:port,secret
 Specifies IP address, port and secret of accounting RADIUS server. (obsolete)
 .TP
-.BI "server=" address,secret[,auth-port=1812][,acct-port=1813][,req-limit=0][,fail-timeout=0,max-fail=0,][,weight=1][,backup]
+.BI "server=" address,secret[,auth-port=1812][,acct-port=1813][,bind-device=][,req-limit=0][,fail-timeout=0,max-fail=0,][,weight=1][,backup]
 Specifies IP address, secret, ports of RADIUS server.
+.br
+.B bind-device
+- device name or VRF to bind the connection. By default, the device name is undefined.
 .br
 .B req-limit
 - number of simultaneous requests to server (0 - unlimited).
@@ -845,8 +848,13 @@ Specifies IP address, secret, ports of RADIUS server.
 If you want to specify only authentication or accounting server then set auth-port/acct-port to zero.
 You may specify multiple radius servers.
 .TP
-.BI "dae-server=" x.x.x.x:port,secret
+.br
+.BI "dae-server=" x.x.x.x:port,secret[,bind-device=]
 Specifies IP address, port to bind and secret for Dynamic Authorization Extension server (DM/CoA).
+.br
+.B bind-device
+- device name or VRF to bind the connection. By default, the device name is undefined.
+.br
 .TP
 .BI "dm_coa_secret=" secret (deprecated, use dae-server instead)
 Specifies secret to use in DM/CoA communication.
