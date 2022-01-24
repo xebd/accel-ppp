@@ -258,9 +258,20 @@ int rad_packet_recv(int fd, struct rad_packet_t **p, struct sockaddr_in *addr)
 					case ATTR_TYPE_IPADDR:
 					case ATTR_TYPE_IFID:
 					case ATTR_TYPE_IPV6ADDR:
-						memcpy(&attr->val.integer, ptr, len);
+						if (len == da->size)
+							memcpy(&attr->val.integer, ptr, len);
+						else
+							log_ppp_warn("radius:packet: attribute %s has invalid length %i (must be %i)\n", da->name, len, da->size);
 						break;
 					case ATTR_TYPE_IPV6PREFIX:
+						if (len < 2 || len > 18) { /* RFC 8044 §3.10 ipv6prefix */
+							log_ppp_warn("radius:packet: attribute %s has invalid length %i (must be from 2 to 18)\n", da->name, len);
+							break;
+						}
+						if (ptr[1] > 128) {
+							log_ppp_warn("radius:packet: attribute %s has invalid prefix length %u (must be from 0 to 128)\n", da->name, ptr[1]);
+							break;
+						}
 						attr->val.ipv6prefix.len = ptr[1];
 						memset(&attr->val.ipv6prefix.prefix, 0, sizeof(attr->val.ipv6prefix.prefix));
 						memcpy(&attr->val.ipv6prefix.prefix, ptr + 2, len - 2);
