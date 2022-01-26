@@ -925,6 +925,8 @@ void dhcpv4_send_notify(struct dhcpv4_serv *serv, struct dhcpv4_packet *req, uns
 	dhcpv4_packet_add_opt_u8(pack, 53, DHCPDISCOVER);
 	dhcpv4_packet_add_opt(pack, 43, opt, sizeof(opt));
 
+	*pack->ptr++ = 255;
+
 	dhcpv4_send_raw(serv, pack, 0, INADDR_BROADCAST, DHCP_SERV_PORT);
 
 	dhcpv4_packet_free(pack);
