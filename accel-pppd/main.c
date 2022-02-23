@@ -282,7 +282,7 @@ static void print_help(FILE *stream)
 {
 	print_usage(stream);
 	fprintf(stream, "\n"
-		"\t-с, --config\t- Read config from CONFIG file \n"
+		"\t-c, --config\t- Read config from CONFIG file \n"
 		"\t-p, --pid\t- Write pid to PID file\n"
 		"\t-d, --daemon\t- Daemon mode\n"
 		"\t-V, --version\t- Show version and exit\n"
