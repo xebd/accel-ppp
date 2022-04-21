@@ -220,26 +220,31 @@ static void chap_send_success(struct chap_auth_data *ad, int id)
 
 static void chap_send_challenge(struct chap_auth_data *ad, int new)
 {
-	struct chap_challenge msg =	{
-		.hdr.proto = htons(PPP_CHAP),
-		.hdr.code = CHAP_CHALLENGE,
-		.hdr.id = ad->id,
-		.hdr.len = htons(sizeof(msg) - 2),
-		.val_size = VALUE_SIZE,
+#define CHAP_CHALLENGE_NAME "accel-ppp"
+	struct {
+		struct chap_challenge m;
+		char name[sizeof(CHAP_CHALLENGE_NAME)];
+	} __attribute__((packed)) msg = {
+		.m.hdr.proto = htons(PPP_CHAP),
+		.m.hdr.code = CHAP_CHALLENGE,
+		.m.hdr.id = ad->id,
+		.m.hdr.len = htons(sizeof(struct chap_challenge) - 2 + strlen(CHAP_CHALLENGE_NAME)),
+		.m.val_size = VALUE_SIZE,
+		.name = CHAP_CHALLENGE_NAME,
 	};
 
 	if (new)
 		read(urandom_fd, ad->val, VALUE_SIZE);
 
-	memcpy(msg.val, ad->val, VALUE_SIZE);
+	memcpy(msg.m.val, ad->val, VALUE_SIZE);
 
 	if (conf_ppp_verbose) {
-		log_ppp_info2("send [CHAP Challenge id=%x <", msg.hdr.id);
-		print_buf(msg.val, VALUE_SIZE);
+		log_ppp_info2("send [CHAP Challenge id=%x <", msg.m.hdr.id);
+		print_buf(msg.m.val, VALUE_SIZE);
 		log_ppp_info2(">]\n");
 	}
 
-	ppp_chan_send(ad->ppp, &msg, ntohs(msg.hdr.len) + 2);
+	ppp_chan_send(ad->ppp, &msg, ntohs(msg.m.hdr.len) + 2);
 
 	if (conf_timeout && !ad->timeout.tpd)
 		triton_timer_add(ad->ppp->ses.ctrl->ctx, &ad->timeout, 0);
