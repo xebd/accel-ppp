@@ -239,6 +239,12 @@ This should reduce kernel-level interface creation/deletion rate lack.
 .TP
 .BI "unit-preallocate=" 0|1
 If set to 1 then allocate ppp unit (interface) before authorization, so Nas-Port and Nas-Port-Id would be defined in Access-Request phase.
+.SH [auth]
+.br
+Contains authentication params
+.TP
+.BI "challenge-name=" name
+Specifies challenge name for CHAP authentication.
 .SH [ipoe]
 .TP
 .BI "verbose=" n

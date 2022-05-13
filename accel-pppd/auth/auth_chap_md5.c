@@ -36,6 +36,7 @@ static int conf_timeout = 5;
 static int conf_interval = 0;
 static int conf_max_failure = 3;
 static int conf_any_login = 0;
+static const char *conf_challenge_name = "accel-ppp";
 
 struct chap_hdr {
 	uint16_t proto;
@@ -220,31 +221,36 @@ static void chap_send_success(struct chap_auth_data *ad, int id)
 
 static void chap_send_challenge(struct chap_auth_data *ad, int new)
 {
-#define CHAP_CHALLENGE_NAME "accel-ppp"
-	struct {
-		struct chap_challenge m;
-		char name[sizeof(CHAP_CHALLENGE_NAME)];
-	} __attribute__((packed)) msg = {
-		.m.hdr.proto = htons(PPP_CHAP),
-		.m.hdr.code = CHAP_CHALLENGE,
-		.m.hdr.id = ad->id,
-		.m.hdr.len = htons(sizeof(struct chap_challenge) - 2 + strlen(CHAP_CHALLENGE_NAME)),
-		.m.val_size = VALUE_SIZE,
-		.name = CHAP_CHALLENGE_NAME,
-	};
+	struct chap_challenge *msg;
+	int name_len;
+
+	name_len = conf_challenge_name ? strlen(conf_challenge_name) : 0;
+	msg = alloca(sizeof(*msg) + name_len);
+	memset(msg, 0, sizeof(*msg) + name_len);
+
+	msg->hdr.proto = htons(PPP_CHAP);
+	msg->hdr.code = CHAP_CHALLENGE;
+	msg->hdr.id = ad->id;
+	msg->hdr.len = htons(sizeof(*msg) + name_len - 2);
 
 	if (new)
 		read(urandom_fd, ad->val, VALUE_SIZE);
 
-	memcpy(msg.m.val, ad->val, VALUE_SIZE);
+	memcpy(msg->val, ad->val, VALUE_SIZE);
+	msg->val_size = VALUE_SIZE;
+
+	if (name_len)
+		memcpy(msg->name, conf_challenge_name, name_len);
 
 	if (conf_ppp_verbose) {
-		log_ppp_info2("send [CHAP Challenge id=%x <", msg.m.hdr.id);
-		print_buf(msg.m.val, VALUE_SIZE);
-		log_ppp_info2(">]\n");
+		log_ppp_info2("send [CHAP Challenge id=%x <", msg->hdr.id);
+		print_buf(msg->val, VALUE_SIZE);
+		log_ppp_info2("> name=\"");
+		print_str(msg->name, ntohs(msg->hdr.len) - sizeof(*msg) + 2);
+		log_ppp_info2("\"]\n");
 	}
 
-	ppp_chan_send(ad->ppp, &msg, ntohs(msg.m.hdr.len) + 2);
+	ppp_chan_send(ad->ppp, msg, ntohs(msg->hdr.len) + 2);
 
 	if (conf_timeout && !ad->timeout.tpd)
 		triton_timer_add(ad->ppp->ses.ctrl->ctx, &ad->timeout, 0);
@@ -481,6 +487,10 @@ static void load_config(void)
 	opt = conf_get_opt("auth", "any-login");
 	if (opt)
 		conf_any_login = atoi(opt);
+
+	opt = conf_get_opt("auth", "challenge-name");
+	if (opt)
+		conf_challenge_name = opt;
 }
 
 static void auth_chap_md5_init()
