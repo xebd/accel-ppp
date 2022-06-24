@@ -88,7 +88,7 @@ static void ev_ses_started(struct ap_session *ses)
 	net->setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &f, sizeof(f));
 
 	if (net->setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, ses->ifname, strlen(ses->ifname))) {
-		log_ppp_error("ipv6_nd: setsockopt(SO_BINDTODEVICE): %s\n", strerror(errno));
+		log_ppp_error("dhcpv6: setsockopt(SO_BINDTODEVICE): %s\n", strerror(errno));
 		close(sock);
 		return;
 	}
