@@ -76,7 +76,10 @@ static void ev_ses_started(struct ap_session *ses)
 	if (a->prefix_len == 0 || IN6_IS_ADDR_UNSPECIFIED(&a->addr))
 		return;
 
+	net->enter_ns();
 	sock = net->socket(AF_INET6, SOCK_DGRAM, 0);
+	net->exit_ns();
+
 	if (!sock) {
 		log_ppp_error("dhcpv6: socket: %s\n", strerror(errno));
 		return;
@@ -85,7 +88,7 @@ static void ev_ses_started(struct ap_session *ses)
 	net->setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &f, sizeof(f));
 
 	if (net->setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, ses->ifname, strlen(ses->ifname))) {
-		log_ppp_error("ipv6_nd: setsockopt(SO_BINDTODEVICE): %s\n", strerror(errno));
+		log_ppp_error("dhcpv6: setsockopt(SO_BINDTODEVICE): %s\n", strerror(errno));
 		close(sock);
 		return;
 	}
