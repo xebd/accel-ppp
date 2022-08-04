@@ -2415,12 +2415,12 @@ static int sstp_connect(struct triton_md_handler_t *h)
 
 		triton_context_register(&conn->ctx, &conn->ppp.ses);
 		triton_context_call(&conn->ctx, (triton_event_func)sstp_start, conn);
+		triton_timer_add(&conn->ctx, &conn->timeout_timer, 0);
 		triton_context_wakeup(&conn->ctx);
 
-		__sync_add_and_fetch(&stat_starting, 1);
 		triton_event_fire(EV_CTRL_STARTING, &conn->ppp.ses);
 
-		triton_timer_add(&conn->ctx, &conn->timeout_timer, 0);
+		__sync_add_and_fetch(&stat_starting, 1);
 	}
 
 	return 0;
