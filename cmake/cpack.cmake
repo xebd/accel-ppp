@@ -48,6 +48,11 @@ IF(CPACK_TYPE STREQUAL Debian11)
 	INCLUDE(${CMAKE_HOME_DIRECTORY}/cmake/debian/debian.cmake)
 ENDIF(CPACK_TYPE STREQUAL Debian11)
 
+IF(CPACK_TYPE STREQUAL Debian12)
+	SET(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.34), libssl3 (>= 3.0.5), libpcre3 (>= 8.39)")
+	INCLUDE(${CMAKE_HOME_DIRECTORY}/cmake/debian/debian.cmake)
+ENDIF(CPACK_TYPE STREQUAL Debian12)
+
 IF(CPACK_TYPE STREQUAL Ubuntu16)
 	SET(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.23), libssl1.0.0 (>= 1.0.0), libpcre3 (>= 8.39)")
 	INCLUDE(${CMAKE_HOME_DIRECTORY}/cmake/debian/debian.cmake)
@@ -62,6 +67,11 @@ IF(CPACK_TYPE STREQUAL Ubuntu20)
         SET(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.31), libssl1.1 (>= 1.1.1d), libpcre3 (>= 8.39)")
         INCLUDE(${CMAKE_HOME_DIRECTORY}/cmake/debian/debian.cmake)
 ENDIF(CPACK_TYPE STREQUAL Ubuntu20)
+
+IF(CPACK_TYPE STREQUAL Ubuntu22)
+        SET(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6 (>= 2.35), libssl3 (>= 3.0.2), libpcre3 (>= 8.39)")
+        INCLUDE(${CMAKE_HOME_DIRECTORY}/cmake/debian/debian.cmake)
+ENDIF(CPACK_TYPE STREQUAL Ubuntu22)
 
 IF(CPACK_TYPE STREQUAL Centos7)
 	SET(CPACK_RPM_PACKAGE_LICENSE "GPL")
