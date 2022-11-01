@@ -433,6 +433,8 @@ static struct pppoe_conn_t *allocate_channel(struct pppoe_serv_t *serv, const ui
 	return conn;
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Waddress-of-packed-member"
 static void connect_channel(struct pppoe_conn_t *conn)
 {
 	int sock;
@@ -486,6 +488,7 @@ out_err_close:
 out_err:
 	disconnect(conn);
 }
+#pragma GCC diagnostic pop
 
 static struct pppoe_conn_t *find_channel(struct pppoe_serv_t *serv, const uint8_t *cookie)
 {

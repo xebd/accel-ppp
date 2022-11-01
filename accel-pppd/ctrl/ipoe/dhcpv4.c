@@ -625,7 +625,7 @@ static int dhcpv4_send_raw(struct dhcpv4_serv *serv, struct dhcpv4_packet *pack,
 		struct iphdr ip;
 		struct udphdr udp;
 		uint8_t data[0];
-	} __packed *hdr;
+	} __packed __aligned(2) *hdr;
 	struct sockaddr_ll ll_addr;
 	int n, len = pack->ptr - pack->data;
 

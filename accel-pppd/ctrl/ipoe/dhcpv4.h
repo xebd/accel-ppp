@@ -8,6 +8,7 @@
 
 #include "triton.h"
 
+#define __aligned(n) __attribute__((aligned (n)))
 #define __packed __attribute__((packed))
 
 #define DHCP_SERV_PORT 67
