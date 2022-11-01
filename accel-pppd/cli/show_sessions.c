@@ -2,6 +2,7 @@
 #include <time.h>
 #include <string.h>
 #include <unistd.h>
+#include <inttypes.h>
 #include <signal.h>
 #include <arpa/inet.h>
 #include <linux/if_link.h>
@@ -52,7 +53,7 @@ struct cell_t
 static LIST_HEAD(col_list);
 static char *conf_def_columns = NULL;
 
-static __thread struct rtnl_link_stats stats;
+static __thread struct rtnl_link_stats64 stats;
 static __thread int stats_set;
 
 void __export cli_show_ses_register(const char *name, const char *desc, void (*print)(struct ap_session *ses, char *buf))
@@ -580,7 +581,7 @@ static void print_rx_bytes(struct ap_session *ses, char *buf)
 		get_stats(ses);
 		stats_set = 1;
 	}
-	format_bytes(buf, 4294967296ll*ses->acct_input_gigawords + stats.rx_bytes);
+	format_bytes(buf, stats.rx_bytes);
 }
 
 static void print_tx_bytes(struct ap_session *ses, char *buf)
@@ -589,7 +590,7 @@ static void print_tx_bytes(struct ap_session *ses, char *buf)
 		get_stats(ses);
 		stats_set = 1;
 	}
-	format_bytes(buf, 4294967296ll*ses->acct_output_gigawords + stats.tx_bytes);
+	format_bytes(buf, stats.tx_bytes);
 }
 
 static void print_rx_bytes_raw(struct ap_session *ses, char *buf)
@@ -598,7 +599,7 @@ static void print_rx_bytes_raw(struct ap_session *ses, char *buf)
 		get_stats(ses);
 		stats_set = 1;
 	}
-	sprintf(buf, "%llu", 4294967296ll*ses->acct_input_gigawords + stats.rx_bytes);
+	sprintf(buf, PRIu64, stats.rx_bytes);
 }
 
 static void print_tx_bytes_raw(struct ap_session *ses, char *buf)
@@ -607,7 +608,7 @@ static void print_tx_bytes_raw(struct ap_session *ses, char *buf)
 		get_stats(ses);
 		stats_set = 1;
 	}
-	sprintf(buf, "%llu", 4294967296ll*ses->acct_output_gigawords + stats.tx_bytes);
+	sprintf(buf, PRIu64, stats.tx_bytes);
 }
 
 static void print_rx_pkts(struct ap_session *ses, char *buf)
@@ -616,7 +617,7 @@ static void print_rx_pkts(struct ap_session *ses, char *buf)
 		get_stats(ses);
 		stats_set = 1;
 	}
-	sprintf(buf, "%u", stats.rx_packets);
+	sprintf(buf, PRIu64, stats.rx_packets);
 }
 
 static void print_tx_pkts(struct ap_session *ses, char *buf)
@@ -625,7 +626,7 @@ static void print_tx_pkts(struct ap_session *ses, char *buf)
 		get_stats(ses);
 		stats_set = 1;
 	}
-	sprintf(buf, "%u", stats.tx_packets);
+	sprintf(buf, PRIu64, stats.tx_packets);
 }
 
 static void load_config(void *data)
