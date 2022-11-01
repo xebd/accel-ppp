@@ -684,12 +684,11 @@ static void fill_env(char **env, char *mem, struct pppd_compat_pd *pd)
 	}
 
 	if (pd->ses->stop_time) {
-		uint64_t gword_sz = (uint64_t)UINT32_MAX + 1;
 		uint64_t tx_bytes;
 		uint64_t rx_bytes;
 
-		tx_bytes = ses->acct_tx_bytes + gword_sz * ses->acct_output_gigawords;
-		rx_bytes = ses->acct_rx_bytes + gword_sz * ses->acct_input_gigawords;
+		tx_bytes = ses->acct_tx_bytes;
+		rx_bytes = ses->acct_rx_bytes;
 
 		env[n] = mem;
 		write_sz = snprintf(mem, mem_sz, "CONNECT_TIME=%lu",
