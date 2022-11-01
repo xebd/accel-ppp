@@ -978,7 +978,7 @@ static int ppp_allocate_pty(int *master, int *slave, int flags)
 	struct termios tios;
 	int value, mfd, sfd;
 
-	if (openpty(&mfd, &sfd, NULL, &tios, NULL) < 0) {
+	if (openpty(&mfd, &sfd, NULL, NULL, NULL) < 0) {
 		log_ppp_error("sstp: allocate pty: %s\n", strerror(errno));
 		return -1;
 	}
