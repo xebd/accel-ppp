@@ -42,7 +42,6 @@ static int req_set_RA(struct rad_req_t *req, const char *secret)
 static int req_set_stat(struct rad_req_t *req, struct ap_session *ses)
 {
 	struct rtnl_link_stats64 stats;
-	struct radius_pd_t *rpd = req->rpd;
 	struct timespec ts;
 	int ret = 0;
 
