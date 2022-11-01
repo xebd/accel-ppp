@@ -401,6 +401,8 @@ int __export ap_session_read_stats(struct ap_session *ses, struct rtnl_link_stat
 	if (stats->rx_bytes != ses->acct_rx_bytes)
 		ses->idle_time = _time();
 
+	ses->acct_rx_packets = stats->rx_packets;
+	ses->acct_tx_packets = stats->tx_packets;
 	ses->acct_rx_bytes = stats->rx_bytes;
 	ses->acct_tx_bytes = stats->tx_bytes;
 

@@ -110,6 +110,8 @@ struct ap_session
 	int session_timeout;
 	struct triton_timer_t timer;
 
+	uint64_t acct_rx_packets;
+	uint64_t acct_tx_packets;
 	uint64_t acct_rx_bytes;
 	uint64_t acct_tx_bytes;
 	uint64_t acct_rx_packets_i;
