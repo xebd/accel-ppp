@@ -599,7 +599,7 @@ static void print_rx_bytes_raw(struct ap_session *ses, char *buf)
 		get_stats(ses);
 		stats_set = 1;
 	}
-	sprintf(buf, PRIu64, stats.rx_bytes);
+	sprintf(buf, "%llu", stats.rx_bytes);
 }
 
 static void print_tx_bytes_raw(struct ap_session *ses, char *buf)
@@ -608,7 +608,7 @@ static void print_tx_bytes_raw(struct ap_session *ses, char *buf)
 		get_stats(ses);
 		stats_set = 1;
 	}
-	sprintf(buf, PRIu64, stats.tx_bytes);
+	sprintf(buf, "%llu", stats.tx_bytes);
 }
 
 static void print_rx_pkts(struct ap_session *ses, char *buf)
@@ -617,7 +617,7 @@ static void print_rx_pkts(struct ap_session *ses, char *buf)
 		get_stats(ses);
 		stats_set = 1;
 	}
-	sprintf(buf, PRIu64, stats.rx_packets);
+	sprintf(buf, "%llu", stats.rx_packets);
 }
 
 static void print_tx_pkts(struct ap_session *ses, char *buf)
@@ -626,7 +626,7 @@ static void print_tx_pkts(struct ap_session *ses, char *buf)
 		get_stats(ses);
 		stats_set = 1;
 	}
-	sprintf(buf, PRIu64, stats.tx_packets);
+	sprintf(buf, "%llu", stats.tx_packets);
 }
 
 static void load_config(void *data)
