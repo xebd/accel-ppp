@@ -1876,6 +1876,9 @@ static struct genl_family ipoe_nl_family = {
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5,2,0)
 	.policy = ipoe_nl_policy,
 #endif
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,1,0)
+	.resv_start_op = CTRL_CMD_GETPOLICY + 1,
+#endif
 };
 
 static const struct net_device_ops ipoe_netdev_ops = {
