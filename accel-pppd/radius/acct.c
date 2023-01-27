@@ -214,7 +214,7 @@ static int rad_acct_before_send(struct rad_req_t *req)
 
 	clock_gettime(CLOCK_MONOTONIC, &ts);
 
-	rad_packet_change_int(req->pack, NULL, "Acct-Delay-Time", ts.tv_sec - req->ts);
+	rad_packet_change_int(req->pack, NULL, "Acct-Delay-Time", ts.tv_sec - req->ts + conf_acct_delay_start);
 	req_set_RA(req, req->serv->secret);
 
 	return 0;
@@ -300,7 +300,7 @@ static void rad_acct_start_timeout(struct triton_timer_t *t)
 		ap_session_terminate(req->rpd->ses, TERM_NAS_ERROR, 0);
 }
 
-int rad_acct_start(struct radius_pd_t *rpd)
+static int __rad_acct_start(struct radius_pd_t *rpd)
 {
 	struct rad_req_t *req = rad_req_alloc(rpd, CODE_ACCOUNTING_REQUEST, rpd->ses->username, 0);
 
@@ -333,6 +333,29 @@ int rad_acct_start(struct radius_pd_t *rpd)
 out_err:
 	rad_req_free(req);
 	return -1;
+}
+
+static void rad_acct_start_delay(struct triton_timer_t *t)
+{
+	struct radius_pd_t *rpd = container_of(t, typeof(*rpd), acct_interim_timer);
+
+	triton_timer_del(&rpd->acct_interim_timer);
+
+	if (__rad_acct_start(rpd))
+		ap_session_terminate(rpd->ses, TERM_NAS_ERROR, 0);
+}
+
+int rad_acct_start(struct radius_pd_t *rpd)
+{
+	if (conf_acct_delay_start) {
+		log_ppp_debug("radius: acct delay start %i\n", conf_acct_delay_start);
+		rpd->acct_interim_timer.expire = rad_acct_start_delay;
+		rpd->acct_interim_timer.expire_tv.tv_sec = conf_acct_delay_start;
+		triton_timer_add(rpd->ses->ctrl->ctx, &rpd->acct_interim_timer, 0);
+		return 0;
+	}
+
+	return __rad_acct_start(rpd);
 }
 
 static void rad_acct_stop_sent(struct rad_req_t *req, int res)
