@@ -90,6 +90,7 @@ static struct disc_net *init_net(const struct ap_net *net)
 	n->hnd.fd = sock;
 	n->hnd.read = disc_read;
 	n->net = net;
+	/* Initial self-reference, to be released at net shutdown */
 	n->refs = 1;
 
 	triton_context_register(&n->ctx, NULL);
@@ -182,6 +183,7 @@ int pppoe_disc_start(struct pppoe_serv_t *serv)
 	rb_link_node(&serv->node, parent, p);
 	rb_insert_color(&serv->node, &t->root);
 
+	/* Register a reference to the net object */
 	__sync_add_and_fetch(&net->refs, 1);
 
 	pthread_mutex_unlock(&t->lock);
@@ -198,6 +200,7 @@ void pppoe_disc_stop(struct pppoe_serv_t *serv)
 	rb_erase(&serv->node, &t->root);
 	pthread_mutex_unlock(&t->lock);
 
+	/* Release the serv reference to the net object */
 	if (__sync_sub_and_fetch(&n->refs, 1) == 0)
 		free_net(n);
 }
@@ -280,6 +283,7 @@ static void disc_stop(struct disc_net *net)
 		pthread_mutex_unlock(&t->lock);
 	}
 
+	/* Release the initial reference. */
 	if (__sync_sub_and_fetch(&net->refs, 1) == 0)
 		free_net(net);
 }
