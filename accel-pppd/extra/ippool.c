@@ -126,10 +126,13 @@ static int parse1(const char *str, uint32_t *begin, uint32_t *end)
 	if (m == 0 || m > 32)
 		return -1;
 
-	*begin = (f1 << 24) | (f2 << 16) | (f3 << 8) | f4;
+	/* top and tail the range to avoid including network
+	   number and broadcast address in pool */
+
+	*begin = ( (f1 << 24) | (f2 << 16) | (f3 << 8) | f4) + 1;
 
 	m = m == 32 ? 0 : ((1 << (32 - m)) - 1);
-	*end = *begin | m;
+	*end = ( *begin | m ) - 1;
 
 	return 0;
 }

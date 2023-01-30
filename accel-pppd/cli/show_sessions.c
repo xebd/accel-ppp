@@ -17,7 +17,7 @@
 #include "memdebug.h"
 
 #define CELL_SIZE 128
-#define DEF_COLUMNS "ifname,username,calling-sid,ip,rate-limit,type,comp,state,uptime"
+#define DEF_COLUMNS "ifname,username,calling-sid,ip,rate-limit,type,comp,state,uptime,max-mtu"
 
 struct column_t
 {
@@ -522,6 +522,16 @@ static void print_calling_sid(struct ap_session *ses, char *buf)
 	snprintf(buf, CELL_SIZE, "%s", ses->ctrl->calling_station_id);
 }
 
+static void print_max_mtu(struct ap_session *ses, char *buf)
+{
+	snprintf(buf, CELL_SIZE, "%d", ses->ctrl->max_mtu);
+}
+
+static void print_mppe(struct ap_session *ses, char *buf)
+{
+	snprintf(buf, CELL_SIZE, "%s", ses->ctrl->mppe ? "yes" : "no");
+}
+
 static void print_called_sid(struct ap_session *ses, char *buf)
 {
 	snprintf(buf, CELL_SIZE, "%s", ses->ctrl->called_station_id);
@@ -668,6 +678,8 @@ static void init(void)
 	cli_show_ses_register("uptime", "uptime (human readable)", print_uptime);
 	cli_show_ses_register("uptime-raw", "uptime (in seconds)", print_uptime_raw);
 	cli_show_ses_register("calling-sid", "calling station id", print_calling_sid);
+	cli_show_ses_register("max-mtu", "maximum mtu", print_max_mtu);
+	cli_show_ses_register("mppe", "mppe", print_mppe);
 	cli_show_ses_register("called-sid", "called station id", print_called_sid);
 	cli_show_ses_register("sid", "session id", print_sid);
 	cli_show_ses_register("comp", "compression/encryption method", print_comp);

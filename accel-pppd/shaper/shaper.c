@@ -420,12 +420,10 @@ static int check_radius_attrs(struct shaper_pd_t *pd, struct rad_packet_t *pack)
 		if (attr->attr->id == conf_attr_up)
 			parse_attr(attr, ATTR_UP, &up_speed, &up_burst, &tr_id);
 		tr_pd = get_tr_pd(pd, tr_id);
-		if (down_speed)
-			tr_pd->down_speed = down_speed;
+		tr_pd->down_speed = down_speed;
+		tr_pd->up_speed = up_speed;
 		if (down_burst)
 			tr_pd->down_burst = down_burst;
-		if (up_speed)
-			tr_pd->up_speed = up_speed;
 		if (up_burst)
 			tr_pd->up_burst = up_burst;
 	}
