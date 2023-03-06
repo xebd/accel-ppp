@@ -192,6 +192,7 @@ extern int conf_dm_coa_port;
 extern int conf_acct_interim_interval;
 extern int conf_acct_interim_jitter;
 extern int conf_accounting;
+extern int conf_send_auth_reply_attr_acct;
 extern const char *conf_attr_tunnel_type;
 extern int conf_acct_delay_start;
 
