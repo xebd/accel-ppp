@@ -14,6 +14,7 @@ enum iprange_status {
 
 enum iprange_status iprange_check_activation(void);
 int iprange_client_check(in_addr_t ipaddr);
+char *iprange_client_check_l2tp_secret(in_addr_t ipaddr);
 int iprange_tunnel_check(in_addr_t ipaddr);
 
 #endif

@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/utsname.h>
 
 #include "triton.h"
 
@@ -331,10 +332,21 @@ static void load_config(void)
 	if (conf_cli_prompt && conf_cli_prompt != def_cli_prompt)
 		_free(conf_cli_prompt);
 	opt = conf_get_opt("cli", "prompt");
-	if (opt)
-		conf_cli_prompt = _strdup(opt);
-	else
-		conf_cli_prompt = (char *)def_cli_prompt;
+	if (opt) {
+		if (strcmp(opt, "$hostname") == 0)
+		{
+			struct utsname uninfo;
+			if (uname(&uninfo) == 0) {
+				conf_cli_prompt = _strdup(uninfo.nodename);
+			} else {
+				conf_cli_prompt = (char *)def_cli_prompt;	
+			}
+		} else {
+			conf_cli_prompt = _strdup(opt);
+		}
+	} else {
+		conf_cli_prompt = (char *)def_cli_prompt;	
+	}
 }
 
 static void init(void)
