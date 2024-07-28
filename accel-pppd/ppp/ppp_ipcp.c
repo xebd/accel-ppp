@@ -738,7 +738,8 @@ static void ipcp_recv(struct ppp_handler_t*h)
 			if (conf_ppp_verbose)
 				log_ppp_info2("recv [IPCP TermReq id=%x]\n", hdr->id);
 			ppp_fsm_recv_term_req(&ipcp->fsm);
-			ap_session_terminate(&ipcp->ppp->ses, TERM_USER_REQUEST, 0);
+			if (conf_ipv4 == IPV4_REQUIRE)
+				ap_session_terminate(&ipcp->ppp->ses, TERM_USER_REQUEST, 0);
 			break;
 		case TERMACK:
 			if (conf_ppp_verbose)
