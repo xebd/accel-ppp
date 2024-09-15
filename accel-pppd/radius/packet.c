@@ -336,6 +336,9 @@ void rad_packet_print(struct rad_packet_t *pack, struct rad_server_t *s, void (*
 	else
 		print("[RADIUS ");
 
+	if (!pack)
+		return;
+
 	switch(pack->code) {
 		case CODE_ACCESS_REQUEST:
 			print("Access-Request");
