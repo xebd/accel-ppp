@@ -1,5 +1,6 @@
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdalign.h>
 #include <string.h>
 #include <signal.h>
 #include <unistd.h>
@@ -72,7 +73,7 @@ mempool_t __export *mempool_create(int size)
 	p->magic = (uint64_t)random() * (uint64_t)random();
 #endif
 	spinlock_init(&p->lock);
-	p->size = size;
+	p->size = size + alignof(struct _item_t) - size%alignof(struct _item_t);
 
 	spin_lock(&pools_lock);
 	list_add_tail(&p->entry, &pools);
